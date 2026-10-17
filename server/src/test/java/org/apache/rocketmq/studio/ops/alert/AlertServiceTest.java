@@ -242,6 +242,26 @@ class AlertServiceTest {
                 .contains("severity: critical");
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(doubles = {
+        1e20, -1e20, 0x1.0p63, -0x1.0000000000001p63, Double.MAX_VALUE,
+        -Double.MAX_VALUE, 0x1.fffffffffffffp62, -0x1.0p63, 5000, 0.25})
+    void exportedThresholdRetainsItsFiniteNumericValueTest(double threshold) throws Exception {
+        AlertRuleVO rule = AlertRuleVO.builder().name("Large threshold")
+                .metric("rocketmq_consumer_lag_messages").operator(">").threshold(threshold)
+                .duration("3m").enabled(true).build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        JsonNode yaml = new ObjectMapper(new YAMLFactory()).readTree(alertService.exportPrometheusRulesYaml());
+        String expression = yaml.path("groups").get(0).path("rules").get(0).path("expr").asText();
+        String literal = expression.substring(expression.lastIndexOf(' ') + 1);
+
+        assertThat(Double.parseDouble(literal)).isEqualTo(threshold);
+        if (threshold == 0x1.0p63) {
+            assertThat(literal).isNotEqualTo(Long.toString(Long.MAX_VALUE));
+        }
+    }
+
     @Test
     void exportPrometheusRulesYamlShouldConvertConfiguredRulesTest() {
         AlertRuleVO rule = AlertRuleVO.builder()
@@ -281,6 +301,26 @@ class AlertServiceTest {
         String result = alertService.exportPrometheusRulesYaml();
 
         assertThat(result).contains("for: 1h30m").doesNotContain("for: 5m");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldReplaceUnorderedLegacyDurationsTest() {
+        for (String duration : List.of("1s1m", "1m1m", "1ms1s", "1h2d")) {
+            AlertRuleVO rule = AlertRuleVO.builder()
+                    .name("High Lag")
+                    .metric("rocketmq_consumer_lag_messages")
+                    .operator(">")
+                    .threshold(5000)
+                    .duration(duration)
+                    .enabled(true)
+                    .build();
+            when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+            assertThat(alertService.exportPrometheusRulesYaml())
+                    .as("legacy duration %s", duration)
+                    .contains("for: 5m")
+                    .doesNotContain("for: " + duration);
+        }
     }
 
     @Test
@@ -1036,6 +1076,37 @@ class AlertServiceTest {
         alertService.createRule(distinct);
 
         verify(alertRepository).insertRule(distinct);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"60s,1m", "1h30m,90m", "1000ms,1s", "0s,''"})
+    void equivalentDurationEditKeepsEvaluationStateTest(String original, String replacement) {
+        AlertRuleVO existing = durationRule(1L, original);
+        AlertRuleVO update = durationRule(1L, replacement);
+        when(alertRepository.findRuleById(1L)).thenReturn(java.util.Optional.of(existing));
+        when(alertRepository.replaceRule(update)).thenReturn(true);
+
+        alertService.updateRule(update);
+
+        verify(alertStateRepository, never()).deleteByRuleId(1L);
+    }
+
+    @Test
+    void changedDurationStillResetsEvaluationStateTest() {
+        AlertRuleVO existing = durationRule(1L, "60s");
+        AlertRuleVO update = durationRule(1L, "2m");
+        when(alertRepository.findRuleById(1L)).thenReturn(java.util.Optional.of(existing));
+        when(alertRepository.replaceRule(update)).thenReturn(true);
+
+        alertService.updateRule(update);
+
+        verify(alertStateRepository).deleteByRuleId(1L);
+    }
+
+    private static AlertRuleVO durationRule(Long id, String duration) {
+        return AlertRuleVO.builder().id(id).name("Disk usage").domain(AlertDomain.CLUSTER)
+                .instanceId("local").metric("broker.disk.usage_ratio").operator(">=").threshold(0.85)
+                .duration(duration).enabled(true).build();
     }
 
     @Test

@@ -290,6 +290,27 @@ describe('AlertsPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('names the window aggregations instead of printing the API codes', async () => {
+    const user = userEvent.setup();
+    renderPage('BUSINESS');
+
+    await user.click(await screen.findByRole('button', { name: '新建规则' }));
+
+    // The default value is LAST; the selection already reads as its name.
+    expect(await screen.findByText('最近一次')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: '窗口聚合' }));
+
+    // The visible option list, not the hidden aria mirror that keeps the raw value.
+    await waitFor(() =>
+      expect(
+        Array.from(document.querySelectorAll('.ant-select-item-option-content')).map((option) =>
+          option.textContent?.trim(),
+        ),
+      ).toEqual(['最近一次', '最大值', '最小值', '平均值', '总和']),
+    );
+  });
+
   it('formats the last triggered timestamp instead of rendering the raw ISO value', async () => {
     const lastTriggered = '2026-08-23T10:35:38.590731';
     vi.mocked(listAlertRulesPage).mockResolvedValue(
@@ -321,14 +342,64 @@ describe('AlertsPage', () => {
   });
 
   it('renders legacy native ratio thresholds as percentages', () => {
-    expect(
+    const render = (threshold: number) =>
       formatThresholdCondition({
         ...cloneRule(alertRules[0]),
         metric: 'broker.disk.usage_ratio',
-        threshold: 0.85,
+        threshold,
         thresholdUnit: null,
-      }),
-    ).toBe('> 85%');
+      });
+
+    expect(render(0.85)).toBe('> 85%');
+    // 8 of the 99 whole percents (7, 14, 28, 29, 55, 56, 57, 58) do not survive
+    // `n / 100 * 100` in binary floating point: 0.29 * 100 is 28.999999999999996.
+    expect(render(0.29)).toBe('> 29%');
+    expect(render(0.07)).toBe('> 7%');
+    expect(render(0.58)).toBe('> 58%');
+    expect(render(0.1234)).toBe('> 12.34%');
+  });
+
+  it('opens a legacy ratio rule with a clean percent and saves that value back', async () => {
+    vi.mocked(listAlertRulesPage).mockResolvedValue(
+      pageResult([
+        {
+          ...cloneRule(alertRules[0]),
+          instanceId: 'local',
+          metric: 'broker.disk.usage_ratio',
+          threshold: 0.29,
+          thresholdUnit: null,
+        },
+      ]),
+    );
+    vi.mocked(listNativeAlertMetrics).mockResolvedValue([
+      {
+        key: 'broker.disk.usage_ratio',
+        label: 'Broker disk usage ratio',
+        thresholdUnit: 'ratio',
+        supportsConsumerGroup: false,
+      },
+    ]);
+    vi.mocked(updateAlertRule).mockImplementation(async (data) => ({
+      ...cloneRule(alertRules[0]),
+      ...data,
+    }));
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Broker disk usage');
+    await expectRuleRowInteractive('Broker disk usage');
+    await user.click(within(getRuleRow('Broker disk usage')).getByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog', { name: '编辑' });
+
+    // The editor's percent input renders with `precision={2}`, so the residue stays invisible in
+    // the dialog; it only shows up in the value the form saves back.
+    fireEvent.click(within(dialog).getByRole('button', { name: /编\s*辑/ }));
+    await waitFor(() =>
+      expect(updateAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 1, threshold: 29, thresholdUnit: '%' }),
+      ),
+    );
   });
 
   it('bulk enables selected alert rules and clears the selection after success', async () => {

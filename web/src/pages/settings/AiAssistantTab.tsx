@@ -44,6 +44,7 @@ import {
   type LlmTestResult,
 } from '../../api/llm';
 import { fallbackModelOptions } from '../studio/llmModelOptions';
+import { describeThrownMessage } from '../../utils/apiError';
 
 const DEFAULT_BASE_URL: Record<string, string> = {
   tongyi: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
@@ -118,6 +119,8 @@ export const AiAssistantTab = () => {
   const [testResult, setTestResult] = useState<TestState | null>(null);
   const testRequestIdRef = useRef(0);
   const configGenerationRef = useRef(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   const buildModelOptions = (
     nextProvider: string,
@@ -157,10 +160,16 @@ export const AiAssistantTab = () => {
     Promise.all([getLlmConfig(), getLlmModels().catch(() => null)])
       .then(([config, models]) => {
         if (cancelled) return;
+        setLoadError(null);
         applyConfig(config, models?.data?.map((m) => m.id || '').filter(Boolean) ?? []);
       })
-      .catch(() => {
-        if (!cancelled) message.error(t('llm.loadFailed'));
+      .catch((error) => {
+        if (cancelled) return;
+        // An unreadable configuration must not be presented as an empty one: the form below would
+        // then claim that no provider, model or API key is configured. The endpoint is admin-only,
+        // so a reader always ends up here, and the server's reason is what says so.
+        setLoadError(describeThrownMessage(error) || t('llm.loadFailed'));
+        message.error(t('llm.loadFailed'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -171,7 +180,7 @@ export const AiAssistantTab = () => {
       configGenerationRef.current += 1;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reloadNonce]);
 
   const invalidateTestRequest = () => {
     testRequestIdRef.current += 1;
@@ -330,6 +339,24 @@ export const AiAssistantTab = () => {
 
   return (
     <Flex vertical gap={24} style={{ maxWidth: 860 }}>
+      {loadError && (
+        <Alert
+          type="error"
+          showIcon
+          message={loadError}
+          action={
+            <Button
+              size="small"
+              onClick={() => {
+                setLoading(true);
+                setReloadNonce((nonce) => nonce + 1);
+              }}
+            >
+              {t('common.retry')}
+            </Button>
+          }
+        />
+      )}
       <Form
         form={form}
         layout="vertical"

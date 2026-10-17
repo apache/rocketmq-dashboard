@@ -94,6 +94,12 @@ const translations: Record<string, Record<Lang, string>> = {
   'layout.switchToDarkTheme': { zh: '切换到深色主题', en: 'Switch to dark theme' },
   'layout.openUserMenu': { zh: '打开用户菜单', en: 'Open user menu' },
 
+  // ─── Metrics Explorer ───
+  'metricsExplorer.unavailableHistorySource': {
+    zh: '该历史记录中的数据源“{source}”已不可用，已保留当前查询。',
+    en: 'The data source "{source}" in this history entry is unavailable. The current query was kept.',
+  },
+
   // ─── Dashboard ───
   'dashboard.title': { zh: '监控面板', en: 'Dashboard' },
   'dashboard.subtitle': { zh: 'RocketMQ 集群运行概览', en: 'RocketMQ Cluster Overview' },
@@ -595,6 +601,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'messagePage.deliveryStatusPending': { zh: '等待中', en: 'Pending' },
   'messagePage.traceStatusCritical': { zh: '异常', en: 'Critical' },
   'messagePage.traceDiagnostics': { zh: '轨迹诊断', en: 'Trace Diagnostics' },
+  'messagePage.keyTraceLatencyUnavailable': {
+    zh: 'Key 查询可能包含多条消息，不计算端到端和阶段间耗时；仍显示节点耗时与消费状态。',
+    en: 'A key lookup may include multiple messages. End-to-end and inter-stage latency are unavailable; node costs and delivery states remain visible.',
+  },
   'messagePage.healthScore': { zh: '健康分', en: 'Health Score' },
   'messagePage.traceStageCount': { zh: '轨迹阶段', en: 'Trace Stages' },
   'messagePage.endToEndLatency': { zh: '端到端耗时', en: 'End-to-End Latency' },
@@ -844,6 +854,28 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Direct consume request failed; check that the consumer group and client are online',
   },
   'messagePage.downloadSuccess': { zh: '消息下载成功', en: 'Message downloaded' },
+
+  // ─── Queue Browser ───
+  'queueBrowser.loadQueues': { zh: '加载队列', en: 'Load Queues' },
+  'queueBrowser.loadQueuesFailed': {
+    zh: '加载队列信息失败',
+    en: 'Failed to load queue information',
+  },
+  'queueBrowser.pullFailed': { zh: '拉取消息失败', en: 'Failed to pull the message' },
+  'queueBrowser.emptyHint': {
+    zh: '选择 Topic 并点击「加载队列」，按队列浏览消息',
+    en: 'Select a topic and click "Load Queues" to browse messages by queue',
+  },
+  'queueBrowser.offsetRange': { zh: 'Offset 范围', en: 'Offset Range' },
+  'queueBrowser.queueSummary': {
+    zh: '共 {queues} 个队列，总消息量 {messages} 条',
+    en: '{queues} queues, {messages} messages in total',
+  },
+  'queueBrowser.detailEmptyHint': {
+    zh: '点击左侧「查看」，消息详情将显示在这里',
+    en: 'Click "View" on the left; message details appear here',
+  },
+  'queueBrowser.noMessageAtOffset': { zh: '该 offset 处无消息', en: 'No message at this offset' },
 
   // ─── Message Query History ───
   'messageHistory.title': { zh: '服务端查询历史', en: 'Server Query History' },
@@ -1153,6 +1185,11 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'alerts.durationRequired': { zh: '请选择持续时间', en: 'Select a duration' },
   'alerts.windowAggregation': { zh: '窗口聚合', en: 'Window aggregation' },
+  'alerts.aggregation.LAST': { zh: '最近一次', en: 'Latest' },
+  'alerts.aggregation.MAX': { zh: '最大值', en: 'Maximum' },
+  'alerts.aggregation.MIN': { zh: '最小值', en: 'Minimum' },
+  'alerts.aggregation.AVG': { zh: '平均值', en: 'Average' },
+  'alerts.aggregation.SUM': { zh: '总和', en: 'Sum' },
   'alerts.windowSeconds': { zh: '窗口秒数', en: 'Window seconds' },
   'alerts.windowRetentionHelp': {
     zh: '聚合只使用本地当前保留的指标快照。当前保留周期之外的历史数据不可用；调整保留时间不会使规则失效。',
@@ -1631,6 +1668,23 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.cleanupDays': { zh: '清理 {n} 天之前的日志', en: 'Clean logs older than {n} days' },
   'audit.cleanupConfirm': { zh: '确认清理', en: 'Confirm Cleanup' },
   'audit.cleanupSuccess': { zh: '已清理 {n} 天之前的日志', en: 'Cleaned logs older than {n} days' },
+  'audit.loadFailed': {
+    zh: '审计日志加载失败，请稍后重试',
+    en: 'Failed to load audit logs, please retry later',
+  },
+  'audit.summaryLoadFailed': {
+    zh: '审计概览加载失败，请稍后重试',
+    en: 'Failed to load the audit summary, please retry later',
+  },
+  'audit.cleanupFailed': {
+    zh: '清理审计日志失败，请稍后重试',
+    en: 'Failed to clean audit logs, please retry later',
+  },
+  'audit.exportFailed': {
+    zh: '导出审计日志失败，请稍后重试',
+    en: 'Failed to export audit logs, please retry later',
+  },
+  'audit.cleanupDaysSuffix': { zh: '天之前的日志', en: 'days and older' },
   'audit.summaryMatched': { zh: '匹配记录', en: 'Matched Records' },
   'audit.summarySuccessRate': { zh: '成功率', en: 'Success Rate' },
   'audit.summaryOperators': { zh: '操作人数', en: 'Operators' },
@@ -1857,8 +1911,14 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'What message types does RocketMQ have, and what scenarios is each one for?',
   },
   'ai.tool.input': { zh: '输入参数', en: 'Input' },
+  'ai.tool.unknownName': { zh: '未知工具', en: 'Unknown tool' },
   'ai.tool.output': { zh: '执行结果', en: 'Result' },
   'ai.tool.running': { zh: '执行中', en: 'Running' },
+  'ai.tool.missingResult': { zh: '未返回结果', en: 'No result' },
+  'ai.tool.outputMissing': {
+    zh: '本次运行已结束，未收到工具结果',
+    en: 'The run ended without a tool result',
+  },
   'ai.tool.success': { zh: '成功', en: 'Success' },
   'ai.tool.failed': { zh: '失败', en: 'Failed' },
   'ai.tool.truncated': { zh: '已截断（{size}）', en: 'Truncated ({size})' },
@@ -2431,6 +2491,15 @@ const translations: Record<string, Record<Lang, string>> = {
   'settings.tabCredential': { zh: '云凭据管理', en: 'Cloud Credentials' },
   'settings.tabDatasource': { zh: '数据源管理', en: 'Data Sources' },
   'settings.tabAbout': { zh: '关于', en: 'About' },
+  'settings.aboutVersion': { zh: '版本', en: 'Version' },
+  'settings.aboutBuildCommit': { zh: '构建提交', en: 'Build commit' },
+  'settings.aboutBuildTime': { zh: '构建时间', en: 'Build time' },
+  'settings.aboutSupportedVersions': { zh: 'RocketMQ 支持版本', en: 'Supported RocketMQ versions' },
+  'settings.aboutFrontendStack': { zh: '前端框架', en: 'Frontend stack' },
+  'settings.aboutBackendStack': { zh: '后端框架', en: 'Backend stack' },
+  'settings.aboutRelatedLinks': { zh: '相关链接', en: 'Related links' },
+  'settings.aboutDocs': { zh: '文档中心', en: 'Documentation' },
+  'settings.aboutCommunity': { zh: 'RocketMQ 社区', en: 'RocketMQ community' },
   'settings.dataSourceNotTested': { zh: '未检测', en: 'Not tested' },
   'settings.loadFailed': {
     zh: '设置加载失败，请稍后重试',
@@ -3630,6 +3699,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'liteTopic.notSupported': {
     zh: '当前集群不支持 LiteTopic，请升级到 RocketMQ 5.x',
     en: 'LiteTopic is not supported on the current cluster. Please upgrade to RocketMQ 5.x',
+  },
+  'liteTopic.capabilityCheckFailed': {
+    zh: '无法确认当前集群是否支持 LiteTopic，请重试。',
+    en: 'Could not check whether the current cluster supports LiteTopic. Please retry.',
   },
   'liteTopic.fetchListFailed': {
     zh: '获取 LiteTopic 列表失败',

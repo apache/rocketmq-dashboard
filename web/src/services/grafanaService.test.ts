@@ -51,6 +51,14 @@ describe('grafanaService', () => {
     await expect(getGrafanaDashboard('nope')).rejects.toThrow();
   });
 
+  it('rejects exporting an unknown dashboard uid in mock mode', async () => {
+    // The export endpoint documents a 404 for an unknown uid; the mock branch used to answer
+    // with a fabricated {"uid": ...} document instead.
+    await expect(exportGrafanaDashboard('nope')).rejects.toThrow(
+      'Grafana dashboard not found: nope',
+    );
+  });
+
   it('exports a dashboard as a blob in mock mode', async () => {
     const blob = await exportGrafanaDashboard('rocketmq-overview');
     expect(blob).toBeInstanceOf(Blob);

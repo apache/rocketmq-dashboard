@@ -139,6 +139,7 @@ const UserManagementPage = () => {
   const [passwordTarget, setPasswordTarget] = useState<StudioUser | null>(null);
   const [userExporting, setUserExporting] = useState(false);
   const [mutatingUserIds, setMutatingUserIds] = useState<Set<number>>(() => new Set());
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const [createForm] = Form.useForm<CreateFormValues>();
   const [passwordForm] = Form.useForm<PasswordFormValues>();
   const requestSeqRef = useRef(0);
@@ -195,12 +196,16 @@ const UserManagementPage = () => {
     }
   }, [admin, debouncedSearch, page, pageSize, roleFilter, statusFilter, t]);
 
+  // Mutations refresh through the effect (bumping `refreshVersion`) instead of awaiting the
+  // `loadUsers` captured when the operator confirmed: a row's status switch and the session
+  // revoke popovers leave the list interactive, so the search or the page can change while the
+  // request is on the wire, and the refresh must re-query what is on screen then.
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void loadUsers();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [loadUsers]);
+  }, [loadUsers, refreshVersion]);
 
   useEffect(
     () => () => {
@@ -304,7 +309,7 @@ const UserManagementPage = () => {
       async () => {
         await setStudioUserEnabled(record.id, enabled);
         message.success(enabled ? t('userMgmt.userEnabled') : t('userMgmt.userDisabled'));
-        await loadUsers();
+        setRefreshVersion((version) => version + 1);
       },
       t('userMgmt.updateStatusFailed'),
     );
@@ -351,7 +356,7 @@ const UserManagementPage = () => {
         if (sessionModalUserIdRef.current === record.id) {
           await loadSessionDetails({ ...record, activeSessionCount: 0 });
         }
-        await loadUsers();
+        setRefreshVersion((version) => version + 1);
       },
       t('userMgmt.revokeFailed'),
     );

@@ -148,7 +148,9 @@ func (p *stdioProxy) run(ctx context.Context) error {
 		// Keep handling responses, server notifications and cancellation while a
 		// handshake message is in flight; ordinary calls may run concurrently once
 		// the initialized notification has been sent successfully.
-		if !p.ready && p.activeCalls > 0 {
+		// At capacity, defer stdin instead of blocking the loop on a call slot;
+		// notifications, results and cancellation must still be serviced.
+		if p.activeCalls >= maxConcurrentCalls || (!p.ready && p.activeCalls > 0) {
 			events = nil
 		}
 		select {

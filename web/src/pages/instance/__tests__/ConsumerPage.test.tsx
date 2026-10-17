@@ -1623,6 +1623,38 @@ describe('Consumer page', () => {
     name +
     '","Push","CLUSTERING","16","NORMAL"';
 
+  it('rejectsOversizedCsvBeforeReadingTheTailAndRecoversTest', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+    await waitFor(() =>
+      expect(consumerService.listConsumerGroupPage).toHaveBeenCalledWith(
+        expect.objectContaining({ instanceId: 'instance-1' }),
+      ),
+    );
+    const input = screen.getByTestId('consumer-group-import-file');
+    const oversized = [
+      'Name',
+      ...Array.from({ length: 101 }, (_, i) => `over-${i}`),
+      '"unterminated tail',
+    ].join('\n');
+    await user.upload(input, new File([oversized], 'oversized.csv'));
+    expect(await screen.findByText('一次最多导入 100 行')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '开始导入' })).toBeDisabled();
+    expect(consumerService.importConsumerGroups).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: /^关\s*闭$/ }));
+    await user.upload(input, new File([previewCsv('current-resource')], 'valid.csv'));
+    await screen.findByText('current-resource');
+    expect(screen.queryByText('一次最多导入 100 行')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '开始导入' }));
+    await waitFor(() =>
+      expect(consumerService.importConsumerGroups).toHaveBeenCalledWith('instance-1', [
+        expect.objectContaining({ name: 'current-resource', instanceId: 'instance-1' }),
+      ]),
+    );
+    expect(consumerService.importConsumerGroups).toHaveBeenCalledTimes(1);
+  });
+
   it('clearsPreviousImportRowsBeforeReadingTheNextFileTest', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);

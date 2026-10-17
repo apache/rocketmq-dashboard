@@ -158,7 +158,9 @@ func (session *MCPClientSession) sendWithReconnect(ctx context.Context, skipReco
 	// A call may recover once and send at most twice. Only a definitive session
 	// termination permits replay; an incomplete handshake has not sent the call.
 	for attempt := 0; attempt < 2; attempt++ {
-		session.sendMu.RLock()
+		if err := session.sendGate.acquire(ctx, session.closed, false); err != nil {
+			return err
+		}
 		generation, hadSession := session.sendSnapshot()
 		session.state.RLock()
 		pending := session.state.reconnectPending
@@ -168,7 +170,7 @@ func (session *MCPClientSession) sendWithReconnect(ctx context.Context, skipReco
 		} else {
 			err = send()
 		}
-		session.sendMu.RUnlock()
+		session.sendGate.release(false)
 		if err == nil || skipReconnect || attempt == 1 {
 			return err
 		}
@@ -185,7 +187,7 @@ func (session *MCPClientSession) sendWithReconnect(ctx context.Context, skipReco
 }
 
 // sendSnapshot returns the current session generation and whether a session
-// id is already established. Callers must hold sendMu (at least RLock) so the
+// id is already established. Callers must hold a sendGate permit so the
 // snapshot is consistent with the transport state used for the send.
 func (session *MCPClientSession) sendSnapshot() (uint64, bool) {
 	session.state.RLock()
@@ -235,8 +237,10 @@ func initializationProtocolVersion(response *mcptransport.JSONRPCResponse) (stri
 func (session *MCPClientSession) reinitialize(ctx context.Context, expectedGeneration uint64) error {
 	// A 404 for an established session requires a fresh initialize exchange.
 	// MCP 2025-11-25: https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#session-management
-	session.sendMu.Lock()
-	defer session.sendMu.Unlock()
+	if err := session.sendGate.acquire(ctx, session.closed, true); err != nil {
+		return err
+	}
+	defer session.sendGate.release(true)
 	session.state.RLock()
 	if session.state.generation != expectedGeneration && !session.state.reconnectPending {
 		session.state.RUnlock()

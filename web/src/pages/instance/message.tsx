@@ -52,6 +52,7 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
+import InfoBanner from '../../components/InfoBanner';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import MessageQueryHistoryModal from '../../components/MessageQueryHistoryModal';
 import MessageProperties from '../../components/MessageProperties';
@@ -1137,6 +1138,12 @@ const MessagePageContent = ({
             <Alert showIcon type="warning" message={traceError} />
           ) : traceData?.nodes?.length ? (
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
+              {traceData.queryType === 'KEY' && (
+                <InfoBanner
+                  description={t('messagePage.keyTraceLatencyUnavailable')}
+                  style={{ marginBottom: 0 }}
+                />
+              )}
               <TraceDiagnosticsPanel diagnostics={traceDiagnostics} />
               <Steps
                 direction="vertical"

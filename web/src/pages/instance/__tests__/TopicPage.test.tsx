@@ -440,6 +440,56 @@ describe('TopicPage', () => {
     });
   });
 
+  it('sends each test message once per confirmation while the first request is pending', async () => {
+    topicServiceMocks.sendTopicMessage.mockImplementation(() => new Promise(() => {}));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
+    mockTopicsList([buildTopics(1)[0]]);
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /发送/ }));
+    const dialog = await getSendDialog();
+    fireEvent.change(within(dialog).getByLabelText('消息体 Body'), {
+      target: { value: 'double-send-payload' },
+    });
+    const send = within(dialog).getByRole('button', { name: /发\s*送/ });
+
+    fireEvent.click(send);
+    // The OK button must lock with the first click: `sending` alone flips only after
+    // validateFields resolves and React re-renders, so a repeat confirmation in that
+    // window re-enters handleSend and sends the same message twice.
+    expect(send).toHaveClass('ant-btn-loading');
+    fireEvent.click(send);
+
+    await waitFor(() => expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ body: 'double-send-payload' }),
+    );
+    expect(send).toHaveClass('ant-btn-loading');
+  });
+
+  it('keeps the send dialog usable for consecutive sends after one completes', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
+    mockTopicsList([buildTopics(1)[0]]);
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /发送/ }));
+    const dialog = await getSendDialog();
+    fireEvent.change(within(dialog).getByLabelText('消息体 Body'), {
+      target: { value: 'consecutive-payload' },
+    });
+    const send = within(dialog).getByRole('button', { name: /发\s*送/ });
+
+    await user.click(send);
+    await waitFor(() => expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(send).not.toHaveClass('ant-btn-loading'));
+
+    await user.click(send);
+    await waitFor(() => expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledTimes(2));
+    expect(within(dialog).getByText(/发送消息到 topic-01/)).toBeInTheDocument();
+  });
+
   it('opens a clean create dialog after a cancelled edit', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders();
@@ -960,6 +1010,40 @@ describe('TopicPage', () => {
 
   const previewCsv = (name: string) =>
     '"Name","Type","Write Queues","Read Queues","Permission"\n"' + name + '","NORMAL","4","6","RW"';
+
+  it('rejectsOversizedCsvBeforeReadingTheTailAndRecoversTest', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    mockTopicsList([]);
+    instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
+    renderWithProviders('/instance/instance-proxy-1/topic');
+    await waitFor(() =>
+      expect(topicServiceMocks.listTopicsPage).toHaveBeenCalledWith(
+        expect.objectContaining({ instanceId: 'instance-proxy-1' }),
+      ),
+    );
+    const input = screen.getByTestId('topic-import-file');
+    const oversized = [
+      'Name',
+      ...Array.from({ length: 101 }, (_, i) => `over-${i}`),
+      '"unterminated tail',
+    ].join('\n');
+    await user.upload(input, new File([oversized], 'oversized.csv'));
+    expect(await screen.findByText('一次最多导入 100 行')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '开始导入' })).toBeDisabled();
+    expect(topicServiceMocks.importTopics).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: /^关\s*闭$/ }));
+    await user.upload(input, new File([previewCsv('current-resource')], 'valid.csv'));
+    await screen.findByText('current-resource');
+    expect(screen.queryByText('一次最多导入 100 行')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '开始导入' }));
+    await waitFor(() =>
+      expect(topicServiceMocks.importTopics).toHaveBeenCalledWith('instance-proxy-1', [
+        expect.objectContaining({ name: 'current-resource', instanceId: 'instance-proxy-1' }),
+      ]),
+    );
+    expect(topicServiceMocks.importTopics).toHaveBeenCalledTimes(1);
+  });
 
   it('clearsPreviousImportRowsBeforeReadingTheNextFileTest', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });

@@ -11,6 +11,7 @@ import {
   formatRelativeTime,
   formatTimeOfDay,
   formatTimeMs,
+  ratioToPercent,
   roundPercent,
 } from './format';
 
@@ -70,6 +71,19 @@ describe('formatBytes', () => {
     expect(roundPercent(28.999999999999996)).toBe(29);
     expect(roundPercent(62.5)).toBe(62.5);
     expect(roundPercent(0)).toBe(0);
+  });
+
+  it('scales a stored ratio to its percent without floating point residue', () => {
+    // The alert pages used to scale with `threshold * 100`, which does not round trip for 8 of
+    // the 99 whole percents: 0.29 * 100 renders as 28.999999999999996.
+    expect(ratioToPercent(0.29)).toBe(29);
+    expect(ratioToPercent(0.07)).toBe(7);
+    expect(ratioToPercent(0.58)).toBe(58);
+    expect(ratioToPercent(0.1234)).toBe(12.34);
+    expect(ratioToPercent(0.295)).toBe(29.5);
+    expect(ratioToPercent(0)).toBe(0);
+    expect(ratioToPercent(1)).toBe(100);
+    expect(ratioToPercent(0.0000001)).toBe(0.00001);
   });
 
   it('uses a placeholder for invalid dates and numeric values', () => {
