@@ -27,6 +27,7 @@ import {
   getConsumerProgress,
   getConsumerStack,
   getConsumerSubscriptions,
+  importConsumerGroups,
   listAllConsumerGroups,
   listConsumerGroupPage,
   listConsumerGroups,
@@ -562,5 +563,37 @@ describe('consumer group page mock pagination contract', () => {
     await expect(listConsumerGroupPage({ page: 1, pageSize: 0 })).rejects.toThrow(
       'pageSize must be between 1 and 100',
     );
+  });
+});
+
+describe('consumer group import batch contract', () => {
+  const batchOf = (prefix: string, count: number) =>
+    Array.from({ length: count }, (_, index) => ({ name: `${prefix}-${index}` }));
+
+  it('rejects an import above the backend batch cap', async () => {
+    // MetadataService.importConsumerGroups answers 400 "At most 100 consumer groups are allowed
+    // per import" for more than 100 groups; the CSV import path has no cap of its own
+    // (resourceCsvImport.validateConsumerGroupCsvImport), so the mock must not import a longer
+    // list row by row.
+    const batch = batchOf('mock-import-over-cap', 101);
+    await expect(importConsumerGroups('instance-direct-1', batch)).rejects.toThrow(
+      'At most 100 consumer groups are allowed per import',
+    );
+
+    const stored = await listConsumerGroups({ instanceId: 'instance-direct-1' });
+    expect(stored.some((group) => group.name.startsWith('mock-import-over-cap'))).toBe(false);
+  });
+
+  it('imports a batch at the backend cap', async () => {
+    const batch = batchOf('mock-import-at-cap', 100);
+    try {
+      const result = await importConsumerGroups('instance-direct-1', batch);
+      expect(result.imported).toBe(100);
+      expect(result.failed).toBe(0);
+    } finally {
+      for (const group of batch) {
+        await deleteConsumerGroup(group.name, 'instance-direct-1');
+      }
+    }
   });
 });

@@ -28,6 +28,7 @@ const consumerGroupsState = mockConsumerGroups as unknown as (ConsumerGroup & {
 })[];
 const EXPORT_PAGE_SIZE = 100;
 const MAX_EXPORT_PAGES = 100;
+const MAX_IMPORT_GROUPS = 100;
 const GROUP_EXPORT_COLUMNS: CsvColumn<ConsumerGroup>[] = [
   { header: 'Name', value: (group) => group.name },
   { header: 'Namespace', value: (group) => group.namespace },
@@ -321,6 +322,12 @@ export async function importConsumerGroups(
   groups: Partial<ConsumerGroup>[],
 ): Promise<ImportConsumerGroupsResult> {
   if (isMockMode()) {
+    // MetadataService.importConsumerGroups answers 400 "At most 100 consumer groups are allowed
+    // per import" for more than 100 groups; the CSV import path sends every pending row, so a
+    // longer list must fail here instead of being created row by row.
+    if (groups.length > MAX_IMPORT_GROUPS) {
+      throw new Error('At most 100 consumer groups are allowed per import');
+    }
     const imported: ConsumerGroup[] = [];
     const failures: ImportConsumerGroupsResult['failures'] = [];
     for (const [index, group] of groups.entries()) {
