@@ -1233,8 +1233,12 @@ const MessagePageContent = ({
                       label: t,
                     }))}
                   />
+                  {/* The query always sends this window - the state starts at the default range and
+                      every request carries startTime/endTime - so there is no empty state for the
+                      picker's clear control to represent. */}
                   <RangePicker
                     showTime
+                    allowClear={false}
                     style={{ width: 400 }}
                     value={dateRange}
                     onChange={(vals) => {
