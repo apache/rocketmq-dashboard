@@ -527,6 +527,29 @@ describe('consumer service mock data', () => {
 });
 
 describe('consumer group CSV export', () => {
+  it('exports an unavailable total lag as unknown while preserving measured values', async () => {
+    const unavailable = {
+      ...mockConsumerGroups[0],
+      name: 'cg-lag-unavailable',
+      totalLag: -1,
+    };
+    const confirmedZero = { ...unavailable, name: 'cg-lag-zero', totalLag: 0 };
+    const measured = { ...unavailable, name: 'cg-lag-measured', totalLag: 1234 };
+    mockConsumerGroups.push(unavailable, confirmedZero, measured);
+    try {
+      const csv = await exportConsumerGroups({
+        names: ['cg-lag-unavailable', 'cg-lag-zero', 'cg-lag-measured'],
+      });
+
+      expect(csv).toMatch(/"cg-lag-unavailable",(?:"[^"]*",){5}"unknown",/);
+      expect(csv).toMatch(/"cg-lag-zero",(?:"[^"]*",){5}"0",/);
+      expect(csv).toMatch(/"cg-lag-measured",(?:"[^"]*",){5}"1234",/);
+      expect(csv).not.toContain(`"'-1"`);
+    } finally {
+      mockConsumerGroups.splice(-3);
+    }
+  });
+
   it('renders an unavailable connection count as unknown instead of the sentinel', async () => {
     const unavailable = {
       ...mockConsumerGroups[0],
