@@ -352,6 +352,22 @@ describe('consumer service mock data', () => {
     expect(secondSubscriptions[0]).not.toBe(firstSubscriptions[0]);
   });
 
+  it('gives every progress row the topic its group consumes Test', async () => {
+    const progress = await getConsumerProgress('cg-order-notify');
+
+    // QueueProgress.topic is required by the contract (web/src/api/metadata.ts:155) and the queue
+    // progress table renders it in a Topic column with a '-' placeholder, so a demo row without it
+    // put a placeholder in that column for every queue.
+    expect(progress.length).toBeGreaterThan(0);
+    for (const row of progress) {
+      expect(row.topic).toBeTypeOf('string');
+    }
+    expect(progress[0].topic).toBe('order-create');
+    expect(new Set(progress.map((row) => row.topic))).toEqual(
+      new Set(['order-create', 'order-status-change', 'payment-callback']),
+    );
+  });
+
   it('builds copied reset offset previews in mock mode', async () => {
     const firstPreview = await previewConsumerOffsetReset({
       name: 'cg-order-notify',

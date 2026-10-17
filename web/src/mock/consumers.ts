@@ -45,13 +45,7 @@ export interface ConsumerGroup {
   instances: ConsumerInstance[];
 }
 
-export interface QueueProgress {
-  broker: string;
-  queueId: number;
-  brokerOffset: number;
-  consumerOffset: number;
-  diffTotal: number;
-}
+import type { QueueProgress } from '../api/metadata';
 
 export interface SubscriptionEntry {
   topic: string;
@@ -573,6 +567,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
 export const mockQueueProgress: Record<string, QueueProgress[]> = {
   'cg-order-notify': [
     {
+      topic: 'order-create',
       broker: 'broker-hz-0',
       queueId: 0,
       brokerOffset: 1_580_420,
@@ -580,6 +575,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 570,
     },
     {
+      topic: 'order-status-change',
       broker: 'broker-hz-0',
       queueId: 1,
       brokerOffset: 1_579_200,
@@ -587,6 +583,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 300,
     },
     {
+      topic: 'payment-callback',
       broker: 'broker-hz-0',
       queueId: 2,
       brokerOffset: 1_578_800,
@@ -594,6 +591,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 420,
     },
     {
+      topic: 'order-create',
       broker: 'broker-hz-1',
       queueId: 0,
       brokerOffset: 1_420_300,
@@ -601,6 +599,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 350,
     },
     {
+      topic: 'order-status-change',
       broker: 'broker-hz-1',
       queueId: 1,
       brokerOffset: 1_419_800,
@@ -608,6 +607,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 350,
     },
     {
+      topic: 'payment-callback',
       broker: 'broker-hz-1',
       queueId: 2,
       brokerOffset: 1_418_500,
@@ -617,6 +617,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
   ],
   'cg-payment-callback': [
     {
+      topic: 'payment-callback',
       broker: 'broker-hz-0',
       queueId: 0,
       brokerOffset: 892_100,
@@ -624,6 +625,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 32,
     },
     {
+      topic: 'refund-event',
       broker: 'broker-hz-0',
       queueId: 1,
       brokerOffset: 891_500,
@@ -631,6 +633,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 32,
     },
     {
+      topic: 'payment-callback',
       broker: 'broker-hz-1',
       queueId: 0,
       brokerOffset: 780_200,
@@ -638,6 +641,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 32,
     },
     {
+      topic: 'refund-event',
       broker: 'broker-hz-1',
       queueId: 1,
       brokerOffset: 779_800,
@@ -647,6 +651,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
   ],
   'cg-user-activity': [
     {
+      topic: 'user-activity-log',
       broker: 'broker-hz-0',
       queueId: 0,
       brokerOffset: 5_680_000,
@@ -654,6 +659,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 18800,
     },
     {
+      topic: 'user-profile-change',
       broker: 'broker-hz-0',
       queueId: 1,
       brokerOffset: 5_675_000,
@@ -661,6 +667,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 19500,
     },
     {
+      topic: 'user-activity-log',
       broker: 'broker-hz-1',
       queueId: 0,
       brokerOffset: 4_920_000,
@@ -668,6 +675,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 9300,
     },
     {
+      topic: 'user-profile-change',
       broker: 'broker-hz-1',
       queueId: 1,
       brokerOffset: 4_915_000,
@@ -677,6 +685,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
   ],
   'cg-inventory-sync': [
     {
+      topic: 'inventory-sync',
       broker: 'broker-sh-0',
       queueId: 0,
       brokerOffset: 320_800,
@@ -684,6 +693,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 445,
     },
     {
+      topic: 'stock-alert',
       broker: 'broker-sh-0',
       queueId: 1,
       brokerOffset: 320_100,
@@ -693,6 +703,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
   ],
   'cg-log-collector': [
     {
+      topic: 'app-log',
       broker: 'broker-hz-0',
       queueId: 0,
       brokerOffset: 12_800_000,
@@ -700,6 +711,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 1550,
     },
     {
+      topic: 'access-log',
       broker: 'broker-hz-0',
       queueId: 1,
       brokerOffset: 12_790_000,
@@ -707,6 +719,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 1700,
     },
     {
+      topic: 'error-log',
       broker: 'broker-hz-0',
       queueId: 2,
       brokerOffset: 12_780_000,
@@ -714,6 +727,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 1400,
     },
     {
+      topic: 'app-log',
       broker: 'broker-hz-0',
       queueId: 3,
       brokerOffset: 12_770_000,
@@ -721,6 +735,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 1300,
     },
     {
+      topic: 'access-log',
       broker: 'broker-hz-1',
       queueId: 0,
       brokerOffset: 11_200_000,
@@ -728,6 +743,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 1550,
     },
     {
+      topic: 'error-log',
       broker: 'broker-hz-1',
       queueId: 1,
       brokerOffset: 11_190_000,
@@ -735,6 +751,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 1550,
     },
     {
+      topic: 'app-log',
       broker: 'broker-hz-2',
       queueId: 0,
       brokerOffset: 9_800_000,
@@ -742,6 +759,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 1800,
     },
     {
+      topic: 'access-log',
       broker: 'broker-hz-2',
       queueId: 1,
       brokerOffset: 9_790_000,
@@ -751,6 +769,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
   ],
   'cg-notification-push': [
     {
+      topic: 'notification-push',
       broker: 'broker-hz-0',
       queueId: 0,
       brokerOffset: 450_200,
@@ -758,6 +777,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 15,
     },
     {
+      topic: 'sms-gateway',
       broker: 'broker-hz-0',
       queueId: 1,
       brokerOffset: 449_800,
@@ -765,6 +785,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 15,
     },
     {
+      topic: 'notification-push',
       broker: 'broker-hz-1',
       queueId: 0,
       brokerOffset: 380_100,
@@ -772,6 +793,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 8,
     },
     {
+      topic: 'sms-gateway',
       broker: 'broker-hz-1',
       queueId: 1,
       brokerOffset: 379_800,
@@ -781,6 +803,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
   ],
   'cg-ai-task-worker': [
     {
+      topic: 'ai-task-dispatch',
       broker: 'broker-hz-0',
       queueId: 0,
       brokerOffset: 240_800,
@@ -788,6 +811,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 800,
     },
     {
+      topic: 'model-inference-request',
       broker: 'broker-hz-0',
       queueId: 1,
       brokerOffset: 240_200,
@@ -795,6 +819,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 800,
     },
     {
+      topic: 'ai-task-dispatch',
       broker: 'broker-hz-1',
       queueId: 0,
       brokerOffset: 210_600,
@@ -802,6 +827,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 800,
     },
     {
+      topic: 'model-inference-request',
       broker: 'broker-hz-1',
       queueId: 1,
       brokerOffset: 210_000,
@@ -811,6 +837,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
   ],
   'cg-metrics-aggregator': [
     {
+      topic: 'metrics-raw',
       broker: 'broker-sh-0',
       queueId: 0,
       brokerOffset: 8_900_000,
@@ -818,6 +845,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 7900,
     },
     {
+      topic: 'trace-span',
       broker: 'broker-sh-0',
       queueId: 1,
       brokerOffset: 8_890_000,
@@ -827,6 +855,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
   ],
   'cg-risk-control': [
     {
+      topic: 'transaction-event',
       broker: 'broker-hz-0',
       queueId: 0,
       brokerOffset: 3_200_000,
@@ -834,6 +863,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 900,
     },
     {
+      topic: 'login-event',
       broker: 'broker-hz-0',
       queueId: 1,
       brokerOffset: 3_198_000,
@@ -841,6 +871,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 800,
     },
     {
+      topic: 'payment-callback',
       broker: 'broker-hz-1',
       queueId: 0,
       brokerOffset: 2_800_000,
@@ -848,6 +879,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 940,
     },
     {
+      topic: 'transaction-event',
       broker: 'broker-hz-1',
       queueId: 1,
       brokerOffset: 2_795_000,
@@ -855,6 +887,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 920,
     },
     {
+      topic: 'login-event',
       broker: 'broker-hz-2',
       queueId: 0,
       brokerOffset: 2_400_000,
@@ -864,6 +897,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
   ],
   'cg-data-sync': [
     {
+      topic: 'binlog-event',
       broker: 'broker-sh-0',
       queueId: 0,
       brokerOffset: 6_500_000,
@@ -871,6 +905,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 6500,
     },
     {
+      topic: 'schema-change',
       broker: 'broker-sh-0',
       queueId: 1,
       brokerOffset: 6_490_000,
@@ -878,6 +913,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 6200,
     },
     {
+      topic: 'binlog-event',
       broker: 'broker-sh-1',
       queueId: 0,
       brokerOffset: 5_800_000,
@@ -885,6 +921,7 @@ export const mockQueueProgress: Record<string, QueueProgress[]> = {
       diffTotal: 3000,
     },
     {
+      topic: 'schema-change',
       broker: 'broker-sh-1',
       queueId: 1,
       brokerOffset: 5_795_000,
