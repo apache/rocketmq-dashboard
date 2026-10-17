@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LlmConfig, LlmModelsResult } from '../../../api/llm';
@@ -66,6 +66,45 @@ describe('useLlmRuntime', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it.each([{ catalog: [] }, { catalog: [{ id: 'gpt-test' }] }])(
+    'preservesHandoffModelOptionsWhenCatalogCompletesTest: %j',
+    async ({ catalog }) => {
+      const pending = deferred<LlmModelsResult>();
+      configMock.mockResolvedValue(config);
+      modelsMock.mockReturnValue(pending.promise);
+      const { result, rerender } = render(true);
+      await waitFor(() => expect(modelsMock).toHaveBeenCalledTimes(1));
+      act(() => result.current.selectModel('handoff-model'));
+
+      await act(async () => pending.resolve({ status: 0, data: catalog }));
+      expect(result.current.modelOptions).toContainEqual({
+        value: 'handoff-model',
+        label: 'handoff-model',
+      });
+      expect(result.current.selectedModel).toBe('handoff-model');
+      expect(result.current.modelOptions).toContainEqual({ value: 'gpt-test', label: 'gpt-test' });
+
+      act(() => result.current.setSelectedModel('gpt-test'));
+      expect(result.current.modelOptions.some((option) => option.value === 'handoff-model')).toBe(
+        true,
+      );
+      rerender({ enabled: false });
+      expect(result.current.modelOptions).toEqual([]);
+      expect(result.current.selectedModel).toBe('');
+    },
+  );
+
+  it('doesNotDuplicateHandoffModelAlreadyInCatalogTest', async () => {
+    const pending = deferred<LlmModelsResult>();
+    configMock.mockResolvedValue(config);
+    modelsMock.mockReturnValue(pending.promise);
+    const { result } = render(true);
+    await waitFor(() => expect(modelsMock).toHaveBeenCalledTimes(1));
+    act(() => result.current.selectModel('gpt-test'));
+    await act(async () => pending.resolve({ status: 0, data: [{ id: 'gpt-test' }] }));
+    expect(result.current.modelOptions).toEqual([{ value: 'gpt-test', label: 'gpt-test' }]);
   });
 
   it('ignoresConfigCompletionAndDoesNotLoadModelsAfterUnmountTest', async () => {
