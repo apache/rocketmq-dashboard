@@ -15,13 +15,13 @@
  * limitations under the License.
  */
 
-import { App, Modal, message } from 'antd';
+import { App, ConfigProvider, Modal, message } from 'antd';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AclRule, AclUser } from '../../../api/acl';
+import type { AclRule, AclUser, PlainAccessConfig } from '../../../api/acl';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as aclService from '../../../services/aclService';
 import * as instanceService from '../../../services/instanceService';
@@ -73,6 +73,44 @@ const renderWithProviders = (ui: React.ReactElement, initialEntry = '/') =>
 
 const openRulesTab = async (user: ReturnType<typeof userEvent.setup>) => {
   await user.click(screen.getByText('ACL 规则'));
+};
+
+// jsdom does not complete AntD's CSS leave animation, so a dialog that logically closed would
+// stay mounted in `ant-zoom-leave` forever; disable only the motion for the closure assertions
+// (same approach as InstancePage.test.tsx).
+const renderAclPageWithoutModalMotion = () =>
+  render(
+    <ConfigProvider theme={{ token: { motion: false } }}>
+      <App>
+        <LangProvider>
+          <MemoryRouter>
+            <AclPage />
+          </MemoryRouter>
+        </LangProvider>
+      </App>
+    </ConfigProvider>,
+  );
+
+const fillRuleForm = async (
+  user: ReturnType<typeof userEvent.setup>,
+  dialog: HTMLElement,
+  resource: string,
+) => {
+  await user.click(within(dialog).getByLabelText('主体'));
+  await user.click(
+    await screen.findByText('remote-admin', { selector: '.ant-select-item-option-content' }),
+  );
+  const comboboxes = within(dialog).getAllByRole('combobox');
+  await user.click(comboboxes[1]);
+  await user.click(
+    await screen.findByText('Topic', { selector: '.ant-select-item-option-content' }),
+  );
+  await user.type(
+    within(dialog).getByPlaceholderText('例：order-*、payment-callback、*'),
+    resource,
+  );
+  // The add dialog opens with the default action set (actions: ['PUB']), so the form is
+  // complete once principal, resource type and resource are filled.
 };
 
 const deferred = <T,>() => {
@@ -177,6 +215,198 @@ describe('ACL page', () => {
     expect(screen.getByText('remote-topic')).toBeInTheDocument();
     expect(aclService.listAclRules).toHaveBeenCalledTimes(1);
     expect(aclService.pageAclUsers).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates each ACL rule once per dialog confirmation', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const pendingCreate = deferred<AclRule>();
+    vi.mocked(aclService.createAclRule).mockReturnValueOnce(pendingCreate.promise);
+    renderAclPageWithoutModalMotion();
+
+    // Since the #6693 rework the page opens on the user tab and the header carries a single
+    // add button whose label follows the active tab, so switch to rules before opening it.
+    expect(await screen.findByText('remote-admin')).toBeInTheDocument();
+    await user.click(screen.getByText('ACL 规则'));
+    await user.click(screen.getByRole('button', { name: /添加规则/ }));
+    const dialog = await screen.findByRole('dialog');
+    await fillRuleForm(user, dialog, 'double-submit-topic');
+
+    const confirmButton = within(dialog).getByRole('button', { name: /添\s*加/ });
+    fireEvent.click(confirmButton);
+    // The dialog must lock with the first click: `ruleSubmitting` alone flips only after
+    // validateFields resolves and React re-renders, so a second confirmation in that window
+    // would save the same rule twice — the server-side create stores duplicates verbatim.
+    expect(confirmButton).toHaveClass('ant-btn-loading');
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => expect(aclService.createAclRule).toHaveBeenCalledTimes(1));
+    expect(aclService.createAclRule).toHaveBeenCalledWith(
+      expect.objectContaining({
+        principal: 'remote-admin',
+        resourceType: 'Topic',
+        resource: 'double-submit-topic',
+        actions: ['PUB'],
+      }),
+    );
+
+    await act(async () => {
+      pendingCreate.resolve({
+        id: 21,
+        principal: 'remote-admin',
+        resource: 'double-submit-topic',
+        resourceType: 'Topic',
+        resourcePattern: 'LITERAL',
+        actions: ['PUB'],
+        decision: 'ALLOW',
+        scope: 'cluster',
+        aclVersion: 2,
+      });
+      await pendingCreate.promise;
+    });
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
+
+    // The finally block must release the lock: a later confirmation starts a second save.
+    const secondCreate = deferred<AclRule>();
+    vi.mocked(aclService.createAclRule).mockReturnValueOnce(secondCreate.promise);
+    await user.click(screen.getByRole('button', { name: /添加规则/ }));
+    const secondDialog = await screen.findByRole('dialog');
+    await fillRuleForm(user, secondDialog, 'second-submit-topic');
+    fireEvent.click(within(secondDialog).getByRole('button', { name: /添\s*加/ }));
+    await waitFor(() => expect(aclService.createAclRule).toHaveBeenCalledTimes(2));
+    expect(aclService.createAclRule).toHaveBeenLastCalledWith(
+      expect.objectContaining({ resource: 'second-submit-topic' }),
+    );
+
+    await act(async () => {
+      secondCreate.resolve({
+        id: 22,
+        principal: 'remote-admin',
+        resource: 'second-submit-topic',
+        resourceType: 'Topic',
+        resourcePattern: 'LITERAL',
+        actions: ['PUB'],
+        decision: 'ALLOW',
+        scope: 'cluster',
+        aclVersion: 2,
+      });
+      await secondCreate.promise;
+    });
+  });
+
+  it('creates each ACL user once per dialog confirmation', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const pendingCreate = deferred<AclUser>();
+    vi.mocked(aclService.createAclUser).mockReturnValueOnce(pendingCreate.promise);
+    renderAclPageWithoutModalMotion();
+
+    // The page opens on the user tab, so the header button is the "add user" one; the
+    // per-tab toolbar buttons are gone since the #6693 rework.
+    expect(await screen.findByText('remote-admin')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /添加用户/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(
+      within(dialog).getByPlaceholderText('例：user-order-service'),
+      'orders-service',
+    );
+
+    const confirmButton = within(dialog).getByRole('button', { name: /添\s*加/ });
+    fireEvent.click(confirmButton);
+    // Same lock as the rule dialog: a second confirmation inside the validate window would
+    // re-send the user create and turn the duplicate-username 409 into a confusing error.
+    expect(confirmButton).toHaveClass('ant-btn-loading');
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => expect(aclService.createAclUser).toHaveBeenCalledTimes(1));
+    // The instance selector moved to page level in #6693, but with no instance on the route
+    // and an empty instance list the page still submits `instanceId: undefined`.
+    expect(aclService.createAclUser).toHaveBeenCalledWith({
+      username: 'orders-service',
+      admin: false,
+      clusters: [],
+      instanceId: undefined,
+    });
+
+    await act(async () => {
+      pendingCreate.resolve({
+        id: 13,
+        username: 'orders-service',
+        accessKey: 'acce****3456',
+        secretKey: 'secr****7654',
+        admin: false,
+        clusters: [],
+        gmtCreate: '2026-08-01T00:00:00Z',
+      });
+      await pendingCreate.promise;
+    });
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
+
+    // The finally block must release the lock: a different user can be saved afterwards.
+    const secondCreate = deferred<AclUser>();
+    vi.mocked(aclService.createAclUser).mockReturnValueOnce(secondCreate.promise);
+    await user.click(screen.getByRole('button', { name: /添加用户/ }));
+    const secondDialog = await screen.findByRole('dialog');
+    await user.type(
+      within(secondDialog).getByPlaceholderText('例：user-order-service'),
+      'billing-service',
+    );
+    fireEvent.click(within(secondDialog).getByRole('button', { name: /添\s*加/ }));
+    await waitFor(() => expect(aclService.createAclUser).toHaveBeenCalledTimes(2));
+    expect(aclService.createAclUser).toHaveBeenLastCalledWith(
+      expect.objectContaining({ username: 'billing-service' }),
+    );
+
+    await act(async () => {
+      secondCreate.resolve({
+        id: 14,
+        username: 'billing-service',
+        accessKey: 'acct****1111',
+        secretKey: 'secr****2222',
+        admin: false,
+        clusters: [],
+        gmtCreate: '2026-08-01T00:00:00Z',
+      });
+      await secondCreate.promise;
+    });
+  });
+
+  it('creates each plain access config once per dialog confirmation', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const pendingSave = deferred<PlainAccessConfig>();
+    vi.mocked(aclService.createAndUpdatePlainAccessConfig).mockReturnValueOnce(pendingSave.promise);
+    renderAclPageWithoutModalMotion();
+
+    await user.click(await screen.findByText('集群 ACL 配置'));
+    await user.click(screen.getByRole('button', { name: /新增 Plain Access 账号/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByPlaceholderText('e.g. user-order-service'), 'plain-key');
+    await user.type(within(dialog).getByPlaceholderText('请输入密钥'), 'plain-secret');
+
+    const confirmButton = within(dialog).getByRole('button', { name: /添\s*加/ });
+    fireEvent.click(confirmButton);
+    // Third dialog with the same shape on this page: `plainSubmitting` also flips only
+    // after `plainForm.validateFields()` resolves, so the ref must lock the first click.
+    expect(confirmButton).toHaveClass('ant-btn-loading');
+    fireEvent.click(confirmButton);
+
+    await waitFor(() =>
+      expect(aclService.createAndUpdatePlainAccessConfig).toHaveBeenCalledTimes(1),
+    );
+    expect(aclService.createAndUpdatePlainAccessConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ accessKey: 'plain-key' }),
+    );
+
+    await act(async () => {
+      pendingSave.resolve({
+        accessKey: 'plain-key',
+        admin: false,
+        defaultTopicPerm: 'DENY',
+        defaultGroupPerm: 'DENY',
+        topicPerms: [],
+        groupPerms: [],
+      });
+      await pendingSave.promise;
+    });
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
   });
 
   it('reloads the server rule page after deleting one ACL rule', async () => {
