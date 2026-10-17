@@ -156,6 +156,33 @@ describe('ACL service mock data', () => {
     );
   });
 
+  it('rejects the blank ACL fields the backend requires text for', async () => {
+    // AclService guards every ACL write with StringUtils.hasText and answers 400; the ACL
+    // dialogs' `required` rules accept a whitespace-only value, so the mock used to store the
+    // blank field as if the write had succeeded.
+    const usersBefore = await listAclUsers();
+
+    await expect(createAclUser({ username: '   ' })).rejects.toThrow('ACL username is required');
+    await expect(createAclRule({ principal: '   ', resource: 'topic-a' })).rejects.toThrow(
+      'ACL principal is required',
+    );
+    await expect(createAclRule({ principal: 'user-admin', resource: '  ' })).rejects.toThrow(
+      'ACL resource is required',
+    );
+    await expect(
+      createAndUpdatePlainAccessConfig({ accessKey: '', secretKey: 'svc-blank' }),
+    ).rejects.toThrow('accessKey is required');
+
+    await expect(listAclUsers()).resolves.toEqual(usersBefore);
+  });
+
+  it('keeps accepting an identity whose text is not blank', async () => {
+    // The backend checks hasText, it does not trim: only a value that is blank after trimming
+    // is a 400, so a padded username is still stored as sent.
+    const created = await createAclUser({ username: '  user-padded  ' });
+    expect(created.username).toBe('  user-padded  ');
+  });
+
   it('rejects deletion of missing ACL records', async () => {
     const rulesBefore = await listAclRules();
     const usersBefore = await listAclUsers();

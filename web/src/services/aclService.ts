@@ -41,6 +41,16 @@ function copyAclUser(user: AclUser): AclUser {
   };
 }
 
+// AclService guards the ACL write fields with StringUtils.hasText and answers 400; a
+// whitespace-only value must not reach the mock store either (the dialogs' `required` rules
+// accept it). Only a value that is blank after trimming is rejected; what is stored is the
+// value as sent, like the backend.
+function requireAclText(value: string | null | undefined, field: string): void {
+  if (!(value ?? '').trim()) {
+    throw new Error(`${field} is required`);
+  }
+}
+
 export async function listAclRules(params?: AclRuleQuery): Promise<PageResult<AclRule>> {
   if (isMockMode()) {
     let result = [...aclRulesState];
@@ -128,6 +138,8 @@ export async function createAclRule(
   data: Partial<AclRule> & { instanceId?: string },
 ): Promise<AclRule> {
   if (isMockMode()) {
+    requireAclText(data.principal, 'ACL principal');
+    requireAclText(data.resource, 'ACL resource');
     const rule: AclRule = {
       id: Date.now(),
       principal: '',
@@ -177,6 +189,7 @@ export async function createAclUser(
   data: Partial<AclUser> & { instanceId?: string },
 ): Promise<AclUser> {
   if (isMockMode()) {
+    requireAclText(data.username, 'ACL username');
     const user: AclUser = {
       id: Date.now(),
       username: '',
@@ -253,6 +266,7 @@ export async function createAndUpdatePlainAccessConfig(
 ): Promise<PlainAccessConfig> {
   if (isMockMode()) {
     const accessKey = (data.accessKey ?? '').trim();
+    requireAclText(accessKey, 'accessKey');
     const providedSecret = (data.secretKey ?? '').trim();
     const existing = aclPlainAccessState.find((a) => a.accessKey === accessKey);
     if (!providedSecret && !existing) {
