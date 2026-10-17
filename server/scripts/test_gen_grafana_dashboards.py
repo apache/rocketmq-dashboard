@@ -18,12 +18,14 @@
 """Regression tests for the Grafana dashboard asset generator."""
 
 import json
+import re
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gen_grafana_dashboards import gauge_panel, layout_panels, specs
+from gen_grafana_dashboards import gauge_panel, generate_dashboards, layout_panels, specs
 
 DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "src" / "main" / "resources" / "grafana"
 
@@ -119,6 +121,47 @@ class ShippedDashboardPanelsTest(unittest.TestCase):
             panels["DLQ Resend Count (1m)"]["targets"][0]["expr"],
             shipped_panel_expr("rocketmq-dlq", "DLQ Resend Count (1m)"),
         )
+
+
+class ConsumerDashboardTest(unittest.TestCase):
+
+    def test_consumer_tps_uses_native_consumer_group_label(self):
+        consumer = next(spec for spec in specs if spec[0] == "rocketmq-consumer")
+        target = next(item for item in consumer[3] if item["title"] == "Messages Out TPS by Group")["targets"][0]
+
+        self.assertEqual(
+            'sum by (consumer_group) (rate(rocketmq_messages_out_total{cluster="$cluster",consumer_group="$group"}[1m]))',
+            target["expr"],
+        )
+        self.assertEqual("{{consumer_group}}", target["legendFormat"])
+
+    def test_consumer_group_selector_and_shipped_asset_are_consistent(self):
+        with tempfile.TemporaryDirectory() as generated_dir:
+            generate_dashboards(generated_dir)
+            generated = json.loads((Path(generated_dir) / "rocketmq-consumer.json").read_text(encoding="utf-8"))
+            shipped = json.loads((DASHBOARD_DIR / "rocketmq-consumer.json").read_text(encoding="utf-8"))
+
+            variables = {variable["name"]: variable for variable in generated["templating"]["list"]}
+            self.assertIn("group", variables)
+            self.assertEqual(
+                'label_values(rocketmq_messages_out_total{cluster="$cluster"}, consumer_group)',
+                variables["group"]["query"],
+            )
+            self.assertEqual({"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, variables["group"]["datasource"])
+            self.assertEqual(2, variables["group"]["refresh"])
+            panel_variables = {
+                name
+                for panel in generated["panels"]
+                for target in panel["targets"]
+                for name in re.findall(r"\$(\w+)", target["expr"])
+            }
+            self.assertFalse(panel_variables - variables.keys())
+            self.assertEqual(generated, shipped)
+
+            for uid, _, _, _ in specs:
+                if uid != "rocketmq-consumer":
+                    other = json.loads((Path(generated_dir) / f"{uid}.json").read_text(encoding="utf-8"))
+                    self.assertNotIn("group", {variable["name"] for variable in other["templating"]["list"]})
 
 
 class GaugePanelTest(unittest.TestCase):

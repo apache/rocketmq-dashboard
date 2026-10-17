@@ -53,6 +53,19 @@
         "refresh": 2,
         "current": {},
         "hide": 0
+      },
+      {
+        "name": "group",
+        "type": "query",
+        "label": "Consumer Group",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(rocketmq_messages_out_total{cluster=\"$cluster\"}, consumer_group)",
+        "refresh": 2,
+        "current": {},
+        "hide": 0
       }
     ]
   },
@@ -141,8 +154,8 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (group) (rate(rocketmq_messages_out_total{cluster=\"$cluster\",group=\"$group\"}[1m]))",
-          "legendFormat": "{{group}}",
+          "expr": "sum by (consumer_group) (rate(rocketmq_messages_out_total{cluster=\"$cluster\",consumer_group=\"$group\"}[1m]))",
+          "legendFormat": "{{consumer_group}}",
           "refId": "A"
         }
       ]
