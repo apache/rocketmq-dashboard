@@ -918,6 +918,7 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // ─── Client Connections ───
   'clients.title': { zh: '客户端连接', en: 'Client Connections' },
+  'clients.connectionCount': { zh: '共 {count} 个连接', en: '{count} connections' },
   'clients.clientId': { zh: 'Client ID', en: 'Client ID' },
   'clients.groupOrTopic': { zh: 'Group/Topic', en: 'Group/Topic' },
   'clients.protocol': { zh: '协议', en: 'Protocol' },
@@ -1239,6 +1240,22 @@ const translations: Record<string, Record<Lang, string>> = {
   'deliveries.channel': { zh: '通知通道', en: 'Channel' },
   'deliveries.attempts': { zh: '尝试次数', en: 'Attempts' },
   'deliveries.result': { zh: '投递结果', en: 'Delivery Result' },
+  'deliveries.errNoEmailRecipients': {
+    zh: '未配置邮件收件人',
+    en: 'No configured email recipients',
+  },
+  'deliveries.errNoWebhook': {
+    zh: '未配置 {channel} Webhook',
+    en: 'No configured {channel} webhook',
+  },
+  'deliveries.errUnsupportedChannel': {
+    zh: '不支持的通知渠道：{channel}',
+    en: 'Unsupported notification channel: {channel}',
+  },
+  'deliveries.errTestFailed': {
+    zh: '测试通知失败：{detail}',
+    en: 'Test notification failed: {detail}',
+  },
   'deliveries.createdAt': { zh: '创建时间', en: 'Created At' },
   'deliveries.deliveredAt': { zh: '投递时间', en: 'Delivered At' },
   'deliveries.details': { zh: '投递详情', en: 'Delivery Details' },
@@ -1687,6 +1704,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.cleanupDaysSuffix': { zh: '天之前的日志', en: 'days and older' },
   'audit.summaryMatched': { zh: '匹配记录', en: 'Matched Records' },
   'audit.summarySuccessRate': { zh: '成功率', en: 'Success Rate' },
+  'audit.summarySuccessDetail': {
+    zh: '成功 {successful} / 匹配 {total}（分母含未记录结果的操作）',
+    en: '{successful} of {total} matched (denominator includes result-less operations)',
+  },
   'audit.summaryOperators': { zh: '操作人数', en: 'Operators' },
   'audit.summaryTopOperations': { zh: '高频操作', en: 'Top Operations' },
   'audit.summaryResourceTypes': { zh: '资源类型分布', en: 'Resource Type Distribution' },
@@ -2885,7 +2906,10 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'topic.topicNamePlaceholder': { zh: '请输入 Topic 名称', en: 'Enter topic name' },
   'topic.topicNameRequired': { zh: '请输入 Topic 名称', en: 'Please enter topic name' },
-  'topic.queueExtra': { zh: '每个 Broker 节点 8 个队列', en: '8 queues per Broker node' },
+  'topic.queueExtra': {
+    zh: '每个 Broker 节点写 {write} / 读 {read} 个队列；读写队列数一般情况下需保持一致',
+    en: '{write} write / {read} read queues per Broker node; keep them equal in general',
+  },
   'topic.remarkPlaceholder': {
     zh: '可选，描述 Topic 用途',
     en: 'Optional, describe the topic purpose',
