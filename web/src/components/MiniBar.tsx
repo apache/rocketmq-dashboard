@@ -16,6 +16,7 @@
  */
 
 import { useLang } from '../i18n/LangContext';
+import { nonNegativeNumber } from '../utils/chartSamples';
 
 interface MiniBarProps {
   data: number[];
@@ -40,14 +41,19 @@ const MiniBar = ({ data, color = '#1677ff', height = 32, width = 120, label }: M
     );
   }
 
-  const max = Math.max(...data, 1);
+  // Defense-in-depth for a shared chart component: today's callers feed integer throughput
+  // lists, but a future caller's unsanitized sample must still read as "no traffic" instead
+  // of poisoning the maximum or rendering invalid `NaNpx` heights. The rule itself is the
+  // shared chartSamples helper, so the sparkline family stays consistent.
+  const normalizedData = data.map(nonNegativeNumber);
+  const max = Math.max(...normalizedData, 1);
   const barWidth = Math.max(2, (width - (data.length - 1) * 2) / data.length);
 
   return (
     <div
       role="img"
       aria-label={
-        label || t('charts.trendData', { values: data.join(lang === 'zh' ? '、' : ', ') })
+        label || t('charts.trendData', { values: normalizedData.join(lang === 'zh' ? '、' : ', ') })
       }
       style={{
         display: 'inline-flex',
@@ -57,7 +63,7 @@ const MiniBar = ({ data, color = '#1677ff', height = 32, width = 120, label }: M
         width,
       }}
     >
-      {data.map((value, i) => (
+      {normalizedData.map((value, i) => (
         <div
           key={i}
           style={{
