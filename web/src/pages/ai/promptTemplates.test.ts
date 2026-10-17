@@ -19,6 +19,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   MAX_CUSTOM_PROMPT_TEMPLATES,
   MAX_PROMPT_TEMPLATE_BODY_LENGTH,
+  MAX_PROMPT_TEMPLATE_TITLE_LENGTH,
   PROMPT_TEMPLATE_STORAGE_KEY,
   applyPromptTemplate,
   buildPromptTemplatePreview,
@@ -220,6 +221,31 @@ describe('AI prompt templates', () => {
   it('returns compact previews for multiline template bodies', () => {
     expect(buildPromptTemplatePreview('line 1\n\nline 2')).toBe('line 1 line 2');
     expect(buildPromptTemplatePreview('x'.repeat(20), 8)).toBe('xxxxxxxx...');
+  });
+
+  it('does not split a supplementary character when it clamps a saved title', () => {
+    const result = saveCustomPromptTemplate({
+      title: `${'a'.repeat(MAX_PROMPT_TEMPLATE_TITLE_LENGTH - 1)}\u{1F680}`,
+      body: 'inspect the broker',
+    });
+
+    expect(result.ok).toBe(true);
+    // The title cap is 80 UTF-16 units and the emoji needs two, so slice() kept its high half:
+    // the saved template carried an unpaired surrogate, which the modal renders as a replacement
+    // glyph. The character straddling the cut is dropped whole instead.
+    expect(result.template?.title).toBe('a'.repeat(MAX_PROMPT_TEMPLATE_TITLE_LENGTH - 1));
+  });
+
+  it('does not split a supplementary character when it clamps a saved body', () => {
+    // The body the operator saves is the composer's own text: 5999 units, then an emoji whose
+    // halves straddle the 6000-unit cap, which becomes the prompt a template is applied with.
+    const result = saveCustomPromptTemplate({
+      title: 'long body',
+      body: `${'a'.repeat(MAX_PROMPT_TEMPLATE_BODY_LENGTH - 1)}\u{1F680}`,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.template?.body).toBe('a'.repeat(MAX_PROMPT_TEMPLATE_BODY_LENGTH - 1));
   });
 
   it('reports storage as unavailable when localStorage throws', () => {

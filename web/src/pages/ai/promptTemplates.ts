@@ -216,9 +216,25 @@ const newTemplateId = (): string => {
   return `custom-${random}`;
 };
 
+/**
+ * Clamps `value` to `maxCodeUnits` UTF-16 units — the unit `String.prototype.length` counts — without
+ * cutting between the two halves of a supplementary character: a character that would straddle the
+ * cut is dropped whole. `slice` alone keeps its high surrogate, and a lone surrogate is not text
+ * anybody can see: the browser renders it as the replacement glyph, so the operator's emoji would
+ * arrive in the template list as `\uFFFD` either way — dropping it whole at least leaves the title
+ * the operator can still read.
+ */
+const clampText = (value: string, maxCodeUnits: number): string => {
+  if (value.length <= maxCodeUnits) return value;
+  const cut = Math.max(0, maxCodeUnits);
+  const lastKeptUnit = cut === 0 ? 0 : value.charCodeAt(cut - 1);
+  const splitsASurrogatePair = lastKeptUnit >= 0xd800 && lastKeptUnit <= 0xdbff;
+  return value.slice(0, splitsASurrogatePair ? cut - 1 : cut);
+};
+
 const normalizeText = (value: unknown, maxLength: number): string => {
   const text = typeof value === 'string' ? value.trim() : '';
-  return text.length > maxLength ? text.slice(0, maxLength) : text;
+  return clampText(text, maxLength);
 };
 
 const normalizeMode = (value: unknown): ChatMode =>
