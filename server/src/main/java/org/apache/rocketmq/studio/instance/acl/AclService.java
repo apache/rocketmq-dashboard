@@ -355,9 +355,7 @@ public class AclService {
         List<PushPlan> plans = new ArrayList<>();
         for (AclUserVO user : aclRepository.findUsers()) {
             AclUserVO credentials = getUserCredentials(String.valueOf(user.getId()), instanceId);
-            List<AclRuleVO> rules = aclRepository.findRulePage(
-                    principalOf(user.getUsername()), null, null, null, null, 1,
-                    MAX_RULES_PER_ACCOUNT).getItems();
+            List<AclRuleVO> rules = allRulesForPush(principalOf(user.getUsername()));
             plans.add(buildPushPlan(user, credentials, rules));
         }
         log.info("Pushing {} ACL account(s) of instance {} to the brokers", plans.size(), instanceId);
@@ -410,6 +408,27 @@ public class AclService {
                     .accounts(outcomes)
                     .build();
         });
+    }
+
+    /**
+     * Reads every stored rule of the principal for the broker push. A single bounded page used
+     * to silently truncate accounts with more rules than {@link #MAX_RULES_PER_ACCOUNT}: the
+     * rules beyond the first page never reached the broker and {@code policyCount} reported the
+     * page size as if it were the whole account. Pages until the repository's own total is
+     * covered; an empty page ends the loop defensively if the total moves mid-read.
+     */
+    private List<AclRuleVO> allRulesForPush(String principal) {
+        List<AclRuleVO> rules = new ArrayList<>();
+        int page = 1;
+        while (true) {
+            PageResult<AclRuleVO> result = aclRepository.findRulePage(
+                    principal, null, null, null, null, page, MAX_RULES_PER_ACCOUNT);
+            rules.addAll(result.getItems());
+            if (result.getItems().isEmpty() || rules.size() >= result.getTotal()) {
+                return rules;
+            }
+            page++;
+        }
     }
 
     private record PushPlan(String username, String subject, UserInfo userInfo,
