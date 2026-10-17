@@ -20,6 +20,7 @@ import type { AuditRecord } from '../api/ops';
 import { mockAuditRecords } from '../mock/audit';
 import {
   acknowledgeAlert,
+  bulkDeleteAlertRules,
   createAlertRule,
   deleteAlertRule,
   exportAlertRulesTransfer,
@@ -180,6 +181,83 @@ describe('ops service mock data', () => {
       (await exportAlertRulesTransfer('CLUSTER')).rules.map((rule) => rule.name),
     ).not.toContain('business-transfer-rule');
     await deleteAlertRule(imported[0].id, 'BUSINESS');
+  });
+
+  it('rejects an alert rule import envelope the endpoint refuses Test', async () => {
+    const clusterBefore = await listAlertRules('CLUSTER');
+    const businessBefore = await listAlertRules('BUSINESS');
+    const rule = {
+      name: 'transfer-envelope-rule',
+      metric: 'consumer.lag.total',
+      operator: '>' as const,
+      threshold: 1,
+      duration: '5m',
+      channels: ['email'],
+      enabled: true,
+      description: '',
+    };
+
+    // AlertRuleTransferService.validateEnvelope answers 400 for every one of these before the
+    // inventory is touched. The mock appended them instead and reported a successful import.
+    await expect(
+      importAlertRulesTransfer({ version: 1, domain: 'CLUSTER', rules: [] }, 'CLUSTER'),
+    ).rejects.toThrow('Alert rule import must contain between 1 and 200 rules');
+    await expect(
+      importAlertRulesTransfer({ version: 2, domain: 'CLUSTER', rules: [rule] }, 'CLUSTER'),
+    ).rejects.toThrow('Unsupported alert rule import version');
+    await expect(
+      importAlertRulesTransfer({ version: 1, domain: 'BUSINESS', rules: [rule] }, 'CLUSTER'),
+    ).rejects.toThrow('Alert rule import domain does not match this page');
+    await expect(
+      importAlertRulesTransfer(
+        { version: 1, domain: 'CLUSTER', rules: Array.from({ length: 201 }, () => rule) },
+        'CLUSTER',
+      ),
+    ).rejects.toThrow('Alert rule import must contain between 1 and 200 rules');
+
+    expect((await listAlertRules('CLUSTER')).map((item) => item.id)).toEqual(
+      clusterBefore.map((item) => item.id),
+    );
+    expect((await listAlertRules('BUSINESS')).map((item) => item.id)).toEqual(
+      businessBefore.map((item) => item.id),
+    );
+  });
+
+  it('still imports the alert rule counts the endpoint accepts Test', async () => {
+    const rule = {
+      name: 'boundary-rule',
+      metric: 'consumer.lag.total',
+      operator: '>' as const,
+      threshold: 1,
+      duration: '5m',
+      channels: ['email'],
+      enabled: true,
+      description: '',
+    };
+    const one = await importAlertRulesTransfer(
+      { version: 1, domain: 'CLUSTER', rules: [rule] },
+      'CLUSTER',
+    );
+    const twoHundred = await importAlertRulesTransfer(
+      {
+        version: 1,
+        domain: 'CLUSTER',
+        rules: Array.from({ length: 200 }, (_, index) => ({
+          ...rule,
+          name: `boundary-rule-${index}`,
+        })),
+      },
+      'CLUSTER',
+    );
+
+    const names = (await listAlertRules('CLUSTER')).map((item) => item.name);
+    expect(one).toHaveLength(1);
+    expect(twoHundred).toHaveLength(200);
+    expect(names).toContain('boundary-rule');
+    expect(names).toContain('boundary-rule-0');
+    expect(names).toContain('boundary-rule-199');
+
+    await bulkDeleteAlertRules([...one, ...twoHundred].map((item) => item.id));
   });
 
   it('returns copied system alert rows', async () => {
