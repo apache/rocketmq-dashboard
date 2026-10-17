@@ -45,7 +45,7 @@ import { listConnections } from '../../services/connectionsService';
 import { listRegistryClusters } from '../../services/clusterService';
 import type { ClusterInfo } from '../../api/cluster';
 import { formatDateTime } from '../../utils/format';
-import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { buildCsv, downloadCsv, localExportDateStamp, type CsvColumn } from '../../utils/download';
 import { describeThrownMessage } from '../../utils/apiError';
 import { tableScrollX } from '../../utils/table';
 import {
@@ -382,7 +382,7 @@ const ClientsPage = () => {
   const clampedCurrentPage = Math.min(currentPage, lastPage);
 
   const handleExport = () => {
-    const filename = `rocketmq-client-connections-${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename = `rocketmq-client-connections-${localExportDateStamp()}.csv`;
     const csv = buildCsv(CLIENT_CONNECTION_EXPORT_COLUMNS, exportConnections);
     downloadCsv(filename, csv);
   };

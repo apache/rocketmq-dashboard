@@ -102,7 +102,7 @@ import {
   validateConsumerGroupCsvImport,
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
-import { downloadCsv } from '../../utils/download';
+import { downloadCsv, localExportDateStamp } from '../../utils/download';
 import { formatLag, isLagAvailable, lagSortValue } from '../../utils/consumerLag';
 import { formatOnlineInstances, onlineInstancesSortValue } from '../../utils/consumerConnections';
 import { tableScrollX } from '../../utils/table';
@@ -527,7 +527,7 @@ const ConsumerPageContent = ({
         search: search.trim() || undefined,
         subscriptionMode: modeFilter !== 'ALL' ? modeFilter : undefined,
       });
-      downloadCsv(`rocketmq-consumer-groups-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+      downloadCsv(`rocketmq-consumer-groups-${localExportDateStamp()}.csv`, csv);
       message.success('Group 导出完成');
     } catch {
       message.error('导出 Group 失败，请稍后重试');
