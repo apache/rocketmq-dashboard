@@ -354,6 +354,38 @@ describe('ACL page', () => {
     expect(screen.getByText('cluster-a')).toBeInTheDocument();
   });
 
+  it('clears stale user rows and total when a filtered user reload fails', async () => {
+    renderWithProviders(<AclPage />);
+    const panel = screen.getByRole('tabpanel', { name: '用户管理' });
+    expect(await within(panel).findByText('remote-admin')).toBeInTheDocument();
+    expect(within(panel).getByText('共 1 个用户')).toBeInTheDocument();
+
+    vi.mocked(aclService.pageAclUsers).mockRejectedValueOnce(new Error('users unavailable'));
+    fireEvent.change(within(panel).getByRole('searchbox'), { target: { value: 'missing' } });
+
+    await waitFor(() => expect(aclService.pageAclUsers).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(within(panel).queryByText('remote-admin')).not.toBeInTheDocument());
+    expect(within(panel).queryByText('共 1 个用户')).not.toBeInTheDocument();
+  });
+
+  it('clears stale rule rows and total when a filtered rule reload fails', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<AclPage />);
+    await openRulesTab(user);
+    const panel = screen.getByRole('tabpanel', { name: 'ACL 规则' });
+    expect(await within(panel).findByText('remote-topic')).toBeInTheDocument();
+    expect(within(panel).getByText('共 1 条规则')).toBeInTheDocument();
+
+    vi.mocked(aclService.listAclRules).mockRejectedValueOnce(new Error('rules unavailable'));
+    fireEvent.change(within(panel).getByPlaceholderText('搜索主体'), {
+      target: { value: 'missing' },
+    });
+
+    await waitFor(() => expect(aclService.listAclRules).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(within(panel).queryByText('remote-topic')).not.toBeInTheDocument());
+    expect(within(panel).queryByText('共 1 条规则')).not.toBeInTheDocument();
+  });
+
   it('opens on the user tab and lists it before the rule tab', async () => {
     renderWithProviders(<AclPage />);
 
