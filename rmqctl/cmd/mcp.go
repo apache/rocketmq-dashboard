@@ -66,9 +66,16 @@ func (a *App) newMCPConfigCommand(runtime commandRuntime) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 			stdioArgs := []string{"mcp", "stdio"}
-			if runtime.options.configPath != "" {
+			selectedPath := runtime.options.configPath
+			if selectedPath == "" {
+				// The snippet has to reproduce the file this invocation selected. RMQCTL_CONFIG is
+				// inherited by a shell, but an MCP client launched from a GUI does not inherit it,
+				// so the child would resolve the default context instead of the selected one.
+				selectedPath = a.Store.Getenv("RMQCTL_CONFIG")
+			}
+			if selectedPath != "" {
 				// The MCP client may launch from a different working directory.
-				configPath, err := filepath.Abs(runtime.options.configPath)
+				configPath, err := filepath.Abs(selectedPath)
 				if err != nil {
 					return err
 				}
