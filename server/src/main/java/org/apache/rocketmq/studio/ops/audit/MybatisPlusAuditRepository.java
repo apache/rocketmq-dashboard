@@ -259,6 +259,12 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                 break;
             }
         }
+        if (totalDeleted > 0) {
+            // The filter dropdowns are cached for a short while; a cleanup that removed rows must
+            // not keep offering the values those rows carried (the page refetches the options right
+            // after a cleanup, and that refetch would be answered from this cache).
+            cachedFilterOptions = null;
+        }
         return totalDeleted;
     }
 

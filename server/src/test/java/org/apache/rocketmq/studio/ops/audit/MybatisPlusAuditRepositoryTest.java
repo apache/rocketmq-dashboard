@@ -199,6 +199,22 @@ class MybatisPlusAuditRepositoryTest {
     }
 
     @Test
+    void deleteBeforeInvalidatesCachedFilterOptionsTest() {
+        when(auditMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of());
+        when(auditMapper.selectList(any())).thenReturn(List.of(auditRecord(1L)));
+        when(auditMapper.deleteByIds(List.of(1L))).thenReturn(1);
+
+        repository.findFilterOptions();
+        repository.deleteBefore(LocalDateTime.of(2026, 8, 1, 0, 0), 10, 1);
+        repository.findFilterOptions();
+
+        // The cleanup removed the rows those options came from, so the page's post-cleanup refetch
+        // must reach the mapper again instead of reading the 30-second cache.
+        verify(auditMapper, times(2)).selectMaps(any(Wrapper.class));
+        verify(auditMapper).deleteByIds(List.of(1L));
+    }
+
+    @Test
     void saveInvalidatesCachedFilterOptionsTest() {
         when(auditMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of());
 
