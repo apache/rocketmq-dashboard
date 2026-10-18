@@ -241,4 +241,18 @@ describe('GeneralSettingsTab', () => {
       ),
     );
   });
+
+  it('offers the clear control immediately after saving a signing secret', async () => {
+    vi.mocked(saveGeneralSettings).mockResolvedValue();
+    const user = userEvent.setup();
+    renderTab();
+
+    const secretInput = await screen.findByPlaceholderText('SEC...');
+    await user.type(secretInput, 'SEC-just-saved');
+    fireEvent.submit(secretInput.closest('form')!);
+
+    // The button is queried by its text because antd's loading icon (still animating out in
+    // jsdom) contributes an aria-label to the accessible name during the save.
+    expect((await screen.findByText('清除钉钉签名密钥')).closest('button')).not.toBeNull();
+  });
 });
