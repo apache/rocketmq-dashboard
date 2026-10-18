@@ -11,12 +11,17 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 func ensureConfigDirectory(path string) error {
 	if err := os.MkdirAll(path, 0o700); err != nil {
 		return err
 	}
+	return checkConfigDirectory(path)
+}
+
+func checkConfigDirectory(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
 		return fmt.Errorf("inspect config directory: %w", err)
@@ -24,8 +29,8 @@ func ensureConfigDirectory(path string) error {
 	if !info.IsDir() {
 		return fmt.Errorf("config parent is not a directory: %s", path)
 	}
-	if info.Mode().Perm() != 0o700 {
-		return fmt.Errorf("config directory %s must have permissions 0700 (found %04o)",
+	if info.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("config directory %s must not be writable by group or others (found %04o)",
 			path, info.Mode().Perm())
 	}
 	return nil
@@ -36,6 +41,9 @@ func secureConfigFile(path string) error {
 }
 
 func checkFilePermissions(path string) error {
+	if err := checkConfigDirectory(filepath.Dir(path)); err != nil {
+		return err
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return fmt.Errorf("inspect config file: %w", err)
