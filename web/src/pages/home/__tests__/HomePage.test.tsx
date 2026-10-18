@@ -21,6 +21,9 @@ import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import HomePage from '../index';
+import { listInstances } from '../../../services/instanceService';
+
+vi.mock('../../../services/instanceService', () => ({ listInstances: vi.fn() }));
 
 const navigateMock = vi.hoisted(() => vi.fn());
 const llmApiMocks = vi.hoisted(() => ({
@@ -51,6 +54,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(listInstances).mockResolvedValue([]);
   llmApiMocks.getLlmConfig.mockResolvedValue({
     provider: 'tongyi',
     apiBase: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
@@ -72,6 +76,35 @@ const renderHome = () =>
   );
 
 describe('HomePage LLM models', () => {
+  it('carriesTheExplicitInstanceTargetToTheAiPageTest', async () => {
+    vi.mocked(listInstances).mockResolvedValue([
+      {
+        id: 17,
+        name: 'staging',
+        endpoint: 'ns:9876',
+        type: 'DIRECT',
+        remark: null,
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
+    const user = userEvent.setup();
+    renderHome();
+    await screen.findByText('qwen3.8-max');
+    await user.click(screen.getByRole('combobox', { name: '对话目标' }));
+    await user.click(
+      await screen.findByText('staging', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.type(
+      screen.getByPlaceholderText('向 RocketMQ Bot 提问，全程加密、安全、可信'),
+      '检查状态{enter}',
+    );
+    expect(navigateMock).toHaveBeenCalledWith('/ai', {
+      state: expect.objectContaining({ instanceId: 'staging', prompt: '检查状态' }),
+    });
+  });
   it('shows the fixed home model list with qwen3.8-max selected', async () => {
     renderHome();
 
@@ -158,6 +191,7 @@ describe('HomePage LLM models', () => {
       expect(navigateMock).toHaveBeenCalledWith('/ai', {
         state: {
           prompt: '查看集群状态',
+          instanceId: null,
           model: 'qwen3.8-max',
           engine: 'claude-code',
           mode: 'chat',

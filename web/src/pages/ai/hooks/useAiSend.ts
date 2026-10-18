@@ -23,6 +23,7 @@ import {
   type AiMessageRequest,
 } from '../../../api/aiConversations';
 import { listInstances } from '../../../services/instanceService';
+import { useLang } from '../../../i18n/LangContext';
 
 /**
  * Starting a run, including the "there is no conversation yet" case.
@@ -72,6 +73,7 @@ export function useAiSend(
   options: UseAiSendOptions,
 ): (start: StartRunOptions) => Promise<number | null> {
   const { conversationId, ready, send } = options;
+  const { t } = useLang();
   const navigate = useNavigate();
   const pendingSendRef = useRef<{ conversationId: number; request: AiMessageRequest } | null>(null);
 
@@ -112,7 +114,13 @@ export function useAiSend(
       }
       let createdId: number;
       try {
-        const created = await createConversation(await withDefaultInstance(createBody));
+        if (createBody.instanceId) {
+          const instances = await listInstances();
+          if (!instances.some((instance) => instance.name === createBody.instanceId)) {
+            throw new Error(t('ai.target.unavailable'));
+          }
+        }
+        const created = await createConversation(createBody);
         createdId = created.id;
       } catch (error) {
         optionsRef.current.onError(error);
@@ -122,28 +130,6 @@ export function useAiSend(
       navigate(`/ai/c/${createdId}`, { replace: true, state: carryState ?? null });
       return createdId;
     },
-    [navigate],
+    [navigate, t],
   );
-}
-
-/**
- * A conversation without a bound instance runs with every RocketMQ tool disabled, so even
- * “list my instances” cannot be answered. When the caller did not pick one, bind the first
- * instance of the (backend-sorted) list as the default, preferring one that carries an admin
- * credential ref — binding a credential-less instance makes every turn fail admission with a
- * 422. Leave the body alone when there is none or the lookup fails: the conversation still
- * degrades to plain chat.
- */
-async function withDefaultInstance(
-  body: AiConversationCreateRequest,
-): Promise<AiConversationCreateRequest> {
-  if (body.instanceId) return body;
-  try {
-    const instances = await listInstances();
-    const fallback =
-      instances.find((instance) => instance.adminCredentialRef)?.name ?? instances[0]?.name;
-    return fallback ? { ...body, instanceId: fallback } : body;
-  } catch {
-    return body;
-  }
 }

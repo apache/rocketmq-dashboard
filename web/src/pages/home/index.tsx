@@ -31,6 +31,7 @@ import { useEngineStore } from '../../stores/engineStore';
 import { useDataModeStore } from '../../stores/dataModeStore';
 import { useLang } from '../../i18n/LangContext';
 import Composer from '../ai/components/Composer';
+import ConversationTarget from '../ai/components/ConversationTarget';
 import type { ChatMode } from '../ai/chatDraft';
 
 /* ─── Time-aware greeting key ─── */
@@ -83,6 +84,7 @@ const HomePage = () => {
   const [activeMode, setActiveMode] = useState('chat');
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
   const [selectedModel, setSelectedModel] = useState('');
+  const [selectedInstanceId, setSelectedInstanceId] = useState('');
   const engine = useEngineStore((s) => s.engine);
   const setEnginePreference = useEngineStore((s) => s.setEngine);
   const useMock = useDataModeStore((s) => s.useMock);
@@ -184,6 +186,7 @@ const HomePage = () => {
       state: prompt
         ? {
             prompt,
+            instanceId: selectedInstanceId || null,
             ...(selectedModel ? { model: selectedModel } : {}),
             engine,
             mode: activeMode,
@@ -410,6 +413,11 @@ const HomePage = () => {
 
               {/* Main Input Box — the SAME Composer component as the AI page, so the input
                   panel has one source of truth; home-specific bits are props. */}
+              <ConversationTarget
+                value={selectedInstanceId}
+                onChange={setSelectedInstanceId}
+                disabled={useMock}
+              />
               <Composer
                 value={inputValue}
                 onChange={setInputValue}
