@@ -1245,4 +1245,17 @@ describe('AlertsPage', () => {
       ),
     );
   });
+
+  it('does not present a failed runtime read as a rule that was never collected', async () => {
+    vi.mocked(listAlertRuleRuntime).mockRejectedValue(new Error('runtime read failed'));
+    renderPage();
+
+    await screen.findByText('Broker disk usage');
+    // The read failed, so the column knows nothing about this rule - but "未采集" asserts the
+    // opposite, that collection is off.
+    expect(screen.queryByText('未采集')).not.toBeInTheDocument();
+    expect(
+      screen.getAllByLabelText('运行状态读取失败，无法判断该规则当前是否在采集').length,
+    ).toBeGreaterThan(0);
+  });
 });

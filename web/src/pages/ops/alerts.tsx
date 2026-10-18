@@ -178,6 +178,9 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   const [enabledFilter, setEnabledFilter] = useState<boolean | undefined>();
   const [rulesVersion, setRulesVersion] = useState(0);
   const [runtime, setRuntime] = useState<AlertRuleRuntime[]>([]);
+  // A runtime read that failed says nothing about the rules: the column must not claim their
+  // state was never collected, and the previous values would be just as misleading.
+  const [runtimeFailed, setRuntimeFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
@@ -393,8 +396,16 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
         if (!cancelled) setLoading(false);
       });
     void listAlertRuleRuntime(domain)
-      .then(setRuntime)
-      .catch(() => undefined);
+      .then((next) => {
+        if (cancelled) return;
+        setRuntime(next);
+        setRuntimeFailed(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRuntime([]);
+        setRuntimeFailed(true);
+      });
 
     return () => {
       cancelled = true;
@@ -744,7 +755,17 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       render: (_, record) => {
         const states = runtime.filter((state) => state.ruleId === record.id);
         if (!states.length)
-          return <span style={{ color: '#999' }}>{t('alerts.notCollected')}</span>;
+          return runtimeFailed ? (
+            <span
+              style={{ color: '#999' }}
+              title={t('alerts.runtimeLoadFailed')}
+              aria-label={t('alerts.runtimeLoadFailed')}
+            >
+              -
+            </span>
+          ) : (
+            <span style={{ color: '#999' }}>{t('alerts.notCollected')}</span>
+          );
         const firing = states.filter((state) => state.status === 'FIRING').length;
         const pending = states.filter((state) => state.status === 'PENDING').length;
         return (
