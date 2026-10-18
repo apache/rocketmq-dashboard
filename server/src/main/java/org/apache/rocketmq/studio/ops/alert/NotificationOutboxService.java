@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.cluster.metrics.AlertingProperties;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.util.BoundedResponseBodyInterceptor;
 import org.apache.rocketmq.studio.common.util.NoRedirectClientHttpRequestFactory;
 import org.apache.rocketmq.studio.common.util.TextBounds;
 import org.apache.rocketmq.studio.common.util.UrlHostGuard;
@@ -64,6 +65,7 @@ import jakarta.mail.internet.InternetAddress;
 @Service
 public class NotificationOutboxService {
     private static final int MAX_ATTEMPTS = 5;
+    private static final int MAX_WEBHOOK_RESPONSE_BYTES = 5 * 1024 * 1024;
     private static final int BATCH_SIZE = 20;
     private static final Duration DEFAULT_CLAIM_TIMEOUT = Duration.ofMinutes(1);
     private static final Duration DEFAULT_CLAIM_RENEWAL_INTERVAL = Duration.ofSeconds(20);
@@ -138,6 +140,7 @@ public class NotificationOutboxService {
         this.alertRepository = alertRepository;
         this.operationAuditService = operationAuditService;
         this.restTemplate = restTemplate;
+        this.restTemplate.getInterceptors().add(new BoundedResponseBodyInterceptor(MAX_WEBHOOK_RESPONSE_BYTES));
         this.mailSender = mailSender;
         this.alertingProperties = alertingProperties == null ? new AlertingProperties() : alertingProperties;
         this.claimTimeout = positiveDuration(this.alertingProperties.getNotificationClaimTimeout(),
