@@ -17,6 +17,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   App,
   Button,
   Card,
@@ -36,6 +37,7 @@ import { useTheme } from '../../theme/useTheme';
 import type { ThemeMode } from '../../theme/themePreference';
 import { useLang } from '../../i18n/LangContext';
 import useAuthStore from '../../stores/authStore';
+import { describeThrownMessage } from '../../utils/apiError';
 
 const { Text } = Typography;
 
@@ -70,6 +72,10 @@ export const GeneralSettingsTab = () => {
   const [savingSecurity, setSavingSecurity] = useState(false);
   const [savingNotification, setSavingNotification] = useState(false);
   const [testingChannel, setTestingChannel] = useState<string>();
+  // An unreadable settings record must not be presented as an empty one: the forms would show
+  // defaults, and every save would then abort silently because there is no snapshot to merge.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const securityInFlightRef = useRef(false);
   const notifyInFlightRef = useRef(false);
   const authUserId = useAuthStore((state) => state.userId);
@@ -93,6 +99,7 @@ export const GeneralSettingsTab = () => {
     void getGeneralSettings()
       .then((loaded) => {
         if (cancelled) return;
+        setLoadError(null);
         setSettings(loaded);
         securityForm.setFieldsValue({ sessionTimeout: loaded.sessionTimeout });
         notifyForm.setFieldsValue({
@@ -102,8 +109,10 @@ export const GeneralSettingsTab = () => {
           smsWebhook: loaded.smsWebhook,
         });
       })
-      .catch(() => {
-        if (!cancelled) message.error(translationRef.current('settings.loadFailed'));
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setLoadError(describeThrownMessage(error) || translationRef.current('settings.loadFailed'));
+        message.error(translationRef.current('settings.loadFailed'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -112,7 +121,7 @@ export const GeneralSettingsTab = () => {
     return () => {
       cancelled = true;
     };
-  }, [message, notifyForm, securityForm]);
+  }, [message, notifyForm, securityForm, reloadNonce]);
 
   // Other tabs (AI assistant settings) write the same settings record while this tab stays
   // mounted, so every save must be built from a fresh read instead of the mount-time snapshot.
@@ -234,6 +243,24 @@ export const GeneralSettingsTab = () => {
     // （用户约定 2026-10-16 视觉验收）。表单行是「说明左 / 控件右」的 space-between 布局，铺满后
     // 控件贴右缘，与其它页卡片宽度一致。
     <Flex vertical gap={24}>
+      {loadError && (
+        <Alert
+          type="error"
+          showIcon
+          message={loadError}
+          action={
+            <Button
+              size="small"
+              onClick={() => {
+                setLoading(true);
+                setReloadNonce((nonce) => nonce + 1);
+              }}
+            >
+              {t('common.retry')}
+            </Button>
+          }
+        />
+      )}
       <Card
         title={
           <Space>
@@ -322,7 +349,7 @@ export const GeneralSettingsTab = () => {
               type="primary"
               htmlType="submit"
               loading={savingSecurity}
-              disabled={loading || !canWriteSettings}
+              disabled={loading || !canWriteSettings || !settings}
             >
               {t('settings.saveSettings')}
             </Button>
@@ -364,7 +391,7 @@ export const GeneralSettingsTab = () => {
                 danger
                 onClick={() => void clearDingtalkSigningSecret()}
                 loading={savingNotification}
-                disabled={!canWriteSettings}
+                disabled={!canWriteSettings || !settings}
               >
                 {t('settings.clearDingtalkSigningSecret')}
               </Button>
@@ -393,21 +420,21 @@ export const GeneralSettingsTab = () => {
                 <Button
                   onClick={() => void sendTest('dingtalk')}
                   loading={testingChannel === 'dingtalk'}
-                  disabled={!canWriteSettings}
+                  disabled={!canWriteSettings || !settings}
                 >
                   {t('settings.testDingtalk')}
                 </Button>
                 <Button
                   onClick={() => void sendTest('email')}
                   loading={testingChannel === 'email'}
-                  disabled={!canWriteSettings}
+                  disabled={!canWriteSettings || !settings}
                 >
                   {t('settings.testEmail')}
                 </Button>
                 <Button
                   onClick={() => void sendTest('sms')}
                   loading={testingChannel === 'sms'}
-                  disabled={!canWriteSettings}
+                  disabled={!canWriteSettings || !settings}
                 >
                   {t('settings.testSmsWebhook')}
                 </Button>
@@ -416,7 +443,7 @@ export const GeneralSettingsTab = () => {
                 type="primary"
                 htmlType="submit"
                 loading={savingNotification}
-                disabled={loading || !canWriteSettings}
+                disabled={loading || !canWriteSettings || !settings}
               >
                 {t('settings.saveSettings')}
               </Button>
