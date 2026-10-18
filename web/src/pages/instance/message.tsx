@@ -1240,6 +1240,7 @@ const MessagePageContent = ({
                   <RangePicker
                     showTime
                     style={{ width: 400 }}
+                    allowClear={false}
                     value={dateRange}
                     onChange={(vals) => {
                       if (vals && vals[0] && vals[1]) {

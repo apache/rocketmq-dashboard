@@ -867,4 +867,12 @@ describe('Message page query history', () => {
     expect(await screen.findByText('消息体')).toBeInTheDocument();
     expect(screen.getAllByText('5.0 GB').length).toBeGreaterThanOrEqual(2);
   });
+
+  it('offers no clear control on the query window it always sends', () => {
+    const { container } = renderWithProviders(<MessagePage />);
+
+    // The topic query always carries a start/end pair, so a clear control would
+    // snap back and silently reuse the previous window. It must not be offered.
+    expect(container.querySelector('.ant-picker-clear')).toBeNull();
+  });
 });
