@@ -96,7 +96,18 @@ body = session.post(f"{BASE}/api/dlq/resend", json={
     "instanceId": INSTANCE, "groupName": os.environ["GROUP"],
     "startTime": now - 3600_000, "endTime": now + 3600_000}, timeout=60).json()
 assert body.get("code") == 200, f"resend: {body}"
-print(f"  resend -> {body['data']}")
+result = body.get("data") or {}
+print(f"  resend -> {result}")
+# 200 只说明请求被接受：PARTIAL 和 scanIncomplete 也返回 200，而 SUCCESS 也可能
+# 描述少于本次回归发送的 3 条。只有完整重投全部 3 条才算通过。
+expected = {"outcome": "SUCCESS", "matched": 3, "resent": 3, "failed": 0}
+actual = {key: result.get(key) for key in expected}
+scan_incomplete = bool(result.get("scanIncomplete", False))
+failed_queues = result.get("failedQueueCount", 0) or 0
+if actual != expected or scan_incomplete or failed_queues:
+    raise SystemExit(
+        f"FAIL 重投未完整成功: {actual}, scanIncomplete={scan_incomplete}, "
+        f"failedQueueCount={failed_queues}")
 PY
 sleep 15
 after=$($SSH "docker logs $CONTAINER 2>&1 | grep -c fail-consume" || true)
