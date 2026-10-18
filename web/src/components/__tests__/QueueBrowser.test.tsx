@@ -503,6 +503,37 @@ describe('QueueBrowser request ownership', () => {
       within(properties).getByText('属性过多或单值过长，服务端已截断展示'),
     ).toBeInTheDocument();
   });
+
+  it('does not ask the operator to load queues that were loaded and came back empty', async () => {
+    vi.mocked(getQueueOffsets).mockResolvedValue([]);
+    const user = userEvent.setup();
+    render(<QueueBrowserResultsProbe />);
+
+    await user.click(screen.getByRole('button', { name: 'topic-a' }));
+    await user.click(screen.getByRole('button', { name: 'load' }));
+
+    // The load ran and the topic answered with no readable queues: the panel must not keep asking
+    // for the step the operator just performed.
+    expect(await screen.findByText(/没有可读队列/)).toBeInTheDocument();
+    expect(
+      screen.queryByText('选择 Topic 并点击「加载队列」，按队列浏览消息'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps a failed queue load visible and retryable instead of the pre-load hint', async () => {
+    vi.mocked(getQueueOffsets).mockRejectedValue(new Error('nameserver unreachable'));
+    const user = userEvent.setup();
+    render(<QueueBrowserResultsProbe />);
+
+    await user.click(screen.getByRole('button', { name: 'topic-a' }));
+    await user.click(screen.getByRole('button', { name: 'load' }));
+
+    expect(await screen.findByText('加载队列信息失败')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /重\s*试/ })).toBeInTheDocument();
+    expect(
+      screen.queryByText('选择 Topic 并点击「加载队列」，按队列浏览消息'),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe('QueueBrowser localization', () => {
