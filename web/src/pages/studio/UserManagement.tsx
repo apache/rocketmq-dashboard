@@ -325,6 +325,10 @@ const UserManagementPage = () => {
         message.success(t('userMgmt.passwordChanged'));
       } else {
         await resetStudioUserPassword(passwordTarget.id, values.newPassword);
+        // The server revokes every active session of that user as part of the reset, so the rows
+        // and the session overview are stale the moment it succeeds; the other mutations (enable,
+        // revoke) refresh through this same counter.
+        setRefreshVersion((version) => version + 1);
         message.success(t('userMgmt.passwordReset'));
       }
       setPasswordTarget(null);
