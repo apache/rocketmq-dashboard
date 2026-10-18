@@ -121,11 +121,30 @@ const ToolPlaygroundModal = ({
   const [toolResult, setToolResult] = useState<unknown>(undefined);
   const [toolExecuting, setToolExecuting] = useState(false);
   const toolLoadRequestRef = useRef(0);
+  const executionGenerationRef = useRef(0);
+  const executionPendingRef = useRef(false);
+  const mountedRef = useRef(false);
   /** The catalog is loaded once per mount: reopening the modal must not re-hit the endpoint. */
   const bootstrappedRef = useRef(false);
 
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      executionGenerationRef.current += 1;
+    };
+  }, []);
+
+  useEffect(
+    () => () => {
+      executionGenerationRef.current += 1;
+    },
+    [open, disabled],
+  );
+
   const selectTool = useCallback(
     (name: string, availableTools: McpTool[] = tools, instanceId: string = selectedInstanceId) => {
+      executionGenerationRef.current += 1;
       const tool = availableTools.find((item) => item.name === name);
       setSelectedToolName(name);
       setToolInput(tool ? buildToolInputTemplate(tool, instanceId) : '{}');
@@ -136,6 +155,7 @@ const ToolPlaygroundModal = ({
 
   const loadTools = useCallback(
     async (instanceId: string) => {
+      executionGenerationRef.current += 1;
       const requestId = ++toolLoadRequestRef.current;
       setSelectedToolName('');
       setToolResult(undefined);
@@ -201,7 +221,7 @@ const ToolPlaygroundModal = ({
   );
 
   const handleExecuteTool = useCallback(async () => {
-    if (!selectedToolName || toolExecuting) return;
+    if (!open || disabled || !selectedToolName || executionPendingRef.current) return;
 
     let parsedInput: unknown;
     try {
@@ -215,22 +235,29 @@ const ToolPlaygroundModal = ({
       return;
     }
 
+    const generation = ++executionGenerationRef.current;
+    executionPendingRef.current = true;
     setToolExecuting(true);
     setToolResult(undefined);
     try {
-      setToolResult(await executeTool(selectedToolName, parsedInput, selectedInstanceId));
+      const result = await executeTool(selectedToolName, parsedInput, selectedInstanceId);
+      if (generation !== executionGenerationRef.current) return;
+      setToolResult(result);
       message.success(t('ai.tools.executeSuccess'));
     } catch (error) {
+      if (generation !== executionGenerationRef.current) return;
       message.error(error instanceof Error ? error.message : t('ai.tools.executeFailed'));
     } finally {
-      setToolExecuting(false);
+      executionPendingRef.current = false;
+      if (mountedRef.current) setToolExecuting(false);
     }
-  }, [selectedInstanceId, selectedToolName, t, toolExecuting, toolInput]);
+  }, [disabled, open, selectedInstanceId, selectedToolName, t, toolInput]);
 
   const handleClose = useCallback(() => {
     // Invalidate an in-flight catalog load: its response would otherwise land on a closed modal and
     // re-select a tool nobody is looking at.
     toolLoadRequestRef.current += 1;
+    executionGenerationRef.current += 1;
     setToolsLoading(false);
     onClose();
   }, [onClose]);
@@ -312,7 +339,11 @@ const ToolPlaygroundModal = ({
             aria-label={t('ai.tools.inputAria')}
             value={toolInput}
             disabled={disabled}
-            onChange={(event) => setToolInput(event.target.value)}
+            onChange={(event) => {
+              executionGenerationRef.current += 1;
+              setToolResult(undefined);
+              setToolInput(event.target.value);
+            }}
             autoSize={{ minRows: 6, maxRows: 12 }}
             spellCheck={false}
           />
