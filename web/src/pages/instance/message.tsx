@@ -96,6 +96,14 @@ import {
 const { Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
 
+/**
+ * Trace and consumption records report "no time" as 0. formatTimeMs deliberately treats zero
+ * as a real timestamp because stored values can legitimately be the epoch, so the optional-time
+ * call sites map zero to the placeholder themselves.
+ */
+const formatOptionalTimeMs = (value: number | string | null | undefined): string =>
+  value === 0 || value === '0' ? '-' : formatTimeMs(value);
+
 /* ─── Constants ─── */
 
 type QueryMode = 'topic' | 'key' | 'msgid' | 'queue';
@@ -980,12 +988,14 @@ const MessagePageContent = ({
       title: t('messagePage.consumeTime'),
       dataIndex: 'consumeTime',
       key: 'consumeTime',
-      render: (time: string) =>
-        time === '-' ? (
+      render: (time: number | string) => {
+        const formatted = formatOptionalTimeMs(time);
+        return formatted === '-' ? (
           <span style={{ color: '#9CA3AF' }}>-</span>
         ) : (
-          <span style={{ fontFamily: 'monospace', fontSize: 14 }}>{formatTimeMs(time)}</span>
-        ),
+          <span style={{ fontFamily: 'monospace', fontSize: 14 }}>{formatted}</span>
+        );
+      },
     },
     {
       title: t('messagePage.retryCount'),
@@ -1153,7 +1163,7 @@ const MessagePageContent = ({
                   description: (
                     <div style={{ fontSize: 14 }}>
                       <div style={{ color: '#9CA3AF', fontFamily: 'monospace' }}>
-                        {formatTimeMs(node.timestamp)}
+                        {formatOptionalTimeMs(node.timestamp)}
                       </div>
                       <div style={{ marginTop: 2 }}>{node.description}</div>
                       <div style={{ color: '#9CA3AF', fontSize: 14 }}>
