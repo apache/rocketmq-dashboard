@@ -77,6 +77,49 @@ describe('timeline ownership while reporting run speed', () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
+  it('retainsTheLiveAnswerAndPromptWhenRefreshCannotReachTheTailTest', async () => {
+    vi.mocked(getConversationTimeline).mockImplementation(async (_id, params) => ({
+      items: [
+        {
+          id: (params?.after ?? 0) + 1,
+          seq: (params?.after ?? 0) + 1,
+          turn: 1,
+          runId: 1,
+          createdAt: '2026-10-18T00:00:00',
+          event: { type: 'text', text: 'old history' },
+        },
+      ],
+      nextAfter: (params?.after ?? 0) + 1,
+      activeRun: null,
+    }));
+    let handlers!: RunStreamHandlers;
+    let finish!: () => void;
+    vi.mocked(openRunStream).mockImplementation((_id, _body, callbacks) => {
+      handlers = callbacks;
+      return new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+    });
+    const { result } = renderHook(() => {
+      const timeline = useConversationTimeline(7, { limit: 1, maxPages: 1 });
+      return { timeline, run: useAgentRun(7, { refetchTimeline: timeline.refetch }) };
+    });
+    await waitFor(() => expect(result.current.timeline.loading).toBe(false));
+    let sent!: Promise<void>;
+    await act(async () => {
+      sent = result.current.run.send(7, { message: 'new question' });
+      handlers.onEvent({ type: 'text_delta', content: 'newest answer' });
+      finish();
+      await sent;
+    });
+    expect(result.current.run.isStreaming).toBe(false);
+    expect(result.current.run.blocksRef.current).toEqual([{ kind: 'text', text: 'newest answer' }]);
+    expect(result.current.run.pendingUserMessage).toBe('new question');
+    expect(result.current.timeline.items.map((row) => row.seq)).toEqual([1]);
+    expect(result.current.timeline.hasMore).toBe(true);
+    expect(result.current.run.error).toBe('');
+  });
+
   async function finishMeasuredRun() {
     let settleReport!: (failure?: Error) => void;
     vi.mocked(reportRunSpeed).mockImplementation(

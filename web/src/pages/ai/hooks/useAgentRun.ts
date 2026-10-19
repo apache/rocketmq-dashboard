@@ -60,9 +60,9 @@ import { describeThrownMessage } from '../../../utils/apiError';
 export interface UseAgentRunOptions {
   /**
    * Reload the persisted transcript. Awaited in the finally block BEFORE the live blocks are
-   * cleared, normally `useConversationTimeline().refetch`.
+   * cleared, normally `useConversationTimeline().refetch`. False means a bounded partial read.
    */
-  refetchTimeline: () => Promise<void> | void;
+  refetchTimeline: () => Promise<boolean | void> | boolean | void;
   /** Any failure the caller should also toast about. The message itself lands in `error`. */
   onError?: (error: unknown) => void;
   /** Fired with the `run_started` frame; the runId is also exposed as state. */
@@ -272,7 +272,7 @@ export function useAgentRun(
       // current page's callback, which may now belong to a different conversation.
       if (requestId !== streamRequestIdRef.current) return;
       try {
-        await optionsRef.current.refetchTimeline();
+        if ((await optionsRef.current.refetchTimeline()) === false) return;
       } catch (refetchError) {
         if (requestId !== streamRequestIdRef.current) return;
         optionsRef.current.onError?.(refetchError);

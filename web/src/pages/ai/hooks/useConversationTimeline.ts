@@ -53,7 +53,7 @@ function collectRunSpeeds(
 export interface UseConversationTimelineOptions {
   /** Rows per cursor page. The backend caps this at 500. */
   limit?: number;
-  /** Bound on the forward paging the initial load does to reach the tail. */
+  /** New-page budget beyond the already loaded cursor (also bounds the initial load). */
   maxPages?: number;
 }
 
@@ -90,8 +90,8 @@ export interface UseConversationTimelineResult {
   error: string | null;
   /** True when the bounded forward walk stopped before the tail; `loadMore` continues it. */
   hasMore: boolean;
-  /** Reload the whole transcript from `seq > 0`; reject on failure so live blocks are retained. */
-  refetch: () => Promise<void>;
+  /** True only after reaching the tail; false or rejection must retain the live answer. */
+  refetch: () => Promise<boolean>;
   loadMore: () => Promise<void>;
 }
 
@@ -119,8 +119,9 @@ export function useConversationTimeline(
    * guard.
    */
   const loadingMoreRef = useRef<number | null>(null);
+  const loadedThroughRef = useRef<{ conversationId: number; seq: number } | null>(null);
 
-  const refetch = useCallback(async (): Promise<void> => {
+  const refetch = useCallback(async (): Promise<boolean> => {
     if (conversationId === null) {
       refetchRequestId.current += 1;
       activeRefetchRef.current = null;
@@ -131,7 +132,8 @@ export function useConversationTimeline(
       setNextAfter(null);
       setError(null);
       setLoading(false);
-      return;
+      loadedThroughRef.current = null;
+      return false;
     }
 
     const id = ++refetchRequestId.current;
@@ -147,16 +149,28 @@ export function useConversationTimeline(
       let cursor: number | null = null;
       let run: AiActiveRunRef | null = null;
       const speeds = new Map<number, number>();
+      const loadedThrough =
+        loadedThroughRef.current?.conversationId === conversationId
+          ? loadedThroughRef.current.seq
+          : 0;
 
-      for (let page = 0; page < maxPages; page += 1) {
+      // Re-reading already loaded history must not consume the budget for new pages.
+      let newPages = 0;
+      while (newPages < maxPages) {
+        if (after >= loadedThrough) newPages += 1;
         const result = await getConversationTimeline(conversationId, { after, limit });
-        if (id !== refetchRequestId.current) return;
+        if (id !== refetchRequestId.current) return false;
         collected = collected.concat(result.items);
         run = result.activeRun;
         cursor = result.nextAfter;
         collectRunSpeeds(speeds, result.runs);
         if (cursor === null) break;
         after = cursor;
+      }
+
+      // A bounded prefix cannot replace an existing snapshot or the live answer's durable twin.
+      if (cursor !== null && loadedThroughRef.current?.conversationId === conversationId) {
+        return false;
       }
 
       // A load-more call may have started while this request was in flight. The complete snapshot is
@@ -167,8 +181,13 @@ export function useConversationTimeline(
       setLoadedActiveRun({ conversationId, run });
       setNextAfter(cursor);
       setRunSpeeds(speeds);
+      loadedThroughRef.current = {
+        conversationId,
+        seq: collected[collected.length - 1]?.seq ?? 0,
+      };
+      return cursor === null;
     } catch (loadError) {
-      if (id !== refetchRequestId.current) return;
+      if (id !== refetchRequestId.current) return false;
       setError(describeThrownMessage(loadError));
       throw loadError;
     } finally {
@@ -200,6 +219,10 @@ export function useConversationTimeline(
       setItems((previous) => previous.concat(result.items));
       setLoadedActiveRun({ conversationId, run: result.activeRun });
       setNextAfter(result.nextAfter);
+      loadedThroughRef.current = {
+        conversationId,
+        seq: result.items[result.items.length - 1]?.seq ?? after,
+      };
       setRunSpeeds((previous) => {
         const merged = new Map(previous);
         collectRunSpeeds(merged, result.runs);
