@@ -35,6 +35,14 @@ function parseUserId(raw: string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+// Identifies which login owns an in-flight request: every login or logout bumps the
+// epoch, so a 401 that started under a superseded login can be recognized as stale.
+let sessionEpoch = 0;
+
+export function currentSessionEpoch(): number {
+  return sessionEpoch;
+}
+
 export function readAuthSession(): AuthSession {
   const admin = readLocalStorage(USER_ADMIN_STORAGE_KEY);
   return {
@@ -45,6 +53,7 @@ export function readAuthSession(): AuthSession {
 }
 
 export function persistAuthSession(user: string, userId: number | null, admin: boolean): void {
+  sessionEpoch += 1;
   const userWritten = writeLocalStorage(USER_STORAGE_KEY, user);
   const userIdWritten =
     userId != null
@@ -59,6 +68,7 @@ export function persistAuthSession(user: string, userId: number | null, admin: b
 }
 
 export function clearAuthSession(): void {
+  sessionEpoch += 1;
   removeLocalStorage('token');
   removeLocalStorage(USER_STORAGE_KEY);
   removeLocalStorage(USER_ID_STORAGE_KEY);

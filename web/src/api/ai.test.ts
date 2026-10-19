@@ -18,6 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
+import { persistAuthSession } from '../stores/authStorage';
 import {
   AiStreamError,
   attachRunStream,
@@ -563,6 +564,26 @@ describe('AI API', () => {
 
       expect(localStorage.getItem('rocketmq-studio-user')).toBeNull();
       expect(localStorage.getItem('rocketmq-studio-user-admin')).toBeNull();
+    });
+
+    it('preserves a newer login when a stale stream request returns 401', async () => {
+      localStorage.setItem('rocketmq-studio-user', 'old-admin');
+      localStorage.setItem('rocketmq-studio-user-admin', 'true');
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockImplementation(async () =>
+            jsonResponse({ code: 401, message: 'Unauthorized', data: null }, 401, 'Unauthorized'),
+          ),
+      );
+
+      const pending = openRunStream(7, body, { onEvent: vi.fn() });
+      persistAuthSession('new-admin', 2, true);
+
+      await expect(pending).rejects.toMatchObject({ status: 401 });
+      expect(localStorage.getItem('rocketmq-studio-user')).toBe('new-admin');
+      expect(localStorage.getItem('rocketmq-studio-user-admin')).toBe('true');
     });
 
     it('timesOutWhenNoByteArrivesForTwiceTheServerHeartbeatTest', async () => {
