@@ -125,6 +125,8 @@ calls back into Studio's own MCP endpoint. The same signed, instance-scoped, ris
 therefore serves the hosted agent, a developer typing `rmqctl topic list`, and any external agent
 pointed at the output of `rmqctl mcp config`. See
 [docs/ai-agent-architecture.md](docs/ai-agent-architecture.md) for the design and its trade-offs.
+For source builds, access contexts, read-only commands, and external MCP clients, see the
+[standalone rmqctl guide](rmqctl/README.md).
 
 Standalone CLI commands support `--output table`, `json`, and `yaml`. Table cells
 show ASCII control characters as visible escapes (`\t`, `\n`, `\r`, or `\xNN`)
