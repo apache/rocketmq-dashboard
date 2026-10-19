@@ -130,6 +130,23 @@ const NotificationDeliveriesPage = () => {
           failed: failed ? t('deliveries.bulkRetryFailures', { count: failed }) : '',
         }),
       );
+      // Only successful IDs were queued. Keep both copies in step because a FAILED-filtered
+      // reload removes these rows and the open dialog then falls back to its selected snapshot.
+      const succeededIds = new Set(result.succeededIds);
+      if (succeededIds.size > 0) {
+        setItems((rows) =>
+          rows.map((row) =>
+            succeededIds.has(row.id)
+              ? { ...row, status: 'PENDING', attemptCount: 0, lastError: null }
+              : row,
+          ),
+        );
+        setSelectedDelivery((current) =>
+          current && succeededIds.has(current.id)
+            ? { ...current, status: 'PENDING', attemptCount: 0, lastError: null }
+            : current,
+        );
+      }
       refresh();
     } catch {
       message.error(t('deliveries.bulkRetryFailed'));
