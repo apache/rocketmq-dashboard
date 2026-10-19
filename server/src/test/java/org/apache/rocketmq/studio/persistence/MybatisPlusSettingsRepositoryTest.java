@@ -182,9 +182,9 @@ class MybatisPlusSettingsRepositoryTest {
         @SuppressWarnings("rawtypes")
         ArgumentCaptor<QueryWrapper> queryCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
         verify(dataSourceMapper).selectPage(any(Page.class), queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getSqlSegment()).contains("LOWER(json) LIKE");
         assertThat(queryCaptor.getValue().getParamNameValuePairs().values())
                 .contains("%prod\\_\\%%", "prom\\_\\%");
-        assertThat(queryCaptor.getValue().getSqlSegment()).contains("LOWER(json) LIKE");
     }
 
     @Test
