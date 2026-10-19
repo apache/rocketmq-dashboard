@@ -476,6 +476,11 @@ export async function listAlertSilencesPage(
 
 export async function createAlertSilence(data: CreateAlertSilence): Promise<AlertSilence> {
   if (!isMockMode()) return opsApi.createAlertSilence(data);
+  // Match AlertSilenceService.create: the end must be strictly after the start, and a
+  // rejected request must not mutate the Mock inventory.
+  if (!(new Date(data.endsAt).getTime() > new Date(data.startsAt).getTime())) {
+    throw new Error('Silence end time must be after start time');
+  }
   const silence = { ...data, id: Date.now(), createdBy: 'admin' } as AlertSilence;
   alertSilencesState = [silence, ...alertSilencesState];
   return silence;
