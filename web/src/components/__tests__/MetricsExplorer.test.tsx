@@ -15,8 +15,9 @@
  * limitations under the License.
  */
 
+import useAuthStore from '../../stores/authStore';
 import { App, ConfigProvider } from 'antd';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -32,6 +33,7 @@ import { LangProvider, useLang } from '../../i18n/LangContext';
 import { downloadCsv } from '../../utils/download';
 import {
   METRICS_QUERY_HISTORY_STORAGE_KEY,
+  metricsQueryHistoryStorageKey,
   type MetricsQueryHistoryEntry,
 } from '../../utils/metricsExplorerDiagnostics';
 import MetricsExplorer from '../MetricsExplorer';
@@ -172,6 +174,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  useAuthStore.getState().logout();
   vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
   localStorage.clear();
   vi.mocked(listDataSources).mockResolvedValue([]);
@@ -181,6 +184,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
+  useAuthStore.getState().logout();
   vi.restoreAllMocks();
   vi.clearAllMocks();
 });
@@ -263,6 +268,77 @@ describe('MetricsExplorer', () => {
       } finally {
         vi.useRealTimers();
       }
+    },
+  );
+
+  it('shows only the current account history and restores it on return Test', async () => {
+    const user = userEvent.setup();
+    const aliceKey = metricsQueryHistoryStorageKey('alice', 101);
+    const bobKey = metricsQueryHistoryStorageKey('bob', 202);
+    localStorage.setItem(
+      aliceKey,
+      JSON.stringify([createHistoryEntry({ metricName: 'Alice only query' })]),
+    );
+    localStorage.setItem(
+      bobKey,
+      JSON.stringify([createHistoryEntry({ metricName: 'Bob only query' })]),
+    );
+    useAuthStore.getState().login('alice', 101, false);
+    renderWithProviders(<MetricsExplorer />);
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    await user.click(screen.getByRole('button', { name: '查询历史' }));
+    expect(await screen.findByText('Alice only query')).toBeInTheDocument();
+    expect(screen.queryByText('Bob only query')).not.toBeInTheDocument();
+
+    await act(async () => useAuthStore.getState().login('bob', 202, false));
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    expect(screen.queryByText('Alice only query')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '查询历史' }));
+    expect(await screen.findByText('Bob only query')).toBeInTheDocument();
+    expect(screen.queryByText('Alice only query')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '清空历史' }));
+    expect(localStorage.getItem(bobKey)).toBeNull();
+
+    await act(async () => useAuthStore.getState().login('alice', 101, false));
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    await user.click(screen.getByRole('button', { name: '查询历史' }));
+    expect(await screen.findByText('Alice only query')).toBeInTheDocument();
+  });
+
+  it.each(['profile', 'custom'] as const)(
+    'ignores a late %s result after an account switch Test',
+    async (kind) => {
+      const user = userEvent.setup();
+      const aliceKey = metricsQueryHistoryStorageKey('alice', 101);
+      const bobKey = metricsQueryHistoryStorageKey('bob', 202);
+      useAuthStore.getState().login('alice', 101, false);
+      renderWithProviders(<MetricsExplorer />);
+      await screen.findByRole('img', { name: 'Message In TPS time series' });
+      const previousAliceHistory = localStorage.getItem(aliceKey);
+      const pending = createDeferred<MetricData>();
+      vi.mocked(queryMetrics).mockReturnValueOnce(pending.promise);
+      if (kind === 'profile')
+        await user.click(screen.getByRole('button', { name: '刷新全部面板' }));
+      else {
+        await user.type(screen.getByLabelText('自定义查询'), 'alice_private_metric');
+        await user.click(screen.getByRole('button', { name: '查询' }));
+      }
+      await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(2));
+      await act(async () => useAuthStore.getState().login('bob', 202, false));
+      await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(3));
+      await screen.findByRole('img', { name: 'Message In TPS time series' });
+      expect(screen.getByLabelText('自定义查询')).toHaveValue('');
+      await user.click(screen.getByRole('button', { name: '查询历史' }));
+      await user.click(screen.getByRole('button', { name: '清空历史' }));
+      await act(async () => pending.resolve(metricData));
+      expect(localStorage.getItem(bobKey)).toBeNull();
+      expect(localStorage.getItem(aliceKey)).toBe(previousAliceHistory);
+      expect(screen.queryByText('alice_private_metric')).not.toBeInTheDocument();
+      expect(
+        (await screen.findByRole('dialog', { name: '指标查询历史' })).querySelectorAll(
+          '.ant-list-item',
+        ),
+      ).toHaveLength(0);
     },
   );
 

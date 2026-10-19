@@ -19,7 +19,19 @@ import type { MetricData, MetricMapping, MetricSeries } from '../api/metrics';
 import { readLocalStorage, removeLocalStorage, writeLocalStorage } from './browserStorage';
 import { buildCsv } from './download';
 
-export const METRICS_QUERY_HISTORY_STORAGE_KEY = 'rocketmq-studio-metrics-query-history';
+const METRICS_QUERY_HISTORY_STORAGE_PREFIX = 'rocketmq-studio-metrics-query-history:v2:';
+export const METRICS_QUERY_HISTORY_STORAGE_KEY = `${METRICS_QUERY_HISTORY_STORAGE_PREFIX}anonymous`;
+
+// The old global key has no verifiable owner and is deliberately not migrated.
+export const metricsQueryHistoryStorageKey = (
+  user: string | null,
+  userId: number | null,
+): string =>
+  user
+    ? `${METRICS_QUERY_HISTORY_STORAGE_PREFIX}${JSON.stringify(
+        userId === null ? ['name', user] : ['id', userId],
+      )}`
+    : METRICS_QUERY_HISTORY_STORAGE_KEY;
 export const METRICS_QUERY_HISTORY_LIMIT = 12;
 
 export type MetricSampleKind = 'scalar' | 'histogram';
@@ -432,8 +444,10 @@ const restoreHistoryEntry = (value: unknown): MetricsQueryHistoryEntry | null =>
   };
 };
 
-export const loadMetricsQueryHistory = (): MetricsQueryHistoryEntry[] => {
-  const raw = readLocalStorage(METRICS_QUERY_HISTORY_STORAGE_KEY);
+export const loadMetricsQueryHistory = (
+  storageKey = METRICS_QUERY_HISTORY_STORAGE_KEY,
+): MetricsQueryHistoryEntry[] => {
+  const raw = readLocalStorage(storageKey);
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
@@ -448,10 +462,13 @@ export const loadMetricsQueryHistory = (): MetricsQueryHistoryEntry[] => {
   }
 };
 
-export const saveMetricsQueryHistory = (entries: MetricsQueryHistoryEntry[]) =>
-  writeLocalStorage(METRICS_QUERY_HISTORY_STORAGE_KEY, JSON.stringify(entries));
+export const saveMetricsQueryHistory = (
+  entries: MetricsQueryHistoryEntry[],
+  storageKey = METRICS_QUERY_HISTORY_STORAGE_KEY,
+) => writeLocalStorage(storageKey, JSON.stringify(entries));
 
-export const clearMetricsQueryHistory = () => removeLocalStorage(METRICS_QUERY_HISTORY_STORAGE_KEY);
+export const clearMetricsQueryHistory = (storageKey = METRICS_QUERY_HISTORY_STORAGE_KEY) =>
+  removeLocalStorage(storageKey);
 
 export const createMetricsQueryHistoryEntry = ({
   profileId,
