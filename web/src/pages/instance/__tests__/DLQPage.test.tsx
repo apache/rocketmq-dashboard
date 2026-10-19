@@ -374,9 +374,14 @@ describe('DLQ page', () => {
     expect(within(row).getByRole('checkbox')).toBeDisabled();
   });
 
-  it('sorts DLQ rows with missing enqueue timestamps', async () => {
+  it('sorts DLQ rows with missing enqueue timestamps after stamped ones', async () => {
+    // An empty-string substitute ordered a stamp-less group before every real timestamp, so an
+    // ascending sort opened with the rows that carry no stamp at all; the reader hunting the
+    // oldest dead letters saw the unreadable queues first. The group without a stamp must close
+    // the list in both directions instead of occupying an extreme position.
+    const unstampedGroup: DLQGroup = { ...dlqGroup, groupName: 'cg-silent', lastEnqueueTime: null };
     vi.mocked(messageService.listDLQGroups).mockResolvedValue(
-      pageOf([dlqGroup, { ...secondDlqGroup, lastEnqueueTime: null }]),
+      pageOf([unstampedGroup, secondDlqGroup, dlqGroup]),
     );
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);
@@ -386,9 +391,28 @@ describe('DLQ page', () => {
     // column titles, so the sort trigger has to be looked up inside the visible header.
     const header = document.querySelector('thead');
     if (!header) throw new Error('DLQ table header not found');
-    await user.click(within(header as HTMLElement).getByText('最近入队时间'));
+    const sortTrigger = within(header as HTMLElement).getByText('最近入队时间');
+    const rowGroupNames = () =>
+      Array.from(document.querySelectorAll('tbody tr'))
+        .map((row) =>
+          within(row as HTMLElement).queryByText('cg-order')
+            ? 'cg-order'
+            : within(row as HTMLElement).queryByText('-cg-"payment"')
+              ? 'cg-payment'
+              : within(row as HTMLElement).queryByText('cg-silent')
+                ? 'cg-silent'
+                : null,
+        )
+        .filter((name): name is string => name !== null);
 
+    await user.click(sortTrigger);
+    // Ascending: the oldest stamped group (10:00) first, the unstamped group last.
+    expect(rowGroupNames()).toEqual(['cg-order', 'cg-payment', 'cg-silent']);
     expect(screen.getByText('-')).toBeInTheDocument();
+
+    await user.click(sortTrigger);
+    // Descending: the newest stamped group (11:00) first; the unstamped group stays last.
+    expect(rowGroupNames()).toEqual(['cg-payment', 'cg-order', 'cg-silent']);
   });
 
   it('renders the last enqueue time in the viewer timezone from the offset-less UTC wire format', async () => {
