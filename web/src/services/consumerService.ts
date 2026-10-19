@@ -311,6 +311,7 @@ export async function createConsumerGroup(data: Partial<ConsumerGroup>): Promise
       totalLag: 0,
       subscribedTopics: data.subscribedTopics ?? [],
       subscriptionDataType: data.subscriptionDataType ?? 'NORMAL',
+      deliveryOrderType: data.deliveryOrderType,
       retryMaxTimes: data.retryMaxTimes ?? 16,
       gmtCreate: now,
       gmtModified: now,

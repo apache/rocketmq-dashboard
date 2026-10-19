@@ -17,6 +17,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { mockConsumerGroups } from '../mock/consumers';
+import { parseCsvTable, validateConsumerGroupCsvImport } from '../utils/resourceCsvImport';
 import {
   createConsumerGroup,
   deleteConsumerGroup,
@@ -27,6 +28,7 @@ import {
   getConsumerProgress,
   getConsumerStack,
   getConsumerSubscriptions,
+  importConsumerGroups,
   listAllConsumerGroups,
   listConsumerGroupPage,
   listConsumerGroups,
@@ -453,6 +455,30 @@ describe('consumer service mock data', () => {
     expect(detail).not.toBe(created);
   });
 
+  it.each(['PARTITON_ORDER', 'MESSAGES_ORDER'])(
+    'preservesMockFifoDeliveryOrderOnCreateAndReadTest (%s)',
+    async (deliveryOrderType) => {
+      const name = `cg-fifo-${deliveryOrderType}`;
+      const instanceId = 'fifo-create-instance';
+      try {
+        const created = await createConsumerGroup({
+          name,
+          instanceId,
+          subscriptionDataType: 'FIFO',
+          deliveryOrderType,
+        });
+
+        expect(created.deliveryOrderType).toBe(deliveryOrderType);
+        expect(await getConsumerGroup(name, instanceId)).toMatchObject({
+          subscriptionDataType: 'FIFO',
+          deliveryOrderType,
+        });
+      } finally {
+        await deleteConsumerGroup(name, instanceId);
+      }
+    },
+  );
+
   it('isolates mock consumer groups with the same name by instance', async () => {
     const name = 'cg-shared-instance-scope-test';
     await createConsumerGroup({ name, instanceId: 'instance-a', namespace: 'namespace-a' });
@@ -527,6 +553,41 @@ describe('consumer service mock data', () => {
 });
 
 describe('consumer group CSV export', () => {
+  it('preservesMockFifoDeliveryOrderThroughCsvImportAndExportTest', async () => {
+    const name = 'cg-inventory-sync';
+    const instanceId = 'instance-direct-1';
+    const sourceCsv = await exportConsumerGroups({
+      instanceId: 'instance-proxy-1',
+      names: [name],
+    });
+    const validation = validateConsumerGroupCsvImport(parseCsvTable(sourceCsv), instanceId);
+    expect(validation.errors).toEqual([]);
+    expect(validation.rows).toHaveLength(1);
+    expect(validation.rows[0]).toMatchObject({
+      status: 'pending',
+      payload: { subscriptionDataType: 'FIFO', deliveryOrderType: 'PARTITON_ORDER' },
+    });
+
+    try {
+      const result = await importConsumerGroups(
+        instanceId,
+        validation.rows.map((row) => row.payload),
+      );
+      expect(result.imported).toBe(1);
+      expect(result.failures).toEqual([]);
+
+      const exported = parseCsvTable(await exportConsumerGroups({ instanceId, names: [name] }));
+      expect(exported).toHaveLength(1);
+      expect(exported[0].values).toMatchObject({
+        Name: name,
+        'Subscription Data Type': 'FIFO',
+        'Delivery Order Type': 'PARTITON_ORDER',
+      });
+    } finally {
+      await deleteConsumerGroup(name, instanceId);
+    }
+  });
+
   it('exports an unavailable total lag as unknown while preserving measured values', async () => {
     const unavailable = {
       ...mockConsumerGroups[0],
