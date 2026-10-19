@@ -162,6 +162,7 @@ const AiPage = () => {
       <ChatThread
         bubbles={timeline.bubbles}
         liveBlocks={run.blocksRef.current}
+        liveRunId={run.runId}
         streaming={run.isStreaming}
         pendingUserText={run.pendingUserMessage}
         toolCatalog={tools}

@@ -20,7 +20,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { LangProvider } from '../../../../i18n/LangContext';
 import type { Bubble, RenderBlock } from '../../render/blocks';
-import { appendText } from '../../render/blocks';
+import { appendText, runningToolBlock, withToolResult } from '../../render/blocks';
 import ChatThread from '../ChatThread';
 
 /**
@@ -81,6 +81,7 @@ function renderThread(props: {
   resetKey?: number;
   pendingUserText?: string | null;
   liveBlocks?: RenderBlock[];
+  liveRunId?: number | null;
 }) {
   return render(
     <LangProvider>
@@ -90,6 +91,7 @@ function renderThread(props: {
         resetKey={props.resetKey}
         pendingUserText={props.pendingUserText}
         liveBlocks={props.liveBlocks}
+        liveRunId={props.liveRunId}
       />
     </LangProvider>,
   );
@@ -99,6 +101,95 @@ describe('ChatThread', () => {
   beforeEach(() => {
     scrollIntoView.mockClear();
     localStorage.clear();
+  });
+
+  it('keepsReusedToolIdsInDifferentRunsSeparateTest', () => {
+    const completed = (output: string) => ({
+      tcId: 'reused-id',
+      tool: 'rmq.topic.info',
+      output,
+      outputBytes: output.length,
+      truncated: false,
+      durationMs: 100,
+      success: true,
+    });
+    const oldRun: Bubble = {
+      role: 'assistant',
+      runId: 40,
+      runStatus: 'COMPLETED',
+      blocks: withToolResult(
+        [runningToolBlock('reused-id', 'rmq.topic.info', { topic: 'old-topic' })],
+        completed('old result'),
+      ),
+    };
+    const activeRun: Bubble = {
+      role: 'assistant',
+      runId: 41,
+      blocks: [runningToolBlock('reused-id', 'rmq.topic.info', { topic: 'current-topic' })],
+    };
+    renderThread({
+      bubbles: [oldRun, userBubble('inspect current topic'), activeRun],
+      liveRunId: 41,
+      liveBlocks: withToolResult([], completed('current result')),
+      streaming: true,
+    });
+    expect(screen.getAllByTestId('ai-tool-block')).toHaveLength(2);
+    expect(screen.getAllByTestId('tool-input').map((input) => input.textContent)).toEqual([
+      JSON.stringify({ topic: 'old-topic' }, null, 2),
+      JSON.stringify({ topic: 'current-topic' }, null, 2),
+    ]);
+    expect(screen.getAllByTestId('tool-result').map((output) => output.textContent)).toEqual([
+      'old result',
+      'current result',
+    ]);
+    expect(screen.queryByTestId('ai-tool-progress')).not.toBeInTheDocument();
+  });
+
+  it.each([42, null])('doesNotJoinADifferentOrUnidentifiedLiveRunTest (%s)', (liveRunId) => {
+    renderThread({
+      bubbles: [{ ...assistantBubble('persisted prefix'), runId: 41 }],
+      liveRunId,
+      liveBlocks: appendText([], 'separate answer'),
+      streaming: true,
+    });
+    expect(screen.getAllByTestId('ai-text-block').map((block) => block.textContent)).toEqual([
+      'persisted prefix',
+      'separate answer',
+    ]);
+  });
+
+  it('doesNotAppendLiveContentToATerminalPersistedAnswerTest', () => {
+    renderThread({
+      bubbles: [{ ...assistantBubble('completed answer'), runId: 41, runStatus: 'COMPLETED' }],
+      liveRunId: 41,
+      liveBlocks: appendText([], 'live content'),
+      streaming: true,
+    });
+    expect(screen.getAllByTestId('ai-text-block').map((block) => block.textContent)).toEqual([
+      'completed answer',
+      'live content',
+    ]);
+  });
+
+  it('doesNotCountAnAttachedContinuationAsANewUnreadAnswerTest', () => {
+    const bubbles = [{ ...assistantBubble('prefix'), runId: 41 }];
+    const { rerender } = renderThread({ bubbles });
+    placeReader(600);
+    fireEvent.scroll(screen.getByTestId('ai-thread-scroll'));
+    scrollIntoView.mockClear();
+    rerender(
+      <LangProvider>
+        <ChatThread
+          bubbles={bubbles}
+          liveRunId={41}
+          liveBlocks={appendText([], ' continuation')}
+          streaming
+        />
+      </LangProvider>,
+    );
+    expect(screen.getByTestId('ai-text-block')).toHaveTextContent('prefix continuation');
+    expect(screen.queryByTestId('ai-thread-unread')).not.toBeInTheDocument();
+    expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
   it('followsTheTranscriptWhileTheReaderIsAtTheBottomTest', () => {

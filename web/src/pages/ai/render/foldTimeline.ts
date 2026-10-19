@@ -124,7 +124,13 @@ export function groupIntoBubbles(
     }
 
     if (!open) {
-      open = { role: 'assistant', blocks: [], turn: item.turn, createdAt: item.createdAt };
+      open = {
+        role: 'assistant',
+        blocks: [],
+        runId: item.runId,
+        turn: item.turn,
+        createdAt: item.createdAt,
+      };
       const speed = runSpeeds?.get(item.runId);
       if (speed !== undefined) open.tokensPerSecond = speed;
       bubbles.push(open);
