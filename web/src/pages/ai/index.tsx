@@ -42,6 +42,7 @@ import { useDraftHandoff } from './hooks/useDraftHandoff';
 import { useLlmRuntime } from './hooks/useLlmRuntime';
 import ChatThread from './components/ChatThread';
 import Composer from './components/Composer';
+import ConversationTarget from './components/ConversationTarget';
 import ConversationListModal from './components/ConversationListModal';
 import PromptTemplateModal from './components/PromptTemplateModal';
 import RuntimeNotices from './components/RuntimeNotices';
@@ -70,6 +71,7 @@ const AiPage = () => {
   const [inputValue, setInputValue, captureDraftRestore] = useComposerDraft();
   const [selectedMode, setSelectedMode] = useState<ChatMode>('chat');
   const [enhance, setEnhance] = useState(false);
+  const [selectedInstanceId, setSelectedInstanceId] = useState('');
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [tools, setTools] = useState<McpTool[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -101,6 +103,7 @@ const AiPage = () => {
       if (draft.engine) draftEngineRef.current = draft.engine;
       if (draft.engine) setEngine(draft.engine);
       if (draft.model) llm.selectModel(draft.model);
+      setSelectedInstanceId(draft.instanceId ?? '');
     },
     buildDraftRequest: (draft) => draftToMessageRequest(draft, engine),
     startRun,
@@ -118,7 +121,7 @@ const AiPage = () => {
       }
       const restoreDraft = captureDraftRestore(text);
       void startRun({
-        createBody: { mode: selectedMode },
+        createBody: { mode: selectedMode, instanceId: selectedInstanceId || null },
         request: buildMessageRequest(text, llm.selectedModel, engine, selectedMode, enhance),
       }).then((target) => {
         if (target === null) restoreDraft();
@@ -131,6 +134,7 @@ const AiPage = () => {
       llm.llmReady,
       llm.selectedModel,
       selectedMode,
+      selectedInstanceId,
       setInputValue,
       startRun,
       t,
@@ -204,6 +208,12 @@ const AiPage = () => {
               />
             )}
             <RuntimeNotices mock={useMock} rmqctlAvailable={rmqctlAvailable} runError={run.error} />
+            <ConversationTarget
+              conversationId={conversationId}
+              value={selectedInstanceId}
+              onChange={setSelectedInstanceId}
+              disabled={useMock}
+            />
             <Composer
               value={inputValue}
               onChange={setInputValue}

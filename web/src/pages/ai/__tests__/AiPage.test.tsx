@@ -25,6 +25,7 @@ import { attachRunStream, executeTool, listTools, openRunStream } from '../../..
 import {
   createConversation,
   getAgentCapabilities,
+  getConversation,
   getConversationTimeline,
   listConversations,
   stopRun,
@@ -72,6 +73,7 @@ vi.mock('../../../api/ai', () => ({
 vi.mock('../../../api/aiConversations', () => ({
   createConversation: vi.fn(),
   getAgentCapabilities: vi.fn(),
+  getConversation: vi.fn(),
   getConversationTimeline: vi.fn(),
   listConversations: vi.fn(),
   stopRun: vi.fn(),
@@ -241,6 +243,7 @@ describe('AiPage', () => {
     });
     vi.mocked(getConversationTimeline).mockResolvedValue(timelinePage([]));
     vi.mocked(createConversation).mockResolvedValue(CONVERSATION_7);
+    vi.mocked(getConversation).mockResolvedValue({ ...CONVERSATION_7, activeRun: null });
     vi.mocked(listConversations).mockResolvedValue({ items: [], total: 0, page: 1, size: 20 });
     vi.mocked(stopRun).mockResolvedValue({
       id: 41,
@@ -497,6 +500,19 @@ describe('AiPage', () => {
 
   it('handsOffTheHomePageDraftIntoANewConversationAndAutoSendsItExactlyOnceTest', async () => {
     vi.mocked(openRunStream).mockResolvedValue(undefined);
+    vi.mocked(listInstances).mockResolvedValue([
+      {
+        id: 1,
+        name: 'rmq-instance-1',
+        endpoint: 'ns:9876',
+        type: 'DIRECT',
+        remark: null,
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
 
     renderPage({
       prompt: '检查集群状态',
@@ -716,7 +732,7 @@ describe('AiPage', () => {
 
     await user.click(screen.getByRole('button', { name: '工具' }));
     const dialog = await screen.findByRole('dialog', { name: 'AI 工具' });
-    await waitFor(() => expect(listInstances).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(listInstances).toHaveBeenCalledTimes(2));
     expect(listClusters).not.toHaveBeenCalled();
     await waitFor(() => expect(listTools).toHaveBeenCalledWith('studio-instance-a'));
     expect(within(dialog).getByText('rmq.instance.capabilities')).toBeInTheDocument();

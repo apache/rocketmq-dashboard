@@ -2016,6 +2016,20 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Failed to load instances; showing global tools',
   },
   'ai.mode.title': { zh: '对话模式', en: 'Chat mode' },
+  'ai.target.label': { zh: '对话目标', en: 'Conversation target' },
+  'ai.target.plainChat': {
+    zh: '纯聊天（不使用 RocketMQ 工具）',
+    en: 'Plain chat (no RocketMQ tools)',
+  },
+  'ai.target.unknown': { zh: '目标未知', en: 'Target unknown' },
+  'ai.target.loadFailed': {
+    zh: '对话目标加载失败，请重试',
+    en: 'Failed to load conversation targets. Retry to view them.',
+  },
+  'ai.target.unavailable': {
+    zh: '所选实例已不可用，请重新选择对话目标',
+    en: 'The selected instance is no longer available. Select a conversation target again.',
+  },
   'ai.mode.chat': { zh: '对话', en: 'Chat' },
   'ai.mode.diagnose': { zh: '诊断', en: 'Diagnose' },
   'ai.mode.manage': { zh: '运维', en: 'Manage' },
