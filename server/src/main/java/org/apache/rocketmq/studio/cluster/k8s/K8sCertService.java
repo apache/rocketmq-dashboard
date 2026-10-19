@@ -25,6 +25,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.security.cert.CertificateFactory;
 import java.security.cert.CertificateParsingException;
 import java.security.cert.X509Certificate;
@@ -239,14 +240,14 @@ public class K8sCertService {
     }
 
     private X509Certificate parseCertificate(String certPem) {
-        String base64 = certPem
-                .replace("-----BEGIN CERTIFICATE-----", "")
-                .replace("-----END CERTIFICATE-----", "")
-                .replaceAll("\\s", "");
         try {
+            // Let the X.509 reader consume the first PEM block. Joining every block's Base64
+            // body fails when the leaf's padding appears before an intermediate certificate.
+            byte[] encoded = certPem.contains("-----BEGIN CERTIFICATE-----")
+                    ? certPem.getBytes(StandardCharsets.UTF_8)
+                    : Base64.getDecoder().decode(certPem.replaceAll("\\s", ""));
             CertificateFactory factory = CertificateFactory.getInstance("X.509");
-            return (X509Certificate) factory.generateCertificate(
-                    new ByteArrayInputStream(Base64.getDecoder().decode(base64)));
+            return (X509Certificate) factory.generateCertificate(new ByteArrayInputStream(encoded));
         } catch (Exception exception) {
             throw new BusinessException(400, "Invalid certificate content, expected a PEM encoded X.509 certificate");
         }
