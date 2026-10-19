@@ -9,6 +9,7 @@ import type {
   AclUserPage,
   AclClusterConfig,
   PlainAccessConfig,
+  PushAclToBrokerResult,
 } from '../api/acl';
 import { aclRules as mockRules, aclUsers as mockUsers } from '../mock/acl';
 
@@ -165,7 +166,8 @@ export async function updateAclRule(
 export async function deleteAclRule(id: AclEntityId, instanceId?: string): Promise<void> {
   if (isMockMode()) {
     const idx = aclRulesState.findIndex((rule) => rule.id === id);
-    if (idx >= 0) aclRulesState.splice(idx, 1);
+    if (idx < 0) throw new Error(`ACL rule not found: ${id}`);
+    aclRulesState.splice(idx, 1);
     return;
   }
   return aclApi.deleteAclRule(id, instanceId);
@@ -210,7 +212,8 @@ export async function updateAclUser(
 export async function deleteAclUser(id: AclEntityId, instanceId?: string): Promise<void> {
   if (isMockMode()) {
     const idx = aclUsersState.findIndex((user) => user.id === id);
-    if (idx >= 0) aclUsersState.splice(idx, 1);
+    if (idx < 0) throw new Error(`ACL user not found: ${id}`);
+    aclUsersState.splice(idx, 1);
     return;
   }
   return aclApi.deleteAclUser(id, instanceId);
@@ -276,4 +279,25 @@ export async function createAndUpdatePlainAccessConfig(
     return { ...saved };
   }
   return aclApi.createAndUpdatePlainAccessConfig(data);
+}
+
+export async function pushAclToBroker(instanceId: string): Promise<PushAclToBrokerResult> {
+  if (isMockMode()) {
+    return {
+      instanceId,
+      brokers: ['broker-a:10911'],
+      pushed: 1,
+      failed: 0,
+      accounts: [
+        {
+          username: 'order-producer',
+          subject: 'User:order-producer',
+          policyCount: 1,
+          skipped: [],
+          brokers: [{ broker: 'broker-a:10911', success: true, error: null }],
+        },
+      ],
+    };
+  }
+  return aclApi.pushAclToBroker(instanceId);
 }

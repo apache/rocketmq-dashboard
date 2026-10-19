@@ -38,14 +38,18 @@ public interface RmqAlertNotificationOutboxMapper extends BaseMapper<RmqAlertNot
             @Param("staleBefore") LocalDateTime staleBefore, @Param("limit") int limit);
 
     @Update("UPDATE rmq_alert_notification_outbox SET status = 'SENDING', sending_started_at = #{claimedAt}, "
-            + "claim_token = #{claimToken} "
-            + "WHERE id = #{id} AND ((status IN ('PENDING', 'RETRY_WAIT') AND next_attempt_at <= #{now}) "
+            + "claim_token = #{claimToken}, gmt_modified = #{claimedAt} "
+            + "WHERE id = #{id} AND COALESCE(attempt_count, 0) = #{expectedAttemptCount} "
+            + "AND ((status IN ('PENDING', 'RETRY_WAIT') AND next_attempt_at <= #{now}) "
             + "OR (status = 'SENDING' AND (sending_started_at IS NULL OR sending_started_at <= #{staleBefore})))")
     int claimForDispatch(@Param("id") Long id, @Param("now") LocalDateTime now,
             @Param("staleBefore") LocalDateTime staleBefore, @Param("claimedAt") LocalDateTime claimedAt,
-            @Param("claimToken") String claimToken);
+            @Param("claimToken") String claimToken, @Param("expectedAttemptCount") int expectedAttemptCount);
 
-    @Update("UPDATE rmq_alert_notification_outbox SET sending_started_at = #{renewedAt} "
+    // gmt_modified is set explicitly so the caller's clock wins over the column's
+    // ON UPDATE CURRENT_TIMESTAMP default (the database session's clock).
+    @Update("UPDATE rmq_alert_notification_outbox SET sending_started_at = #{renewedAt}, "
+            + "gmt_modified = #{renewedAt} "
             + "WHERE id = #{id} AND status = 'SENDING' AND claim_token = #{claimToken}")
     int renewClaim(@Param("id") Long id, @Param("claimToken") String claimToken,
             @Param("renewedAt") LocalDateTime renewedAt);
@@ -61,10 +65,16 @@ public interface RmqAlertNotificationOutboxMapper extends BaseMapper<RmqAlertNot
             + "<if test='channel != null and channel != \"\"'> AND o.channel = #{channel}</if>"
             + "<if test='status != null and status != \"\"'> AND o.status = #{status}</if>"
             + "<if test='instanceId != null and instanceId != \"\"'> AND a.instance_id = #{instanceId}</if>"
+            + "<if test='search != null'> AND (LOCATE(LOWER(#{search}), LOWER(a.title)) > 0 "
+            + "OR LOCATE(LOWER(#{search}), LOWER(o.last_error)) > 0)</if>"
+            + "<if test='from != null'> AND o.gmt_create &gt;= #{from}</if>"
+            + "<if test='to != null'> AND o.gmt_create &lt;= #{to}</if>"
             + "</where> ORDER BY o.id DESC LIMIT #{limit} OFFSET #{offset}"
             + "</script>")
     List<NotificationDeliveryPageVO> findPage(@Param("channel") String channel, @Param("status") String status,
-            @Param("instanceId") String instanceId, @Param("limit") int limit, @Param("offset") long offset);
+            @Param("instanceId") String instanceId, @Param("search") String search,
+            @Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
+            @Param("limit") int limit, @Param("offset") long offset);
 
     @Select("<script>"
             + "SELECT COUNT(*) FROM rmq_alert_notification_outbox o "
@@ -73,8 +83,13 @@ public interface RmqAlertNotificationOutboxMapper extends BaseMapper<RmqAlertNot
             + "<if test='channel != null and channel != \"\"'> AND o.channel = #{channel}</if>"
             + "<if test='status != null and status != \"\"'> AND o.status = #{status}</if>"
             + "<if test='instanceId != null and instanceId != \"\"'> AND a.instance_id = #{instanceId}</if>"
+            + "<if test='search != null'> AND (LOCATE(LOWER(#{search}), LOWER(a.title)) > 0 "
+            + "OR LOCATE(LOWER(#{search}), LOWER(o.last_error)) > 0)</if>"
+            + "<if test='from != null'> AND o.gmt_create &gt;= #{from}</if>"
+            + "<if test='to != null'> AND o.gmt_create &lt;= #{to}</if>"
             + "</where>"
             + "</script>")
     long countPage(@Param("channel") String channel, @Param("status") String status,
-            @Param("instanceId") String instanceId);
+            @Param("instanceId") String instanceId, @Param("search") String search,
+            @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 }

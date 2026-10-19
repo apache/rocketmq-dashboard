@@ -16,10 +16,12 @@
  */
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { message } from 'antd';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { logout } from '../api/auth';
 import { LangProvider } from '../i18n/LangContext';
+import translations from '../i18n/translations';
 import useAuthStore from '../stores/authStore';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import MainLayout from './MainLayout';
@@ -45,15 +47,21 @@ vi.mock('antd', async () => {
     Layout,
     Menu: ({
       items,
+      selectedKeys,
     }: {
       items?: Array<{ key: string; label: React.ReactNode; children?: unknown[] }>;
+      selectedKeys?: string[];
     }) => {
       const renderItems = (entries: typeof items): React.ReactNode[] =>
         (entries ?? []).flatMap((item) => [
           React.createElement('span', { key: `${item.key}-label` }, item.label),
           ...renderItems(item.children as typeof items),
         ]);
-      return React.createElement('nav', null, renderItems(items));
+      return React.createElement(
+        'nav',
+        { 'data-testid': 'layout-menu', 'data-selected': JSON.stringify(selectedKeys ?? []) },
+        renderItems(items),
+      );
     },
     Breadcrumb: ({ items }: { items: Array<{ key: string; title: React.ReactNode }> }) =>
       React.createElement(
@@ -61,7 +69,7 @@ vi.mock('antd', async () => {
         null,
         React.createElement(
           'nav',
-          null,
+          { 'data-testid': 'layout-breadcrumb' },
           items.map((item) => React.createElement(React.Fragment, { key: item.key }, item.title)),
         ),
       ),
@@ -133,6 +141,33 @@ describe('MainLayout authentication navigation', () => {
     expect(screen.queryByText('protected home')).not.toBeInTheDocument();
     expect(logout).toHaveBeenCalledOnce();
     expect(localStorage.getItem('token')).toBeNull();
+  });
+
+  it('reports a failed server logout in the language the console is in', async () => {
+    localStorage.setItem('rocketmq-studio-language', 'en');
+    vi.mocked(message.warning).mockClear();
+    vi.mocked(logout).mockRejectedValueOnce(new Error('server gone'));
+    render(
+      <LangProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={['/instance/topic']}>
+            <Routes>
+              <Route path="/login" element={<div>login page</div>} />
+              <Route path="/" element={<MainLayout />}>
+                <Route path="instance/topic" element={<div>protected topic</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </LangProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: translations['user.logout'].en }));
+    await waitFor(() => expect(screen.getByText('login page')).toBeInTheDocument());
+
+    // The toast has to come out of the dictionary in the active language: it used to be a
+    // literal, so an English console reported the failed server logout in Chinese.
+    expect(vi.mocked(message.warning)).toHaveBeenCalledWith(translations['user.logoutFailed'].en);
   });
 
   it('exposes global layout commands as localized semantic buttons', () => {
@@ -224,5 +259,39 @@ describe('MainLayout authentication navigation', () => {
     );
     expect(screen.getByText('ACL 管理')).toBeInTheDocument();
     expect(screen.getByText('死信队列')).toBeInTheDocument();
+  });
+
+  it('keeps the section highlighted and named on a trailing-slash instance route', async () => {
+    render(
+      <LangProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={['/instance/apache-1/topic/']}>
+            <Routes>
+              <Route path="/" element={<MainLayout />}>
+                <Route path="instance/:instanceId/topic" element={<div>trailing topic</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </LangProvider>,
+    );
+
+    expect(await screen.findByText('trailing topic')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(instanceServiceMocks.getInstanceCapabilities).toHaveBeenCalledWith('apache-1'),
+    );
+
+    // useInstanceFilter 已接受尾斜杠路由，布局侧的实例维度判定必须同一口径：撤回 MainLayout
+    // 正则末尾的 \/*$ 后，selectedMenuKey 会退回带尾斜杠的完整 pathname、面包屑末级会退回原始
+    // 路径，下面三条断言同时变红。
+    await waitFor(() => expect(screen.getByText('Topic 管理')).toBeInTheDocument());
+    expect(screen.getByTestId('layout-menu')).toHaveAttribute(
+      'data-selected',
+      JSON.stringify(['/instance/topic']),
+    );
+    // 面包屑末级是裸文本节点（antd Breadcrumb 的 mock 不包 span），只能按 textContent 断言。
+    const breadcrumb = screen.getByTestId('layout-breadcrumb');
+    expect(breadcrumb.textContent).toContain('Topic 管理');
+    expect(breadcrumb.textContent).not.toContain('/instance/apache-1/topic');
   });
 });

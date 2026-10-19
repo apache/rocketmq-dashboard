@@ -46,6 +46,8 @@ import com.tencentcloudapi.trocket.v20230308.models.SendMessageRequest;
 import com.tencentcloudapi.trocket.v20230308.models.SendMessageResponse;
 import com.tencentcloudapi.trocket.v20230308.models.SubscriptionData;
 import com.tencentcloudapi.trocket.v20230308.models.TopicItem;
+import com.tencentcloudapi.trocket.v20230308.models.VerifyMessageConsumptionRequest;
+import com.tencentcloudapi.trocket.v20230308.models.VerifyMessageConsumptionResponse;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
@@ -55,12 +57,16 @@ import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.Pagination;
+import org.apache.rocketmq.studio.common.util.SubscriptionConsistency;
+import org.apache.rocketmq.studio.common.util.SubscriptionFilterModes;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
@@ -93,6 +99,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Tencent Cloud TDMQ RocketMQ 5.x topic operations backed by Trocket v20230308 OpenAPI.
@@ -149,6 +156,7 @@ public class TencentInstanceProvider implements InstanceProvider {
                 InstanceCapability.MESSAGE_QUERY,
                 InstanceCapability.MESSAGE_TRACE,
                 InstanceCapability.MESSAGE_SEND,
+                InstanceCapability.DIRECT_MESSAGE_CONSUME,
                 InstanceCapability.ACL_MANAGEMENT);
     }
 
@@ -285,8 +293,7 @@ public class TencentInstanceProvider implements InstanceProvider {
     }
 
     private static void requireCompletePage(String resource, long offset, int returned, Long totalCount) {
-        if (totalCount != null && totalCount >= 0L
-                && returned < PAGE_SIZE && offset + returned < totalCount) {
+        if (Pagination.isIncompletePage(offset, returned, PAGE_SIZE, totalCount)) {
             throw new BusinessException(502,
                     "Tencent Cloud returned an incomplete " + resource + " page");
         }
@@ -534,8 +541,11 @@ public class TencentInstanceProvider implements InstanceProvider {
                     .topic(subscription.getTopic())
                     .broker("topic:" + subscription.getTopic())
                     .queueId(0)
-                    .brokerOffset(0L)
-                    .consumerOffset(0L)
+                    // The Tencent API reports the lag per topic, so this row carries no queue
+                    // offsets; report the unknown sentinel instead of a zero that the console
+                    // would render as a real measurement next to the real lag.
+                    .brokerOffset(QueueProgressVO.UNKNOWN_OFFSET)
+                    .consumerOffset(QueueProgressVO.UNKNOWN_OFFSET)
                     .diffTotal(subscription.getConsumerLag() == null ? 0L : subscription.getConsumerLag())
                     .build());
         }
@@ -632,6 +642,10 @@ public class TencentInstanceProvider implements InstanceProvider {
         // is not server-paginated (pagination=false), so page through the whole result set here.
         String taskRequestId = UUID.randomUUID().toString();
         List<MessageRecordVO> result = new ArrayList<>();
+        // Rows the API has already returned, which is what the next offset must be derived from:
+        // a page can carry entries the provider skips (the SDK maps a JSON null array element to a
+        // null element), so the number of collected records is not the number of consumed rows.
+        long fetchedRows = 0L;
         boolean mayBeTruncated = false;
         for (int page = 0; page < MAX_PAGES && result.size() < MESSAGE_QUERY_HARD_LIMIT; page++) {
             DescribeMessageListRequest request = new DescribeMessageListRequest();
@@ -648,7 +662,7 @@ public class TencentInstanceProvider implements InstanceProvider {
             if (StringUtils.hasText(tag)) {
                 request.setTag(tag);
             }
-            request.setOffset((long) result.size());
+            request.setOffset(fetchedRows);
             request.setLimit((long) MESSAGE_LIMIT);
             DescribeMessageListResponse response = clientFactory.call(context.credentialId(), context.regionId(),
                     client -> client.DescribeMessageList(request));
@@ -664,14 +678,17 @@ public class TencentInstanceProvider implements InstanceProvider {
                     }
                 }
             }
-            // Stop on the last page (returned fewer rows than requested) or once all results have
-            // been collected. Like the Aliyun provider, the short-page check is the primary signal
-            // so we do not rely on TotalCount, which may not be populated for every query.
             int returned = data == null ? 0 : data.length;
-            // Stop on the last page (returned fewer rows than requested) or once all results have
-            // been collected. Like the Aliyun provider, the short-page check is the primary signal
-            // so we do not rely on TotalCount, which may not be populated for every query.
-            if (isLastPage(returned, total, result.size())) {
+            // A successful but incomplete task page is not an RPC failure. Keep collected
+            // rows and publish the existing truncation flag rather than a false complete result.
+            if (Pagination.isIncompletePage(request.getOffset(), returned, MESSAGE_LIMIT,
+                    response == null ? null : response.getTotalCount())) {
+                mayBeTruncated = true;
+                break;
+            }
+            fetchedRows += returned;
+            // Missing totals retain the existing short-page termination fallback.
+            if (isLastPage(returned, total, fetchedRows)) {
                 break;
             }
             if (result.size() >= MESSAGE_QUERY_HARD_LIMIT) {
@@ -680,6 +697,36 @@ public class TencentInstanceProvider implements InstanceProvider {
             }
         }
         return mayBeTruncated ? MessageQueryResult.truncated(result) : MessageQueryResult.complete(result);
+    }
+
+    @Override
+    public DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {
+        Context context = resolve(request.getInstanceId());
+        VerifyMessageConsumptionRequest verifyRequest = new VerifyMessageConsumptionRequest();
+        verifyRequest.setInstanceId(context.cloudInstanceId());
+        verifyRequest.setTopic(request.getTopic());
+        verifyRequest.setMsgId(request.getMsgId());
+        verifyRequest.setConsumerGroup(request.getConsumerGroup());
+        verifyRequest.setClientId(request.getClientId());
+        long startedAt = System.nanoTime();
+        VerifyMessageConsumptionResponse response = clientFactory.call(
+                context.credentialId(), context.regionId(), client -> client.VerifyMessageConsumption(verifyRequest));
+        long spentTimeMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+        if (response == null) {
+            throw new BusinessException(502, "Tencent direct consume returned an empty response");
+        }
+        String requestId = response.getRequestId();
+        String acknowledgement = "Tencent accepted the verification request; "
+                + "the consumption outcome is not returned";
+        return DirectConsumeMessageResultVO.builder()
+                .consumeResult("REQUEST_ACCEPTED")
+                .remark(StringUtils.hasText(requestId)
+                        ? acknowledgement + " (requestId=" + requestId + ")"
+                        : acknowledgement)
+                .spentTimeMillis(spentTimeMillis)
+                .order(false)
+                .autoCommit(false)
+                .build();
     }
 
     @Override
@@ -857,12 +904,12 @@ public class TencentInstanceProvider implements InstanceProvider {
         }
     }
 
-    private static boolean isLastPage(int returned, long total, int collected) {
+    private static boolean isLastPage(int returned, long total, long fetchedRows) {
         // The last page is one that returned no rows or fewer rows than requested. When the API
-        // reports a TotalCount, also stop once all expected results have been collected.
+        // reports a TotalCount, also stop once all expected rows have been fetched.
         boolean shortPage = returned == 0 || returned < MESSAGE_LIMIT;
-        boolean allCollected = total > 0 && collected >= total;
-        return shortPage || allCollected;
+        boolean allFetched = total > 0 && fetchedRows >= total;
+        return shortPage || allFetched;
     }
 
     private static long parseTraceTime(String value) {
@@ -898,7 +945,7 @@ public class TencentInstanceProvider implements InstanceProvider {
     }
 
     private static String toTraceStatus(int status) {
-        return status == 0 ? "finish" : "failed";
+        return status == 0 ? "finish" : "error";
     }
 
     private static String toConsumeTraceStatus(int status) {
@@ -1032,14 +1079,23 @@ public class TencentInstanceProvider implements InstanceProvider {
                 .topic(subscription.getTopic())
                 .expression(subscription.getSubString())
                 .type(subscription.getExpressionType())
-                .filterMode(subscription.getExpressionType())
-                .consistency(subscription.getConsistency() == null ? null : String.valueOf(subscription.getConsistency()))
+                .filterMode(SubscriptionFilterModes.fromExpressionType(subscription.getExpressionType()))
+                .consistency(SubscriptionConsistency.fromCode(subscription.getConsistency()))
                 .build();
     }
 
     private static void validateConsumerGroup(ConsumerGroupVO group) {
         if (group == null || !StringUtils.hasText(group.getName())) {
             throw new BusinessException(400, "Consumer group name is required");
+        }
+        // CreateConsumerGroupRequest has no consume-model field: the OpenAPI always creates a
+        // clustering group, so a requested broadcast model cannot be applied. Answer that instead of
+        // echoing the request back and letting DescribeConsumerGroup report the vendor's real model
+        // later - InstanceProvider#updateConsumerGroup's contract asks a provider never to report a
+        // change it cannot apply.
+        if (group.getConsumeType() == ConsumeType.BROADCASTING) {
+            throw new BusinessException(400, "Tencent consumer groups always consume in clustering mode; "
+                    + "consumeType BROADCASTING cannot be applied");
         }
     }
 
@@ -1138,6 +1194,13 @@ public class TencentInstanceProvider implements InstanceProvider {
     private static void validateUpdateTopic(TopicVO topic) {
         validateTopicName(topic);
         validateQueueNumber(topic);
+        // ModifyTopicRequest carries the queue count and no permission field, and reads report
+        // every cloud topic as read-write: an update cannot change the permission, so it must not
+        // return the requested value as if it had been applied.
+        if (topic.getPerm() != null && topic.getPerm() != TopicPerm.RW) {
+            throw new BusinessException(400,
+                    "Tencent Cloud RocketMQ topics are always read-write; the topic permission cannot be changed");
+        }
     }
 
     private static void validateTopicName(TopicVO topic) {

@@ -21,7 +21,7 @@ import { useLang } from '../../../i18n/LangContext';
 /**
  * The single send/stop slot of the composer.
  *
- * ONE `<button>` that morphs between three states, always mounted, always the same 36x36 circular
+ * ONE `<button>` that morphs between three states, always mounted, always the same 32x32 circular
  * box. The page it replaces mounted a SECOND antd `<Button danger>停止生成</Button>` next to the send
  * button while a run streamed, which pushed the rest of the toolbar sideways on every turn — the
  * regression `SendStopButton.test.tsx` guards with "exactly one button in all three states".
@@ -84,9 +84,9 @@ const SendStopButton = ({ state, canSend, onSend, onStop }: SendStopButtonProps)
         // `stopping` is disabled, so the click cannot reach this branch.
       }}
     >
-      {state === 'send' && <ArrowUp size={19} weight="bold" />}
-      {state === 'stop' && <Stop size={16} weight="fill" />}
-      {state === 'stopping' && <CircleNotch size={18} weight="bold" className="ai-icon-spin" />}
+      {state === 'send' && <ArrowUp size={17} weight="bold" />}
+      {state === 'stop' && <Stop size={14} weight="fill" />}
+      {state === 'stopping' && <CircleNotch size={16} weight="bold" className="ai-icon-spin" />}
     </button>
   );
 };

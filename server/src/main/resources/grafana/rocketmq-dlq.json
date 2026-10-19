@@ -98,7 +98,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "rate(rocketmq_dlq_resend_count{cluster=\"$cluster\"}[1m])",
+          "expr": "increase(rocketmq_dlq_resend_count{cluster=\"$cluster\"}[1m])",
           "legendFormat": "{{topic}}",
           "refId": "A"
         }

@@ -17,9 +17,178 @@
 package studio
 
 import (
+	"context"
 	"encoding/json"
+	"strings"
+	"sync"
 	"testing"
+
+	mcptransport "github.com/mark3labs/mcp-go/client/transport"
+	"github.com/mark3labs/mcp-go/mcp"
 )
+
+// reconnectStubTransport answers requests the way a Studio server that lost a
+// session does: every non-initialize request fails with a 404 until a fresh
+// initialize exchange establishes "session-2". Like mcp-go's StreamableHTTP
+// client, it clears the stored session id when a request fails with a 404.
+type reconnectStubTransport struct {
+	mu          sync.Mutex
+	sessionID   string
+	sends       int
+	initializes int
+}
+
+func newReconnectStubTransport(sessionID string) *reconnectStubTransport {
+	return &reconnectStubTransport{sessionID: sessionID}
+}
+
+func (transport *reconnectStubTransport) Start(context.Context) error { return nil }
+func (transport *reconnectStubTransport) Close() error                { return nil }
+
+func (transport *reconnectStubTransport) SetNotificationHandler(
+	func(mcp.JSONRPCNotification),
+) {
+}
+
+func (transport *reconnectStubTransport) SetProtocolVersion(string) {}
+
+func (transport *reconnectStubTransport) GetSessionId() string {
+	transport.mu.Lock()
+	defer transport.mu.Unlock()
+	return transport.sessionID
+}
+
+func (transport *reconnectStubTransport) SendRequest(
+	_ context.Context,
+	request mcptransport.JSONRPCRequest,
+) (*mcptransport.JSONRPCResponse, error) {
+	transport.mu.Lock()
+	if request.Method == string(mcp.MethodInitialize) {
+		transport.initializes++
+		transport.sessionID = "session-2"
+		transport.mu.Unlock()
+		return &mcptransport.JSONRPCResponse{
+			JSONRPC: mcp.JSONRPC_VERSION,
+			ID:      request.ID,
+			Result:  json.RawMessage(`{"protocolVersion":"` + mcp.LATEST_PROTOCOL_VERSION + `"}`),
+		}, nil
+	}
+	transport.sends++
+	established := transport.sessionID == "session-2"
+	used := transport.sessionID
+	transport.mu.Unlock()
+	if !established {
+		// mcp-go clears the session id on a 404, but only when it still holds
+		// the value the failed request was sent with (CompareAndSwap).
+		transport.mu.Lock()
+		if transport.sessionID == used {
+			transport.sessionID = ""
+		}
+		transport.mu.Unlock()
+		return nil, mcptransport.ErrSessionTerminated
+	}
+	return &mcptransport.JSONRPCResponse{
+		JSONRPC: mcp.JSONRPC_VERSION,
+		ID:      request.ID,
+		Result:  json.RawMessage(`{}`),
+	}, nil
+}
+
+func (transport *reconnectStubTransport) SendNotification(
+	context.Context,
+	mcp.JSONRPCNotification,
+) error {
+	return nil
+}
+
+func (transport *reconnectStubTransport) initializeRequest() *mcptransport.JSONRPCRequest {
+	return &mcptransport.JSONRPCRequest{
+		JSONRPC: mcp.JSONRPC_VERSION,
+		ID:      mcp.NewRequestId("initialize-1"),
+		Method:  string(mcp.MethodInitialize),
+	}
+}
+
+func newReconnectTestSession(transport *reconnectStubTransport) *MCPClientSession {
+	session := &MCPClientSession{
+		transport:     transport,
+		closed:        make(chan struct{}),
+		notifications: make(chan json.RawMessage, notificationBufferSize),
+	}
+	session.state.initialize = transport.initializeRequest()
+	return session
+}
+
+func sendToolsList(session *MCPClientSession) error {
+	return session.sendWithReconnect(context.Background(), false, func() error {
+		_, err := session.transport.SendRequest(context.Background(), mcptransport.JSONRPCRequest{
+			JSONRPC: mcp.JSONRPC_VERSION,
+			ID:      mcp.NewRequestId("send-1"),
+			Method:  string(mcp.MethodToolsList),
+		})
+		return err
+	})
+}
+
+// TestSendWithReconnectRetriesAfterConcurrentSessionClear reproduces the
+// concurrent-404 race: mcp-go clears the transport session id as soon as any
+// request fails with a 404, so another in-flight sender can observe an empty
+// session id in its snapshot even though a session had been established and
+// recorded. Reconnect-worthiness must therefore come from the recorded
+// initialize request, not from the transport's session id.
+func TestSendWithReconnectRetriesAfterConcurrentSessionClear(t *testing.T) {
+	transport := newReconnectStubTransport("")
+	session := newReconnectTestSession(transport)
+
+	// A concurrent sender just failed with a 404, which cleared the transport
+	// session id before that sender managed to reinitialize.
+	if err := sendToolsList(session); err != nil {
+		t.Fatalf("sendWithReconnect after a concurrent 404 cleared the session: %v", err)
+	}
+	transport.mu.Lock()
+	initializes := transport.initializes
+	transport.mu.Unlock()
+	if initializes != 1 {
+		t.Fatalf("initialize exchanges = %d, want 1", initializes)
+	}
+	if transport.GetSessionId() != "session-2" {
+		t.Fatalf("session id = %q, want session-2", transport.GetSessionId())
+	}
+}
+
+// TestSendWithReconnectConcurrent404sAllRecover verifies that concurrent
+// senders hitting a terminated session all recover once one of them
+// reinitializes, without duplicating the initialize exchange per sender.
+func TestSendWithReconnectConcurrent404sAllRecover(t *testing.T) {
+	transport := newReconnectStubTransport("session-1")
+	session := newReconnectTestSession(transport)
+
+	const senders = 8
+	var wg sync.WaitGroup
+	errs := make([]error, senders)
+	for i := range errs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs[i] = sendToolsList(session)
+		}()
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("sender %d: %v", i, err)
+		}
+	}
+	transport.mu.Lock()
+	initializes := transport.initializes
+	transport.mu.Unlock()
+	// At least one initialize exchange must have re-established the session;
+	// a sender whose request raced the establishment may legitimately repeat
+	// it, but each sender must still recover.
+	if initializes < 1 {
+		t.Fatalf("initialize exchanges = %d, want at least 1", initializes)
+	}
+}
 
 func toolCallPayload(t *testing.T, tool string, arguments map[string]any) []byte {
 	t.Helper()
@@ -121,5 +290,34 @@ func TestBindToolInstanceIgnoresNonToolCallMessages(t *testing.T) {
 	}
 	if string(bound) != string(payload) {
 		t.Fatalf("initialize payload was modified: %s", bound)
+	}
+}
+
+// A JSON-RPC response (id + result/error, no method) used to fall through to the
+// generic "missing method" error, which tells the caller nothing about what was
+// actually wrong. See the review on #4637.
+func TestDecodeMCPMessageRejectsResponseFrameWithExplicitError(t *testing.T) {
+	_, err := decodeMCPMessage([]byte(`{"jsonrpc":"2.0","id":7,"result":{"ok":true}}`))
+	if err == nil {
+		t.Fatal("expected an error for a response frame")
+	}
+	if !strings.Contains(err.Error(), "response") {
+		t.Fatalf("expected an explicit response-frame error, got: %v", err)
+	}
+	if strings.Contains(err.Error(), "missing method") {
+		t.Fatalf("the misleading missing-method error is still used: %v", err)
+	}
+
+	_, err = decodeMCPMessage([]byte(`{"jsonrpc":"2.0","id":8,"error":{"code":-32000,"message":"boom"}}`))
+	if err == nil || !strings.Contains(err.Error(), "response") {
+		t.Fatalf("expected an explicit error for an error frame too, got: %v", err)
+	}
+
+	// Requests and notifications must keep decoding.
+	if _, err := decodeMCPMessage([]byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{}}`)); err != nil {
+		t.Fatalf("request frame should still decode: %v", err)
+	}
+	if _, err := decodeMCPMessage([]byte(`{"jsonrpc":"2.0","method":"notifications/initialized"}`)); err != nil {
+		t.Fatalf("notification frame should still decode: %v", err)
 	}
 }

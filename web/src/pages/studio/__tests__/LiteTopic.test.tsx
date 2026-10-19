@@ -16,11 +16,12 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import type { LiteTopicItem, LiteTopicQuota } from '../../../api/liteTopic';
+import type { Instance } from '../../../api/instance';
 import { downloadCsv } from '../../../utils/download';
 import LiteTopic, { formatTime } from '../LiteTopic';
 
@@ -33,6 +34,17 @@ const apiMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../api/liteTopic', () => apiMocks);
+
+const instanceApiMocks = vi.hoisted(() => ({ listInstances: vi.fn() }));
+
+vi.mock('../../../api/instance', async () => {
+  const instanceModule =
+    await vi.importActual<typeof import('../../../api/instance')>('../../../api/instance');
+  return {
+    ...instanceModule,
+    listInstances: instanceApiMocks.listInstances,
+  };
+});
 
 vi.mock('../../../utils/download', async () => {
   const downloadModule =
@@ -80,7 +92,10 @@ const createDeferred = <T,>() => {
 
 describe('LiteTopic time formatting', () => {
   it('preserves epoch timestamps and rejects invalid provider values', () => {
-    expect(formatTime(0)).toBe(new Date(0).toLocaleString());
+    // Epoch instants render as a stable `YYYY-MM-DD HH:mm:ss` in the viewer's zone, never the
+    // locale-dependent Date.toLocaleString string.
+    expect(formatTime(0)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    expect(formatTime(0)).not.toBe(new Date(0).toLocaleString());
     expect(formatTime(Number.POSITIVE_INFINITY)).toBe('-');
     expect(formatTime(Number.MAX_VALUE)).toBe('-');
   });
@@ -104,7 +119,7 @@ const selectNamespace = async (name: string) => {
 describe('LiteTopic Page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    apiMocks.queryLiteTopicCapability.mockResolvedValue({ supported: true });
+    apiMocks.queryLiteTopicCapability.mockReset().mockResolvedValue({ supported: true });
     apiMocks.queryLiteTopicQuota.mockResolvedValue(null);
     apiMocks.queryLiteTopicList.mockResolvedValue([
       {
@@ -117,8 +132,230 @@ describe('LiteTopic Page', () => {
       sessionId: 'session-1',
       totalMessages: 100,
       consumedMessages: 0,
-      popProgress: 96,
     });
+    instanceApiMocks.listInstances.mockResolvedValue([]);
+  });
+
+  it('recoversFromATemporaryCapabilityFailureWithoutEnablingControlsDuringRetryTest', async () => {
+    const retry = createDeferred<{ supported: boolean }>();
+    apiMocks.queryLiteTopicCapability
+      .mockRejectedValueOnce(new Error('network timeout'))
+      .mockReturnValueOnce(retry.promise);
+    const user = userEvent.setup();
+    renderPage();
+    const retryButton = await screen.findByRole('button', { name: /重\s*试/ });
+    expect(
+      screen.queryByText('当前集群不支持 LiteTopic，请升级到 RocketMQ 5.x'),
+    ).not.toBeInTheDocument();
+    await user.click(retryButton);
+    await waitFor(() => expect(apiMocks.queryLiteTopicCapability).toHaveBeenCalledTimes(2));
+    expect(retryButton).toBeDisabled();
+    expect(apiMocks.queryLiteTopicList).not.toHaveBeenCalled();
+    expect(apiMocks.queryLiteTopicQuota).not.toHaveBeenCalled();
+    expect(screen.queryByText('延长 TTL')).not.toBeInTheDocument();
+    await act(async () => retry.resolve({ supported: true }));
+    expect(await screen.findByText('order-*')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /重\s*试/ })).not.toBeInTheDocument();
+    expect(apiMocks.queryLiteTopicCapability).toHaveBeenCalledTimes(2);
+  });
+
+  it('keepsARepeatedProbeFailureRetryableTest', async () => {
+    apiMocks.queryLiteTopicCapability
+      .mockRejectedValueOnce(new Error('first timeout'))
+      .mockRejectedValueOnce(new Error('second timeout'))
+      .mockResolvedValueOnce({ supported: true });
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: /重\s*试/ }));
+    await waitFor(() => expect(apiMocks.queryLiteTopicCapability).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole('button', { name: /重\s*试/ })).toBeEnabled());
+    expect(apiMocks.queryLiteTopicList).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: /重\s*试/ }));
+    expect(await screen.findByText('order-*')).toBeInTheDocument();
+    expect(apiMocks.queryLiteTopicCapability).toHaveBeenCalledTimes(3);
+  });
+
+  it('showsAnUnsupportedResultWhenTheRetryActuallyConfirmsNoSupportTest', async () => {
+    apiMocks.queryLiteTopicCapability
+      .mockRejectedValueOnce(new Error('timeout'))
+      .mockResolvedValueOnce({ supported: false });
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: /重\s*试/ }));
+    expect(
+      await screen.findByText('当前集群不支持 LiteTopic，请升级到 RocketMQ 5.x'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('无法确认当前集群是否支持 LiteTopic，请重试。'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /重\s*试/ })).not.toBeInTheDocument();
+    expect(apiMocks.queryLiteTopicList).not.toHaveBeenCalled();
+    expect(apiMocks.queryLiteTopicQuota).not.toHaveBeenCalled();
+  });
+
+  it('ignoresACapabilityRetryThatCompletesAfterUnmountTest', async () => {
+    const retry = createDeferred<{ supported: boolean }>();
+    apiMocks.queryLiteTopicCapability
+      .mockRejectedValueOnce(new Error('timeout'))
+      .mockReturnValueOnce(retry.promise);
+    const user = userEvent.setup();
+    const view = renderPage();
+    await user.click(await screen.findByRole('button', { name: /重\s*试/ }));
+    await waitFor(() => expect(apiMocks.queryLiteTopicCapability).toHaveBeenCalledTimes(2));
+    view.unmount();
+    await act(async () => retry.resolve({ supported: true }));
+    expect(apiMocks.queryLiteTopicList).not.toHaveBeenCalled();
+    expect(apiMocks.queryLiteTopicQuota).not.toHaveBeenCalled();
+  });
+
+  it('restoresTheRequestedFilterAndFullNamespaceOptionsAfterCapabilityRetryTest', async () => {
+    const firstProbe = createDeferred<{ supported: boolean }>();
+    apiMocks.queryLiteTopicCapability
+      .mockReturnValueOnce(firstProbe.promise)
+      .mockResolvedValueOnce({ supported: true });
+    apiMocks.queryLiteTopicList.mockImplementation(async (pattern?: string) =>
+      pattern === 'needle'
+        ? [{ namespace: 'Filtered', topicPattern: 'filtered-result-*' }]
+        : [
+            { namespace: 'Other', topicPattern: 'other-result-*' },
+            { namespace: 'Filtered', topicPattern: 'filtered-result-*' },
+          ],
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await user.type(screen.getByPlaceholderText('按 Topic 模式筛选...'), 'needle');
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+    await screen.findByText('filtered-result-*');
+    await act(async () => firstProbe.reject(new Error('late probe failure')));
+    await user.click(await screen.findByRole('button', { name: /重\s*试/ }));
+    await screen.findByText('filtered-result-*');
+    expect(screen.getByPlaceholderText('按 Topic 模式筛选...')).toHaveValue('needle');
+    expect(screen.queryByText('other-result-*')).not.toBeInTheDocument();
+    expect(
+      apiMocks.queryLiteTopicList.mock.calls.filter(([pattern]) => pattern === 'needle'),
+    ).toHaveLength(2);
+    await user.click(screen.getAllByRole('combobox')[0]);
+    expect(
+      await screen.findByText('Other', { selector: '.ant-select-item-option-content' }),
+    ).toBeInTheDocument();
+  });
+
+  it('explainsTheCapabilityFailureInEnglishTest', async () => {
+    localStorage.setItem('rocketmq-studio-language', 'en');
+    apiMocks.queryLiteTopicCapability.mockRejectedValueOnce(new Error('timeout'));
+    try {
+      renderPage();
+      expect(
+        await screen.findByText(
+          'Could not check whether the current cluster supports LiteTopic. Please retry.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    } finally {
+      localStorage.removeItem('rocketmq-studio-language');
+    }
+  });
+
+  it('sorts a pattern whose TTL and last-active value are unset after the measurable ones', async () => {
+    apiMocks.queryLiteTopicList.mockResolvedValue([
+      {
+        namespace: 'default',
+        topicPattern: 'aaa-unmeasured-*',
+        // The provider leaves these unset when the broker reports no TTL attribute and no session
+        // ever reported an access; both cells render '-'.
+        sessionIds: [],
+      },
+      {
+        namespace: 'default',
+        topicPattern: 'zzz-measured-*',
+        averageTTL: 3_600_000,
+        lastActiveTime: Date.UTC(2026, 7, 20, 10, 0, 0),
+        sessionIds: ['session-1'],
+      },
+    ] as LiteTopicItem[]);
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('zzz-measured-*');
+    const rowOrder = () => screen.getAllByRole('row').map((row) => row.textContent ?? '');
+    const indexOf = (pattern: string) => rowOrder().findIndex((text) => text.includes(pattern));
+
+    // Ascending: a value the column renders as '-' must not sort as a zero TTL, which would
+    // place that pattern as if it had expired before every measurable one.
+    await user.click(screen.getByText('平均 TTL'));
+    await waitFor(() =>
+      expect(indexOf('aaa-unmeasured-*')).toBeGreaterThan(indexOf('zzz-measured-*')),
+    );
+
+    // The unset value stays last in the descending direction too instead of swapping to the top.
+    await user.click(screen.getByText('平均 TTL'));
+    await waitFor(() =>
+      expect(indexOf('aaa-unmeasured-*')).toBeGreaterThan(indexOf('zzz-measured-*')),
+    );
+
+    await user.click(screen.getByText('最后活跃'));
+    await waitFor(() =>
+      expect(indexOf('aaa-unmeasured-*')).toBeGreaterThan(indexOf('zzz-measured-*')),
+    );
+  });
+
+  it('sends the owning instance id when extending TTL', async () => {
+    // LiteTopicTTLUpdateDTO requires a non-blank instanceId; only the
+    // Apache-vendor instance is a candidate for the ownership-checked write.
+    instanceApiMocks.listInstances.mockResolvedValue([
+      { id: 1, name: 'apache-main', vendor: 'APACHE' },
+      { id: 2, name: 'cloud-1', vendor: 'ALIYUN' },
+    ] as unknown as Instance[]);
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('order-*');
+    await user.click(await screen.findByText('延长 TTL'));
+
+    // exactly one Apache-vendor instance -> auto-selected in the modal
+    await waitFor(() => {
+      expect(apiMocks.extendLiteTopicTTL).not.toHaveBeenCalled();
+      const selected = document.querySelector('.ant-modal .ant-select-selection-item');
+      expect(selected?.textContent).toBe('apache-main');
+    });
+
+    await user.type(screen.getByRole('spinbutton'), '7200');
+    // antd inserts a space between the two CJK chars of the confirm button
+    await user.click(await screen.findByRole('button', { name: /确\s*认/ }));
+
+    await waitFor(() => {
+      expect(apiMocks.extendLiteTopicTTL).toHaveBeenCalledWith('apache-main', 'order-*', 7200);
+    });
+  });
+
+  it('ignores an old instance lookup after the TTL dialog is reopened', async () => {
+    const first = createDeferred<Instance[]>();
+    const second = createDeferred<Instance[]>();
+    instanceApiMocks.listInstances
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise);
+    const user = userEvent.setup();
+    renderPage();
+
+    const open = await screen.findByText('延长 TTL');
+    await user.click(open);
+    await waitFor(() => expect(instanceApiMocks.listInstances).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: /取\s*消/ }));
+    await user.click(open);
+    await waitFor(() => expect(instanceApiMocks.listInstances).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      first.resolve([{ id: 1, name: 'previous-owner', vendor: 'APACHE' } as Instance]);
+    });
+    expect(document.querySelector('.ant-modal .ant-select-selection-item')).toBeNull();
+
+    await act(async () => {
+      second.resolve([{ id: 2, name: 'current-owner', vendor: 'APACHE' } as Instance]);
+    });
+    await waitFor(() =>
+      expect(document.querySelector('.ant-modal .ant-select-selection-item')?.textContent).toBe(
+        'current-owner',
+      ),
+    );
   });
 
   it('returns to the first page when the local TTL filter changes', async () => {
@@ -145,15 +382,80 @@ describe('LiteTopic Page', () => {
     expect(await screen.findByText('active-00*')).toBeInTheDocument();
   });
 
-  it('displays the session POP progress returned by the API as a percentage', async () => {
+  it('does not offer a POP progress panel the API never fills', async () => {
+    // PopConsumeProgress was never written by any provider, so `popProgress` was always absent and
+    // the panel could only ever render from a fixture: the drawer no longer offers it.
     const user = userEvent.setup();
+    apiMocks.queryLiteTopicSession.mockResolvedValue({
+      sessionId: 'session-1',
+      status: 'ACTIVE',
+      liteTopics: [],
+      popProgress: 96,
+    });
+    renderPage();
+
+    await user.click(await screen.findByText('查看会话'));
+    await screen.findByText('session-1');
+    expect(document.querySelector('.ant-drawer')).toBeNull();
+
+    expect(apiMocks.queryLiteTopicSession).toHaveBeenCalledWith('session-1');
+    // The percentage is the load-bearing half: the panel's title came from an i18n key this change
+    // deletes, so asserting on its text would pass with or without the panel. `96%` only ever came
+    // from the panel's Progress, so a re-added panel turns this red.
+    expect(screen.queryByText('96%')).not.toBeInTheDocument();
+  });
+
+  it('reports a consumed count that only covers part of the session', async () => {
+    // The consumed-offset scan reads at most MAX_SESSION_LITE_TOPIC_SCAN lite topics, so a session
+    // with more of them only gets a lower bound. The drawer must not present it as a measured total
+    // and must not derive a consumption percentage from it.
+    const user = userEvent.setup();
+    apiMocks.queryLiteTopicSession.mockResolvedValue({
+      sessionId: 'session-1',
+      status: 'ACTIVE',
+      liteTopics: [],
+      totalMessages: 1500,
+      consumedMessages: 1000,
+      pendingMessages: 500,
+      consumedScanTruncated: true,
+    });
     renderPage();
 
     await user.click(await screen.findByText('查看会话'));
 
-    expect(apiMocks.queryLiteTopicSession).toHaveBeenCalledWith('session-1');
-    const popProgressLabel = await screen.findByText('Pop 进度');
-    expect(within(popProgressLabel.parentElement!).getByText('96%')).toBeInTheDocument();
+    expect(await screen.findByTestId('lite-topic-consumed-truncated')).toBeInTheDocument();
+    expect(screen.getByText('≥ 1500')).toBeInTheDocument();
+    expect(screen.getByText('≥ 1000')).toBeInTheDocument();
+    expect(screen.getByText('500')).toBeInTheDocument();
+    // The ratio is the part that has to disappear: 1000/1500 would render as 67%, and swapping the
+    // `consumedTruncated ? InfoBanner : Progress` branch back leaves every assertion above green.
+    expect(screen.queryByText('67%')).not.toBeInTheDocument();
+  });
+
+  it('allows viewing every session linked to the same LiteTopic row', async () => {
+    apiMocks.queryLiteTopicList.mockResolvedValue([
+      { namespace: 'default', topicPattern: 'order-*', sessionIds: ['session-1', 'session-2'] },
+    ]);
+    apiMocks.queryLiteTopicSession.mockImplementation(async (sessionId: string) => ({
+      sessionId,
+      clientId: sessionId === 'session-1' ? 'first-client' : 'second-client',
+      totalMessages: 100,
+      consumedMessages: 0,
+    }));
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByText('查看会话'));
+    expect(await screen.findByText('first-client')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: '会话 ID' }));
+    await user.click(
+      await screen.findByText('session-2', { selector: '.ant-select-item-option-content' }),
+    );
+
+    expect(apiMocks.queryLiteTopicSession).toHaveBeenCalledWith('session-2');
+    expect(await screen.findByText('second-client')).toBeInTheDocument();
+    expect(screen.queryByText('first-client')).not.toBeInTheDocument();
   });
 
   it('keeps the latest session detail when an earlier request resolves last', async () => {
@@ -454,7 +756,7 @@ describe('LiteTopic Page', () => {
     renderPage();
 
     expect(
-      await screen.findByText('当前集群不支持 LiteTopic，请升级到 RocketMQ 5.x'),
+      await screen.findByText('无法确认当前集群是否支持 LiteTopic，请重试。'),
     ).toBeInTheDocument();
     expect(apiMocks.queryLiteTopicList).not.toHaveBeenCalled();
     expect(apiMocks.queryLiteTopicQuota).not.toHaveBeenCalled();

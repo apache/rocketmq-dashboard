@@ -54,13 +54,14 @@ tools:
           items:
             type: object
             required:
-              - id
               - principal
               - resource
             additionalProperties: false
             properties:
               id:
-                type: string
+                type:
+                  - string
+                  - 'null'
               principal:
                 type: string
               resource:
@@ -107,17 +108,21 @@ tools:
           minLength: 1
         id:
           type: string
+          description: >-
+            Numeric ACL rule id, or the rule's principal on a provider whose rules have no numeric
+            id (Tencent Cloud roles); rmq.acl.list reports no id for those rules.
           minLength: 1
     outputSchema:
       type: object
       required:
-        - id
         - principal
         - resource
       additionalProperties: false
       properties:
         id:
-          type: string
+          type:
+            - string
+            - 'null'
         principal:
           type: string
         resource:
@@ -253,6 +258,9 @@ tools:
           minLength: 1
         id:
           type: string
+          description: >-
+            Numeric ACL rule id, or the rule's principal on a provider whose rules have no numeric
+            id (Tencent Cloud roles); rmq.acl.list reports no id for those rules.
           minLength: 1
         principal:
           type: string
@@ -342,6 +350,9 @@ tools:
           minLength: 1
         id:
           type: string
+          description: >-
+            Numeric ACL rule id, or the rule's principal on a provider whose rules have no numeric
+            id (Tencent Cloud roles); rmq.acl.list reports no id for those rules.
           minLength: 1
         dry_run:
           type: boolean

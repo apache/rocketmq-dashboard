@@ -109,7 +109,7 @@ const MainLayout = () => {
     try {
       await requestLogout();
     } catch {
-      message.warning('服务端退出失败，已清除本地登录状态');
+      message.warning(t('user.logoutFailed'));
     } finally {
       clearAuth();
       navigate('/login', { replace: true });
@@ -127,7 +127,9 @@ const MainLayout = () => {
   }, []);
 
   const instanceScopedMatch = useMemo(
-    () => location.pathname.match(/^\/instance\/[^/]+\/(topic|consumer|message|acl|dlq)$/),
+    // 与 useInstanceFilter 的 INSTANCE_SCOPED_PATH 保持同一口径：尾斜杠路由
+    // （/instance/<id>/topic/）同样算实例维度页，否则菜单高亮与面包屑末级标题会降级。
+    () => location.pathname.match(/^\/instance\/[^/]+\/(topic|consumer|message|acl|dlq)\/*$/),
     [location.pathname],
   );
   const selectedInstanceId = useMemo(() => {
@@ -271,7 +273,7 @@ const MainLayout = () => {
       '/ops/audit': t('nav.audit'),
       '/ai': t('nav.ai'),
       '/settings': t('nav.settings'),
-      '/studio/users': '用户管理',
+      '/studio/users': t('userMgmt.title'),
     }),
     [t],
   );
@@ -331,7 +333,9 @@ const MainLayout = () => {
     onClick: handleUserMenuClick,
     items: [
       { key: 'profile', icon: <UserGear size={14} />, label: t('user.profile') },
-      ...(admin ? [{ key: 'users', icon: <UserGear size={14} />, label: '用户管理' }] : []),
+      ...(admin
+        ? [{ key: 'users', icon: <UserGear size={14} />, label: t('userMgmt.title') }]
+        : []),
       {
         key: 'dataMode',
         icon: (
@@ -677,6 +681,8 @@ const MainLayout = () => {
               setActiveIndex(0);
             }}
             onKeyDown={(e) => {
+              // Composition keys select or confirm IME text, not navigation results.
+              if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
               if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 setActiveIndex((i) => Math.min(i + 1, Math.max(searchResults.length - 1, 0)));
@@ -796,7 +802,7 @@ const MainLayout = () => {
           ) : (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="未找到匹配页面"
+              description={t('layout.noMatchingPage')}
               style={{ padding: '24px 0' }}
             />
           )}
@@ -816,15 +822,15 @@ const MainLayout = () => {
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <kbd style={kbdStyle}>↑</kbd>
             <kbd style={kbdStyle}>↓</kbd>
-            切换
+            {t('layout.shortcutNavigate')}
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <kbd style={kbdStyle}>↵</kbd>
-            打开
+            {t('common.open')}
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <kbd style={kbdStyle}>ESC</kbd>
-            关闭
+            {t('common.close')}
           </span>
         </div>
       </Modal>

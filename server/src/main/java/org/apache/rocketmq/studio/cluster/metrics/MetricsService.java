@@ -101,15 +101,27 @@ public class MetricsService {
         return source.query(resolvedQuery);
     }
 
-    /** Tool queries require a dedicated source explicitly bound to this Instance. */
+    /**
+     * Tool queries use the single data source bound to this Instance: a source bound only to
+     * this Instance wins; otherwise the sole shared source whose bindings include the Instance
+     * is accepted. Ambiguous or missing bindings stay a loud 409.
+     */
     public MetricDataVO queryInstance(String instanceId, MetricQueryDTO query) {
         if (!StringUtils.hasText(instanceId)) throw badRequest("Instance is required for metrics query");
-        List<DataSourceVO> sources = settingsService.listDataSources().stream()
-                .filter(source -> source.getInstanceIds() != null && source.getInstanceIds().size() == 1
-                        && instanceId.equals(source.getInstanceIds().get(0))).toList();
-        if (sources.size() != 1) throw new org.apache.rocketmq.studio.common.exception.BusinessException(409,
-                "Configure exactly one dedicated metrics data source bound only to Instance " + instanceId);
-        DataSourceVO source = sources.get(0);
+        List<DataSourceVO> boundSources = settingsService.listDataSources().stream()
+                .filter(source -> source.getInstanceIds() != null
+                        && source.getInstanceIds().contains(instanceId)).toList();
+        List<DataSourceVO> dedicatedSources = boundSources.stream()
+                .filter(source -> source.getInstanceIds().size() == 1).toList();
+        DataSourceVO source;
+        if (dedicatedSources.size() == 1) {
+            source = dedicatedSources.get(0);
+        } else if (dedicatedSources.isEmpty() && boundSources.size() == 1) {
+            source = boundSources.get(0);
+        } else {
+            throw new org.apache.rocketmq.studio.common.exception.BusinessException(409,
+                    "Configure exactly one metrics data source bound to Instance " + instanceId);
+        }
         if (!"none".equals(normalizeAuth(source.getAuth())))
             throw new org.apache.rocketmq.studio.common.exception.BusinessException(501,
                     "Tool queries do not support data sources requiring per-request credentials");

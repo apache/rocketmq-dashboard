@@ -17,6 +17,7 @@
 
 import { Card, Col, Empty, Flex, Progress, Row, Skeleton, Statistic, Tag, Typography } from 'antd';
 import type { AuditSummary, AuditSummaryBucket } from '../../api/audit';
+import { useLang } from '../../i18n/LangContext';
 
 const { Text } = Typography;
 
@@ -26,7 +27,9 @@ interface Props {
 }
 
 const BucketList = ({ items, total }: { items: AuditSummaryBucket[]; total: number }) => {
-  if (!items.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />;
+  const { t } = useLang();
+  if (!items.length)
+    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('common.noData')} />;
   return (
     <Flex vertical gap={10}>
       {items.slice(0, 5).map((item) => (
@@ -49,41 +52,44 @@ const BucketList = ({ items, total }: { items: AuditSummaryBucket[]; total: numb
 };
 
 const AuditSummaryCards = ({ summary, loading }: Props) => {
+  const { t } = useLang();
   // Show the placeholder while any fetch is in flight so a filter change does
   // not keep painting a stale summary until the refreshed aggregate arrives.
   if (loading) return <Skeleton active paragraph={{ rows: 4 }} />;
-  const data = summary || {
-    total: 0,
-    successful: 0,
-    failed: 0,
-    partial: 0,
-    uniqueOperators: 0,
-    latestAt: null,
-    byOperation: [],
-    byResourceType: [],
-  };
+  if (!summary) return <Empty description={t('common.fetchDataFailed')} />;
+  const data = summary;
   const successRate = data.total ? Math.round((data.successful / data.total) * 100) : 0;
+  // 成功率配色按阈值走，不再写死绿色（用户约定 2026-10-16）：47% 曾照样显示绿色，读起来像健康。
+  const successColor = successRate >= 95 ? '#52c41a' : successRate >= 80 ? '#faad14' : '#cf1322';
   return (
     <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
       <Col xs={12} lg={6}>
         <Card size="small">
-          <Statistic title="匹配记录" value={data.total} />
+          <Statistic title={t('audit.summaryMatched')} value={data.total} />
         </Card>
       </Col>
       <Col xs={12} lg={6}>
         <Card size="small">
           <Statistic
-            title="成功率"
+            title={t('audit.summarySuccessRate')}
             value={successRate}
             suffix="%"
-            valueStyle={{ color: '#52c41a' }}
+            valueStyle={{ color: successColor }}
           />
+          {/* 分母是匹配记录总数、含未记录结果的操作（只读查询等），单看百分比会和「失败率」
+              对不上（47% 成功 + 15% 失败 ≠ 100%），把分子分母摆出来让口径自解释。 */}
+          <Text type="secondary" style={{ fontSize: 14 }}>
+            {t('audit.summarySuccessDetail', {
+              successful: data.successful,
+              total: data.total,
+            })}
+          </Text>
         </Card>
       </Col>
       <Col xs={12} lg={6}>
         <Card size="small">
           <Statistic
-            title="失败 / 部分成功"
+            title={t('auditInsights.failPartial')}
             value={`${data.failed} / ${data.partial}`}
             valueStyle={{ color: data.failed ? '#cf1322' : undefined }}
           />
@@ -91,16 +97,16 @@ const AuditSummaryCards = ({ summary, loading }: Props) => {
       </Col>
       <Col xs={12} lg={6}>
         <Card size="small">
-          <Statistic title="操作人数" value={data.uniqueOperators} />
+          <Statistic title={t('audit.summaryOperators')} value={data.uniqueOperators} />
         </Card>
       </Col>
       <Col xs={24} lg={12}>
-        <Card size="small" title="高频操作">
+        <Card size="small" title={t('audit.summaryTopOperations')}>
           <BucketList items={data.byOperation} total={data.total} />
         </Card>
       </Col>
       <Col xs={24} lg={12}>
-        <Card size="small" title="资源类型分布">
+        <Card size="small" title={t('audit.summaryResourceTypes')}>
           <BucketList items={data.byResourceType} total={data.total} />
         </Card>
       </Col>

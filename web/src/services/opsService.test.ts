@@ -19,6 +19,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AuditRecord } from '../api/ops';
 import { mockAuditRecords } from '../mock/audit';
 import {
+  acknowledgeAlert,
   createAlertRule,
   deleteAlertRule,
   exportAlertRulesTransfer,
@@ -198,6 +199,31 @@ describe('ops service mock data', () => {
     expect(result.items).toHaveLength(1);
     expect(result.total).toBeGreaterThanOrEqual(1);
     expect(result.items[0]).not.toBe(full[0]);
+  });
+
+  it('rejects acknowledging an alert the mock inventory does not have', async () => {
+    const alerts = await listSystemAlerts();
+    const missingId = Math.max(...alerts.map((alert) => alert.id)) + 1;
+
+    // The endpoint answers 404 "System alert not found: <id>"; the mock used to report success
+    // for an id its store does not have, so the page kept a phantom acknowledged row.
+    await expect(acknowledgeAlert(missingId)).rejects.toThrow(
+      `System alert not found: ${missingId}`,
+    );
+    expect((await listSystemAlerts()).map((alert) => alert.id)).toEqual(
+      alerts.map((alert) => alert.id),
+    );
+  });
+
+  it('still acknowledges an alert the mock inventory has', async () => {
+    const target = (await listSystemAlerts()).find((alert) => !alert.acknowledged);
+    expect(target).toBeDefined();
+
+    await acknowledgeAlert(target!.id);
+
+    expect((await listSystemAlerts()).find((alert) => alert.id === target!.id)?.acknowledged).toBe(
+      true,
+    );
   });
 
   it('returns copied audit records', async () => {

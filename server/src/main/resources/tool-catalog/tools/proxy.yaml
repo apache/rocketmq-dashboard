@@ -7,8 +7,7 @@ tools:
     description: "Discover Proxy data endpoints, optionally filtered by physical cluster name. Discovery does not establish Broker cluster membership or management capability."
     riskLevel: L1
     permission: proxy:read
-    requiredCapabilities:
-      - PROXY_DISCOVERY
+    requiredCapabilities: []
     inputSchema:
       type: object
       required: []
@@ -57,8 +56,7 @@ tools:
     description: "Read the Proxy configuration and reachability snapshot for one physical cluster, with an optional addr filter (read-only; configuration reload is not exposed through MCP)."
     riskLevel: L1
     permission: proxy:read
-    requiredCapabilities:
-      - PROXY_DISCOVERY
+    requiredCapabilities: []
     inputSchema:
       type: object
       required:

@@ -89,6 +89,14 @@ func decodeMCPMessage(payload json.RawMessage) (decodedMCPMessage, error) {
 		}
 		return decodedMCPMessage{notification: &notification}, nil
 	}
+	if hasID {
+		// A frame with an id but no method is a JSON-RPC response, which the stdio
+		// proxy never originates. Name it explicitly instead of the misleading
+		// "missing method" (see the review on #4637).
+		return decodedMCPMessage{}, fmt.Errorf(
+			"invalid MCP JSON-RPC message: response frame (id without method); " +
+				"this transport only forwards client-originated requests and notifications")
+	}
 	return decodedMCPMessage{}, fmt.Errorf("invalid MCP JSON-RPC message: missing method")
 }
 
@@ -143,30 +151,54 @@ func (session *MCPClientSession) sendNotification(
 	return err
 }
 
+var errReconnectIncomplete = errors.New("MCP session reinitialization is incomplete")
+
 func (session *MCPClientSession) sendWithReconnect(ctx context.Context, skipReconnect bool, send func() error) error {
-	session.sendMu.RLock()
-	generation, hadSession := session.sendSnapshot()
-	err := send()
-	session.sendMu.RUnlock()
-	if err != nil && hadSession && !skipReconnect && errors.Is(err, mcptransport.ErrSessionTerminated) {
+	var err error
+	// A call may recover once and send at most twice. Only a definitive session
+	// termination permits replay; an incomplete handshake has not sent the call.
+	for attempt := 0; attempt < 2; attempt++ {
+		if err := session.sendGate.acquire(ctx, session.closed, false); err != nil {
+			return err
+		}
+		generation, canReconnect := session.sendSnapshot()
+		session.state.RLock()
+		pending := session.state.reconnectPending
+		session.state.RUnlock()
+		if pending && !skipReconnect {
+			err = errReconnectIncomplete
+		} else {
+			err = send()
+		}
+		session.sendGate.release(false)
+		if err == nil || skipReconnect || attempt == 1 {
+			return err
+		}
+		if !pending && !(canReconnect && errors.Is(err, mcptransport.ErrSessionTerminated)) {
+			return err
+		}
 		if reconnectErr := session.reinitialize(ctx, generation); reconnectErr != nil {
 			return reconnectErr
 		}
-		session.sendMu.RLock()
-		err = send()
-		session.sendMu.RUnlock()
+		// Recheck pending under the send lock on the next attempt: another
+		// caller may have started a newer reconnect before we regain the lock.
 	}
 	return err
 }
 
-// sendSnapshot returns the current session generation and whether a session
-// id is already established. Callers must hold sendMu (at least RLock) so the
-// snapshot is consistent with the transport state used for the send.
+// sendSnapshot returns the current session generation and whether a terminated
+// session can be re-initialized, which is possible whenever the initialize
+// request has been recorded. The transport's session id cannot be used for
+// this decision: mcp-go clears it as soon as any request fails with a 404, so
+// a sender racing with that failure would wrongly see "no session" and skip
+// the reconnect. Callers must hold a sendGate permit so the snapshot is
+// consistent with the transport state used for the send.
 func (session *MCPClientSession) sendSnapshot() (uint64, bool) {
 	session.state.RLock()
 	generation := session.state.generation
+	initialize := session.state.initialize
 	session.state.RUnlock()
-	return generation, session.transport.GetSessionId() != ""
+	return generation, initialize != nil
 }
 
 func (session *MCPClientSession) recordInitialization(
@@ -178,6 +210,7 @@ func (session *MCPClientSession) recordInitialization(
 	}
 	session.state.Lock()
 	session.state.initialize = new(request)
+	session.state.generation++
 	session.state.ready = false
 	session.state.Unlock()
 	return nil
@@ -193,9 +226,6 @@ func (session *MCPClientSession) applyInitialization(response *mcptransport.JSON
 	if protocolVersion != "" {
 		session.transport.SetProtocolVersion(protocolVersion)
 	}
-	session.state.Lock()
-	session.state.generation++
-	session.state.Unlock()
 	return nil
 }
 
@@ -212,10 +242,12 @@ func initializationProtocolVersion(response *mcptransport.JSONRPCResponse) (stri
 func (session *MCPClientSession) reinitialize(ctx context.Context, expectedGeneration uint64) error {
 	// A 404 for an established session requires a fresh initialize exchange.
 	// MCP 2025-11-25: https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#session-management
-	session.sendMu.Lock()
-	defer session.sendMu.Unlock()
+	if err := session.sendGate.acquire(ctx, session.closed, true); err != nil {
+		return err
+	}
+	defer session.sendGate.release(true)
 	session.state.RLock()
-	if session.state.generation != expectedGeneration {
+	if session.state.generation != expectedGeneration && !session.state.reconnectPending {
 		session.state.RUnlock()
 		return nil
 	}
@@ -224,6 +256,10 @@ func (session *MCPClientSession) reinitialize(ctx context.Context, expectedGener
 	if initialize == nil {
 		return fmt.Errorf("MCP session terminated before initialization could be replayed")
 	}
+	session.state.Lock()
+	session.state.reconnectPending = true
+	session.state.ready = false
+	session.state.Unlock()
 	response, err := session.transport.SendRequest(ctx, *initialize)
 	if err != nil {
 		return fmt.Errorf("reinitialize MCP session: %w", err)
@@ -246,6 +282,8 @@ func (session *MCPClientSession) reinitialize(ctx context.Context, expectedGener
 		return fmt.Errorf("reinitialize MCP session: send initialized notification: %w", err)
 	}
 	session.state.Lock()
+	session.state.generation++
+	session.state.reconnectPending = false
 	session.state.ready = true
 	session.state.Unlock()
 	return nil

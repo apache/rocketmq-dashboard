@@ -85,6 +85,11 @@ public class GroupDetailToolHandler implements ToolHandler<GroupDetailInput, Gro
         } else if (group.getOnlineInstances() == 0) {
             status = "WARNING";
             reasons.add("The group has no online consumer.");
+        } else if (group.getTotalLag() < 0) {
+            // The -1 sentinel means the lag could not be resolved (a queue whose diff is unknown),
+            // so no verdict may be derived from it, not even the "nothing accumulated" one.
+            status = "UNKNOWN";
+            reasons.add("Consumer lag information is unavailable.");
         } else if (group.getTotalLag() > 0) {
             status = "WARNING";
             reasons.add("The group has accumulated messages.");

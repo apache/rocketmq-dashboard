@@ -22,9 +22,16 @@ import {
   getTopicRoutes,
   listAllTopics,
   listTopics,
+  sendTopicMessage,
 } from './topicService';
 
-vi.mock('./dataMode', () => ({ isMockMode: () => true }));
+const { mode, metadataApi } = vi.hoisted(() => ({
+  mode: { mock: true },
+  metadataApi: { listTopicsPage: vi.fn() },
+}));
+
+vi.mock('./dataMode', () => ({ isMockMode: () => mode.mock }));
+vi.mock('../api/metadata', () => metadataApi);
 vi.mock('../config', () => ({
   API_BASE_URL: '/api',
 }));
@@ -100,6 +107,20 @@ describe('topic service mock data', () => {
     expect(exportedTopics).toEqual(directTopics);
   });
 
+  it('rejects an empty API page while the reported topic total is still unseen', async () => {
+    mode.mock = false;
+    metadataApi.listTopicsPage
+      .mockResolvedValueOnce({ items: [{ name: 'topic-a' }], total: 2, page: 1, size: 100 })
+      .mockResolvedValueOnce({ items: [], total: 2, page: 2, size: 100 });
+    try {
+      await expect(listAllTopics()).rejects.toThrow('Incomplete topic list');
+      expect(metadataApi.listTopicsPage).toHaveBeenCalledTimes(2);
+    } finally {
+      mode.mock = true;
+      metadataApi.listTopicsPage.mockReset();
+    }
+  });
+
   it('rejects duplicate topic creates across mock instances and clusters', async () => {
     const existing = (await listTopics({ search: 'order-create' }))[0];
     const before = await listTopics({ search: existing.name });
@@ -119,5 +140,15 @@ describe('topic service mock data', () => {
 
     const after = await listTopics({ search: existing.name });
     expect(after).toEqual(before);
+  });
+
+  it('reports the send time as epoch millis, the shape the API returns', async () => {
+    const before = Date.now();
+
+    const result = await sendTopicMessage({ topic: 'order-create', body: '{"id":1}' });
+
+    expect(typeof result.sendTime).toBe('number');
+    expect(result.sendTime).toBeGreaterThanOrEqual(before);
+    expect(result.sendTime).toBeLessThanOrEqual(Date.now());
   });
 });
