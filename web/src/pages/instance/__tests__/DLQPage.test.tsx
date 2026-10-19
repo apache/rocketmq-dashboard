@@ -1121,6 +1121,39 @@ describe('DLQ page', () => {
     expect(searchInput).toHaveDisplayValue('');
   });
 
+  it('keeps the search term when a completed retry reloads the same instance', async () => {
+    vi.mocked(messageService.resendDLQ).mockResolvedValue({
+      matched: 1,
+      resent: 1,
+      failed: 0,
+      outcome: 'SUCCESS',
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('cg-order');
+    const searchInput = screen.getByPlaceholderText('搜索 Group 名称或 DLQ Topic');
+    await user.type(searchInput, 'ord');
+    await waitFor(() =>
+      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith('instance-1', 'ord', 1, 20),
+    );
+
+    const orderRow = screen.getByText('cg-order').closest('tr');
+    if (!orderRow) throw new Error('DLQ group row not found');
+    await user.click(within(orderRow).getByRole('button', { name: '重投消息' }));
+    await user.type(screen.getByPlaceholderText('输入目标 Topic 名称'), 'orders-retry');
+    await user.click(screen.getByRole('button', { name: '确认重投' }));
+
+    // A finished retry bumps `refreshKey`, which is part of the reset scope key.
+    // That reload still targets the same instance, so the term the user is
+    // working with has to survive both the request and the input.
+    await waitFor(() => expect(messageService.resendDLQ).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith('instance-1', 'ord', 1, 20),
+    );
+    expect(searchInput).toHaveDisplayValue('ord');
+  });
+
   it('ignores a stale group response after changing instances', async () => {
     let resolveFirstInstance!: (page: DLQGroupPage) => void;
     vi.mocked(messageService.listDLQGroups)

@@ -152,7 +152,6 @@ const DLQPage = () => {
     setGroups([]);
     setTotal(0);
     setPage(1);
-    setSearch('');
     setSelectedGroupNames([]);
     setDetailOpen(false);
     setDetailGroup(null);
@@ -169,6 +168,18 @@ const DLQPage = () => {
     setRetryError(null);
     setLoadError(null);
     setLoading(true);
+  }
+
+  // The search term filters the group list of one instance only, so switching
+  // instances has to drop it — otherwise the first request for the new instance
+  // is filtered by a term that can never match there. Kept separate from the
+  // `scopeKey` block above on purpose: that key also moves when a completed
+  // retry bumps `refreshKey`, and a reload of the same instance must keep the
+  // term the user is still working with.
+  const [prevInstanceId, setPrevInstanceId] = useState(selectedInstanceId);
+  if (prevInstanceId !== selectedInstanceId) {
+    setPrevInstanceId(selectedInstanceId);
+    setSearch('');
   }
 
   useEffect(() => {
