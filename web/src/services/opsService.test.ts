@@ -237,6 +237,27 @@ describe('ops service mock data', () => {
     }
   });
 
+  it('rejects deleting a missing alert rule in mock mode', async () => {
+    const rule = await createAlertRule({
+      name: 'deleted-rule-marker',
+      metric: 'mock.delete.missing',
+      channels: ['email'],
+    });
+    await deleteAlertRule(rule.id, 'CLUSTER');
+
+    await expect(deleteAlertRule(rule.id, 'CLUSTER')).rejects.toThrow(
+      `Alert rule not found: ${rule.id}`,
+    );
+    await expect(deleteAlertRule(rule.id, 'BUSINESS')).rejects.toThrow(
+      `Alert rule not found: ${rule.id}`,
+    );
+    // The two rejections above delete by the id createAlertRule handed out, which is Date.now()
+    // based. An id that was never issued keeps the case deterministic regardless of that.
+    await expect(deleteAlertRule(999999, 'CLUSTER')).rejects.toThrow(
+      'Alert rule not found: 999999',
+    );
+  });
+
   it('imports and exports alert rules within the selected domain only', async () => {
     const imported = await importAlertRulesTransfer(
       {

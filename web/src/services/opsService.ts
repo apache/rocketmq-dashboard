@@ -348,7 +348,8 @@ export async function deleteAlertRule(
 ): Promise<void> {
   if (isMockMode()) {
     const idx = alertRulesState[domain].findIndex((rule) => rule.id === id);
-    if (idx >= 0) alertRulesState[domain].splice(idx, 1);
+    if (idx < 0) throw new Error(`Alert rule not found: ${id}`);
+    alertRulesState[domain].splice(idx, 1);
     return;
   }
   return opsApi.deleteAlertRule(id, domain);
