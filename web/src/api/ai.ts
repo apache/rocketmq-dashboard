@@ -358,7 +358,13 @@ async function consumeRunStream(
   if (!response.ok) {
     throw await parseHttpError(response, label);
   }
-  assertEventStream(response);
+  try {
+    assertEventStream(response);
+  } catch (error) {
+    // No reader owns the body yet when the content-type check rejects it.
+    await response.body?.cancel().catch(() => undefined);
+    throw error;
+  }
   await consumeEventStream(
     response,
     (frame) => emitRunFrame(frame, handlers),
