@@ -292,7 +292,7 @@ describe('useConversationTimeline', () => {
     await waitFor(() => expect(result.current.lastSeq).toBe(5));
     const bubbles = result.current.bubbles;
 
-    let refetchPromise: Promise<void> = Promise.resolve();
+    let refetchPromise: Promise<boolean> = Promise.resolve(false);
     act(() => {
       refetchPromise = result.current.refetch();
     });
@@ -337,11 +337,33 @@ describe('useConversationTimeline', () => {
     await waitFor(() => expect(result.current.items).toHaveLength(1));
     // `useAgentRun` awaits this in its finally block, so it has to be a real promise.
     await act(async () => {
-      await expect(result.current.refetch()).resolves.toBeUndefined();
+      await expect(result.current.refetch()).resolves.toBe(true);
     });
 
     expect(timelineMock).toHaveBeenLastCalledWith(7, { after: 0, limit: 200 });
     expect(result.current.items).toHaveLength(2);
+  });
+
+  it('refreshesThroughAlreadyLoadedPagesBeforeSpendingItsForwardBudgetTest', async () => {
+    let tail = 4;
+    timelineMock.mockImplementation(async (_id, params) => {
+      const seq = (params?.after ?? 0) + 1;
+      return page([item(seq, { type: 'text', text: `row ${seq}` })], seq < tail ? seq : null);
+    });
+    const { result } = render(7, 1, 1);
+    await waitFor(() => expect(result.current.lastSeq).toBe(1));
+    for (let i = 0; i < 3; i += 1) {
+      await act(async () => {
+        await result.current.loadMore();
+      });
+    }
+    expect(result.current.lastSeq).toBe(4);
+    tail = 5;
+    await act(async () => {
+      await result.current.refetch();
+    });
+    expect(result.current.items.map((row) => row.seq)).toEqual([1, 2, 3, 4, 5]);
+    expect(result.current.hasMore).toBe(false);
   });
 
   it('loadMoreDoesNotCancelAnInFlightRefetchTest', async () => {
@@ -355,7 +377,7 @@ describe('useConversationTimeline', () => {
     const { result } = render(7, 1, 1);
     await waitFor(() => expect(result.current.hasMore).toBe(true));
 
-    let refetchPromise: Promise<void> = Promise.resolve();
+    let refetchPromise: Promise<boolean> = Promise.resolve(false);
     act(() => {
       refetchPromise = result.current.refetch();
     });
@@ -405,7 +427,7 @@ describe('useConversationTimeline', () => {
     });
     await waitFor(() => expect(timelineMock).toHaveBeenCalledTimes(2));
 
-    let refetchPromise: Promise<void> = Promise.resolve();
+    let refetchPromise: Promise<boolean> = Promise.resolve(false);
     act(() => {
       refetchPromise = result.current.refetch();
     });
