@@ -36,11 +36,24 @@ export interface RuntimeNoticesProps {
   mock: boolean;
   /** `getAgentCapabilities().rmqctlAvailable`; without rmqctl the agent has no RocketMQ tools. */
   rmqctlAvailable: boolean;
+  /**
+   * `getAgentCapabilities().mcpEnabled` (all tool calls refused) and `l3ToolsAllowed` (the
+   * destructive tier refused). Both exist so a refusal can be explained instead of surfacing as a
+   * mystery error; a probe that has not answered leaves them `true`.
+   */
+  mcpEnabled: boolean;
+  l3ToolsAllowed: boolean;
   /** `useAgentRun().error`; empty while nothing failed. */
   runError: string;
 }
 
-const RuntimeNotices = ({ mock, rmqctlAvailable, runError }: RuntimeNoticesProps) => {
+const RuntimeNotices = ({
+  mock,
+  rmqctlAvailable,
+  mcpEnabled,
+  l3ToolsAllowed,
+  runError,
+}: RuntimeNoticesProps) => {
   const { t } = useLang();
 
   return (
@@ -60,6 +73,22 @@ const RuntimeNotices = ({ mock, rmqctlAvailable, runError }: RuntimeNoticesProps
           data-testid="ai-rmqctl-unavailable-banner"
           title={t('ai.rmqctlUnavailable')}
           description={t('ai.rmqctlUnavailableDescription')}
+          style={NOTICE_STYLE}
+        />
+      )}
+      {!mock && !mcpEnabled && (
+        <InfoBanner
+          data-testid="ai-mcp-disabled-banner"
+          title={t('ai.mcpDisabled')}
+          description={t('ai.mcpDisabledDescription')}
+          style={NOTICE_STYLE}
+        />
+      )}
+      {!mock && mcpEnabled && !l3ToolsAllowed && (
+        <InfoBanner
+          data-testid="ai-l3-disabled-banner"
+          title={t('ai.l3ToolsDisabled')}
+          description={t('ai.l3ToolsDisabledDescription')}
           style={NOTICE_STYLE}
         />
       )}

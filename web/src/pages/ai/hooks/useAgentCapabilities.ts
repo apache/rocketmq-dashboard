@@ -19,29 +19,52 @@ import { useEffect, useState } from 'react';
 import { getAgentCapabilities } from '../../../api/aiConversations';
 
 /**
- * Whether the hosted agent's RocketMQ tool channel (`rmqctl`) is available.
+ * The capabilities the server probes on startup, as the AI page needs them.
  *
- * Defaults to `true` so the notice does not flash on every page load before the probe answers, and
- * a FAILED probe also keeps it `true`: an endpoint that cannot be reached says nothing about the
- * binary on the server, and claiming "tools unavailable" off a transient network blip would be a
- * lie the operator cannot distinguish from the real thing. Only an explicit `rmqctlAvailable:false`
- * renders the neutral notice.
+ * Every flag defaults to `true` so nothing flashes on page load before the probe answers, and a
+ * FAILED probe keeps them `true` as well: an endpoint that cannot be reached says nothing about the
+ * binary or the switch behind it, and claiming "unavailable" off a transient network blip would be
+ * a lie the operator cannot distinguish from the real thing. Only an explicit `false` is reported.
  *
  * `enabled` is false in mock mode, where the AI page does not inspect the runtime at all.
  */
-export function useAgentCapabilities(enabled: boolean): boolean {
-  const [rmqctlAvailable, setRmqctlAvailable] = useState(true);
+export interface AiAgentCapabilities {
+  rmqctlAvailable: boolean;
+  claudeAvailable: boolean;
+  qoderAvailable: boolean;
+  mcpEnabled: boolean;
+  l3ToolsAllowed: boolean;
+}
+
+const UNKNOWN_CAPABILITIES: AiAgentCapabilities = {
+  rmqctlAvailable: true,
+  claudeAvailable: true,
+  qoderAvailable: true,
+  mcpEnabled: true,
+  l3ToolsAllowed: true,
+};
+
+export function useAgentCapabilities(enabled: boolean): AiAgentCapabilities {
+  const [capabilities, setCapabilities] = useState<AiAgentCapabilities>(UNKNOWN_CAPABILITIES);
 
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
     // A new probe makes the previous explicit answer stale. Until this request answers, follow the
-    // documented unknown-state fallback instead of continuing to claim the tool is unavailable.
+    // documented unknown-state fallback instead of continuing to claim a capability is missing.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRmqctlAvailable(true);
+    setCapabilities(UNKNOWN_CAPABILITIES);
     getAgentCapabilities()
-      .then((capabilities) => {
-        if (!cancelled) setRmqctlAvailable(capabilities.rmqctlAvailable);
+      .then((probed) => {
+        if (!cancelled) {
+          setCapabilities({
+            rmqctlAvailable: probed.rmqctlAvailable,
+            claudeAvailable: probed.claudeAvailable,
+            qoderAvailable: probed.qoderAvailable,
+            mcpEnabled: probed.mcpEnabled,
+            l3ToolsAllowed: probed.l3ToolsAllowed,
+          });
+        }
       })
       .catch(() => undefined);
     return () => {
@@ -49,5 +72,5 @@ export function useAgentCapabilities(enabled: boolean): boolean {
     };
   }, [enabled]);
 
-  return rmqctlAvailable;
+  return capabilities;
 }
