@@ -82,6 +82,21 @@ public class MybatisPlusAiRunRepository implements AiRunRepository {
     }
 
     @Override
+    public List<RmqAiRun> findByConversationIdAndIds(Long conversationId, Collection<Long> runIds) {
+        if (conversationId == null || runIds == null || runIds.isEmpty()) {
+            return List.of();
+        }
+        List<Long> ids = runIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return runMapper.selectList(new QueryWrapper<RmqAiRun>()
+                .eq("conversation_id", conversationId)
+                .in("id", ids)
+                .orderByAsc("turn", "id"));
+    }
+
+    @Override
     public Map<Long, RmqAiRun> findLatestByConversationIds(Collection<Long> conversationIds) {
         if (conversationIds == null || conversationIds.isEmpty()) {
             return Map.of();

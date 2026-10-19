@@ -608,6 +608,30 @@ class AiTimelineRepositoryTest {
                 .contains("ORDER BY turn ASC,id ASC");
     }
 
+    @Test
+    void thePageRunLookupShouldBindOnlyDistinctReferencedIdsAndConversationTest() {
+        when(runMapper.selectList(any())).thenReturn(List.of());
+
+        runs.findByConversationIdAndIds(CONVERSATION_ID, Arrays.asList(11L, 12L, 11L, null));
+
+        QueryWrapper<RmqAiRun> query = capturedRunSelectList();
+        assertThat(query.getTargetSql())
+                .contains("conversation_id = ? AND id IN (?,?)")
+                .contains("ORDER BY turn ASC,id ASC");
+        assertThat(query.getParamNameValuePairs().values())
+                .containsExactlyInAnyOrder(CONVERSATION_ID, 11L, 12L);
+    }
+
+    @Test
+    void thePageRunLookupShouldSkipSqlWithoutConversationOrUsableIdsTest() {
+        assertThat(runs.findByConversationIdAndIds(null, List.of(11L))).isEmpty();
+        assertThat(runs.findByConversationIdAndIds(CONVERSATION_ID, null)).isEmpty();
+        assertThat(runs.findByConversationIdAndIds(CONVERSATION_ID, List.of())).isEmpty();
+        assertThat(runs.findByConversationIdAndIds(CONVERSATION_ID, Collections.singletonList(null)))
+                .isEmpty();
+        verify(runMapper, never()).selectList(any());
+    }
+
     /**
      * Two statements for a whole page instead of one per conversation: {@code MAX(id)} grouped by
      * conversation is an index-only lookup on {@code idx_ai_run_conversation (conversation_id, id)}, then

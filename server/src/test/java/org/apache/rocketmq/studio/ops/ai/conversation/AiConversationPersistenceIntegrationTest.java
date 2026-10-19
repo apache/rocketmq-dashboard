@@ -47,6 +47,7 @@ import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.inOrder;
@@ -318,6 +319,27 @@ class AiConversationPersistenceIntegrationTest {
         assertThat(countEvents(seeded.conversationId)).isZero();
         assertThat(countRuns(seeded.conversationId)).isZero();
         assertThat(conversationMapper.selectById(seeded.conversationId)).isNull();
+    }
+
+    @Test
+    void timelineShouldReadOnlyTheRunsReferencedByEachPageTest() {
+        Seeded seeded = seed();
+        Seeded other = seed();
+        clearInvocations(runRepository);
+
+        assertThat(conversationService.timeline(seeded.conversationId, OWNER, 0, 20).runs())
+                .extracting(RmqAiRun::getId).containsExactly(seeded.firstRunId);
+        assertThat(conversationService.timeline(seeded.conversationId, OWNER, 100, 20).runs())
+                .extracting(RmqAiRun::getId).containsExactly(seeded.secondRunId);
+        assertThat(conversationService.timeline(seeded.conversationId, OWNER, 90, 20).runs())
+                .extracting(RmqAiRun::getId).containsExactly(seeded.firstRunId, seeded.secondRunId);
+        assertThat(conversationService.timeline(seeded.conversationId, OWNER, EVENT_COUNT, 20).runs())
+                .isEmpty();
+        verify(runRepository, never()).findByConversationId(any());
+
+        assertThat(runRepository.findByConversationIdAndIds(seeded.conversationId,
+                List.of(seeded.secondRunId, other.firstRunId, seeded.firstRunId, seeded.secondRunId)))
+                .extracting(RmqAiRun::getId).containsExactly(seeded.firstRunId, seeded.secondRunId);
     }
 
     @Test

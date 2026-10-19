@@ -264,6 +264,40 @@ class AiConversationServiceTest {
     // --- timeline --------------------------------------------------------------
 
     @Test
+    void timelineShouldNotLoadTheWholeRunHistoryForOneEventPageTest() {
+        when(conversationRepository.findByIdAndOwner(CONVERSATION_ID, OWNER))
+                .thenReturn(Optional.of(AiRunTestSupport.conversation(CONVERSATION_ID, OWNER)));
+        RmqAiEvent probe = event(3, "text", "{\"type\":\"text\",\"text\":\"next run\"}");
+        probe.setRunId(12L);
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 0, 3)).thenReturn(List.of(
+                event(1, "user", "{\"type\":\"user\",\"text\":\"hi\"}"),
+                event(2, "text", "{\"type\":\"text\",\"text\":\"hello\"}"), probe));
+        RmqAiRun run = AiRunTestSupport.run(11L, CONVERSATION_ID, 1, RunStatus.COMPLETED);
+        when(runRepository.findByConversationIdAndIds(eq(CONVERSATION_ID), any()))
+                .thenReturn(List.of(run));
+
+        AiConversationService.TimelinePage page = service.timeline(CONVERSATION_ID, OWNER, 0, 2);
+        assertThat(page.items()).hasSize(2);
+        assertThat(page.runs()).containsExactly(run);
+
+        verify(runRepository, never()).findByConversationId(any());
+        verify(runRepository).findByConversationIdAndIds(eq(CONVERSATION_ID),
+                argThat(ids -> ids.size() == 1 && ids.contains(11L)));
+    }
+
+    @Test
+    void timelineShouldNotQueryRunMetadataForUnreadableEventsTest() {
+        when(conversationRepository.findByIdAndOwner(CONVERSATION_ID, OWNER))
+                .thenReturn(Optional.of(AiRunTestSupport.conversation(CONVERSATION_ID, OWNER)));
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 0, 3))
+                .thenReturn(List.of(event(1, "text", "invalid json")));
+
+        assertThat(service.timeline(CONVERSATION_ID, OWNER, 0, 2).runs()).isEmpty();
+        verify(runRepository, never()).findByConversationIdAndIds(any(), any());
+        verify(runRepository, never()).findByConversationId(any());
+    }
+
+    @Test
     void timelineShouldDeriveTheCursorFromOneExtraRowTest() {
         RmqAiConversation stored = AiRunTestSupport.conversation(CONVERSATION_ID, OWNER);
         when(conversationRepository.findByIdAndOwner(CONVERSATION_ID, OWNER)).thenReturn(Optional.of(stored));
