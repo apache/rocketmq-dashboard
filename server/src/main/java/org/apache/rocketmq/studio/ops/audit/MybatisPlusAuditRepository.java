@@ -197,10 +197,11 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                               String operator, String operationType, String resourceType,
                               String target, String clusterId, boolean clusterIdMissing,
                               LocalDateTime startDate, LocalDateTime endDate, String result) {
-        query.and(StringUtils.hasText(search), w -> w
-                        .like("operator", search)
-                        .or().like("resource_name", search)
-                        .or().like("detail", search))
+        String searchPattern = StringUtils.hasText(search) ? escapeLike(search) : null;
+        query.and(searchPattern != null, w -> w
+                        .like("operator", searchPattern)
+                        .or().like("resource_name", searchPattern)
+                        .or().like("detail", searchPattern))
                 .eq(StringUtils.hasText(operator), "operator", operator)
                 .eq(StringUtils.hasText(operationType), "operation", operationType)
                 .eq(StringUtils.hasText(resourceType), "resource_type", resourceType)
@@ -210,6 +211,10 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                 .ge(startDate != null, "gmt_create", startDate)
                 .le(endDate != null, "gmt_create", endDate)
                 .eq(StringUtils.hasText(result), "result", result);
+    }
+
+    private static String escapeLike(String value) {
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     @Override
