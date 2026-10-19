@@ -67,6 +67,7 @@ class NativeAlertClusterCorrelationTest {
         when(states.find(any())).thenReturn(Optional.empty());
         when(states.save(any(), any())).thenReturn(true);
         AlertRepository alerts = mock(AlertRepository.class);
+        when(alerts.findRuleByIdForUpdate(rule.getId())).thenReturn(Optional.of(rule));
         when(alerts.saveAlert(any())).thenAnswer(invocation -> invocation.getArgument(0));
         NotificationOutboxService outbox = mock(NotificationOutboxService.class);
         AlertNotificationSuppressionService suppression = mock(AlertNotificationSuppressionService.class);
@@ -143,6 +144,8 @@ class NativeAlertClusterCorrelationTest {
         when(states.save(any(), any())).thenReturn(true);
         List<SystemAlertVO> emitted = new ArrayList<>();
         AlertRepository alerts = mock(AlertRepository.class);
+        when(alerts.findRuleByIdForUpdate(clusterRule.getId())).thenReturn(Optional.of(clusterRule));
+        when(alerts.findRuleByIdForUpdate(businessRule.getId())).thenReturn(Optional.of(businessRule));
         when(alerts.saveAlert(any())).thenAnswer(invocation -> {
             SystemAlertVO event = invocation.getArgument(0);
             event.setId((long) emitted.size() + 1);

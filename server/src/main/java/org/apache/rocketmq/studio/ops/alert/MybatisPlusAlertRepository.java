@@ -31,6 +31,7 @@ import org.apache.rocketmq.studio.persistence.mapper.RmqAlertNotificationOutboxM
 import org.apache.rocketmq.studio.persistence.mapper.RmqSystemAlertMapper;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 
@@ -117,6 +118,16 @@ public class MybatisPlusAlertRepository implements AlertRepository {
         }
         return Optional.ofNullable(ruleMapper.selectById(id))
                 .map(MybatisPlusAlertRepository::toRuleVO);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<AlertRuleVO> findRuleByIdForUpdate(Long id) {
+        if (id == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(ruleMapper.selectOne(new QueryWrapper<RmqAlertRule>()
+                .eq("id", id).last("FOR UPDATE"))).map(MybatisPlusAlertRepository::toRuleVO);
     }
 
     @Override
