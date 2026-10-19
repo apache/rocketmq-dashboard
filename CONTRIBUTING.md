@@ -44,9 +44,26 @@ so that URL answers only when you run the backend directly (see below). See
 
 ### Run the backend only
 
+For local development without MySQL, use the existing `dev` profile and include the test
+classpath, which contains the test-scoped H2 driver:
+
 ```bash
 cd server
-mvn -B -ntp spring-boot:run          # or: mvn -B -ntp package -DskipTests
+mvn -B -ntp spring-boot:run \
+  -Dspring-boot.run.profiles=dev \
+  -Dspring-boot.run.useTestClasspath=true
+```
+
+The backend listens on <http://localhost:8888>; <http://localhost:8888/readyz> reports
+readiness. Run the frontend separately using the next section. The `dev` profile initializes
+the schema in an **in-memory H2 database**: its data is lost when the backend process exits.
+Use this profile only for local development. For a persistent MySQL-backed setup, follow
+the full-stack instructions above and [`deploy/README.md`](deploy/README.md).
+
+To build the backend without starting it, run this from `server/` instead:
+
+```bash
+mvn -B -ntp package -DskipTests
 ```
 
 ### Run the frontend only
