@@ -109,6 +109,22 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void listTopicsPageEscapesLikeMetacharactersInSystemTopicPrefixes() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(topicMapper.selectPage(any(), any())).thenReturn(new Page<>(1, 20));
+        RocketMQMetadataProvider provider = newProvider();
+
+        provider.listTopicsPage("instance-a", null, null, null, 1, 20);
+
+        ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(topicMapper).selectPage(any(), captor.capture());
+        LambdaQueryWrapper<RmqTopic> query = captor.getValue();
+        assertThat(query.getSqlSegment()).contains("NOT LIKE");
+        assertThat(query.getParamNameValuePairs().values())
+                .contains("rmq\\_sys\\_%", "\\%RETRY\\%%", "\\%DLQ\\%%");
+    }
+
+    @Test
     void configuredTopicAndGroupQueriesRetainPhysicalClusterAndEmptyInstancePredicates() {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
