@@ -157,7 +157,7 @@ public class AiRunExecutor {
                          AiConversationProperties properties,
                          ObjectMapper objectMapper) {
         this(agentProviders, llmClient, promptEnhancer, registry, runRepository, conversationRepository,
-                eventRepository, properties, objectMapper, newRunExecutor(), SseEmitter::new,
+                eventRepository, properties, objectMapper, newRunExecutor(), new AgentStreamEmitter.Factory(),
                 newScheduler(), Clock.systemUTC());
     }
 
@@ -679,6 +679,9 @@ public class AiRunExecutor {
             executor.shutdownNow();
         }
         scheduler.shutdownNow();
+        if (emitterFactory instanceof AgentStreamEmitter.Factory factory) {
+            factory.close();
+        }
     }
 
     /**
