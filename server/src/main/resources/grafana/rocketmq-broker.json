@@ -37,7 +37,7 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "query": "label_values(rocketmq_messages_in_total{cluster=\"$cluster\"}, broker)",
+        "query": "label_values(rocketmq_messages_in_total{cluster=\"$cluster\"}, node_id)",
         "refresh": 2,
         "current": {},
         "hide": 0
@@ -98,8 +98,8 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (broker) (rate(rocketmq_messages_in_total{cluster=\"$cluster\",broker=\"$broker\"}[1m]))",
-          "legendFormat": "{{broker}}",
+          "expr": "sum by (node_id) (rate(rocketmq_messages_in_total{cluster=\"$cluster\",node_id=\"$broker\"}[1m]))",
+          "legendFormat": "{{node_id}}",
           "refId": "A"
         }
       ]
@@ -140,8 +140,8 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (broker) (rate(rocketmq_messages_out_total{cluster=\"$cluster\",broker=\"$broker\"}[1m]))",
-          "legendFormat": "{{broker}}",
+          "expr": "sum by (node_id) (rate(rocketmq_messages_out_total{cluster=\"$cluster\",node_id=\"$broker\"}[1m]))",
+          "legendFormat": "{{node_id}}",
           "refId": "A"
         }
       ]
