@@ -62,7 +62,7 @@ import type {
   SystemAlert,
 } from '../../api/ops';
 import { formatUtcDateTime, formatNumber } from '../../utils/format';
-import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { buildCsv, downloadCsv, localExportDateStamp, type CsvColumn } from '../../utils/download';
 import { zonedLocalDateTimeToUtc } from '../../utils/timeZone';
 
 const { Text } = Typography;
@@ -321,7 +321,7 @@ const SystemAlertsPage = () => {
         currentPage += 1;
       }
       downloadCsv(
-        `rocketmq-system-alerts-${new Date().toISOString().slice(0, 10)}.csv`,
+        `rocketmq-system-alerts-${localExportDateStamp()}.csv`,
         buildCsv(ALERT_EXPORT_COLUMNS, rows),
       );
       message.success(t('sysAlerts.exportSuccess', { count: rows.length }));
