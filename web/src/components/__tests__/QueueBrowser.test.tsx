@@ -314,7 +314,11 @@ describe('QueueBrowser request ownership', () => {
       .mockResolvedValueOnce(messageRecord('initial-message'))
       .mockReturnValueOnce(replacement.promise);
     const user = userEvent.setup();
-    render(<QueueBrowserResultsProbe />);
+    render(
+      <LangProvider>
+        <QueueBrowserResultsProbe />
+      </LangProvider>,
+    );
 
     await user.click(screen.getByRole('button', { name: 'topic-a' }));
     await user.click(screen.getByRole('button', { name: 'load' }));
@@ -323,7 +327,7 @@ describe('QueueBrowser request ownership', () => {
     await screen.findByText('initial-message');
     await user.click(screen.getByRole('button', { name: 'pull' }));
     await waitFor(() => expect(pullMessageAtOffset).toHaveBeenCalledTimes(2));
-    await user.click(screen.getByRole('button', { name: 'close' }));
+    await user.click(screen.getByRole('button', { name: '关闭 broker-a-0 的消息详情' }));
 
     await act(async () => replacement.resolve(messageRecord('late-message')));
 
@@ -490,7 +494,11 @@ describe('QueueBrowser request ownership', () => {
       propertiesTruncated: true,
     });
     const user = userEvent.setup();
-    render(<QueueBrowserResultsProbe />);
+    render(
+      <LangProvider>
+        <QueueBrowserResultsProbe />
+      </LangProvider>,
+    );
 
     await user.click(screen.getByRole('button', { name: 'topic-a' }));
     await user.click(screen.getByRole('button', { name: 'load' }));
@@ -506,6 +514,62 @@ describe('QueueBrowser request ownership', () => {
 });
 
 describe('QueueBrowser localization', () => {
+  it.each([
+    ['zh', '选择 Topic', 'broker-a 队列 0 的 Offset', '关闭 broker-a-0 的消息详情'],
+    ['en', 'Select a topic', 'Offset for broker-a queue 0', 'Close message details for broker-a-0'],
+  ])(
+    'namesQueueControlsAndKeepsKeyboardActionsWorkingTest (%s)',
+    async (language, topicLabel, offsetLabel, closeLabel) => {
+      window.localStorage.setItem('rocketmq-studio-language', language);
+      vi.mocked(getQueueOffsets).mockResolvedValue([queue('broker-a'), queue('broker-b')]);
+      vi.mocked(pullMessageAtOffset).mockResolvedValue(messageRecord('accessible-message'));
+      const Inner = () => {
+        const state = useQueueBrowser('instance-a');
+        return (
+          <>
+            <QueueBrowserControls
+              instanceId="instance-a"
+              state={state}
+              topicOptions={[{ label: 'topic-a', value: 'topic-a' }]}
+            />
+            <button onClick={() => state.setTopic('topic-a')}>select-test-topic</button>
+            <button onClick={() => void state.loadQueues()}>load-test-queues</button>
+            <QueueBrowserResults state={state} />
+          </>
+        );
+      };
+      const user = userEvent.setup();
+      render(
+        <LangProvider>
+          <Inner />
+        </LangProvider>,
+      );
+      expect.soft(screen.getByRole('combobox')).toHaveAccessibleName(topicLabel);
+      await user.click(screen.getByRole('button', { name: 'select-test-topic' }));
+      await user.click(screen.getByRole('button', { name: 'load-test-queues' }));
+      const offset = (await screen.findAllByRole('slider'))[0];
+      expect.soft(offset).toHaveAccessibleName(offsetLabel);
+      expect(screen.getAllByRole('slider')).toHaveLength(2);
+      expect(screen.getAllByRole('slider')[1]).toHaveAccessibleName(
+        offsetLabel.replace('broker-a', 'broker-b'),
+      );
+      offset.focus();
+      // rc-slider reads the legacy key code supplied by real browser keyboard events.
+      fireEvent.keyDown(offset, { key: 'ArrowLeft', keyCode: 37 });
+      expect(offset).toHaveAttribute('aria-valuenow', '1');
+      const row = screen.getByText('broker-a').closest('tr')!;
+      await user.click(within(row).getByRole('button'));
+      expect(await screen.findByText('accessible-message')).toBeInTheDocument();
+      expect(pullMessageAtOffset).toHaveBeenCalledWith(
+        expect.objectContaining({ brokerName: 'broker-a', queueId: 0, offset: 1 }),
+      );
+      const close = screen.getByRole('button', { name: closeLabel });
+      close.focus();
+      await user.keyboard('{Enter}');
+      expect(screen.queryByText('accessible-message')).not.toBeInTheDocument();
+    },
+  );
+
   // The queue browser hardcoded Chinese strings regardless of the display language (#4941 fixed
   // the composer font size; this panel regressed the other way). The strings now go through the
   // translation table like every other surface.
