@@ -33,7 +33,7 @@ body:
             another Apache RocketMQ repository.
           required: true
         - label: >
-            I can reproduce this on the current `master` branch, or I have stated the exact
+            I can reproduce this on the current `rocketmq-studio` branch, or I have stated the exact
             version I am running below.
           required: true
 
@@ -42,7 +42,7 @@ body:
       label: Studio Version
       description: Which RocketMQ Studio build shows the problem.
       placeholder: >
-        branch: (e.g. master)
+        branch: (e.g. rocketmq-studio)
         git commit id: (e.g. e5ac52440f1a2b3c4d5e6f708192a3b4c5d6e7f8)
         deployed as: (docker compose | deploy.sh | Kubernetes | built from source)
     validations:
@@ -132,7 +132,7 @@ body:
       label: Are You Willing to Submit a Pull Request?
       description: >
         Not required, but welcome. Read CONTRIBUTING.md first: pull requests target the
-        `master` branch and need tests for non-trivial changes.
+        `rocketmq-studio` branch and need tests for non-trivial changes.
       options:
         - label: Yes, I am willing to submit a pull request.
 

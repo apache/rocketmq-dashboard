@@ -18,11 +18,16 @@ package org.apache.rocketmq.studio.provider.alibaba;
 
 import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupSubscriptionsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListInstancesResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicSubscriptionsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsResponseBody;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
+import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.junit.jupiter.api.Test;
+
+import java.time.LocalDateTime;
+import java.util.TimeZone;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -59,6 +64,24 @@ class AliyunConvertersTest {
         TopicVO vo = AliyunConverters.toTopicVO(data, "7");
 
         assertThat(vo.getType()).isEqualTo(TopicType.LITE);
+    }
+
+    @Test
+    void toTopicConsumerVoShouldMarkTheUngettableLagAndTpsUnavailableTest() {
+        // ListTopicSubscriptionsResponseBody.Data carries only consistency, consumerGroupId,
+        // filterExpression, filterExpressionType, messageModel, subscriptionStatus and topicName -
+        // no lag or TPS. Leaving the VO defaults would present 0 backlog / 0 TPS as measured
+        // values; the Apache provider flags the same gap with metricsAvailable(false), which is
+        // the only value the console renders as unavailable.
+        ListTopicSubscriptionsResponseBody.Data data = ListTopicSubscriptionsResponseBody.Data.builder()
+                .consumerGroupId("cg-orders")
+                .messageModel("CLUSTERING")
+                .build();
+
+        TopicConsumerVO consumer = AliyunConverters.toTopicConsumerVO(data);
+
+        assertThat(consumer.getGroup()).isEqualTo("cg-orders");
+        assertThat(consumer.isMetricsAvailable()).isFalse();
     }
 
     @Test
@@ -130,5 +153,37 @@ class AliyunConvertersTest {
                 .filterExpressionType("TAG")
                 .consistency(consistency)
                 .build();
+    }
+
+    @Test
+    void parseDateTimeShouldRelabelAliyunWallClockIntoTheServerZoneTest() {
+        TimeZone original = TimeZone.getDefault();
+        try {
+            // 2026-10-08 10:00:00 in Asia/Shanghai is 02:00:00 UTC.
+            TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+            assertThat(AliyunConverters.parseDateTime("2026-10-08 10:00:00"))
+                    .isEqualTo(LocalDateTime.of(2026, 10, 8, 2, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void parseDateTimeShouldKeepAliyunWallClockWhenServerRunsTheAliyunZoneTest() {
+        TimeZone original = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+            assertThat(AliyunConverters.parseDateTime("2026-10-08 10:00:00"))
+                    .isEqualTo(LocalDateTime.of(2026, 10, 8, 10, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void parseDateTimeShouldReturnNullForUnusableValuesTest() {
+        assertThat(AliyunConverters.parseDateTime(null)).isNull();
+        assertThat(AliyunConverters.parseDateTime("   ")).isNull();
+        assertThat(AliyunConverters.parseDateTime("not a date")).isNull();
     }
 }

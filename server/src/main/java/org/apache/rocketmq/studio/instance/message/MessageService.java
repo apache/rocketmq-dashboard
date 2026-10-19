@@ -149,10 +149,16 @@ public class MessageService {
         if (offset < 0) {
             throw new BusinessException(400, "offset must not be negative");
         }
-        return providerRegistry.byInstanceId(instanceId)
-                .map(provider -> provider.pullMessageAtOffset(instanceId, topic, brokerName, queueId, offset))
-                .orElseGet(() -> messageProvider.pullMessageAtOffset(
-                        instanceId, topic, brokerName, queueId, offset));
+        // The registered provider's null is a legitimate "no message at this
+        // offset" answer; Optional.map would turn it into an empty Optional
+        // and the fallback below would issue a second, identical pull whose
+        // failure would surface as an error on a query that already succeeded
+        // once. The fallback is only for instances without a provider.
+        InstanceProvider provider = providerRegistry.byInstanceId(instanceId).orElse(null);
+        if (provider != null) {
+            return provider.pullMessageAtOffset(instanceId, topic, brokerName, queueId, offset);
+        }
+        return messageProvider.pullMessageAtOffset(instanceId, topic, brokerName, queueId, offset);
     }
 
     public DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {

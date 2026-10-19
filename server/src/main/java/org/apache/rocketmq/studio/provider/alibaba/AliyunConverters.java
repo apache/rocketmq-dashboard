@@ -164,6 +164,11 @@ final class AliyunConverters {
                 .group(data.getConsumerGroupId())
                 .consumeType(toConsumeType(data.getMessageModel()))
                 .messageModel(data.getMessageModel())
+                // ListTopicSubscriptions carries no lag or TPS field, so the VO defaults (0/0)
+                // would render as measured "0 backlog / 0 TPS" in the console and in the AI tool
+                // output. Flag them unavailable, the same way the Apache provider does when
+                // consume stats cannot be read.
+                .metricsAvailable(false)
                 .build();
     }
 
@@ -189,6 +194,16 @@ final class AliyunConverters {
             return ConsumeType.BROADCASTING;
         }
         return ConsumeType.CLUSTERING;
+    }
+
+    /**
+     * The inverse of {@link #toConsumeType}: the OpenAPI's own spelling for a requested consume model
+     * ({@code Broadcasting} / {@code Clustering} — the values the read paths recognise). Null for an
+     * unspecified or clustering model, so a request that does not ask for broadcast keeps the field
+     * out of the payload and the vendor default in charge.
+     */
+    static String toMessageModel(ConsumeType consumeType) {
+        return consumeType == ConsumeType.BROADCASTING ? "Broadcasting" : null;
     }
 
     static List<QueueProgressVO> toQueueProgressRows(GetConsumerGroupLagResponseBody.Data data) {
@@ -373,7 +388,14 @@ final class AliyunConverters {
             return null;
         }
         try {
-            return java.time.LocalDateTime.parse(value, TIME_FORMATTER);
+            // The string is Aliyun's UTC+8 wall clock (see ALIYUN_TIME_ZONE), so relabeling it
+            // as-is would hand the caller a zone-less value in a zone nobody else uses: the
+            // gmtCreate/gmtModified columns would drift from every timestamp Studio itself
+            // writes, and from the epoch-based message/trace times of the same instance.
+            // Convert into the server zone, the same relabeling the Tencent provider applies.
+            java.time.LocalDateTime aliyunWallClock = java.time.LocalDateTime.parse(value, TIME_FORMATTER);
+            return java.time.LocalDateTime.ofInstant(
+                    aliyunWallClock.atZone(ALIYUN_TIME_ZONE).toInstant(), ZoneId.systemDefault());
         } catch (RuntimeException ex) {
             return null;
         }

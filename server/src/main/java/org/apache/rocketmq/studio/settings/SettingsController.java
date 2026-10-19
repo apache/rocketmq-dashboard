@@ -45,7 +45,11 @@ public class SettingsController {
 
     @PostMapping("/general/save")
     public Result<Void> saveGeneralSettings(@Valid @RequestBody GeneralSettingsUpdateDTO request) {
-        settingsService.saveGeneralSettings(request.toSettings());
+        if (request.isPreserveLlmConfig()) {
+            settingsService.saveGeneralSettings(request.toSettings(), true);
+        } else {
+            settingsService.saveGeneralSettings(request.toSettings());
+        }
         return Result.ok();
     }
 
@@ -80,8 +84,12 @@ public class SettingsController {
     }
 
     @PostMapping("/datasources/delete")
-    public Result<Void> deleteDataSource(@RequestParam(required = false) String key) {
-        settingsService.deleteDataSource(key);
+    public Result<Void> deleteDataSource(@RequestParam(required = false) String key,
+                                        @RequestBody(required = false) DataSourceKeyDTO request) {
+        // The API spec documents a {"key": ...} body while the console sends the query parameter;
+        // binding only the parameter made the documented request a 400 "Data source key is
+        // required" and deleted nothing.
+        settingsService.deleteDataSource(key != null ? key : request == null ? null : request.getKey());
         return Result.ok();
     }
 

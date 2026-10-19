@@ -22,7 +22,6 @@ import {
   Button,
   Card,
   Descriptions,
-  Drawer,
   Empty,
   Flex,
   Form,
@@ -56,6 +55,7 @@ import type { MetricData, MetricMapping, MetricProfile } from '../api/metrics';
 import { useLang } from '../i18n/LangContext';
 import { downloadCsv } from '../utils/download';
 import { tableScrollX } from '../utils/table';
+import { readLocalStorage, removeLocalStorage, writeLocalStorage } from '../utils/browserStorage';
 import {
   buildMetricCsvFilename,
   buildMetricCsvFromRows,
@@ -408,7 +408,7 @@ const getDataSourceAuthMode = (auth: string): DataSourceAuthMode => {
 };
 
 const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
-  const { lang } = useLang();
+  const { lang, t } = useLang();
   const queryErrorFallback = lang === 'zh' ? 'Prometheus 查询失败' : 'Prometheus query failed';
   const copy =
     lang === 'zh'
@@ -548,6 +548,8 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   // each other's in-flight results and leave every panel stuck on its spinner.
   const panelRequestIdRef = useRef(0);
   const customRequestIdRef = useRef(0);
+  // Clearing history invalidates prior queries only for history, not their chart results.
+  const historyGenerationRef = useRef(0);
   // Keeps the latest data source readable from the stable callbacks so switching
   // the source uses the new key instead of a stale closure value.
   const dataSourceKeyRef = useRef(dataSourceKey);
@@ -650,6 +652,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     async (profile: MetricProfile | undefined, range: RangeOption) => {
       if (!profile) return;
       const currentRequest = ++panelRequestIdRef.current;
+      const historyGeneration = historyGenerationRef.current;
       const loadingPatch = Object.fromEntries(
         profile.metrics.map((metric) => [metric.semanticMetric, { loading: true } as PanelState]),
       );
@@ -692,6 +695,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
                 [metric.semanticMetric]: { loading: false, data: execution.data, query },
               }));
               setHistory((currentHistory) => {
+                if (historyGeneration !== historyGenerationRef.current) return currentHistory;
                 const nextHistory = mergeMetricsQueryHistory(currentHistory, historyEntry);
                 saveMetricsQueryHistory(nextHistory);
                 return nextHistory;
@@ -723,7 +727,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         // A re-run after an earlier failure must clear the error banner, or the recovered
         // panels below would stay hidden behind it until the component is remounted.
         setProfileError(false);
-        const storedProfileId = localStorage.getItem(PROFILE_STORAGE_KEY);
+        const storedProfileId = readLocalStorage(PROFILE_STORAGE_KEY);
         const initialProfile =
           nextProfiles.find((profile) => profile.id === storedProfileId) ?? nextProfiles[0];
         setProfileId(initialProfile?.id ?? '');
@@ -749,7 +753,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
 
   const handleProfileChange = (nextProfileId: string) => {
     const nextProfile = profiles.find((profile) => profile.id === nextProfileId);
-    localStorage.setItem(PROFILE_STORAGE_KEY, nextProfileId);
+    writeLocalStorage(PROFILE_STORAGE_KEY, nextProfileId);
     setProfileId(nextProfileId);
     void loadAll(nextProfile, selectedRange);
   };
@@ -759,6 +763,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       const trimmed = promql.trim();
       if (!trimmed) return;
       const currentRequest = ++customRequestIdRef.current;
+      const historyGeneration = historyGenerationRef.current;
       setCustomPanel({ loading: true });
       setAppliedCustomPromql(trimmed);
       try {
@@ -802,6 +807,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           });
           setCustomPanel({ loading: false, data: execution.data, query });
           setHistory((currentHistory) => {
+            if (historyGeneration !== historyGenerationRef.current) return currentHistory;
             const nextHistory = mergeMetricsQueryHistory(currentHistory, historyEntry);
             saveMetricsQueryHistory(nextHistory);
             return nextHistory;
@@ -859,6 +865,10 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
 
   const handleAuthSubmit = (values: AuthFormValues) => {
     if (!pendingDataSource) return;
+    if (!availableDataSources.some((source) => source.key === pendingDataSource.key)) {
+      handleAuthCancel();
+      return;
+    }
     const authMode = getDataSourceAuthMode(pendingDataSource.auth);
     const credentials =
       authMode === 'basic'
@@ -877,7 +887,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     authForm.resetFields();
   };
 
-  const handleAuthCancel = () => {
+  const handleAuthCancel = useCallback(() => {
     const replay = pendingAuthReplayRef.current;
     pendingAuthReplayRef.current = null;
     if (replay) {
@@ -886,16 +896,27 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       // previous source's data and nothing ever queries them.
       setProfileId(replay.checkpoint.profileId);
       setRangeId(replay.checkpoint.rangeId);
+      rangeIdRef.current = replay.checkpoint.rangeId;
       setCustomPromql(replay.checkpoint.customPromql);
       if (replay.checkpoint.storedProfileId === null) {
-        localStorage.removeItem(PROFILE_STORAGE_KEY);
+        removeLocalStorage(PROFILE_STORAGE_KEY);
       } else {
-        localStorage.setItem(PROFILE_STORAGE_KEY, replay.checkpoint.storedProfileId);
+        writeLocalStorage(PROFILE_STORAGE_KEY, replay.checkpoint.storedProfileId);
       }
     }
     setPendingDataSource(null);
     authForm.resetFields();
-  };
+  }, [authForm]);
+
+  useEffect(() => {
+    if (
+      pendingDataSource &&
+      !availableDataSources.some((source) => source.key === pendingDataSource.key)
+    ) {
+      // A pending source is separate from the activated key checked by the fallback below.
+      handleAuthCancel();
+    }
+  }, [availableDataSources, handleAuthCancel, pendingDataSource]);
 
   useEffect(() => {
     let cancelled = false;
@@ -917,7 +938,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
 
   useEffect(() => {
     if (dataSourceKey && !availableDataSources.some((source) => source.key === dataSourceKey)) {
-      window.setTimeout(() => {
+      const timeoutId = window.setTimeout(() => {
         // Keep the ref in sync with the state; queries read the ref, so a stale key would
         // keep hitting the de-registered data source while the UI shows the default.
         dataSourceCredentialsRef.current = null;
@@ -929,6 +950,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           void runCustomQuery(appliedCustomPromql, selectedRange);
         }
       }, 0);
+      return () => window.clearTimeout(timeoutId);
     }
   }, [
     availableDataSources,
@@ -1106,6 +1128,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   };
 
   const handleClearHistory = () => {
+    historyGenerationRef.current += 1;
     clearMetricsQueryHistory();
     setHistory([]);
   };
@@ -1137,6 +1160,16 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     const nextDataSource = entry.dataSourceKey
       ? availableDataSources.find((source) => source.key === entry.dataSourceKey)
       : undefined;
+    // A named history source is part of the query's identity. An unavailable source
+    // must not silently become the default backend or replace the active query.
+    if (entry.dataSourceKey && !nextDataSource) {
+      void message.warning(
+        t('metricsExplorer.unavailableHistorySource', {
+          source: entry.dataSourceName || entry.dataSourceKey,
+        }),
+      );
+      return;
+    }
     const nextDataSourceKey = nextDataSource?.key ?? '';
     // The current selection, read before the entry replaces it below, so that declining the
     // credentials prompt can put it back (see handleAuthCancel).
@@ -1144,12 +1177,11 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       profileId,
       rangeId,
       customPromql,
-      storedProfileId: localStorage.getItem(PROFILE_STORAGE_KEY),
+      storedProfileId: readLocalStorage(PROFILE_STORAGE_KEY),
     };
-    setRangeId(nextRange.value);
-    setHistoryOpen(false);
-
     if (entry.profileId === CUSTOM_HISTORY_PROFILE_ID) {
+      setRangeId(nextRange.value);
+      setHistoryOpen(false);
       setCustomPromql(entry.promql);
       if (nextDataSource && getDataSourceAuthMode(nextDataSource.auth) !== 'none') {
         restoreProtectedDataSource(
@@ -1171,7 +1203,9 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       return;
     }
 
-    localStorage.setItem(PROFILE_STORAGE_KEY, nextProfile.id);
+    setRangeId(nextRange.value);
+    setHistoryOpen(false);
+    writeLocalStorage(PROFILE_STORAGE_KEY, nextProfile.id);
     setProfileId(nextProfile.id);
     if (nextDataSource && getDataSourceAuthMode(nextDataSource.auth) !== 'none') {
       restoreProtectedDataSource(
@@ -1465,6 +1499,8 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
               value={customPromql}
               onChange={(event) => setCustomPromql(event.target.value)}
               onPressEnter={(event) => {
+                // Enter may confirm an IME candidate, including WebKit's post-composition key.
+                if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
                 if (!event.shiftKey) {
                   event.preventDefault();
                   void runCustomQuery(customPromql, selectedRange);
@@ -1500,16 +1536,25 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           </div>
         </>
       )}
-      <Drawer
+      <Modal
         title={copy.historyTitle}
-        width={820}
+        width="min(820px, calc(100vw - 32px))"
         open={historyOpen}
-        onClose={() => setHistoryOpen(false)}
+        onCancel={() => setHistoryOpen(false)}
         destroyOnHidden
-        extra={
-          <Button size="small" disabled={visibleHistory.length === 0} onClick={handleClearHistory}>
-            {copy.clearHistory}
-          </Button>
+        styles={{
+          body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden' },
+        }}
+        footer={
+          <Flex justify="flex-end">
+            <Button
+              size="small"
+              disabled={visibleHistory.length === 0}
+              onClick={handleClearHistory}
+            >
+              {copy.clearHistory}
+            </Button>
+          </Flex>
         }
       >
         {visibleHistory.length === 0 ? (
@@ -1564,18 +1609,22 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
             )}
           />
         )}
-      </Drawer>
-      <Drawer
+      </Modal>
+      <Modal
         title={
           <Flex gap={8} wrap="wrap" align="center">
             <span>{copy.detailsTitle}</span>
             {detailsPanel?.metric.name ? <Tag>{detailsPanel.metric.name}</Tag> : null}
           </Flex>
         }
-        width={1080}
+        width="min(1080px, calc(100vw - 32px))"
         open={detailsPanel !== null}
-        onClose={() => setDetailsPanel(null)}
+        onCancel={() => setDetailsPanel(null)}
+        footer={null}
         destroyOnHidden
+        styles={{
+          body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden' },
+        }}
       >
         {detailsPanel?.query ? (
           <Descriptions
@@ -1612,7 +1661,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           tableLayout="fixed"
           scroll={{ x: tableScrollX(detailColumns) }}
         />
-      </Drawer>
+      </Modal>
       <Modal
         title={copy.authTitle}
         open={pendingDataSource !== null}

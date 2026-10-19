@@ -29,7 +29,8 @@
     right toolchain automatically.
 
 .PARAMETER Version
-    Value injected into cmd.CLIVersion (default: 1.0.0).
+    Value injected into cmd.CLIVersion (default: 3.0.0, the version the Makefile and
+    cmd.CLIVersion already declare).
 
 .PARAMETER Output
     Output binary path (default: bin\rmqctl.exe).
@@ -42,7 +43,7 @@
     .\scripts\build-windows.ps1 -Version 1.2.3 -RunTests
 #>
 param(
-    [string]$Version = "1.0.0",
+    [string]$Version = "3.0.0",
     [string]$Output = "bin\rmqctl.exe",
     [switch]$RunTests
 )
@@ -65,6 +66,15 @@ if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
 
 Write-Host ">> $(go version)"
 Write-Host ">> module root: $moduleRoot"
+
+# This entry point builds and optionally tests a native executable. Do not
+# inherit GOOS/GOARCH left over from a previous cross-compilation command.
+$nativeTarget = go env -json GOHOSTOS GOHOSTARCH | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or -not $nativeTarget.GOHOSTOS -or -not $nativeTarget.GOHOSTARCH) {
+    throw "Could not determine the native Go build target"
+}
+$env:GOOS = $nativeTarget.GOHOSTOS
+$env:GOARCH = $nativeTarget.GOHOSTARCH
 
 # Version metadata, mirroring the Makefile LDFLAGS.
 $gitCommit = "unknown"

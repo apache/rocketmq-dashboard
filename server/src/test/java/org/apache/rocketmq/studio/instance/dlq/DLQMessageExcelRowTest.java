@@ -49,6 +49,66 @@ class DLQMessageExcelRowTest {
                 .containsEntry("Reconsume Times", "3");
     }
 
+    @Test
+    void shouldPreserveBinaryBodyInBase64ColumnTest() {
+        DLQMessageVO message = DLQMessageVO.builder()
+                .msgId("binary-msg")
+                .storeTime(1_700_000_000_000L)
+                .bodyBase64("wyg=")
+                .build();
+
+        Map<String, String> cells = firstDataRowByColumnName(List.of(message));
+
+        assertThat(cells.get("Body")).isNull();
+        assertThat(cells).containsEntry("Body Base64", "wyg=");
+    }
+
+    @Test
+    void shouldClampAnOversizedBodyOnACodePointBoundaryTest() {
+        // Asserted on the row rather than on a written sheet: POI sanitises an unpaired surrogate
+        // on the way out, so only the in-memory cell shows whether the cut split a pair. The astral
+        // run reaches index 32753, putting a high surrogate exactly at the 32752 cut point.
+        DLQMessageVO message = DLQMessageVO.builder()
+                .msgId("msg-huge")
+                .storeTime(1_700_000_000_000L)
+                .body("\uD835\uDC00".repeat(16_377) + "x".repeat(40_000))
+                .build();
+
+        String cell = DLQMessageExcelRow.from(message).getBody();
+
+        assertThat(cell).hasSize(32_766).endsWith("...[truncated]");
+        assertThat(cell.codePoints()).noneMatch(codePoint -> codePoint >= 0xD800 && codePoint <= 0xDFFF);
+    }
+
+    @Test
+    void shouldClampAnOversizedBodyBase64Test() {
+        // A binary message carries its raw bytes as Base64 in the Body Base64 column. Base64 is pure
+        // ASCII so there is no surrogate pair to worry about, but a body over ~24 KB still encodes to
+        // more than POI's 32767-char cell limit and would abort the whole export with a 502.
+        DLQMessageVO message = DLQMessageVO.builder()
+                .msgId("binary-huge")
+                .storeTime(1_700_000_000_000L)
+                .bodyBase64("A".repeat(40_000))
+                .build();
+
+        String cell = DLQMessageExcelRow.from(message).getBodyBase64();
+
+        assertThat(cell).hasSize(32_767).endsWith("...[truncated]");
+    }
+
+    @Test
+    void shouldLeaveAShortBodyBase64UntouchedTest() {
+        DLQMessageVO message = DLQMessageVO.builder()
+                .msgId("binary-small")
+                .storeTime(1_700_000_000_000L)
+                .bodyBase64("wyg=")
+                .build();
+
+        String cell = DLQMessageExcelRow.from(message).getBodyBase64();
+
+        assertThat(cell).isEqualTo("wyg=");
+    }
+
     private static Map<String, String> firstDataRowByColumnName(List<DLQMessageVO> messages) {
         List<Map<Integer, String>> rows = readBack(messages);
         Map<Integer, String> header = rows.get(0);
