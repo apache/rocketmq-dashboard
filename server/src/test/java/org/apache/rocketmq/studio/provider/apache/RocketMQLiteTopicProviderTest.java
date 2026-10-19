@@ -156,6 +156,34 @@ class RocketMQLiteTopicProviderTest {
     }
 
     @Test
+    void listLiteTopicsSumsCountAndBacklogAcrossMasters() throws Exception {
+        // A parent topic can be sharded across brokers (see discoverParentTopics): both
+        // masters report the parent and the group, each owning a disjoint set of lite
+        // topics. The summary must sum counts and backlog over every reporting master,
+        // not read whichever master the accumulator happened to keep last.
+        String brokerB = "broker-b:10911";
+        long lastAccess = System.currentTimeMillis() - 1_000;
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A, brokerB));
+        when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(brokerLiteInfo(PARENT, 30, 2, GROUP));
+        when(admin.getBrokerLiteInfo(brokerB)).thenReturn(brokerLiteInfo(PARENT, 30, 3, GROUP));
+        when(admin.getParentTopicInfo(BROKER_A, PARENT)).thenReturn(parentTopicInfo(PARENT, 30, 2));
+        when(admin.getParentTopicInfo(brokerB, PARENT)).thenReturn(parentTopicInfo(PARENT, 30, 3));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1)).thenReturn(lag(7));
+        when(admin.getLiteGroupInfo(brokerB, GROUP, null, 1)).thenReturn(lag(5));
+        when(admin.examineConsumerConnectionInfo(GROUP)).thenReturn(consumerConnection("c1", "10.0.0.9:1234"));
+        when(admin.getLiteClientInfo(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(clientInfo(2, lastAccess));
+
+        List<LiteTopicSummary> summaries = provider.listLiteTopics(null, null);
+
+        assertThat(summaries).singleElement().satisfies(summary -> {
+            assertThat(summary.getTopicCount()).isEqualTo(5);
+            assertThat(summary.getTotalBacklog()).isEqualTo(12L);
+            assertThat(summary.getConsumerCount()).isEqualTo(1);
+        });
+    }
+
+    @Test
     void quotaSkipsAMasterWhoseLiteInfoFailsInsteadOfFailingThePage() throws Exception {
         String failingMaster = "127.0.0.1:10912";
         when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A, failingMaster));
