@@ -1,0 +1,4 @@
+# gofmt and the catalog generator always emit LF, and cataloggen -check
+# compares the generated catalog byte-for-byte, so keep working-tree copies
+# of Go files LF even on core.autocrlf=true checkouts.
+*.go text eol=lf
