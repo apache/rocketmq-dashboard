@@ -42,11 +42,11 @@ func TestPackageReleasePreservesExistingTarball(t *testing.T) {
 		}
 	}
 	for name, content := range map[string]string{
-		"binary": "binary contents",
-		"legal/LICENSE": "license contents",
-		"legal/NOTICE": "notice contents",
+		"binary":                 "binary contents",
+		"legal/LICENSE":          "license contents",
+		"legal/NOTICE":           "notice contents",
 		"completion/rmqctl.bash": "completion contents",
-		"fake-go": "#!/bin/sh\nexit 0\n",
+		"fake-go":                "#!/bin/sh\nexit 0\n",
 	} {
 		mode := os.FileMode(0644)
 		if name == "fake-go" {
