@@ -177,6 +177,19 @@ export async function importAlertRulesTransfer(
   domain: AlertRuleDomain = 'CLUSTER',
 ): Promise<AlertRule[]> {
   if (!isMockMode()) return opsApi.importAlertRulesTransfer(data, domain);
+  // The endpoint validates the envelope before it touches the inventory
+  // (AlertRuleTransferService.validateEnvelope), so the mock has to answer the same four cases the
+  // same way: importing them appended rows the document never described and reported a successful
+  // import of zero rules for the empty one.
+  if (data.version !== 1) {
+    throw new Error('Unsupported alert rule import version');
+  }
+  if (data.domain !== domain) {
+    throw new Error('Alert rule import domain does not match this page');
+  }
+  if (!Array.isArray(data.rules) || data.rules.length === 0 || data.rules.length > 200) {
+    throw new Error('Alert rule import must contain between 1 and 200 rules');
+  }
   const startId = Date.now();
   const imported = data.rules.map((rule, index) => ({
     ...copyAlertRule(rule as AlertRule),
