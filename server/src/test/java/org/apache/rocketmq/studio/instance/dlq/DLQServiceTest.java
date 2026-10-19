@@ -19,7 +19,13 @@ package org.apache.rocketmq.studio.instance.dlq;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Kind;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Resource;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -27,9 +33,17 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -43,8 +57,24 @@ class DLQServiceTest {
     @Mock
     private InstanceProviderRegistry providerRegistry;
 
+    @Mock
+    private ResourceOwnershipGuard ownershipGuard;
+
     @InjectMocks
     private DLQService dlqService;
+
+    @BeforeEach
+    void ownEveryResource() {
+        // The ownership check is what the resend tests are not about: let it pass by default and keep
+        // the mocked provider reachable through the wrapper. Lenient because the validation-failure
+        // tests never reach it.
+        lenient().when(ownershipGuard.requireInstance(anyString()))
+                .thenReturn(InstanceVO.builder().name("instance-1").vendor(InstanceVendor.APACHE).build());
+        lenient().when(ownershipGuard.topicResource(anyString()))
+                .thenAnswer(invocation -> new Resource(Kind.TOPIC, invocation.getArgument(0)));
+        lenient().when(ownershipGuard.withOwned(any(), anyList(), any()))
+                .thenAnswer(invocation -> ((Supplier<?>) invocation.getArgument(2)).get());
+    }
 
     @Test
     void listDLQGroupsShouldReturnGroupsFromProvider() {
@@ -90,6 +120,41 @@ class DLQServiceTest {
     }
 
     @Test
+    void resendMessagesShouldCheckOwnershipOfTheGroupAndTheTargetTopicTest() {
+        dlqService.resendMessages("instance-1", "group-1", 1000L, 2000L, "target-topic");
+
+        // The DLQ topic %DLQ%group-1 belongs to the group's owner, and the destination is a topic
+        // write of its own: the resend must be gated on both.
+        verify(ownershipGuard).withOwned(
+                any(InstanceVO.class),
+                eq(List.of(new Resource(Kind.GROUP, "group-1"), new Resource(Kind.TOPIC, "target-topic"))),
+                any());
+    }
+
+    @Test
+    void resendSelectedMessagesShouldCheckOwnershipOfTheGroupOnlyWhenNoTargetIsNamedTest() {
+        dlqService.resendSelectedMessages("instance-1", "group-1", List.of("msg-1"), null);
+
+        verify(ownershipGuard).withOwned(
+                any(InstanceVO.class),
+                eq(List.of(new Resource(Kind.GROUP, "group-1"))),
+                any());
+    }
+
+    @Test
+    void resendMessagesShouldNotReachTheProviderWhenOwnershipRefusesTest() {
+        // doThrow: the when(...) form would invoke the mock and run the lenient answer below.
+        doThrow(new BusinessException(409, "Resource is owned by another instance"))
+                .when(ownershipGuard).withOwned(any(), anyList(), any());
+
+        assertThatThrownBy(() ->
+                dlqService.resendMessages("instance-1", "group-1", 1000L, 2000L, null))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getCode()).isEqualTo(409));
+        verify(dlqProvider, never()).resendMessages(anyString(), anyString(), any(), any(), any());
+    }
+
+    @Test
     void actionsShouldNormalizeIdentifiersBeforeDelegatingTest() {
         List<String> msgIds = List.of(" msg-1 ", " msg-2 ");
 
@@ -128,6 +193,24 @@ class DLQServiceTest {
                 .hasMessage("msgId must not be blank");
 
         verifyNoInteractions(dlqProvider);
+    }
+
+    @Test
+    void exportExcelShouldRejectEmptySelectionInsteadOfDelegatingWholeWindowTest() {
+        assertThatThrownBy(() -> dlqService.exportExcel(
+                "instance-1", "group-1", null, null, List.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("msgIds must not be empty when provided")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(dlqProvider);
+    }
+
+    @Test
+    void exportExcelShouldKeepAbsentSelectionAsWholeWindowTest() {
+        dlqService.exportExcel("instance-1", "group-1", null, null, null);
+
+        verify(dlqProvider).exportExcel("instance-1", "group-1", null, null, null);
     }
 
     @Test

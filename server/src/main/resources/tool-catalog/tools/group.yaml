@@ -267,6 +267,9 @@ tools:
                   - lag
                 additionalProperties: false
                 properties:
+                  topic:
+                    type: string
+                    description: Topic owning this queue; omitted for provider-level aggregate rows.
                   broker:
                     type: string
                   queueId:

@@ -15,8 +15,9 @@
  * limitations under the License.
  */
 
-import { Select } from 'antd';
+import { Button, Select, theme } from 'antd';
 import type { CSSProperties } from 'react';
+import { useLang } from '../i18n/LangContext';
 
 export interface InstanceOption {
   value: string;
@@ -29,6 +30,9 @@ interface InstanceSelectProps {
   options: InstanceOption[];
   style?: CSSProperties;
   placeholder?: string;
+  /** The instance list request failed, so `options` is empty for a reason the user has to be told. */
+  failed?: boolean;
+  onRetry?: () => void;
 }
 
 /**
@@ -40,13 +44,17 @@ export function InstanceSelect({
   onChange,
   options,
   style,
-  placeholder = '选择实例',
+  placeholder,
+  failed,
+  onRetry,
 }: InstanceSelectProps) {
-  return (
+  const { t } = useLang();
+  const { token } = theme.useToken();
+  const select = (
     <Select
       showSearch
       allowClear
-      placeholder={placeholder}
+      placeholder={placeholder ?? t('common.selectInstance')}
       value={value ?? undefined}
       onChange={(next, option) => {
         if (next === undefined || next === null) {
@@ -65,9 +73,23 @@ export function InstanceSelect({
           .toLowerCase()
           .includes(input.toLowerCase())
       }
-      notFoundContent="暂无匹配实例"
+      notFoundContent={t('instanceSelect.notFound')}
       style={style ?? { width: 220 }}
     />
+  );
+  if (!failed) {
+    return select;
+  }
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+      {select}
+      <span style={{ fontSize: 14, color: token.colorError }}>{t('instance.listLoadFailed')}</span>
+      {onRetry && (
+        <Button type="link" size="small" style={{ padding: 0, height: 'auto' }} onClick={onRetry}>
+          {t('common.retry')}
+        </Button>
+      )}
+    </span>
   );
 }
 

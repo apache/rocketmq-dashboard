@@ -28,7 +28,10 @@ public final class AlertFingerprint {
 
     public static String of(long ruleId, String instanceId, Map<String, String> labels) {
         StringBuilder input = new StringBuilder().append(ruleId).append('\n').append(escape(instanceId)).append('\n');
-        new TreeMap<>(labels == null ? Map.of() : labels).forEach((key, value) -> input.append(escape(key))
+        Map<String, String> identityLabels = new TreeMap<>(labels == null ? Map.of() : labels);
+        // Cloud status describes an incident but changes while the same instance remains unavailable.
+        identityLabels.remove("cloudStatus");
+        identityLabels.forEach((key, value) -> input.append(escape(key))
                 .append('=').append(escape(value)).append('\n'));
         try {
             byte[] bytes = MessageDigest.getInstance("SHA-256").digest(input.toString().getBytes(StandardCharsets.UTF_8));

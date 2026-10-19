@@ -36,6 +36,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -245,6 +246,50 @@ class QueryHistoryServiceTest {
     }
 
     @Test
+    void savedMessageSnapshotsPreserveNullableQueueMetadataTest() {
+        AuthenticatedUserContext.setUsername("alice");
+        List<MessageRecordVO> messages = List.of(
+                MessageRecordVO.builder().msgId("cloud-message").topic("orders").build(),
+                MessageRecordVO.builder().msgId("first-message").topic("orders")
+                        .queueId(0).queueOffset(0L).build(),
+                MessageRecordVO.builder().msgId("later-message").topic("orders")
+                        .queueId(7).queueOffset(12345678901L).build());
+        RmqMessageQuery entity = new RmqMessageQuery();
+        entity.setId(9L);
+        entity.setQueriedBy("alice");
+        entity.setResultSnapshot(service.buildResultSnapshot(messages));
+        when(messageQueryMapper.selectOne(any())).thenReturn(entity);
+
+        List<MessageRecordVO> restored = service.getMessageQueryResults(9L);
+
+        assertThat(restored).hasSize(messages.size());
+        for (int index = 0; index < messages.size(); index++) {
+            assertThat(restored.get(index).getQueueId())
+                    .as("queue ID for %s", messages.get(index).getMsgId())
+                    .isEqualTo(messages.get(index).getQueueId());
+            assertThat(restored.get(index).getQueueOffset())
+                    .as("queue offset for %s", messages.get(index).getMsgId())
+                    .isEqualTo(messages.get(index).getQueueOffset());
+        }
+    }
+
+    @Test
+    void savedMessageSnapshotsExcludeBodiesAndUserPropertiesTest() throws Exception {
+        MessageRecordVO message = MessageRecordVO.builder()
+                .msgId("message-with-payload").topic("orders")
+                .body("private message body")
+                .properties(Map.of("private-property", "private value"))
+                .build();
+
+        String snapshot = service.buildResultSnapshot(List.of(message));
+
+        var savedMessage = new ObjectMapper().readTree(snapshot).get(0);
+        assertThat(savedMessage.path("msgId").asText()).isEqualTo("message-with-payload");
+        assertThat(savedMessage.has("body")).isFalse();
+        assertThat(savedMessage.has("properties")).isFalse();
+    }
+
+    @Test
     void loadsResultSnapshotOnlyForTheAuthenticatedOperatorTest() {
         AuthenticatedUserContext.setUsername("alice");
         RmqMessageQuery entity = new RmqMessageQuery();
@@ -258,6 +303,8 @@ class QueryHistoryServiceTest {
         assertThat(results).singleElement().satisfies(result -> {
             assertThat(result.getMsgId()).isEqualTo("msg-9");
             assertThat(result.getTopic()).isEqualTo("orders");
+            assertThat(result.getQueueId()).isNull();
+            assertThat(result.getQueueOffset()).isNull();
         });
         ArgumentCaptor<QueryWrapper<RmqMessageQuery>> queryCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
         verify(messageQueryMapper).selectOne(queryCaptor.capture());

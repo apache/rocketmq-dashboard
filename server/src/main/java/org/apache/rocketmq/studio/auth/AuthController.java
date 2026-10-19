@@ -60,12 +60,28 @@ public class AuthController {
                 .body(Result.ok(status));
     }
 
+    /**
+     * Reports the policy {@link AuthInterceptor} actually enforces, and answers exactly as it does.
+     * Both read the same static property and the same runtime "requireLogin" row, so the failure
+     * branches have to line up too: the frontend reads this flag to choose between the login page
+     * and the console, and a policy that fails differently in the two places strands the console.
+     * The interceptor fails closed (see its own {@code isLoginRequired}), so an unreadable policy
+     * still demands a login here; letting the read failure escape as a 500 instead used to leave the
+     * frontend on its error screen, where the retry could never succeed and the login page that
+     * would in fact work was unreachable.
+     */
     private boolean isLoginRequired() {
         if (authProperties.isLoginRequired()) {
             return true;
         }
-        GeneralSettingsVO settings = settingsRepository.loadGeneralSettings();
-        return settings != null && settings.isRequireLogin();
+        try {
+            GeneralSettingsVO settings = settingsRepository.loadGeneralSettings();
+            // Fail closed, matching the interceptor: an absent policy row means it still demands a
+            // login, so this endpoint must report that rather than the opposite.
+            return settings == null || settings.isRequireLogin();
+        } catch (Exception exception) {
+            return true;
+        }
     }
 
     @PostMapping("/login")

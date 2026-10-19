@@ -104,6 +104,9 @@ class ClaudeCodeStreamParserTest {
     private static final List<String> LINES = loadLines(CAPTURE);
     private static final List<String> MCP_FAILED = loadLines(MCP_FAILED_CAPTURE);
 
+    /** One code point, two UTF-16 chars: the case the abbreviation caps have to survive. */
+    private static final String EMOJI = "\uD83D\uDE00";
+
     // Synthetic frames: shapes the capture does not contain.
     private static final String TOOL_RESULT_ARRAY_FRAME = """
             {"type":"user","session_id":"s-1","message":{"role":"user","content":[\
@@ -475,6 +478,26 @@ class ClaudeCodeStreamParserTest {
         });
         assertThat(events.get(1)).isEqualTo(
                 new AgentEvent.ResultMeta(SESSION, 0L, 0, 0, "error_during_execution"));
+    }
+
+    @Test
+    void aLongFailedToolResultShouldBeAbbreviatedOnCodePointBoundariesTest() {
+        // A tool result quotes a message body, which is end-user text, so an emoji can sit on the
+        // 512th char of the reason the user is shown. 511 chars put U+1F600's high surrogate exactly
+        // on that cut, and the tail is what the cap has to drop whole.
+        String payload = "x".repeat(511) + EMOJI + "tail";
+        String frame = "{\"type\":\"user\",\"session_id\":\"s-1\",\"message\":{\"role\":\"user\","
+                + "\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_long\","
+                + "\"is_error\":true,\"content\":\"" + payload + "\"}]}}";
+
+        List<AgentEvent> events = parse(List.of(frame));
+
+        assertThat(events).singleElement().isInstanceOfSatisfying(AgentEvent.ToolDone.class, done -> {
+            assertThat(done.success()).isFalse();
+            // A char-based cut would keep the high surrogate on its own and turn it into a
+            // replacement character once the event reaches the timeline.
+            assertThat(done.error()).isEqualTo("x".repeat(511) + EMOJI + "...");
+        });
     }
 
     @Test

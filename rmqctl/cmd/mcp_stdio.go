@@ -162,7 +162,21 @@ func (p *stdioProxy) run(ctx context.Context) error {
 			p.handleResult(result)
 		}
 	}
-	return p.inputErr
+	// A call can queue notifications before its result, but select may consume
+	// the result first. Forward the remaining notifications before exiting.
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case message, ok := <-p.session.Notifications():
+			if !ok {
+				return p.inputErr
+			}
+			p.handleNotification(message)
+		default:
+			return p.inputErr
+		}
+	}
 }
 
 func (p *stdioProxy) handleNotification(message json.RawMessage) {

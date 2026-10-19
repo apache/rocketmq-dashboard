@@ -57,6 +57,9 @@ var platformToolNames = map[string]struct{}{
 	"rmq.broker.config":     {},
 	"rmq.proxy.list":        {},
 	"rmq.proxy.config":      {},
+	"rmq.litetopic.list":    {},
+	"rmq.litetopic.session": {},
+	"rmq.litetopic.quota":   {},
 }
 
 // IsPlatformTool reports whether the named tool is exempt from carrying an

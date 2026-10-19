@@ -169,4 +169,83 @@ describe('MessageQueryHistoryDrawer', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText('服务端查询历史')).not.toBeInTheDocument();
   });
+
+  it('keeps the applied search visible in the input after the drawer is closed and reopened', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    const user = userEvent.setup();
+    const view = render(
+      <App>
+        <LangProvider>
+          <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+        </LangProvider>
+      </App>,
+    );
+
+    expect(await screen.findByText('order-1')).toBeInTheDocument();
+    const searchInput = screen.getByPlaceholderText(
+      'Search Topic, trace Topic, Message ID, Key or operator',
+    );
+    await user.type(searchInput, 'order-1');
+    await user.keyboard('{Enter}');
+
+    await waitFor(() =>
+      expect(listMessageQueryHistory).toHaveBeenCalledWith(
+        expect.objectContaining({ search: 'order-1' }),
+      ),
+    );
+
+    view.rerender(
+      <App>
+        <LangProvider>
+          <MessageQueryHistoryDrawer open={false} clusterId="instance-a" onClose={vi.fn()} />
+        </LangProvider>
+      </App>,
+    );
+    view.rerender(
+      <App>
+        <LangProvider>
+          <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+        </LangProvider>
+      </App>,
+    );
+
+    // The applied filter is still active after reopening, so the visible input must
+    // show it instead of an empty field that contradicts the filtered table below.
+    expect(await screen.findByText('order-1')).toBeInTheDocument();
+    expect(
+      await screen.findByPlaceholderText('Search Topic, trace Topic, Message ID, Key or operator'),
+    ).toHaveValue('order-1');
+  });
+
+  it('applies a cleared search field as an empty filter', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    const user = userEvent.setup();
+    render(
+      <App>
+        <LangProvider>
+          <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+        </LangProvider>
+      </App>,
+    );
+
+    expect(await screen.findByText('order-1')).toBeInTheDocument();
+    const searchInput = screen.getByPlaceholderText(
+      'Search Topic, trace Topic, Message ID, Key or operator',
+    );
+    await user.type(searchInput, 'order-1');
+    await user.keyboard('{Enter}');
+    await waitFor(() =>
+      expect(listMessageQueryHistory).toHaveBeenCalledWith(
+        expect.objectContaining({ search: 'order-1' }),
+      ),
+    );
+
+    await user.clear(searchInput);
+    await user.keyboard('{Enter}');
+    await waitFor(() =>
+      expect(listMessageQueryHistory).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: undefined }),
+      ),
+    );
+  });
 });

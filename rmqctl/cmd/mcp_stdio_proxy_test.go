@@ -124,3 +124,36 @@ func TestStdioProxyForwardsServerNotification(t *testing.T) {
 		t.Fatalf("stdout missing call response:\n%s", output)
 	}
 }
+
+func TestStdioProxyDrainsNotificationsAfterInputAndCallsFinish(t *testing.T) {
+	readErr := errors.New("input read failed")
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{name: "EOF"},
+		{name: "read error", err: readErr},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			session := newFakeMcpSession()
+			defer session.Close()
+			first := `{"jsonrpc":"2.0","method":"notifications/progress","params":{"progress":50}}`
+			last := `{"jsonrpc":"2.0","method":"notifications/progress","params":{"progress":100}}`
+			session.pushNotification(first)
+			session.pushNotification(last)
+			stdout := &bytes.Buffer{}
+			proxy := newStdioProxy(strings.NewReader(""), stdout, &bytes.Buffer{}, session)
+			defer close(proxy.done)
+			// Model the select loop having consumed EOF and the last call result
+			// before the notifications queued by that call.
+			proxy.inputDone = true
+			proxy.inputErr = tc.err
+			if err := proxy.run(context.Background()); !errors.Is(err, tc.err) {
+				t.Fatalf("run error = %v, want %v", err, tc.err)
+			}
+			if got, want := stdout.String(), first+"\n"+last+"\n"; got != want {
+				t.Fatalf("stdout = %q, want %q", got, want)
+			}
+		})
+	}
+}
