@@ -1283,6 +1283,36 @@ describe('MetricsExplorer', () => {
     expect(csv).not.toContain('"Message In TPS"');
   });
 
+  it.each([false, true])(
+    'exports raw out-of-range epochs without losing samples (mixed=%s)',
+    async (mixed) => {
+      const timestamp = 1e20;
+      vi.mocked(queryMetrics).mockResolvedValue({
+        ...metricData,
+        series: [
+          {
+            ...metricData.series[0],
+            values: [
+              ...(mixed ? [{ timestamp: 1_800_000_000, value: '42' }] : []),
+              { timestamp, value: '99' },
+            ],
+            histograms: [{ timestamp, histogram: { sum: '250', count: '10', buckets: [] } }],
+          },
+        ],
+      });
+      const user = userEvent.setup();
+      renderWithProviders(<MetricsExplorer />);
+      await screen.findByRole('img', { name: 'Message In TPS time series' });
+      await user.click(screen.getByRole('button', { name: 'Message In TPS 导出 CSV' }));
+      expect(downloadCsv).toHaveBeenCalledTimes(1);
+      const csv = vi.mocked(downloadCsv).mock.calls[0][1];
+      expect(csv.split('\n')).toHaveLength(mixed ? 4 : 3);
+      expect(csv).toContain('"100000000000000000000","","99"');
+      expect(csv).toContain('"100000000000000000000","","250"');
+      if (mixed) expect(csv).toContain('"2027-01-15T08:00:00.000Z","42"');
+    },
+  );
+
   it('opens series details from the clicked metric panel', async () => {
     const user = userEvent.setup();
     renderWithProviders(<MetricsExplorer />);
