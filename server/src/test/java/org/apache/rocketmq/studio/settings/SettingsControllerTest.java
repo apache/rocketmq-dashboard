@@ -41,6 +41,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -66,6 +67,17 @@ class SettingsControllerTest extends WebMvcAuthTestSupport {
 
     @MockitoBean
     private NotificationOutboxService notificationOutboxService;
+
+    @Test
+    void scopedGeneralSaveShouldPassPreservationIntentTest() throws Exception {
+        mockMvc.perform(post("/api/settings/general/save").contentType(MediaType.APPLICATION_JSON).content("""
+                {"theme":"dark","compact":false,"desktopNotify":false,"notifySound":false,
+                 "sessionTimeout":60,"requireLogin":false,"llmProvider":"openai","model":"old-model",
+                 "baseUrl":"https://api.openai.com/v1","preserveLlmConfig":true}
+                """))
+                .andExpect(status().isOk());
+        verify(settingsService).saveGeneralSettings(any(GeneralSettingsVO.class), eq(true));
+    }
 
     @Test
     void getGeneralSettingsShouldReturnSettingsTest() throws Exception {
@@ -438,6 +450,21 @@ class SettingsControllerTest extends WebMvcAuthTestSupport {
 
         mockMvc.perform(post("/api/settings/datasources/delete")
                         .param("key", "ds-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code", is(200)));
+
+        verify(settingsService).deleteDataSource("ds-1");
+    }
+
+    @Test
+    void deleteDataSourceShouldAcceptTheDocumentedKeyBodyTest() throws Exception {
+        doNothing().when(settingsService).deleteDataSource("ds-1");
+
+        // The API spec (§14.7) documents a {"key": ...} body; binding only the query parameter made
+        // a doc-conformant client's request a 400 that deleted nothing.
+        mockMvc.perform(post("/api/settings/datasources/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"key\":\"ds-1\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code", is(200)));
 

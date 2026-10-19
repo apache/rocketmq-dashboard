@@ -51,11 +51,46 @@ func JSON(w io.Writer, value any) error {
 func YAML(w io.Writer, value any) error {
 	encoder := yaml.NewEncoder(w)
 	encoder.SetIndent(2)
-	if err := encoder.Encode(value); err != nil {
+	if err := encoder.Encode(restoreNumbers(value)); err != nil {
 		_ = encoder.Close()
 		return err
 	}
 	return encoder.Close()
+}
+
+// restoreNumbers preserves JSON numeric literals as numeric YAML scalars. Converting through
+// int64/float64 would round large integers and precise decimals, or underflow small exponents.
+// Explicit tags also preserve numbers outside yaml.v3's implicit numeric resolution range.
+func restoreNumbers(value any) any {
+	switch typed := value.(type) {
+	case json.Number:
+		if typed == "" {
+			return ""
+		}
+		if _, err := json.Marshal(typed); err != nil {
+			return typed.String()
+		}
+		literal := typed.String()
+		tag := "!!int"
+		if strings.ContainsAny(literal, ".eE") {
+			tag = "!!float"
+		}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: tag, Value: literal}
+	case map[string]any:
+		restored := make(map[string]any, len(typed))
+		for key, entry := range typed {
+			restored[key] = restoreNumbers(entry)
+		}
+		return restored
+	case []any:
+		restored := make([]any, len(typed))
+		for i, entry := range typed {
+			restored[i] = restoreNumbers(entry)
+		}
+		return restored
+	default:
+		return value
+	}
 }
 
 func Structured(w io.Writer, format string, value any) error {
@@ -94,8 +129,8 @@ func ConfigTable(w io.Writer, cfg config.Config) error {
 		}
 		context := cfg.Contexts[name]
 		fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n",
-			current, name, context.Server,
-			context.Credential.AccessKeyRef, context.Credential.SecretKeyRef)
+			current, escapeTableCell(name), escapeTableCell(context.Server),
+			escapeTableCell(context.Credential.AccessKeyRef), escapeTableCell(context.Credential.SecretKeyRef))
 	}
 	return table.Flush()
 }
@@ -108,7 +143,7 @@ func ToolCallSummary(w io.Writer, result any) error {
 	table := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(table, "INSTANCE\tSTATUS\tCONFIRM TOKEN")
 	fmt.Fprintf(table, "%s\t%s\t%s\n",
-		mutation.InstanceID, mutation.Status, mutation.ConfirmToken)
+		escapeTableCell(mutation.InstanceID), mutation.Status, escapeTableCell(mutation.ConfirmToken))
 	if err := table.Flush(); err != nil {
 		return err
 	}
@@ -127,13 +162,13 @@ func Rows(w io.Writer, rows []map[string]any, columns []Column) error {
 	table := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	headers := make([]string, 0, len(columns))
 	for _, col := range columns {
-		headers = append(headers, col.Header)
+		headers = append(headers, escapeTableCell(col.Header))
 	}
 	fmt.Fprintln(table, strings.Join(headers, "\t"))
 	for _, row := range rows {
 		values := make([]string, 0, len(columns))
 		for _, col := range columns {
-			values = append(values, stringify(row[col.Key]))
+			values = append(values, escapeTableCell(stringify(row[col.Key])))
 		}
 		fmt.Fprintln(table, strings.Join(values, "\t"))
 	}
@@ -173,13 +208,59 @@ func stringify(value any) string {
 		return ""
 	}
 	if text, ok := value.(string); ok {
-		// Table rows are tab-joined and newline-terminated, so a cell containing a
-		// raw tab would be read as a column delimiter and an embedded newline or CR
-		// would split or overwrite the row. Render the escapes instead.
-		return strings.NewReplacer("\t", "\\t", "\n", "\\n", "\r", "\\r").Replace(text)
+		return text
 	}
 	if f, ok := value.(float64); ok {
 		return strconv.FormatFloat(f, 'f', -1, 64)
 	}
+	// Nested objects and arrays decoded from the tool output are JSON to begin with;
+	// render them as JSON instead of Go's default map/slice syntax ("map[k:v]"),
+	// which is noisy and not what the server sent.
+	switch value.(type) {
+	case map[string]any, []any:
+		if encoded, err := json.Marshal(value); err == nil {
+			return string(encoded)
+		}
+	}
 	return fmt.Sprint(value)
+}
+
+// escapeTableCell keeps each cell on one line and prevents ASCII controls from
+// being interpreted by tabwriter or the terminal. Backslashes and UTF-8 text
+// are preserved; this affects display only, not the stored or structured value.
+func escapeTableCell(text string) string {
+	first := -1
+	for i := 0; i < len(text); i++ {
+		if text[i] < 0x20 || text[i] == 0x7f {
+			first = i
+			break
+		}
+	}
+	if first < 0 {
+		return text
+	}
+	var escaped strings.Builder
+	escaped.Grow(len(text) + 4)
+	escaped.WriteString(text[:first])
+	const hex = "0123456789abcdef"
+	for i := first; i < len(text); i++ {
+		c := text[i]
+		switch c {
+		case '\t':
+			escaped.WriteString(`\t`)
+		case '\n':
+			escaped.WriteString(`\n`)
+		case '\r':
+			escaped.WriteString(`\r`)
+		default:
+			if c < 0x20 || c == 0x7f {
+				escaped.WriteString(`\x`)
+				escaped.WriteByte(hex[c>>4])
+				escaped.WriteByte(hex[c&0x0f])
+			} else {
+				escaped.WriteByte(c)
+			}
+		}
+	}
+	return escaped.String()
 }
