@@ -77,3 +77,28 @@ func TestPackageReleasePreservesExistingTarball(t *testing.T) {
 		t.Fatalf("existing release artifact was overwritten: %q", contents)
 	}
 }
+
+func TestPackageDirectoryPreservesExistingOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("rmqctl's Makefile requires a Unix shell")
+	}
+	if _, err := exec.LookPath("make"); err != nil {
+		t.Skip("make is unavailable")
+	}
+
+	packageDir := t.TempDir()
+	marker := filepath.Join(packageDir, "previous-release.tar.gz")
+	original := []byte("previous release")
+	if err := os.WriteFile(marker, original, 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("make", "-C", "..", "prepare-package-dir", "PACKAGE_DIR="+packageDir)
+	output, err := cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(output), "Package directory already contains files") {
+		t.Fatalf("expected populated package directory rejection, got err=%v, output=%s", err, output)
+	}
+	contents, err := os.ReadFile(marker)
+	if err != nil || string(contents) != string(original) {
+		t.Fatalf("previous release changed: content=%q, err=%v", contents, err)
+	}
+}
