@@ -24,6 +24,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
@@ -116,6 +117,36 @@ class OpenAiCompatibleLlmClientTest {
 
         assertThat(result).isEqualTo("normalized response");
         assertThat(requestPath.get()).isEqualTo("/v1/chat/completions");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"'',''", "'/chat/completions/',''", "'','#gateway'", "'/chat/completions/','#gateway'"})
+    void providerRequestsShouldKeepQueryParametersAfterEndpointPathTest(String endpoint, String fragment) {
+        List<String> requestUris = new ArrayList<>();
+        server.createContext("/", exchange -> {
+            requestUris.add(exchange.getRequestURI().toString());
+            if ("GET".equals(exchange.getRequestMethod())) {
+                respond(exchange, 200, "{\"data\":[{\"id\":\"gpt-test\"}]}", "application/json");
+            } else if (objectMapper.readTree(exchange.getRequestBody()).path("stream").asBoolean()) {
+                respond(exchange, 200,
+                        "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\ndata: [DONE]\n\n",
+                        "text/event-stream");
+            } else {
+                respond(exchange, 200, "{\"choices\":[{\"message\":{\"content\":\"hello\"}}]}", "application/json");
+            }
+        });
+        String query = "?tenant=a%2Fb+%26&route=/chat/completions/";
+        LlmConfigVO config = config("openai", "sk-test");
+        config.setApiBase(baseUrl + endpoint + query + fragment);
+
+        client.listModels(config);
+        client.complete(config, "hello", null);
+        List<String> tokens = new ArrayList<>();
+        client.stream(config, "hello", null, tokens::add);
+
+        assertThat(requestUris).containsExactly("/v1/models" + query,
+                "/v1/chat/completions" + query, "/v1/chat/completions" + query);
+        assertThat(tokens).containsExactly("hello");
     }
 
     @Test
