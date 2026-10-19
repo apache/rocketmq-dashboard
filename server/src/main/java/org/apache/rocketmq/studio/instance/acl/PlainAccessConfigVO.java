@@ -51,8 +51,11 @@ public class PlainAccessConfigVO {
     /** IP whitelist pattern for this account; persisted, empty/null means no restriction. */
     private String whiteRemoteAddress;
 
-    /** Whether this account has admin privileges. */
-    private boolean admin;
+    /**
+     * Whether this account has admin privileges. Null on a write that did not name the flag: the
+     * write path then keeps the stored value, and the response carries the effective value.
+     */
+    private Boolean admin;
 
     /** Default permission applied to topics, e.g. DENY / PUB / SUB / ALL. */
     private String defaultTopicPerm;
