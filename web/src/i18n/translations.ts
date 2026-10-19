@@ -1032,6 +1032,21 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'alerts.metrics.legacyDiskUsageRatio': { zh: '磁盘使用率', en: 'Disk usage ratio' },
   'alerts.exportSuccess': { zh: '告警规则已导出', en: 'Alert rules exported' },
+  'alerts.backupPartsTitle': { zh: '下载告警规则备份', en: 'Download alert rule backup' },
+  'alerts.backupPartsHint': {
+    zh: '备份已拆分为每份最多 200 条规则的文件。请下载全部文件，并逐份导入。每次导入独立完成；已成功导入的文件请勿重复导入。',
+    en: 'The backup is split into files of at most 200 rules. Download every file and import each separately. Each import completes independently; do not re-import a file that succeeded.',
+  },
+  'alerts.backupPartLabel': { zh: '备份文件', en: 'Backup file' },
+  'alerts.backupPartOption': {
+    zh: '第 {part}/{total} 份（{count} 条规则）',
+    en: 'Part {part} of {total} ({count} rules)',
+  },
+  'alerts.downloadBackupPart': { zh: '下载所选文件', en: 'Download selected file' },
+  'alerts.backupPartDownloaded': {
+    zh: '已下载第 {part}/{total} 份备份',
+    en: 'Downloaded backup part {part} of {total}',
+  },
   'alerts.exportFailed': { zh: '导出告警规则失败', en: 'Failed to export alert rules' },
   'alerts.importSuccess': { zh: '已导入 {count} 条告警规则', en: 'Imported {count} alert rules' },
   'alerts.importFailed': {

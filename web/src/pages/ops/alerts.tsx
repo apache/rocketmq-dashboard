@@ -40,6 +40,7 @@ import {
 } from 'antd';
 import type { ColumnsType, TableRowSelection } from 'antd/es/table/interface';
 import PageHeader from '../../components/PageHeader';
+import InfoBanner from '../../components/InfoBanner';
 import TagList from '../../components/TagList';
 import { useLang } from '../../i18n/LangContext';
 import type {
@@ -70,6 +71,7 @@ import { formatUtcDateTime, ratioToPercent } from '../../utils/format';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
 import { downloadBlob } from '../../utils/download';
+import { buildAlertRuleBackupParts, type AlertRuleBackupPart } from '../../utils/alertRuleBackup';
 import {
   ALERT_NOTIFICATION_TEMPLATE_VARIABLES,
   createDefaultAlertTemplate,
@@ -205,6 +207,8 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   const [metricLoading, setMetricLoading] = useState(false);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [transferringRules, setTransferringRules] = useState(false);
+  const [backupParts, setBackupParts] = useState<AlertRuleBackupPart[]>([]);
+  const [backupPartIndex, setBackupPartIndex] = useState(0);
   const metricRequestVersion = useRef(0);
   const importInputRef = useRef<HTMLInputElement>(null);
   const notificationTemplateRef = useRef<TextAreaRef>(null);
@@ -430,15 +434,26 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     setModalVisible(true);
   };
 
+  const downloadBackupPart = (part: AlertRuleBackupPart) => {
+    downloadBlob(
+      new Blob([JSON.stringify(part.document, null, 2)], {
+        type: 'application/json;charset=utf-8',
+      }),
+      part.filename,
+    );
+  };
+
   const handleExportRules = async () => {
     setTransferringRules(true);
     try {
-      const transfer = await exportAlertRulesTransfer(domain);
-      downloadBlob(
-        new Blob([JSON.stringify(transfer, null, 2)], { type: 'application/json;charset=utf-8' }),
-        `rocketmq-studio-${domain.toLowerCase()}-alert-rules.json`,
-      );
-      message.success(t('alerts.exportSuccess'));
+      const parts = buildAlertRuleBackupParts(await exportAlertRulesTransfer(domain));
+      if (parts.length === 1) {
+        downloadBackupPart(parts[0]);
+        message.success(t('alerts.exportSuccess'));
+      } else {
+        setBackupPartIndex(0);
+        setBackupParts(parts);
+      }
     } catch {
       message.error(t('alerts.exportFailed'));
     } finally {
@@ -1069,6 +1084,52 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
           />
         </Flex>
       </Card>
+
+      <Modal
+        title={t('alerts.backupPartsTitle')}
+        open={backupParts.length > 0}
+        onCancel={() => setBackupParts([])}
+        footer={
+          <Button
+            type="primary"
+            onClick={() => {
+              const part = backupParts[backupPartIndex];
+              if (!part) return;
+              downloadBackupPart(part);
+              message.success(
+                t('alerts.backupPartDownloaded', {
+                  part: backupPartIndex + 1,
+                  total: backupParts.length,
+                }),
+              );
+            }}
+          >
+            {t('alerts.downloadBackupPart')}
+          </Button>
+        }
+      >
+        <InfoBanner description={t('alerts.backupPartsHint')} />
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Typography.Text>{t('alerts.backupPartLabel')}</Typography.Text>
+          <Select
+            aria-label={t('alerts.backupPartLabel')}
+            style={{ width: '100%' }}
+            value={backupPartIndex}
+            onChange={setBackupPartIndex}
+            options={backupParts.map((part, index) => ({
+              value: index,
+              label: t('alerts.backupPartOption', {
+                part: index + 1,
+                total: backupParts.length,
+                count: part.document.rules.length,
+              }),
+            }))}
+          />
+          <Typography.Text type="secondary" style={{ overflowWrap: 'anywhere' }}>
+            {backupParts[backupPartIndex]?.filename}
+          </Typography.Text>
+        </Space>
+      </Modal>
 
       <Modal
         title={editingRule ? t('common.edit') : t('alerts.newRule')}

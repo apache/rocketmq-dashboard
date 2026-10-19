@@ -29,6 +29,8 @@ import type {
 import { LangProvider } from '../../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { formatUtcDateTime } from '../../../utils/format';
+import { downloadBlob } from '../../../utils/download';
+import type { AlertRuleTransfer } from '../../../api/ops';
 import AlertsPage, { formatThresholdCondition, supportsUnavailableOperator } from '../alerts';
 import { listInstances } from '../../../services/instanceService';
 import {
@@ -39,6 +41,7 @@ import {
   listAlertRuleRuntime,
   listNativeAlertMetrics,
   importAlertRulesTransfer,
+  exportAlertRulesTransfer,
   toggleAlertRule,
   updateAlertRule,
   testAlertRule,
@@ -62,6 +65,37 @@ vi.mock('../../../services/opsService', () => ({
   updateAlertRule: vi.fn(),
   testAlertRule: vi.fn(),
 }));
+
+vi.mock('../../../utils/download', async () => ({
+  ...(await vi.importActual<typeof import('../../../utils/download')>('../../../utils/download')),
+  downloadBlob: vi.fn(),
+}));
+
+const backupTransfer = (
+  count: number,
+  domain: 'CLUSTER' | 'BUSINESS' = 'CLUSTER',
+): AlertRuleTransfer => ({
+  version: 1,
+  domain,
+  rules: Array.from({ length: count }, (_, index) => ({
+    name: `Backup rule ${index}`,
+    metric: 'broker.availability',
+    operator: '<',
+    threshold: 1,
+    duration: '1m',
+    channels: ['email'],
+    enabled: true,
+    description: 'Portable rule',
+  })),
+});
+
+const readBackup = (blob: Blob): Promise<AlertRuleTransfer> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(JSON.parse(String(reader.result)) as AlertRuleTransfer);
+    reader.onerror = reject;
+    reader.readAsText(blob);
+  });
 
 const alertRules: AlertRule[] = [
   {
@@ -1050,6 +1084,66 @@ describe('AlertsPage', () => {
     expect(within(getRuleRow('Consumer lag')).getByRole('switch')).toHaveAttribute(
       'aria-checked',
       'false',
+    );
+  });
+
+  it.each([1, 200])('keeps the existing single-file export for %s rules', async (count) => {
+    const transfer = backupTransfer(count);
+    vi.mocked(exportAlertRulesTransfer).mockResolvedValue(transfer);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Broker disk usage');
+    await user.click(screen.getByRole('button', { name: '导出' }));
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1));
+    const [blob, filename] = vi.mocked(downloadBlob).mock.calls[0];
+    expect(filename).toBe('rocketmq-studio-cluster-alert-rules.json');
+    expect(await readBackup(blob)).toEqual(transfer);
+    expect(screen.queryByRole('dialog', { name: '下载告警规则备份' })).not.toBeInTheDocument();
+  });
+
+  it('downloads all 201 rules as separately importable parts from a captured snapshot', async () => {
+    const transfer = backupTransfer(201);
+    vi.mocked(exportAlertRulesTransfer).mockResolvedValue(transfer);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Broker disk usage');
+    await user.click(screen.getByRole('button', { name: '导出' }));
+    const dialog = await screen.findByRole('dialog', { name: '下载告警规则备份' });
+    expect(downloadBlob).not.toHaveBeenCalled();
+    expect(within(dialog).getByText(/已成功导入的文件请勿重复导入/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: '下载所选文件' }));
+    await user.click(within(dialog).getByRole('combobox', { name: '备份文件' }));
+    await user.click(await screen.findByText('第 2/2 份（1 条规则）'));
+    await user.click(within(dialog).getByRole('button', { name: '下载所选文件' }));
+    const calls = vi.mocked(downloadBlob).mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls.map(([, filename]) => filename)).toEqual([
+      'rocketmq-studio-cluster-alert-rules-part-1-of-2.json',
+      'rocketmq-studio-cluster-alert-rules-part-2-of-2.json',
+    ]);
+    const docs = await Promise.all(calls.map(([blob]) => readBackup(blob)));
+    expect(docs.map((doc) => doc.rules.length)).toEqual([200, 1]);
+    expect(docs.flatMap((doc) => doc.rules)).toEqual(transfer.rules);
+    expect(docs.every((doc) => doc.domain === 'CLUSTER' && doc.version === 1)).toBe(true);
+    expect(importAlertRulesTransfer).not.toHaveBeenCalled();
+    expect(exportAlertRulesTransfer).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the backup workflow in English for business-rule exports', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    vi.mocked(exportAlertRulesTransfer).mockResolvedValue(backupTransfer(201, 'BUSINESS'));
+    const user = userEvent.setup();
+    renderPage('BUSINESS');
+    await screen.findByText('Broker disk usage');
+    await user.click(screen.getByRole('button', { name: 'Export' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Download alert rule backup' });
+    expect(within(dialog).getByText(/do not re-import a file that succeeded/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText('rocketmq-studio-business-alert-rules-part-1-of-2.json'),
+    ).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Download selected file' }));
+    expect(vi.mocked(downloadBlob).mock.calls[0][1]).toBe(
+      'rocketmq-studio-business-alert-rules-part-1-of-2.json',
     );
   });
 
