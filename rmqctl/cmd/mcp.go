@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"path/filepath"
+	"strings"
 
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/output"
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/studio"
@@ -86,7 +87,7 @@ func (a *App) newMCPConfigCommand(runtime commandRuntime) *cobra.Command {
 			config := map[string]any{
 				"mcpServers": map[string]any{
 					name: map[string]any{
-						"command": command,
+						"command": absoluteCommandPath(command),
 						"args":    stdioArgs,
 					},
 				},
@@ -100,4 +101,20 @@ func (a *App) newMCPConfigCommand(runtime commandRuntime) *cobra.Command {
 	cmd.Flags().StringVar(&name, "name", "rocketmq-studio", "MCP server name in the client config")
 	cmd.Flags().StringVar(&command, "command", "rmqctl", "rmqctl executable path used by the MCP client")
 	return cmd
+}
+
+// absoluteCommandPath makes a `--command` path usable from the MCP client, which launches its own
+// working directory: `./dist/rmqctl` would be resolved against the client's directory, the server
+// would not start, and the tools would silently never appear. A bare name stays untouched - the
+// client resolves it through PATH, which is what the documented default `rmqctl` relies on.
+func absoluteCommandPath(command string) string {
+	trimmed := strings.TrimSpace(command)
+	if trimmed == "" || !strings.ContainsAny(trimmed, `/\`) {
+		return command
+	}
+	absolute, err := filepath.Abs(trimmed)
+	if err != nil {
+		return command
+	}
+	return absolute
 }
