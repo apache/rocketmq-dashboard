@@ -39,7 +39,7 @@ describe('zonedLocalDateTimeToUtc', () => {
 
   it('rejects a wall-clock time skipped by daylight saving', () => {
     expect(() => zonedLocalDateTimeToUtc('2026-03-08T02:30', 'America/New_York')).toThrow(
-      'Local date time does not exist in America/New_York',
+      'timeZone.nonexistentLocalDateTime',
     );
   });
 
@@ -49,7 +49,7 @@ describe('zonedLocalDateTimeToUtc', () => {
 
   it('rejects impossible calendar values before conversion', () => {
     expect(() => zonedLocalDateTimeToUtc('2026-02-30T09:00', 'UTC')).toThrow(
-      'Invalid local date time',
+      'timeZone.invalidLocalDateTime',
     );
   });
 
