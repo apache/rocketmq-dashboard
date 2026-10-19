@@ -27,6 +27,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.regex.Pattern;
 
 /**
@@ -99,6 +100,7 @@ public class CliProcessEnvironment {
             "PATHEXT");
 
     private final Set<String> allowedNames;
+    private final boolean caseInsensitiveNames;
 
     @Autowired
     public CliProcessEnvironment(LlmProperties properties) {
@@ -106,6 +108,11 @@ public class CliProcessEnvironment {
     }
 
     CliProcessEnvironment(Collection<String> additionalAllowedNames) {
+        this(additionalAllowedNames, System.getProperty("os.name", "").startsWith("Windows"));
+    }
+
+    CliProcessEnvironment(Collection<String> additionalAllowedNames, boolean caseInsensitiveNames) {
+        this.caseInsensitiveNames = caseInsensitiveNames;
         LinkedHashSet<String> names = new LinkedHashSet<>(DEFAULT_ALLOWED_NAMES);
         if (additionalAllowedNames != null) {
             additionalAllowedNames.stream()
@@ -149,16 +156,18 @@ public class CliProcessEnvironment {
 
     Map<String, String> build(Map<String, String> parentEnvironment,
                               Map<String, String> providerEnvironment) {
-        Map<String, String> result = new LinkedHashMap<>();
+        // Windows resolves environment names without regard to case, even though the JDK's
+        // ProcessBuilder environment map uses case-sensitive keys (commonly "Path", not "PATH").
+        Map<String, String> result = caseInsensitiveNames
+                ? new TreeMap<>(String.CASE_INSENSITIVE_ORDER) : new LinkedHashMap<>();
         if (parentEnvironment != null) {
-            for (String name : allowedNames) {
-                if (parentEnvironment.containsKey(name)) {
-                    String value = parentEnvironment.get(name);
-                    if (value != null) {
-                        result.put(name, value);
-                    }
+            parentEnvironment.forEach((name, value) -> {
+                boolean allowed = allowedNames.contains(name) || caseInsensitiveNames
+                        && allowedNames.stream().anyMatch(candidate -> candidate.equalsIgnoreCase(name));
+                if (allowed && value != null) {
+                    result.put(name, value);
                 }
-            }
+            });
         }
         if (providerEnvironment != null) {
             providerEnvironment.forEach((name, value) -> {

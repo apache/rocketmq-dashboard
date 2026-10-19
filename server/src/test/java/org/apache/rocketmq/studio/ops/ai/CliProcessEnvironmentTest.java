@@ -30,6 +30,44 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CliProcessEnvironmentTest {
 
     @Test
+    void windowsRetainsAllowedNamesRegardlessOfCaseTest() {
+        CliProcessEnvironment policy = new CliProcessEnvironment(List.of("CUSTOM_CONFIG"), true);
+
+        Map<String, String> child = policy.build(Map.of(
+                "Path", "C:\\node;C:\\Windows",
+                "SYSTEMROOT", "C:\\Windows",
+                "custom_config", "profile-a",
+                "studio_auth_admin_password", "must-not-cross-boundary"), Map.of());
+
+        assertThat(child).containsEntry("Path", "C:\\node;C:\\Windows")
+                .containsEntry("SYSTEMROOT", "C:\\Windows")
+                .containsEntry("custom_config", "profile-a")
+                .doesNotContainKey("studio_auth_admin_password");
+    }
+
+    @Test
+    void windowsProviderOverridesDifferentCaseWithoutDuplicateNamesTest() {
+        CliProcessEnvironment policy = new CliProcessEnvironment(List.of(), true);
+
+        Map<String, String> child = policy.build(Map.of("HOME", "parent-home"),
+                Map.of("home", "conversation-home"));
+
+        assertThat(child).hasSize(1).containsEntry("HOME", "conversation-home");
+    }
+
+    @Test
+    void unixKeepsEnvironmentNamesCaseSensitiveTest() {
+        CliProcessEnvironment policy = new CliProcessEnvironment(List.of(), false);
+
+        Map<String, String> child = policy.build(Map.of(
+                "Path", "/unexpected", "PATH", "/usr/bin", "HOME", "/parent"),
+                Map.of("home", "/provider"));
+
+        assertThat(child).containsOnly(Map.entry("PATH", "/usr/bin"),
+                Map.entry("HOME", "/parent"), Map.entry("home", "/provider"));
+    }
+
+    @Test
     void bindsCommaSeparatedAdditionalNames() {
         Binder binder = new Binder(new MapConfigurationPropertySource(Map.of(
                 "studio.llm.cli-allowed-environment", "CUSTOM_CONFIG,CUSTOM_HOME")));
