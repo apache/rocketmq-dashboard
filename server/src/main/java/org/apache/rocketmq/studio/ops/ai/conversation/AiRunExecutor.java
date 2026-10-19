@@ -21,6 +21,7 @@ import jakarta.annotation.PreDestroy;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.common.util.TextBounds;
 import org.apache.rocketmq.studio.ops.ai.AgentProviderRegistry;
 import org.apache.rocketmq.studio.ops.ai.LlmConfigVO;
 import org.apache.rocketmq.studio.ops.ai.LlmGatewayException;
@@ -656,8 +657,7 @@ public class AiRunExecutor {
         if (!StringUtils.hasText(value)) {
             return null;
         }
-        String trimmed = value.trim();
-        return trimmed.length() <= maxChars ? trimmed : trimmed.substring(0, maxChars);
+        return TextBounds.truncate(value.trim(), maxChars);
     }
 
     static boolean isHttpEngine(String engine) {

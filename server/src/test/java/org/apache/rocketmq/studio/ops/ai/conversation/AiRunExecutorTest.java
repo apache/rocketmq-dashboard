@@ -35,11 +35,14 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -490,6 +493,34 @@ class AiRunExecutorTest {
         assertThat(runRow().getStopReason()).isEqualTo(StopReason.PROVIDER_ERROR.name());
         assertThat(runRow().getErrorCode()).isEqualTo(AiRunExecutor.ERROR_CODE_INTERNAL);
         assertThat(emitters.get(0).completed()).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\uD83D\uDE00", "\uD840\uDC00"})
+    void providerFailureShouldTruncateAtCodePointBoundariesTest(String supplementaryCharacter) {
+        String codePrefix = "c".repeat(63) + supplementaryCharacter;
+        String messagePrefix = "m".repeat(999) + supplementaryCharacter;
+        provider.failure = new LlmGatewayException(502, codePrefix + "overflow",
+                messagePrefix + "overflow", "Retry.");
+
+        startAndRun();
+
+        assertThat(runRow().getStatus()).isEqualTo(RunStatus.FAILED.name());
+        assertThat(StandardCharsets.UTF_8.newEncoder().canEncode(runRow().getErrorMessage())).isTrue();
+        assertThat(StandardCharsets.UTF_8.newEncoder().canEncode(runRow().getErrorCode())).isTrue();
+        assertThat(runRow().getErrorCode()).isEqualTo(codePrefix);
+        assertThat(runRow().getErrorMessage()).isEqualTo(messagePrefix);
+        assertThat(emitters.get(0).completed()).isTrue();
+    }
+
+    @Test
+    void providerFailureShouldKeepSupplementaryCharactersWithinTheColumnBudgetTest() {
+        String message = "\uD83D\uDE00".repeat(750);
+        provider.failure = new LlmGatewayException(502, "llm.provider.error", " " + message + " ", "Retry.");
+
+        startAndRun();
+
+        assertThat(runRow().getErrorMessage()).isEqualTo(message);
     }
 
     @Test
