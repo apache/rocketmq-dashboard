@@ -300,6 +300,38 @@ class MetricsServiceTest {
     }
 
     @Test
+    void queryShouldAcceptPrometheusNumericStepForms() {
+        when(metricsSource.query(any(MetricQueryDTO.class))).thenReturn(emptyMetricData());
+
+        for (String step : List.of(".5", "1.", "+1", "1e1", "5E-1", "1e0")) {
+            MetricQueryDTO query = MetricQueryDTO.builder()
+                    .metric("rocketmq_messages_in_total")
+                    .start(1700000000L)
+                    .end(1700000020L)
+                    .step(step)
+                    .build();
+
+            assertThat(metricsService.query(query)).isNotNull();
+            verify(metricsSource).query(query);
+        }
+    }
+
+    @Test
+    void queryShouldRejectMalformedNumericSteps() {
+        for (String step : List.of("1e", "e5", "1..5", "1.2.3", "--1")) {
+            MetricQueryDTO query = MetricQueryDTO.builder()
+                    .metric("rocketmq_messages_in_total")
+                    .start(1700000000L)
+                    .end(1700000020L)
+                    .step(step)
+                    .build();
+
+            assertBadRequest(query, "Metric query step is invalid");
+        }
+        verifyNoInteractions(metricsSource);
+    }
+
+    @Test
     void queryShouldRejectInvalidStep() {
         MetricQueryDTO query = MetricQueryDTO.builder()
                 .metric("rocketmq_messages_in_total")
