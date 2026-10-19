@@ -39,7 +39,9 @@ import java.util.regex.Pattern;
 public class MetricsService {
     private static final long MAX_RANGE_SECONDS = 31L * 24 * 60 * 60;
     private static final long MAX_SAMPLE_POINTS = 11_000L;
-    private static final Pattern NUMBER_PATTERN = Pattern.compile("\\d+(?:\\.\\d+)?");
+    // Prometheus numeric seconds accept decimal forms such as ".5" or "1." and
+    // scientific notation such as "1e1" or "5E-1", so mirror that grammar here.
+    private static final Pattern NUMBER_PATTERN = Pattern.compile("[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?");
     private static final Pattern DURATION_PART_PATTERN = Pattern.compile("(\\d+)(ms|s|m|h|d|w|y)");
     private static final Map<String, BigDecimal> UNIT_TO_MILLIS = Map.of(
             "ms", BigDecimal.ONE,
@@ -224,7 +226,9 @@ public class MetricsService {
         }
         String value = step.strip();
         if (NUMBER_PATTERN.matcher(value).matches()) {
-            return new BigDecimal(value).multiply(BigDecimal.valueOf(1_000L));
+            // Double.parseDouble covers the accepted forms ("+1", "1.", ".5", "1e1")
+            // that the BigDecimal string constructor rejects.
+            return BigDecimal.valueOf(Double.parseDouble(value)).multiply(BigDecimal.valueOf(1_000L));
         }
 
         Matcher matcher = DURATION_PART_PATTERN.matcher(value);
