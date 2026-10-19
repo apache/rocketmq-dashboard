@@ -129,6 +129,7 @@ public final class AiEventSink {
 
     private boolean draining;
     private boolean closed;
+    private volatile boolean persistenceFailed;
     private ScheduledFuture<?> scheduledFlush;
     private int lastSeqCache;
 
@@ -165,6 +166,11 @@ public final class AiEventSink {
     /** The highest seq allocated so far, i.e. the value {@code last_seq} is cached at. */
     public int highWaterSeq() {
         return seq.get();
+    }
+
+    /** A missing event is not a provider failure, but must not masquerade as durable history. */
+    public boolean hasPersistenceFailure() {
+        return persistenceFailed;
     }
 
     public long runId() {
@@ -337,6 +343,7 @@ public final class AiEventSink {
                     row.getSeq(), conversationId, runId);
             throw exception;
         } catch (RuntimeException exception) {
+            persistenceFailed = true;
             log.warn("could not persist the {} event of run {} at seq {}: {}",
                     row.getType(), runId, row.getSeq(), exception.toString());
         }
@@ -404,7 +411,9 @@ public final class AiEventSink {
      *     rather than allowed to fail the run
      */
     private AiEventCodec.Payload serialise(TimelineEvent event) {
-        return AiEventCodec.write(objectMapper, runId, event).orElse(null);
+        AiEventCodec.Payload payload = AiEventCodec.write(objectMapper, runId, event).orElse(null);
+        if (payload == null) persistenceFailed = true;
+        return payload;
     }
 
     private void scheduleFlush() {

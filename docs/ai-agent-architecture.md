@@ -127,6 +127,18 @@ Agent 循环 ⊃ 一条时间线条目。不带多租户 `tenant_id`、`shareSco
 整个值物化进 `sort_buffer_size`。同理，时间线查询**故意不用 SQL `ORDER BY`**，
 而是走 `uk_ai_event_conversation_seq` 过滤后在内存里排序。
 
+### 历史持久化失败的边界
+
+事件序列化或普通 INSERT 失败不会取消 provider 生成，但 sink 会记住历史不完整的状态。
+结束时向在线观察者发送固定 WARN Notice，并尝试把同一提示写入历史；没有更具体的 provider
+错误码时，run 的 `error_code` 记录 `ai.timeline.persistence_failed`，`error_message` 是不含 SQL
+或凭据的固定说明。provider 的完成/失败、用户 Stop 状态保持原样，不补发第二个终态帧。
+因此 `COMPLETED` 表示 provider 完成，不保证所有事件已持久化；诊断字段和 Notice 说明两者的区别。
+
+不自动重试 INSERT：连接失败并不能证明数据库没有提交，盲目重试可能重复写入。WARN 和 run
+诊断仍是尽力持久化；数据库持续不可用或进程中途崩溃时，不能保证该提示也能恢复。`last_seq`
+缓存失败不等同于权威事件丢失，唯一键冲突仍按原规则向上抛出。
+
 ## 6. 事件契约：三种词汇，一个渲染目标
 
 | 层 | 用途 | 特点 |

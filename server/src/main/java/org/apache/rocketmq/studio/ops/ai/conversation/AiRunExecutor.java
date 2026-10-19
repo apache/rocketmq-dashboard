@@ -124,6 +124,9 @@ public class AiRunExecutor {
 
     static final String ERROR_CODE_OVERLOADED = "ai.run.overloaded";
     static final String ERROR_CODE_INTERNAL = "ai.run.internal_error";
+    static final String ERROR_CODE_PERSISTENCE = "ai.timeline.persistence_failed";
+    static final String PERSISTENCE_WARNING =
+            "Some conversation events could not be saved; history may be incomplete.";
 
     private static final String PROVIDER_TIMEOUT_CODE = "llm.provider.timeout";
     /** The agent stream closed without ever delivering a result frame. */
@@ -534,6 +537,12 @@ public class AiRunExecutor {
             int endSeq = terminal.terminalAlreadyProjected()
                     ? sink.highWaterSeq()
                     : sink.writeTimeline(new TimelineEvent.RunStatus(terminal.status(), terminal.stopReason()));
+            boolean incompleteHistory = sink.hasPersistenceFailure();
+            if (incompleteHistory) {
+                // Never retry an ambiguous INSERT. A separate warning is safe to persist best-effort.
+                endSeq = sink.writeTimeline(new TimelineEvent.Notice("warn", PERSISTENCE_WARNING));
+                registry.publish(run.getId(), 0L, new LiveEvent.Notice("warn", PERSISTENCE_WARNING));
+            }
             // 3. The run row.
             run.setStatus(terminal.status().name());
             run.setStopReason(terminal.stopReason() == null ? null : terminal.stopReason().name());
@@ -543,8 +552,11 @@ public class AiRunExecutor {
             run.setRuntimeSessionId(terminal.outcome().runtimeSessionId);
             run.setInputTokens(terminal.outcome().inputTokens);
             run.setOutputTokens(terminal.outcome().outputTokens);
-            run.setErrorCode(truncate(terminal.errorCode(), MAX_ERROR_CODE_CHARS));
-            run.setErrorMessage(truncate(terminal.errorMessage(), MAX_ERROR_MESSAGE_CHARS));
+            boolean persistenceDiagnostic = incompleteHistory && terminal.errorCode() == null;
+            run.setErrorCode(persistenceDiagnostic ? ERROR_CODE_PERSISTENCE
+                    : truncate(terminal.errorCode(), MAX_ERROR_CODE_CHARS));
+            run.setErrorMessage(persistenceDiagnostic ? PERSISTENCE_WARNING
+                    : truncate(terminal.errorMessage(), MAX_ERROR_MESSAGE_CHARS));
             run.setGmtModified(finishedAt);
             runRepository.update(run);
             rememberRuntimeSession(context, terminal.outcome().runtimeSessionId);
