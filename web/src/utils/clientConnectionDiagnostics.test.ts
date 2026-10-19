@@ -276,8 +276,16 @@ describe('client connection diagnostics across physical clusters', () => {
     expect(diagnostics.summary.resourceCount).toBe(2);
     expect(diagnostics.summary.mixedVersionResourceCount).toBe(0);
     expect(diagnostics.resources).toEqual([
-      expect.objectContaining({ cluster: 'cluster-a', resource: 'order-events', status: 'healthy' }),
-      expect.objectContaining({ cluster: 'cluster-b', resource: 'order-events', status: 'healthy' }),
+      expect.objectContaining({
+        cluster: 'cluster-a',
+        resource: 'order-events',
+        status: 'healthy',
+      }),
+      expect.objectContaining({
+        cluster: 'cluster-b',
+        resource: 'order-events',
+        status: 'healthy',
+      }),
     ]);
     expect(diagnostics.issues).toEqual([]);
   });
@@ -301,9 +309,9 @@ describe('client connection diagnostics across physical clusters', () => {
       connection({ clusterName: 'cluster-b', clientId: 'same-client' }),
     ]);
 
-    expect(
-      diagnostics.issues.filter((item) => item.code === 'EXACT_DUPLICATE_CONNECTION'),
-    ).toEqual([]);
+    expect(diagnostics.issues.filter((item) => item.code === 'EXACT_DUPLICATE_CONNECTION')).toEqual(
+      [],
+    );
   });
 
   it('counts distinct clients and addresses within their cluster scope', () => {
@@ -430,9 +438,7 @@ describe('client connection diagnostics with unknown provider results', () => {
       }),
     ]);
 
-    expect(
-      diagnostics.issues.filter((item) => item.code === 'MIXED_VERSION_RESOURCE'),
-    ).toEqual([]);
+    expect(diagnostics.issues.filter((item) => item.code === 'MIXED_VERSION_RESOURCE')).toEqual([]);
   });
 
   it('does not assert a single online consumer from an incomplete scan', () => {
@@ -445,9 +451,9 @@ describe('client connection diagnostics with unknown provider results', () => {
       }),
     ]);
 
-    expect(
-      diagnostics.issues.filter((item) => item.code === 'SINGLE_CONSUMER_INSTANCE'),
-    ).toEqual([]);
+    expect(diagnostics.issues.filter((item) => item.code === 'SINGLE_CONSUMER_INSTANCE')).toEqual(
+      [],
+    );
     expect(diagnostics.summary.singleConsumerGroupCount).toBe(0);
   });
 
@@ -461,9 +467,7 @@ describe('client connection diagnostics with unknown provider results', () => {
       }),
     ]);
 
-    const partialIssue = diagnostics.issues.find(
-      (item) => item.code === 'PARTIAL_CONNECTION_SCAN',
-    );
+    const partialIssue = diagnostics.issues.find((item) => item.code === 'PARTIAL_CONNECTION_SCAN');
     expect(partialIssue).toBeDefined();
     expect(partialIssue?.description).toContain('Producer');
     expect(partialIssue?.description).toContain('Consumer');

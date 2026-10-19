@@ -551,6 +551,18 @@ const ClientsPage = () => {
       ),
     },
     {
+      title: t('clients.cluster'),
+      dataIndex: 'cluster',
+      key: 'cluster',
+      width: 120,
+      ellipsis: { showTitle: false },
+      render: (cluster: string) => (
+        <Text style={diagnosticCellLine} title={cluster}>
+          {cluster}
+        </Text>
+      ),
+    },
+    {
       title: t('clients.groupOrTopic'),
       key: 'resource',
       width: 220,
@@ -688,6 +700,21 @@ const ClientsPage = () => {
       width: 160,
       ellipsis: true,
       render: (resource?: string) => resource || '-',
+    },
+    {
+      title: t('clients.cluster'),
+      dataIndex: 'cluster',
+      key: 'cluster',
+      width: 120,
+      ellipsis: { showTitle: false },
+      render: (cluster?: string) =>
+        cluster ? (
+          <Text style={diagnosticCellLine} title={cluster}>
+            {cluster}
+          </Text>
+        ) : (
+          <Text type="secondary">-</Text>
+        ),
     },
     {
       title: t('clients.diagnosticEvidence'),
