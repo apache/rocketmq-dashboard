@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import java.time.Duration;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -25,4 +26,5 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "studio.rocketmq")
 public class RocketMQProperties {
     private String namesrvAddr;
+    private Duration proxyRemotingStartRetryCooldown = Duration.ofSeconds(30);
 }

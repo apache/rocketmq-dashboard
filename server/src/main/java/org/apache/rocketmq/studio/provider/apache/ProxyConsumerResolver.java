@@ -46,6 +46,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Resolves consumer connection info from the cluster proxies.
@@ -76,8 +77,12 @@ public class ProxyConsumerResolver {
     private final RocketMQProperties properties;
 
     private final Map<String, CachedProxyAddresses> proxyAddressCache = new ConcurrentHashMap<>();
-    private final AtomicBoolean clientStarted = new AtomicBoolean(false);
-    private volatile NettyRemotingClient remotingClient;
+    private final AtomicReference<NettyRemotingClient> remotingClient = new AtomicReference<>();
+    private final AtomicBoolean shuttingDown = new AtomicBoolean();
+    // These are accessed under the initialization monitor. Failed starts are retried after the
+    // configured cooldown instead of constructing a client for every proxy query in one request.
+    private RuntimeException lastStartFailure;
+    private long lastStartFailureAtNanos;
 
     /**
      * Queries the proxies of the given instance for the consumer connection info of the group.
@@ -240,31 +245,73 @@ public class ProxyConsumerResolver {
     }
 
     private NettyRemotingClient remotingClient() {
-        NettyRemotingClient client = remotingClient;
-        if (client == null) {
-            synchronized (this) {
-                if (remotingClient == null) {
-                    remotingClient = new NettyRemotingClient(new NettyClientConfig());
-                }
-                client = remotingClient;
+        if (shuttingDown.get()) {
+            throw new IllegalStateException("Proxy remoting client is shutting down");
+        }
+        NettyRemotingClient client = remotingClient.get();
+        if (client != null) {
+            return client;
+        }
+        synchronized (this) {
+            if (shuttingDown.get()) {
+                throw new IllegalStateException("Proxy remoting client is shutting down");
             }
+            client = remotingClient.get();
+            if (client != null) {
+                return client;
+            }
+            if (startFailureIsCoolingDown()) {
+                throw lastStartFailure;
+            }
+            NettyRemotingClient candidate = new NettyRemotingClient(new NettyClientConfig());
+            try {
+                candidate.start();
+            } catch (RuntimeException e) {
+                try {
+                    candidate.shutdown();
+                } catch (RuntimeException shutdownFailure) {
+                    e.addSuppressed(shutdownFailure);
+                }
+                lastStartFailure = e;
+                lastStartFailureAtNanos = System.nanoTime();
+                throw e;
+            }
+            if (shuttingDown.get()) {
+                candidate.shutdown();
+                throw new IllegalStateException("Proxy remoting client shut down during startup");
+            }
+            lastStartFailure = null;
+            // Shutdown does not wait on start(). If it races with publication, one side takes the
+            // candidate from this reference and closes it; no half-started client is published.
+            remotingClient.set(candidate);
+            if (shuttingDown.get()) {
+                NettyRemotingClient published = remotingClient.getAndSet(null);
+                if (published != null) {
+                    published.shutdown();
+                }
+                throw new IllegalStateException("Proxy remoting client shut down during startup");
+            }
+            return candidate;
         }
-        if (clientStarted.compareAndSet(false, true)) {
-            client.start();
-        }
-        return client;
+    }
+
+    private boolean startFailureIsCoolingDown() {
+        java.time.Duration cooldown = properties.getProxyRemotingStartRetryCooldown();
+        return lastStartFailure != null && cooldown != null && !cooldown.isNegative()
+                && System.nanoTime() - lastStartFailureAtNanos < cooldown.toNanos();
     }
 
     @PreDestroy
     public void shutdownRemotingClient() {
-        if (clientStarted.get() && remotingClient != null) {
-            remotingClient.shutdown();
+        shuttingDown.set(true);
+        NettyRemotingClient client = remotingClient.getAndSet(null);
+        if (client != null) {
+            client.shutdown();
         }
     }
 
     void setRemotingClientForTest(NettyRemotingClient client) {
-        this.remotingClient = client;
-        clientStarted.set(true);
+        this.remotingClient.set(client);
     }
 
     public record ConsumerConnectionResolution(ConsumerConnection connection, boolean available) {
