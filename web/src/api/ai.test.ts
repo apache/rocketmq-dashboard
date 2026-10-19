@@ -472,6 +472,40 @@ describe('AI API', () => {
       );
     });
 
+    it.each(['open', 'attach'] as const)(
+      'cancelsRejectedContentTypeResponseFor%sTest',
+      async (entryPoint) => {
+        const onCancel = vi.fn();
+        const response = new Response(new ReadableStream({ cancel: onCancel }), {
+          headers: { 'content-type': 'text/html' },
+        });
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+
+        const stream =
+          entryPoint === 'open'
+            ? openRunStream(7, body, { onEvent: vi.fn() })
+            : attachRunStream(41, 0, { onEvent: vi.fn() });
+
+        await expect(stream).rejects.toMatchObject({
+          code: 'llm.stream.unexpected_content_type',
+        });
+        expect(onCancel).toHaveBeenCalledOnce();
+      },
+    );
+
+    it('preservesContentTypeErrorWhenCancellingTheBodyFailsTest', async () => {
+      const onCancel = vi.fn().mockRejectedValue(new Error('cancel failed'));
+      const response = new Response(new ReadableStream({ cancel: onCancel }), {
+        headers: { 'content-type': 'text/html' },
+      });
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+
+      await expect(attachRunStream(41, 0, { onEvent: vi.fn() })).rejects.toMatchObject({
+        code: 'llm.stream.unexpected_content_type',
+      });
+      expect(onCancel).toHaveBeenCalledOnce();
+    });
+
     it('rejectsAResponseWithoutAnyContentTypeTest', async () => {
       // A null body is the only way to get a Response with no content-type at all: a string body
       // makes the Fetch API default the header to text/plain.
