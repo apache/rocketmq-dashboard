@@ -73,9 +73,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -300,8 +300,9 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         }
     }
 
-    private final ExecutorService onlineEnrichmentExecutor = Executors.newFixedThreadPool(
-            ONLINE_ENRICHMENT_THREADS, runnable -> {
+    private final ThreadPoolExecutor onlineEnrichmentExecutor = new ThreadPoolExecutor(
+            ONLINE_ENRICHMENT_THREADS, ONLINE_ENRICHMENT_THREADS, 0L, TimeUnit.MILLISECONDS,
+            new LinkedBlockingQueue<>(), runnable -> {
                 Thread thread = new Thread(runnable, "group-online-enrichment");
                 thread.setDaemon(true);
                 return thread;
@@ -366,6 +367,15 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 }
             }
         } finally {
+            // Interruption can leave this batch's remaining tasks untouched. Cancel only its
+            // unfinished work; other callers may still be using the shared executor.
+            for (Future<?> future : futures) {
+                if (!future.isDone()) {
+                    future.cancel(true);
+                }
+            }
+            // Future.cancel does not remove queued tasks while all workers remain occupied.
+            onlineEnrichmentExecutor.purge();
             // A canceled broker call may continue, but it can only update its private snapshot.
             for (int index = 0; index < groups.size(); index++) {
                 GroupLiveSnapshot liveStats = snapshots.get(index).get();
