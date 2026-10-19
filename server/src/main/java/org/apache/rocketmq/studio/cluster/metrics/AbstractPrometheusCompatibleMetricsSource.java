@@ -241,12 +241,13 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
         List<MetricDataVO.MetricSeriesVO> series = StreamSupport.stream(result.spliterator(), false)
                 .map(this::parseSeries)
                 .toList();
-        List<String> warnings = parseWarnings(response.path("warnings"));
+        List<String> warnings = parseAnnotations(response.path("warnings"));
 
         return MetricDataVO.builder()
                 .resultType(data.path("resultType").asText())
                 .series(series)
                 .warnings(warnings)
+                .infos(parseAnnotations(response.path("infos")))
                 .build();
     }
 
@@ -335,7 +336,7 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
                 .build();
     }
 
-    private List<String> parseWarnings(JsonNode warningsNode) {
+    private List<String> parseAnnotations(JsonNode warningsNode) {
         if (!warningsNode.isArray()) {
             return List.of();
         }

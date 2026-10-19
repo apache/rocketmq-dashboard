@@ -33,6 +33,7 @@ public class MetricDataVO {
     private String resultType;
     private List<MetricSeriesVO> series;
     private List<String> warnings;
+    private List<String> infos;
 
     @Data
     @Builder

@@ -192,7 +192,8 @@ class ToolOutputSchemaContractTest {
                                 .value("1.5")
                                 .build()))
                         .build()))
-                .warnings(List.of())
+                .warnings(List.of("partial response"))
+                .infos(List.of("ignored histogram samples"))
                 .build()));
 
         BrokerVO broker = BrokerVO.builder()

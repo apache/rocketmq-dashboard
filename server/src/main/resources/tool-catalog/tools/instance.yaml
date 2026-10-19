@@ -127,5 +127,9 @@ tools:
           type: array
           items:
             type: string
+        infos:
+          type: array
+          items:
+            type: string
     viewHint: object
     deprecated: false

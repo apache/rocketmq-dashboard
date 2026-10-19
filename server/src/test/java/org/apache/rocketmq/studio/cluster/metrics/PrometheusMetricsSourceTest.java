@@ -55,6 +55,44 @@ class PrometheusMetricsSourceTest {
     }
 
     @Test
+    void queryShouldPreserveInformationalAnnotationsAlongsideWarningsTest() {
+        server.createContext("/api/v1/query_range", exchange -> respond(exchange, 200, """
+                {"status":"success","data":{"resultType":"matrix","result":[
+                  {"metric":{"node_id":"broker-a"},"values":[[1784107658,"0.5"]]}]},
+                 "warnings":["partial response"],
+                 "infos":["input to histogram_quantile needed to be fixed for monotonicity"]}
+                """));
+
+        MetricDataVO result = source(Duration.ofSeconds(2)).query(query());
+        assertThat(result.getInfos()).containsExactly(
+                "input to histogram_quantile needed to be fixed for monotonicity");
+        assertThat(result.getWarnings()).containsExactly("partial response");
+        assertThat(result.getSeries().get(0).getValues().get(0).getValue()).isEqualTo("0.5");
+        assertThat(new ObjectMapper().valueToTree(result).path("infos").get(0).asText())
+                .isEqualTo(result.getInfos().get(0));
+    }
+
+    @Test
+    void queryShouldPreserveInfosWhenThereAreNoSeriesTest() {
+        server.createContext("/api/v1/query_range", exchange -> respond(exchange, 200, """
+                {"status":"success","data":{"resultType":"matrix","result":[]},
+                 "infos":["ignored histogram samples"]}
+                """));
+
+        MetricDataVO result = source(Duration.ofSeconds(2)).query(query());
+        assertThat(result.getSeries()).isEmpty();
+        assertThat(result.getWarnings()).isEmpty();
+        assertThat(result.getInfos()).containsExactly("ignored histogram samples");
+    }
+
+    @Test
+    void queryShouldDefaultMissingInfosToAnEmptyListTest() {
+        server.createContext("/api/v1/query_range", exchange -> respond(exchange, 200, successResponse()));
+
+        assertThat(source(Duration.ofSeconds(2)).query(query()).getInfos()).isEmpty();
+    }
+
+    @Test
     void queryShouldPreserveSeriesLabelsDecimalValuesAndWarnings() {
         AtomicReference<String> requestBody = new AtomicReference<>();
         AtomicReference<String> requestMethod = new AtomicReference<>();

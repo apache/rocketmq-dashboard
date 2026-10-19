@@ -1237,6 +1237,15 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
             style={{ marginBottom: 8 }}
           />
         ))}
+        {(state.data.infos ?? []).map((info, index) => (
+          <Alert
+            key={`${index}-${info}`}
+            type="info"
+            showIcon
+            message={info}
+            style={{ marginBottom: 8 }}
+          />
+        ))}
         <MetricChart
           data={state.data}
           metric={metric}
