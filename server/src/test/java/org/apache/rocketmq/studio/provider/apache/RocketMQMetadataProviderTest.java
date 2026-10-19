@@ -21,6 +21,13 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
+import org.apache.rocketmq.studio.provider.InstanceProvider;
+import org.apache.rocketmq.studio.cluster.metrics.collectors.ApacheRocketMqBusinessMetricsCollector;
+import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.ops.alert.AlertRuleVO;
+import org.apache.rocketmq.studio.ops.alert.AlertRuleEvaluator;
+import org.apache.rocketmq.studio.cluster.metrics.MetricAvailability;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.common.message.MessageQueue;
@@ -62,6 +69,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -301,6 +312,27 @@ class RocketMQMetadataProviderTest {
             assertThat(route.getWriteQueues()).isEqualTo(2);
             assertThat(route.getPerm()).isEqualTo(expected);
         });
+    }
+
+    @Test
+    void getTopicRoutesShouldOrderRoutesByBrokerNameTest() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        QueueData brokerZ = new QueueData();
+        brokerZ.setBrokerName("broker-z");
+        brokerZ.setPerm(6);
+        QueueData brokerA = new QueueData();
+        brokerA.setBrokerName("broker-a");
+        brokerA.setPerm(6);
+        TopicRouteData routeData = new TopicRouteData();
+        // The route listing must order by broker name the way the queue stats view on the
+        // same screen does.
+        routeData.setQueueDatas(List.of(brokerZ, brokerA));
+        when(admin.examineTopicRouteInfo("TopicA")).thenReturn(routeData);
+
+        List<BrokerRouteVO> routes = newLiveProvider(admin).getTopicRoutes(null, "TopicA");
+
+        assertThat(routes).extracting(BrokerRouteVO::getBrokerName)
+                .containsExactly("broker-a", "broker-z");
     }
 
     @Test
@@ -772,6 +804,117 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void timedOutGroupEnrichmentMustNotMutateReturnedGroupTest() throws Exception {
+        RmqGroup entity = new RmqGroup();
+        entity.setName("cg-late");
+        entity.setInstanceId("instance-a");
+        when(groupMapper.selectList(any())).thenReturn(List.of(entity));
+
+        CountDownLatch connectionStarted = new CountDownLatch(1);
+        CountDownLatch releaseConnection = new CountDownLatch(1);
+        CountDownLatch statsRead = new CountDownLatch(1);
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        org.apache.rocketmq.remoting.protocol.body.ConsumerConnection connection =
+                new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
+        org.apache.rocketmq.remoting.protocol.body.Connection client =
+                new org.apache.rocketmq.remoting.protocol.body.Connection();
+        client.setClientId("late-client");
+        connection.setConnectionSet(new HashSet<>(List.of(client)));
+        when(admin.examineConsumerConnectionInfo("cg-late")).thenAnswer(invocation -> {
+            connectionStarted.countDown();
+            while (releaseConnection.getCount() > 0) {
+                try {
+                    releaseConnection.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException ignored) {
+                    // Simulate a broker call that ignores cancellation and returns later.
+                }
+            }
+            return connection;
+        });
+        when(admin.examineConsumeStats("cg-late")).thenAnswer(invocation -> {
+            statsRead.countDown();
+            return null;
+        });
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+
+        try {
+            ConsumerGroupVO returned = provider.listConsumerGroups("instance-a", null, null).get(0);
+            assertThat(connectionStarted.getCount()).isZero();
+            assertThat(returned.getOnlineInstances()).isZero();
+
+            releaseConnection.countDown();
+            assertThat(statsRead.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(returned.getOnlineInstances()).isZero();
+            assertThat(returned.getInstances()).isEmpty();
+        } finally {
+            releaseConnection.countDown();
+            provider.shutdownOnlineEnrichmentExecutor();
+        }
+    }
+
+    @Test
+    void timedOutConsumeStatsKeepsCompletedConnectionInfoTest() throws Exception {
+        RmqGroup entity = new RmqGroup();
+        entity.setName("cg-partial");
+        entity.setInstanceId("instance-a");
+        when(groupMapper.selectList(any())).thenReturn(List.of(entity));
+
+        CountDownLatch statsStarted = new CountDownLatch(1);
+        CountDownLatch releaseStats = new CountDownLatch(1);
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        org.apache.rocketmq.remoting.protocol.body.ConsumerConnection connection =
+                new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
+        org.apache.rocketmq.remoting.protocol.body.Connection client =
+                new org.apache.rocketmq.remoting.protocol.body.Connection();
+        client.setClientId("online-client");
+        connection.setConnectionSet(new HashSet<>(List.of(client)));
+        when(admin.examineConsumerConnectionInfo("cg-partial")).thenReturn(connection);
+        ConsumeStats stats = new ConsumeStats();
+        OffsetWrapper wrapper = new OffsetWrapper();
+        wrapper.setBrokerOffset(100L);
+        wrapper.setConsumerOffset(60L);
+        stats.getOffsetTable().put(new MessageQueue("orders", "broker-a", 0), wrapper);
+        when(admin.examineConsumeStats("cg-partial")).thenAnswer(invocation -> {
+            statsStarted.countDown();
+            while (releaseStats.getCount() > 0) {
+                try {
+                    releaseStats.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException ignored) {
+                    // Simulate a broker call that does not stop immediately on cancellation.
+                }
+            }
+            return stats;
+        });
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+        ExecutorService executor = (ExecutorService) org.springframework.test.util.ReflectionTestUtils.getField(
+                provider, "onlineEnrichmentExecutor");
+
+        try {
+            ConsumerGroupVO returned = provider.listConsumerGroups("instance-a", null, null).get(0);
+            assertThat(statsStarted.getCount()).isZero();
+            assertThat(returned.getOnlineInstances()).isEqualTo(1);
+            assertThat(returned.getInstances())
+                    .extracting(org.apache.rocketmq.studio.instance.group.ConsumerInstanceVO::getClientId)
+                    .containsExactly("online-client");
+            assertThat(returned.isConsumeStatsAvailable()).isFalse();
+            releaseStats.countDown();
+            provider.shutdownOnlineEnrichmentExecutor();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(returned.isConsumeStatsAvailable()).isFalse();
+            assertThat(returned.getTotalLag()).isZero();
+        } finally {
+            releaseStats.countDown();
+            provider.shutdownOnlineEnrichmentExecutor();
+        }
+    }
+
+    @Test
     void listConsumerGroupsShouldMarkOnlineInstancesUnknownWhenConnectionLookupFailsTest() throws Exception {
         RmqGroup entity = new RmqGroup();
         entity.setName("cg-unknown-connections");
@@ -881,6 +1024,64 @@ class RocketMQMetadataProviderTest {
         assertThat(groups).hasSize(1);
         assertThat(groups.get(0).getTotalLag()).isEqualTo(40);
         assertThat(groups.get(0).getDelaySeconds()).isBetween(4, 30);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"100,100,3600000,0", "100,99,3600000,3600", "99,100,3600000,3600", "100,100,0,0"})
+    void listConsumerGroupsDoesNotTreatCaughtUpIdleQueuesAsDelayedTest(
+            long brokerOffset, long consumerOffset, long ageMillis, int minimumDelay) throws Exception {
+        ConsumerGroupVO group = groupWithIdleQueueStats(brokerOffset, consumerOffset, ageMillis);
+
+        assertThat(group.isConsumeStatsAvailable()).isTrue();
+        assertThat(group.isConsumptionTimestampAvailable()).isEqualTo(ageMillis > 0);
+        assertThat(group.getTotalLag()).isEqualTo(brokerOffset - consumerOffset);
+        if (minimumDelay == 0) {
+            assertThat(group.getDelaySeconds()).isZero();
+        } else {
+            assertThat(group.getDelaySeconds()).isBetween(minimumDelay, minimumDelay + 30);
+        }
+    }
+
+    @Test
+    void caughtUpIdleGroupDoesNotTriggerNativeDelayAlertTest() throws Exception {
+        ConsumerGroupVO group = groupWithIdleQueueStats(100, 100, 3_600_000L);
+        var registry = mock(InstanceProviderRegistry.class);
+        var instanceProvider = mock(InstanceProvider.class);
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.of(instanceProvider));
+        when(instanceProvider.listConsumerGroups("instance-a", null)).thenReturn(List.of(group));
+        var collector = new ApacheRocketMqBusinessMetricsCollector(registry);
+        var instance = InstanceVO.builder().name("instance-a").build();
+        var sample = collector.collect(instance).stream()
+                .filter(item -> "consumer.delay.seconds".equals(item.metricKey())).findFirst().orElseThrow();
+        var rule = AlertRuleVO.builder()
+                .metric("consumer.delay.seconds").operator(">").threshold(300).build();
+
+        assertThat(sample.availability()).isEqualTo(MetricAvailability.AVAILABLE);
+        assertThat(new AlertRuleEvaluator().evaluate(rule, sample).conditionMet()).isFalse();
+        assertThat(sample.value()).isZero();
+    }
+
+    private ConsumerGroupVO groupWithIdleQueueStats(long brokerOffset, long consumerOffset, long ageMillis)
+            throws Exception {
+        RmqGroup entity = new RmqGroup();
+        entity.setName("cg-idle");
+        entity.setInstanceId("instance-a");
+        when(groupMapper.selectList(any())).thenReturn(List.of(entity));
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        ConsumeStats stats = new ConsumeStats();
+        OffsetWrapper wrapper = offset(brokerOffset, consumerOffset);
+        wrapper.setLastTimestamp(ageMillis == 0 ? 0 : System.currentTimeMillis() - ageMillis);
+        stats.getOffsetTable().put(new MessageQueue("orders-topic", "broker-a", 0), wrapper);
+        stats.getOffsetTable().put(new MessageQueue("orders-topic", "broker-b", 1), offset(50, 50));
+        when(admin.examineConsumeStats("cg-idle")).thenReturn(stats);
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any()))
+                .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+        try {
+            return provider.listConsumerGroups("instance-a", null, null).getFirst();
+        } finally {
+            provider.shutdownOnlineEnrichmentExecutor();
+        }
     }
 
     @Test

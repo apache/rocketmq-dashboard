@@ -16,7 +16,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { downloadBlob } from '../../../utils/download';
@@ -62,10 +62,12 @@ const credentials: CloudCredentialPage = {
 
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((promiseResolve) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
     resolve = promiseResolve;
+    reject = promiseReject;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 };
 
 const renderTab = () =>
@@ -97,7 +99,7 @@ describe('CloudCredentialTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.removeItem(LANGUAGE_STORAGE_KEY);
-    vi.mocked(listCloudCredentials).mockResolvedValue(credentials);
+    vi.mocked(listCloudCredentials).mockReset().mockResolvedValue(credentials);
   });
 
   it('renders masked credentials from the backend', async () => {
@@ -169,6 +171,87 @@ describe('CloudCredentialTab', () => {
     initial.resolve(credentials);
     await waitFor(() => expect(screen.getByText('latest-credential')).toBeInTheDocument());
     expect(screen.queryByText('aliyun-test')).not.toBeInTheDocument();
+  });
+
+  it('hides stale credentials after a filtered reload fails and retries the current filter', async () => {
+    const filteredLoad = deferred<CloudCredentialPage>();
+    const tencentPage: CloudCredentialPage = {
+      items: [
+        {
+          id: 9,
+          name: 'tencent-prod',
+          vendor: 'TENCENT',
+          accessKey: 'AKID****9999',
+          gmtCreate: '2026-08-18T12:00:00',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    };
+    vi.mocked(listCloudCredentials)
+      .mockResolvedValueOnce(credentials)
+      .mockReturnValueOnce(filteredLoad.promise)
+      .mockResolvedValueOnce(tencentPage);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderTab();
+
+    await screen.findByText('aliyun-test');
+    await user.click(screen.getAllByRole('combobox')[0]);
+    await user.click(
+      await screen.findByText('腾讯云', { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() =>
+      expect(listCloudCredentials).toHaveBeenLastCalledWith('TENCENT', '', 1, 20),
+    );
+    expect(screen.getByRole('button', { name: /编辑/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /删除/ })).toBeDisabled();
+
+    await act(async () => filteredLoad.reject(new Error('credential service unavailable')));
+    const error = await screen.findByText('云凭据加载失败，请稍后重试');
+    expect(error.closest('.ant-alert')).not.toBeNull();
+    expect(screen.queryByText('aliyun-test')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /删除/ })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(document.querySelector('.ant-spin-spinning')).not.toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByRole('button', { name: /^重\s*试$/ }));
+    expect(await screen.findByText('tencent-prod')).toBeInTheDocument();
+    expect(listCloudCredentials).toHaveBeenLastCalledWith('TENCENT', '', 1, 20);
+    expect(screen.queryByText('云凭据加载失败，请稍后重试')).not.toBeInTheDocument();
+  });
+
+  it('keeps loaded credentials usable when search whitespace does not change the query', async () => {
+    renderTab();
+    await screen.findByText('aliyun-test');
+    await waitFor(() => expect(screen.getByRole('button', { name: /编辑/ })).toBeEnabled());
+
+    fireEvent.change(screen.getByPlaceholderText('搜索凭据名称'), { target: { value: ' ' } });
+
+    expect(screen.getByRole('button', { name: /编辑/ })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /删除/ })).toBeEnabled();
+  });
+
+  it('reports an initial credential load failure instead of an empty inventory', async () => {
+    vi.mocked(listCloudCredentials)
+      .mockRejectedValueOnce(new Error('credential service unavailable'))
+      .mockResolvedValueOnce({ items: [], total: 0, page: 1, size: 20 });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderTab();
+
+    const error = await screen.findByText('云凭据加载失败，请稍后重试');
+    expect(error.closest('.ant-alert')).not.toBeNull();
+    expect(screen.queryByText('aliyun-test')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(document.querySelector('.ant-spin-spinning')).not.toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByRole('button', { name: /^重\s*试$/ }));
+    await waitFor(() => expect(listCloudCredentials).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.queryByText('云凭据加载失败，请稍后重试')).not.toBeInTheDocument(),
+    );
   });
 
   it('creates a credential from the modal form', async () => {
@@ -277,6 +360,136 @@ describe('CloudCredentialTab', () => {
     await waitFor(() =>
       expect(listCloudCredentials).toHaveBeenLastCalledWith(undefined, '', 1, 20),
     );
+  });
+
+  it.each([false, true])(
+    'refreshes the current credential query when a deletion completes after search changes (failed=%s)',
+    async (failed) => {
+      const pendingDelete = deferred<void>();
+      const prod = { ...credentials.items[0], id: 3, name: 'prod-key' };
+      const archive = { ...credentials.items[0], id: 2, name: 'archive-key' };
+      let deleted = false;
+      vi.mocked(deleteCloudCredential).mockReturnValueOnce(pendingDelete.promise);
+      vi.mocked(listCloudCredentials).mockImplementation(async (_vendor, search) => {
+        const items =
+          search === 'prod'
+            ? [prod]
+            : deleted
+              ? [archive, prod]
+              : [credentials.items[0], archive, prod];
+        return { ...credentials, items, total: items.length };
+      });
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      renderTab();
+      const initialRow = await screen.findByRole('row', { name: /aliyun-test/ });
+      await user.click(within(initialRow).getByRole('button', { name: /删除/ }));
+      await user.click(await screen.findByRole('button', { name: /确\s*定/ }));
+      await waitFor(() => expect(deleteCloudCredential).toHaveBeenCalledWith(1));
+      fireEvent.change(screen.getByPlaceholderText('搜索凭据名称'), { target: { value: 'prod' } });
+      await waitFor(() =>
+        expect(listCloudCredentials).toHaveBeenLastCalledWith(undefined, 'prod', 1, 20),
+      );
+      await waitFor(() => expect(screen.queryByText('archive-key')).not.toBeInTheDocument());
+      deleted = !failed;
+      await act(async () => {
+        if (failed) pendingDelete.reject(new Error('delete unavailable'));
+        else pendingDelete.resolve();
+      });
+      await waitFor(() => expect(listCloudCredentials).toHaveBeenCalledTimes(failed ? 2 : 3));
+      expect(listCloudCredentials).toHaveBeenLastCalledWith(undefined, 'prod', 1, 20);
+      expect(screen.getByText('prod-key')).toBeInTheDocument();
+      expect(screen.queryByText('archive-key')).not.toBeInTheDocument();
+    },
+  );
+
+  it.each([
+    { navigated: false, remaining: 40 },
+    { navigated: true, remaining: 40 },
+    { navigated: false, remaining: 0 },
+  ])(
+    'refreshes the current page after deleting its last credential (scenario=%j)',
+    async ({ navigated, remaining }) => {
+      const pendingDelete = deferred<void>();
+      const all = Array.from({ length: 41 }, (_, index) => ({
+        ...credentials.items[0],
+        id: index + 1,
+        name: `credential-${index + 1}`,
+      }));
+      let deleted = false;
+      vi.mocked(deleteCloudCredential).mockReturnValueOnce(pendingDelete.promise);
+      vi.mocked(listCloudCredentials).mockImplementation(
+        async (_vendor, _search, page = 1, size = 20) => {
+          const rows = deleted ? all.slice(0, remaining) : all;
+          return {
+            items: rows.slice((page - 1) * size, page * size),
+            total: rows.length,
+            page,
+            size,
+          };
+        },
+      );
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      renderTab();
+      await screen.findByText('credential-1');
+      fireEvent.click(document.querySelector('.ant-pagination-item-3')!);
+      const lastRow = await screen.findByRole('row', { name: /credential-41/ });
+      await user.click(within(lastRow).getByRole('button', { name: /删除/ }));
+      await user.click(await screen.findByRole('button', { name: /确\s*定/ }));
+      await waitFor(() => expect(deleteCloudCredential).toHaveBeenCalledWith(41));
+      if (navigated) {
+        fireEvent.click(document.querySelector('.ant-pagination-item-1')!);
+        await screen.findByText('credential-1');
+      }
+      deleted = true;
+      await act(async () => pendingDelete.resolve());
+      const expectedPage = navigated || remaining === 0 ? 1 : 2;
+      await waitFor(() =>
+        expect(listCloudCredentials).toHaveBeenLastCalledWith(undefined, '', expectedPage, 20),
+      );
+      if (remaining > 0)
+        expect(
+          await screen.findByText(navigated ? 'credential-1' : 'credential-21'),
+        ).toBeInTheDocument();
+      else expect(screen.queryByText('credential-41')).not.toBeInTheDocument();
+    },
+  );
+
+  it('does not fetch credentials after a pending deletion finishes on an unmounted tab', async () => {
+    const pendingDelete = deferred<void>();
+    vi.mocked(deleteCloudCredential).mockReturnValueOnce(pendingDelete.promise);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const { unmount } = renderTab();
+    await screen.findByText('aliyun-test');
+    await user.click(screen.getByRole('button', { name: /删除/ }));
+    await user.click(await screen.findByRole('button', { name: /确\s*定/ }));
+    await waitFor(() => expect(deleteCloudCredential).toHaveBeenCalledWith(1));
+    unmount();
+    await act(async () => pendingDelete.resolve());
+    expect(listCloudCredentials).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the debounced search result when an earlier post-delete refresh finishes late', async () => {
+    const pendingDelete = deferred<void>();
+    const oldRefresh = deferred<CloudCredentialPage>();
+    const prod = { ...credentials.items[0], id: 2, name: 'prod-key' };
+    vi.mocked(deleteCloudCredential).mockReturnValueOnce(pendingDelete.promise);
+    vi.mocked(listCloudCredentials)
+      .mockResolvedValueOnce(credentials)
+      .mockReturnValueOnce(oldRefresh.promise)
+      .mockResolvedValue({ ...credentials, items: [prod] });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderTab();
+    await screen.findByText('aliyun-test');
+    await user.click(screen.getByRole('button', { name: /删除/ }));
+    await user.click(await screen.findByRole('button', { name: /确\s*定/ }));
+    await waitFor(() => expect(deleteCloudCredential).toHaveBeenCalledWith(1));
+    fireEvent.change(screen.getByPlaceholderText('搜索凭据名称'), { target: { value: 'prod' } });
+    await act(async () => pendingDelete.resolve());
+    await waitFor(() => expect(listCloudCredentials).toHaveBeenCalledTimes(2));
+    await screen.findByText('prod-key');
+    await act(async () => oldRefresh.resolve(credentials));
+    expect(screen.queryByText('aliyun-test')).not.toBeInTheDocument();
+    expect(screen.getByText('prod-key')).toBeInTheDocument();
   });
 
   it('deletes a credential after confirmation', async () => {

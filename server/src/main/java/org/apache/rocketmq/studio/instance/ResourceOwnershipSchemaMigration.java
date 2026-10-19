@@ -29,6 +29,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +39,9 @@ import java.util.Map;
 @DependsOnDatabaseInitialization
 @RequiredArgsConstructor
 public class ResourceOwnershipSchemaMigration implements InitializingBean {
+    /** Bounded retries for the index-metadata read; see {@link #indexes(Connection, String)}. */
+    private static final int INDEX_METADATA_ATTEMPTS = 5;
+
     private final DataSource dataSource;
     private final RocketMQDefaultClusterResolver defaultClusters;
 
@@ -136,6 +140,27 @@ public class ResourceOwnershipSchemaMigration implements InitializingBean {
     }
 
     private Map<String, List<String>> indexes(Connection connection, String table) throws SQLException {
+        // H2 serves getIndexInfo from a mutable metadata cache without taking a snapshot, so an index
+        // created by a concurrently starting node surfaces here as a ConcurrentModificationException
+        // wrapped in a SQLException. The read is idempotent and ensureIndex already tolerates a racing
+        // CREATE INDEX, so retry it a bounded number of times instead of serializing every startup
+        // behind one lock — a lock would also turn the concurrent-startup regression test into a
+        // tautology. MySQL reads committed metadata and never takes this path.
+        SQLException transientFailure = null;
+        for (int attempt = 1; attempt <= INDEX_METADATA_ATTEMPTS; attempt++) {
+            try {
+                return readIndexes(connection, table);
+            } catch (SQLException failure) {
+                if (!isConcurrentMetadataRead(failure)) {
+                    throw failure;
+                }
+                transientFailure = failure;
+            }
+        }
+        throw transientFailure;
+    }
+
+    private Map<String, List<String>> readIndexes(Connection connection, String table) throws SQLException {
         Map<String, List<String>> indexes = new HashMap<>();
         try (ResultSet rows = connection.getMetaData().getIndexInfo(connection.getCatalog(), null, table, false, false)) {
             while (rows.next()) {
@@ -149,5 +174,20 @@ public class ResourceOwnershipSchemaMigration implements InitializingBean {
             }
         }
         return indexes;
+    }
+
+    private static boolean isConcurrentMetadataRead(SQLException failure) {
+        Throwable cause = failure;
+        while (cause != null) {
+            if (cause instanceof ConcurrentModificationException) {
+                return true;
+            }
+            Throwable next = cause.getCause();
+            if (next == cause) {
+                break;
+            }
+            cause = next;
+        }
+        return false;
     }
 }

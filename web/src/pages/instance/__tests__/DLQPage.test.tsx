@@ -25,6 +25,7 @@ import type { DLQGroup, DLQGroupPage, DLQMessagePage, DLQResendResult } from '..
 import { LangProvider } from '../../../i18n/LangContext';
 import * as messageService from '../../../services/messageService';
 import * as instanceService from '../../../services/instanceService';
+import { formatUtcDateTime } from '../../../utils/format';
 import DLQPage, { formatDateTime } from '../dlq';
 
 vi.mock('../../../services/messageService', () => ({
@@ -103,6 +104,13 @@ const renderWithProviders = (ui: React.ReactElement) =>
     </App>,
   );
 
+// antd's Spin keys `.ant-spin-blur` (pointer-events: none over the table) on state that lags the
+// Table's loading prop by a commit; clicking a row button inside that window is rejected. Same
+// helper as ConsumerPage.test.tsx.
+async function expectInteractive(element: Element) {
+  await waitFor(() => expect(getComputedStyle(element).pointerEvents).not.toBe('none'));
+}
+
 describe('DLQ page', () => {
   let createObjectURL: ReturnType<typeof vi.fn>;
   let revokeObjectURL: ReturnType<typeof vi.fn>;
@@ -156,6 +164,131 @@ describe('DLQ page', () => {
     vi.clearAllMocks();
   });
 
+  it.each([
+    ['Page', 2, 20],
+    ['PageSize', 1, 10],
+  ] as const)(
+    'refreshesTheCurrent%sAfterASelectedResendCompletesTest',
+    async (_label, nextPage, nextSize) => {
+      let resolveResend!: (result: DLQResendResult) => void;
+      vi.mocked(messageService.resendDLQSelected).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveResend = resolve;
+          }),
+      );
+      const messages = Array.from({ length: 40 }, (_, index) => ({
+        msgId: `message-${index + 1}`,
+        topic: 'orders',
+        queueId: 0,
+        offset: index,
+        storeTime: 1_700_000_000_000,
+        keys: '',
+        body: 'payload',
+        bodyBase64: null,
+        properties: {},
+        propertiesTruncated: false,
+      }));
+      vi.mocked(messageService.listDLQMessages).mockImplementation(
+        async ({ page = 1, pageSize = 20 }) => ({
+          items: messages.slice((page - 1) * pageSize, page * pageSize),
+          total: messages.length,
+          page,
+          size: pageSize,
+        }),
+      );
+      const user = userEvent.setup();
+      renderWithProviders(<DLQPage />);
+      await screen.findByText('cg-order');
+      await user.click(screen.getByRole('button', { name: /消息明细/ }));
+      const firstRow = (await screen.findByText('message-1')).closest('tr')!;
+      await user.click(within(firstRow).getByRole('checkbox'));
+      await user.click(screen.getByRole('button', { name: /批量重发选中/ }));
+      await waitFor(() => expect(messageService.resendDLQSelected).toHaveBeenCalledTimes(1));
+      if (nextPage === 2) {
+        await user.click(screen.getByTitle('2'));
+      } else {
+        const drawer = screen.getByRole('dialog', { name: /DLQ 消息明细/ });
+        await user.click(within(drawer).getByRole('combobox'));
+        await user.click(
+          await screen.findByText('10 / page', { selector: '.ant-select-item-option-content' }),
+        );
+      }
+      const currentId = nextPage === 2 ? 'message-21' : 'message-2';
+      const currentRow = (await screen.findByText(currentId)).closest('tr')!;
+      await user.click(within(currentRow).getByRole('checkbox'));
+      await act(async () =>
+        resolveResend({ matched: 1, resent: 1, failed: 0, outcome: 'SUCCESS' }),
+      );
+      await waitFor(() =>
+        expect(messageService.listDLQMessages).toHaveBeenLastCalledWith(
+          expect.objectContaining({ page: nextPage, pageSize: nextSize }),
+        ),
+      );
+      expect(screen.getByText(currentId)).toBeInTheDocument();
+      expect(
+        within(screen.getByText(currentId).closest('tr')!).getByRole('checkbox'),
+      ).toBeChecked();
+      if (nextPage === 2) {
+        expect(screen.queryByText('message-1')).not.toBeInTheDocument();
+      } else {
+        expect(
+          within(screen.getByText('message-1').closest('tr')!).getByRole('checkbox'),
+        ).not.toBeChecked();
+      }
+    },
+  );
+
+  it.each(['close', 'unmount'] as const)(
+    'doesNotRefreshAnInactiveDrawerAfterResend%sTest',
+    async (action) => {
+      let resolveResend!: (result: DLQResendResult) => void;
+      vi.mocked(messageService.resendDLQSelected).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveResend = resolve;
+          }),
+      );
+      vi.mocked(messageService.listDLQMessages).mockResolvedValue({
+        items: [
+          {
+            msgId: 'inactive-drawer-message',
+            topic: 'orders',
+            queueId: 0,
+            offset: 1,
+            storeTime: 1_700_000_000_000,
+            keys: '',
+            body: 'payload',
+            bodyBase64: null,
+            properties: {},
+            propertiesTruncated: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      });
+      const user = userEvent.setup();
+      const view = renderWithProviders(<DLQPage />);
+      await screen.findByText('cg-order');
+      await user.click(screen.getByRole('button', { name: /消息明细/ }));
+      const row = (await screen.findByText('inactive-drawer-message')).closest('tr')!;
+      await user.click(within(row).getByRole('checkbox'));
+      await user.click(screen.getByRole('button', { name: /批量重发选中/ }));
+      await waitFor(() => expect(messageService.resendDLQSelected).toHaveBeenCalledTimes(1));
+      if (action === 'close') {
+        const drawer = screen.getByRole('dialog', { name: /DLQ 消息明细/ });
+        await user.click(within(drawer).getByRole('button', { name: 'Close' }));
+      } else {
+        view.unmount();
+      }
+      await act(async () =>
+        resolveResend({ matched: 1, resent: 1, failed: 0, outcome: 'SUCCESS' }),
+      );
+      expect(messageService.listDLQMessages).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText(/重发完成：成功/)).not.toBeInTheDocument();
+    },
+  );
   it('says so when the instance list itself failed to load', async () => {
     // Every instance-scoped request needs an instanceId, so a failed /instances request leaves the page
     // with nothing it can show. Rendering that as an empty result tells the operator the instance has no
@@ -258,6 +391,25 @@ describe('DLQ page', () => {
     expect(screen.getByText('-')).toBeInTheDocument();
   });
 
+  it('renders the last enqueue time in the viewer timezone from the offset-less UTC wire format', async () => {
+    // The backend serializes LocalDateTime without an offset, so the wire value is a UTC wall
+    // clock. Parsing it as browser-local (the plain formatDateTime path) would shift the displayed
+    // time by the viewer's zone; formatUtcDateTime reads it as UTC and converts.
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    try {
+      vi.mocked(messageService.listDLQGroups).mockResolvedValue(
+        pageOf([{ ...dlqGroup, lastEnqueueTime: '2026-07-24T10:00:00' }]),
+      );
+      renderWithProviders(<DLQPage />);
+
+      const row = (await screen.findByText('cg-order')).closest('tr');
+      if (!row) throw new Error('DLQ group row not found');
+      expect(within(row).getByText('2026-07-24 18:00:00')).toBeInTheDocument();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('opens a message detail drawer with the selected group metadata', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);
@@ -266,6 +418,7 @@ describe('DLQ page', () => {
     await user.click(screen.getByRole('button', { name: /消息明细/ }));
 
     expect(await screen.findByText('DLQ 消息明细 · cg-order')).toBeInTheDocument();
+    expect(document.querySelector('.ant-drawer')).toBeNull();
     expect(screen.getAllByText('%DLQ%cg-order').length).toBeGreaterThanOrEqual(2);
     expect(messageService.listDLQMessages).toHaveBeenCalledWith(
       expect.objectContaining({ instanceId: 'instance-1', groupName: 'cg-order' }),
@@ -604,6 +757,22 @@ describe('DLQ page', () => {
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:dlq');
   });
 
+  it('exports the last enqueue time through the UTC formatter instead of the raw wire value', async () => {
+    vi.mocked(messageService.listDLQGroups).mockResolvedValue(pageOf([dlqGroup]));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    const row = (await screen.findByText('cg-order')).closest('tr');
+    if (!row) throw new Error('DLQ group row not found');
+    await user.click(within(row).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: /批量导出/ }));
+
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    const csv = await blob.text();
+    expect(csv).toContain(formatUtcDateTime(dlqGroup.lastEnqueueTime));
+    expect(csv).not.toContain(dlqGroup.lastEnqueueTime as string);
+  });
+
   it('neutralizes formulas hidden behind a leading line feed in CSV summary exports', async () => {
     vi.mocked(messageService.listDLQGroups).mockResolvedValue(
       pageOf([
@@ -637,6 +806,7 @@ describe('DLQ page', () => {
     if (!orderRow) throw new Error('DLQ group row not found');
 
     await user.click(within(orderRow).getByRole('checkbox'));
+    await expectInteractive(within(orderRow).getByRole('button', { name: '重投消息' }));
     await user.click(within(orderRow).getByRole('button', { name: '重投消息' }));
     await user.type(screen.getByPlaceholderText('输入目标 Topic 名称'), 'orders-retry');
     await user.click(screen.getByRole('button', { name: '确认重投' }));
@@ -692,6 +862,54 @@ describe('DLQ page', () => {
     });
 
     expect(messageService.resendDLQ).toHaveBeenCalledTimes(1);
+    await act(async () => resolveResend({ matched: 7, resent: 7, failed: 0, outcome: 'SUCCESS' }));
+  });
+
+  it('keeps the retry dialog open while its resend request is pending', async () => {
+    let resolveResend!: (result: DLQResendResult) => void;
+    vi.mocked(messageService.resendDLQ).mockImplementationOnce(
+      () => new Promise((resolve) => (resolveResend = resolve)),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    const row = (await screen.findByText('cg-order')).closest('tr');
+    if (!row) throw new Error('DLQ group row not found');
+    await user.click(within(row).getByRole('button', { name: '重投消息' }));
+    await user.type(screen.getByPlaceholderText('输入目标 Topic 名称'), 'orders-retry');
+    await user.click(screen.getByRole('button', { name: '确认重投' }));
+    await waitFor(() => expect(messageService.resendDLQ).toHaveBeenCalledTimes(1));
+
+    const cancel = screen.getByRole('button', { name: /取\s*消/ });
+    expect(cancel).toBeDisabled();
+    await user.click(cancel);
+    expect(screen.getByText('重投死信消息')).toBeInTheDocument();
+
+    await act(async () => resolveResend({ matched: 7, resent: 7, failed: 0, outcome: 'SUCCESS' }));
+  });
+
+  it('drops the retry dialog close button while a resend is pending', async () => {
+    let resolveResend!: (result: DLQResendResult) => void;
+    vi.mocked(messageService.resendDLQ).mockImplementationOnce(
+      () => new Promise((resolve) => (resolveResend = resolve)),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    const row = (await screen.findByText('cg-order')).closest('tr');
+    if (!row) throw new Error('DLQ group row not found');
+    await user.click(within(row).getByRole('button', { name: '重投消息' }));
+    await user.type(screen.getByPlaceholderText('输入目标 Topic 名称'), 'orders-retry');
+    await user.click(screen.getByRole('button', { name: '确认重投' }));
+    await waitFor(() => expect(messageService.resendDLQ).toHaveBeenCalledTimes(1));
+
+    // `keyboard` and `maskClosable` cannot be pinned here: rc-dialog's Escape and mask-click close
+    // paths do not fire under jsdom even with both props removed (verified by mutation), so only
+    // `closable` is asserted. The cancel button and the `onCancel` guard are covered above.
+    expect(document.querySelector('.ant-modal-close')).toBeNull();
+    expect(screen.getByText('重投死信消息')).toBeInTheDocument();
+    expect(messageService.resendDLQ).toHaveBeenCalledTimes(1);
+
     await act(async () => resolveResend({ matched: 7, resent: 7, failed: 0, outcome: 'SUCCESS' }));
   });
 

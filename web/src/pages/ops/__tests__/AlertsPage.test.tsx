@@ -16,10 +16,16 @@
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
-import type { AlertRule, NativeAlertMetricInfo, PageResult } from '../../../api/ops';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import type {
+  AlertRule,
+  AlertRuleTestResult,
+  NativeAlertMetricInfo,
+  PageResult,
+} from '../../../api/ops';
 import { LangProvider } from '../../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { formatUtcDateTime } from '../../../utils/format';
@@ -28,11 +34,14 @@ import { listInstances } from '../../../services/instanceService';
 import {
   bulkDeleteAlertRules,
   bulkToggleAlertRules,
+  createAlertRule,
   listAlertRulesPage,
   listAlertRuleRuntime,
   listNativeAlertMetrics,
   importAlertRulesTransfer,
   toggleAlertRule,
+  updateAlertRule,
+  testAlertRule,
 } from '../../../services/opsService';
 
 vi.mock('../../../services/instanceService', () => ({
@@ -51,6 +60,7 @@ vi.mock('../../../services/opsService', () => ({
   exportAlertRulesTransfer: vi.fn(),
   importAlertRulesTransfer: vi.fn(),
   updateAlertRule: vi.fn(),
+  testAlertRule: vi.fn(),
 }));
 
 const alertRules: AlertRule[] = [
@@ -129,6 +139,46 @@ function renderPage(domain?: 'BUSINESS' | 'CLUSTER') {
         <AlertsPage domain={domain} />
       </LangProvider>
     </App>,
+  );
+}
+
+function renderAlertHistory() {
+  const HistoryControls = () => {
+    const navigate = useNavigate();
+    return (
+      <>
+        <button onClick={() => navigate(-1)}>Browser back</button>
+        <button onClick={() => navigate(1)}>Browser forward</button>
+        <button onClick={() => navigate('/ops/alerts?view=details')}>Same domain query</button>
+      </>
+    );
+  };
+  return render(
+    <App>
+      <LangProvider>
+        <MemoryRouter initialEntries={['/ops/business-alerts', '/ops/alerts']} initialIndex={1}>
+          <HistoryControls />
+          <Routes>
+            <Route path="/ops/alerts" element={<AlertsPage />} />
+            <Route path="/ops/business-alerts" element={<AlertsPage domain="BUSINESS" />} />
+          </Routes>
+        </MemoryRouter>
+      </LangProvider>
+    </App>,
+  );
+}
+
+function mockDomainRules() {
+  vi.mocked(listAlertRulesPage).mockImplementation(async (domain) =>
+    pageResult([
+      {
+        ...cloneRule(alertRules[0]),
+        id: domain === 'BUSINESS' ? 10 : 1,
+        name: domain === 'BUSINESS' ? 'Business rule' : 'Cluster rule',
+        instanceId: 'local',
+        metric: 'broker.disk.usage_ratio',
+      },
+    ]),
   );
 }
 
@@ -240,6 +290,27 @@ describe('AlertsPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('names the window aggregations instead of printing the API codes', async () => {
+    const user = userEvent.setup();
+    renderPage('BUSINESS');
+
+    await user.click(await screen.findByRole('button', { name: '新建规则' }));
+
+    // The default value is LAST; the selection already reads as its name.
+    expect(await screen.findByText('最近一次')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: '窗口聚合' }));
+
+    // The visible option list, not the hidden aria mirror that keeps the raw value.
+    await waitFor(() =>
+      expect(
+        Array.from(document.querySelectorAll('.ant-select-item-option-content')).map((option) =>
+          option.textContent?.trim(),
+        ),
+      ).toEqual(['最近一次', '最大值', '最小值', '平均值', '总和']),
+    );
+  });
+
   it('formats the last triggered timestamp instead of rendering the raw ISO value', async () => {
     const lastTriggered = '2026-08-23T10:35:38.590731';
     vi.mocked(listAlertRulesPage).mockResolvedValue(
@@ -271,14 +342,64 @@ describe('AlertsPage', () => {
   });
 
   it('renders legacy native ratio thresholds as percentages', () => {
-    expect(
+    const render = (threshold: number) =>
       formatThresholdCondition({
         ...cloneRule(alertRules[0]),
         metric: 'broker.disk.usage_ratio',
-        threshold: 0.85,
+        threshold,
         thresholdUnit: null,
-      }),
-    ).toBe('> 85%');
+      });
+
+    expect(render(0.85)).toBe('> 85%');
+    // 8 of the 99 whole percents (7, 14, 28, 29, 55, 56, 57, 58) do not survive
+    // `n / 100 * 100` in binary floating point: 0.29 * 100 is 28.999999999999996.
+    expect(render(0.29)).toBe('> 29%');
+    expect(render(0.07)).toBe('> 7%');
+    expect(render(0.58)).toBe('> 58%');
+    expect(render(0.1234)).toBe('> 12.34%');
+  });
+
+  it('opens a legacy ratio rule with a clean percent and saves that value back', async () => {
+    vi.mocked(listAlertRulesPage).mockResolvedValue(
+      pageResult([
+        {
+          ...cloneRule(alertRules[0]),
+          instanceId: 'local',
+          metric: 'broker.disk.usage_ratio',
+          threshold: 0.29,
+          thresholdUnit: null,
+        },
+      ]),
+    );
+    vi.mocked(listNativeAlertMetrics).mockResolvedValue([
+      {
+        key: 'broker.disk.usage_ratio',
+        label: 'Broker disk usage ratio',
+        thresholdUnit: 'ratio',
+        supportsConsumerGroup: false,
+      },
+    ]);
+    vi.mocked(updateAlertRule).mockImplementation(async (data) => ({
+      ...cloneRule(alertRules[0]),
+      ...data,
+    }));
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Broker disk usage');
+    await expectRuleRowInteractive('Broker disk usage');
+    await user.click(within(getRuleRow('Broker disk usage')).getByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog', { name: '编辑' });
+
+    // The editor's percent input renders with `precision={2}`, so the residue stays invisible in
+    // the dialog; it only shows up in the value the form saves back.
+    fireEvent.click(within(dialog).getByRole('button', { name: /编\s*辑/ }));
+    await waitFor(() =>
+      expect(updateAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 1, threshold: 29, thresholdUnit: '%' }),
+      ),
+    );
   });
 
   it('bulk enables selected alert rules and clears the selection after success', async () => {
@@ -371,6 +492,91 @@ describe('AlertsPage', () => {
     expect(await screen.findByText('共 21 条规则')).toBeInTheDocument();
   });
 
+  it('closes the previous domain editor when browser history switches alert routes', async () => {
+    mockDomainRules();
+    vi.mocked(updateAlertRule).mockImplementation(async (data) => ({
+      ...cloneRule(alertRules[0]),
+      ...data,
+    }));
+    renderAlertHistory();
+    await screen.findByText('Cluster rule');
+    await expectRuleRowInteractive('Cluster rule');
+    fireEvent.click(within(getRuleRow('Cluster rule')).getByRole('button', { name: '编辑' }));
+    expect(await screen.findByRole('dialog', { name: '编辑' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Browser back' }));
+    await screen.findByText('Business rule');
+    expect(screen.queryByRole('dialog', { name: '编辑' })).not.toBeInTheDocument();
+    expect(updateAlertRule).not.toHaveBeenCalled();
+    fireEvent.click(within(getRuleRow('Business rule')).getByRole('button', { name: '编辑' }));
+    const businessEditor = await screen.findByRole('dialog', { name: '编辑' });
+    fireEvent.click(within(businessEditor).getByRole('button', { name: /编\s*辑/ }));
+    await waitFor(() =>
+      expect(updateAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 10, name: 'Business rule' }),
+        'BUSINESS',
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Browser forward' }));
+    await screen.findByText('Cluster rule');
+    expect(screen.queryByRole('dialog', { name: '编辑' })).not.toBeInTheDocument();
+  });
+
+  it('keeps unsaved editor inputs across navigation within the same alert domain', async () => {
+    mockDomainRules();
+    renderAlertHistory();
+    await screen.findByText('Cluster rule');
+    await expectRuleRowInteractive('Cluster rule');
+    fireEvent.click(within(getRuleRow('Cluster rule')).getByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog', { name: '编辑' });
+    fireEvent.change(within(dialog).getByDisplayValue('Cluster rule'), {
+      target: { value: 'Unsaved rule name' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Same domain query' }));
+    expect(within(dialog).getByDisplayValue('Unsaved rule name')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Browser back' }));
+    expect(within(dialog).getByDisplayValue('Unsaved rule name')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: /取\s*消/ }));
+    fireEvent.click(within(getRuleRow('Cluster rule')).getByRole('button', { name: '编辑' }));
+    const reopened = await screen.findByRole('dialog', { name: '编辑' });
+    expect(within(reopened).getByDisplayValue('Cluster rule')).toBeInTheDocument();
+  });
+
+  it('ignores a previous domain test result after a new editor has opened', async () => {
+    mockDomainRules();
+    let completeTest!: (result: AlertRuleTestResult) => void;
+    vi.mocked(testAlertRule).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          completeTest = resolve;
+        }),
+    );
+    renderAlertHistory();
+    await screen.findByText('Cluster rule');
+    await expectRuleRowInteractive('Cluster rule');
+    fireEvent.click(within(getRuleRow('Cluster rule')).getByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog', { name: '编辑' });
+    fireEvent.click(within(dialog).getByRole('button', { name: '试运行' }));
+    await waitFor(() => expect(testAlertRule).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Browser back' }));
+    await screen.findByText('Business rule');
+    fireEvent.click(within(getRuleRow('Business rule')).getByRole('button', { name: '编辑' }));
+    const nextDialog = await screen.findByRole('dialog', { name: '编辑' });
+    await act(async () =>
+      completeTest({
+        samples: [
+          {
+            labels: { broker: 'previous-cluster' },
+            availability: 'AVAILABLE',
+            currentValue: 90,
+            conditionMet: true,
+          },
+        ],
+      }),
+    );
+    expect(within(nextDialog).queryByText('broker=previous-cluster')).not.toBeInTheDocument();
+    expect(within(nextDialog).getByDisplayValue('Business rule')).toBeInTheDocument();
+  });
+
   it('resets page, search and status filters when the domain switches', async () => {
     vi.mocked(listAlertRulesPage).mockClear();
     vi.mocked(listAlertRulesPage).mockResolvedValue({
@@ -419,6 +625,39 @@ describe('AlertsPage', () => {
     expect(screen.getByPlaceholderText('搜索规则名称或指标')).toHaveValue('');
   });
 
+  it('centers reminder interval and runtime and right-aligns duration', async () => {
+    renderPage('BUSINESS');
+    const row = (await screen.findByText('Broker disk usage')).closest('tr') as HTMLElement;
+
+    // 用户约定 2026-10-16：重提醒间隔 / 运行态居中，持续时间靠右，别改回默认左对齐。
+    const headers = Array.from(row.closest('table')!.querySelectorAll('thead th')).map((th) =>
+      th.textContent?.trim(),
+    );
+    const cells = within(row).getAllByRole('cell');
+    const alignOf = (title: string) => {
+      const index = headers.indexOf(title);
+      expect(index).toBeGreaterThan(-1);
+      return cells[index].style.textAlign;
+    };
+    expect(alignOf('重提醒间隔')).toBe('center');
+    expect(alignOf('运行态')).toBe('center');
+    expect(alignOf('持续时间')).toBe('right');
+  });
+
+  it('keeps the rule table within the 1600px viewport container', async () => {
+    renderPage('BUSINESS');
+    await screen.findByText('Broker disk usage');
+
+    // 用户约定 2026-10-16 实测：1600 视口下卡片内容宽 1330，而 tableScrollX 把声明宽累加成
+    // scroll.x——总和 1368 时表格横向滚动、操作列删除按钮被裁。列宽调整见 alerts.tsx 列定义注释。
+    const cols = Array.from(document.querySelectorAll('.ant-table-content colgroup col'));
+    const total = cols.reduce(
+      (sum, col) => sum + (parseInt((col as HTMLElement).style.width, 10) || 0),
+      0,
+    );
+    expect(total).toBeLessThanOrEqual(1330);
+  });
+
   it('uses the business rule API and loads only business metrics for the selected instance', async () => {
     vi.mocked(listNativeAlertMetrics).mockResolvedValue([
       {
@@ -450,6 +689,47 @@ describe('AlertsPage', () => {
 
     expect(await screen.findByText('消费积压总量')).toBeInTheDocument();
     expect(screen.queryByText('Broker 磁盘使用率')).not.toBeInTheDocument();
+  });
+
+  it('creates the rule enabled because the dialog has no enable control', async () => {
+    // The request DTO models `enabled` as a primitive boolean, so a create payload that omits it
+    // stores a disabled rule: the dialog never offers the switch and the success toast says
+    // nothing, so the rule silently never evaluates.
+    vi.mocked(listNativeAlertMetrics).mockResolvedValue([
+      {
+        key: 'consumer.lag.total',
+        label: 'Consumer lag total',
+        thresholdUnit: 'messages',
+        supportsConsumerGroup: true,
+      },
+    ]);
+    vi.mocked(createAlertRule).mockResolvedValue(cloneRule(alertRules[0]));
+
+    const user = userEvent.setup();
+    renderPage('BUSINESS');
+
+    await user.click(await screen.findByRole('button', { name: '新建规则' }));
+    await user.type(screen.getByRole('textbox', { name: '规则名称' }), 'Lag guard');
+    await user.click(screen.getByRole('combobox', { name: 'RocketMQ 实例' }));
+    await screen.findByRole('option', { name: 'local' });
+    await user.click(getSelectOption('local'));
+    await user.click(screen.getByRole('combobox', { name: '监控指标' }));
+    await user.click(getSelectOption('消费积压总量'));
+    await user.click(screen.getByRole('combobox', { name: '运算符' }));
+    await user.click(getSelectOption('>'));
+    await user.type(screen.getByPlaceholderText('阈值'), '1000');
+    await user.click(screen.getByRole('combobox', { name: '持续时间' }));
+    await user.click(getSelectOption('5m'));
+    await user.click(screen.getByRole('checkbox', { name: 'Email' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /新\s*建/ }));
+
+    await waitFor(() =>
+      expect(createAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Lag guard', enabled: true }),
+        'BUSINESS',
+      ),
+    );
   });
 
   it('refreshes metric options from the selected instance capabilities', async () => {
