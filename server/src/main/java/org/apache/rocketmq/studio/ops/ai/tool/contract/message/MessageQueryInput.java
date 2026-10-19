@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.contract.message;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
+
 /**
  * Identifier order is the dispatch priority: msgId, then uniqueKey, then key.
  */
@@ -39,6 +41,16 @@ public record MessageQueryInput(
     }
 
     public int resultLimit() {
-        return limit == null ? DEFAULT_LIMIT : Math.min(limit, MAX_LIMIT);
+        if (limit == null) {
+            return DEFAULT_LIMIT;
+        }
+        // The catalog schema declares limit with minimum: 1. Enforce that floor here so every
+        // dispatch path rejects the same out-of-contract value: the msgId/key paths would
+        // otherwise surface the service-layer pageSize validation, while the uniqueKey path
+        // slices the provider result directly and crashes on a negative subList bound.
+        if (limit < 1) {
+            throw new BusinessException(400, "limit must be at least 1");
+        }
+        return Math.min(limit, MAX_LIMIT);
     }
 }

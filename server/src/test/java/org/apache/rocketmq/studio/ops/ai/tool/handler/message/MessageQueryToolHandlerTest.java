@@ -41,6 +41,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -161,6 +162,39 @@ class MessageQueryToolHandlerTest {
                 context("instance-a")))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("message query requires one of: msgId, uniqueKey, key")
+                .satisfies(exception -> assertThat(((BusinessException) exception).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(messageService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, -1, -100})
+    void limitBelowTheSchemaMinimumIsRejectedOnTheUniqueKeyPathTest(int invalidLimit) {
+        // The catalog schema declares limit with minimum: 1. The uniqueKey path is the only
+        // dispatch path that slices the provider result directly, so a below-minimum value
+        // must be rejected before it reaches the subList bound instead of crashing there.
+        lenient().when(messageService.queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", 1000L, 2000L))
+                .thenReturn(List.of(message("msg-2", "private", false)));
+
+        assertThatThrownBy(() -> handler.execute(
+                new MessageQueryInput("instance-a", "TopicA", null, "uniq-1", null,
+                        1000L, 2000L, invalidLimit, false),
+                context("instance-a")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("limit must be at least 1")
+                .satisfies(exception -> assertThat(((BusinessException) exception).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(messageService);
+    }
+
+    @Test
+    void msgIdPathRejectsTheSameBelowMinimumLimitTest() {
+        assertThatThrownBy(() -> handler.execute(
+                new MessageQueryInput("instance-a", "TopicA", "msg-1", null, null,
+                        null, null, 0, false),
+                context("instance-a")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("limit must be at least 1")
                 .satisfies(exception -> assertThat(((BusinessException) exception).getCode()).isEqualTo(400));
 
         verifyNoInteractions(messageService);
