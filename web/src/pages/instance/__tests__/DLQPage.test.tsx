@@ -963,7 +963,7 @@ describe('DLQ page', () => {
     if (!orderRow) throw new Error('DLQ group row not found');
     const resendButton = within(orderRow).getByRole('button', { name: '重投消息' });
     // The row text can appear before antd removes the table's loading overlay.
-    await waitFor(() => expect(resendButton.closest('.ant-spin-blur')).toBeNull());
+    await expectInteractive(resendButton);
     await user.click(resendButton);
     await user.type(screen.getByPlaceholderText('输入目标 Topic 名称'), 'orders-retry');
     await user.click(screen.getByRole('button', { name: '确认重投' }));
