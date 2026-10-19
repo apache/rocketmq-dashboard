@@ -363,22 +363,7 @@ public class OpenAiCompatibleLlmClient {
     }
 
     private URI providerUri(LlmConfigVO config, String path) {
-        String baseUrl = normalizeApiBase(config.getApiBase());
-        return URI.create(baseUrl + path);
-    }
-
-    private String normalizeApiBase(String apiBase) {
-        String baseUrl = apiBase.trim();
-        while (baseUrl.endsWith("/")) {
-            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
-        }
-        if (baseUrl.endsWith(CHAT_COMPLETIONS_PATH)) {
-            baseUrl = baseUrl.substring(0, baseUrl.length() - CHAT_COMPLETIONS_PATH.length());
-            while (baseUrl.endsWith("/")) {
-                baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
-            }
-        }
-        return baseUrl;
+        return LlmApiBase.endpoint(config.getApiBase(), path);
     }
 
     private void validate(LlmConfigVO config) {
@@ -415,7 +400,7 @@ public class OpenAiCompatibleLlmClient {
 
     private boolean isValidApiBase(String apiBase) {
         try {
-            URI uri = new URI(normalizeApiBase(apiBase));
+            URI uri = new URI(LlmApiBase.normalize(apiBase));
             String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
             return ("http".equals(scheme) || "https".equals(scheme)) && StringUtils.hasText(uri.getHost());
         } catch (IllegalArgumentException | URISyntaxException exception) {
