@@ -47,9 +47,11 @@ public interface AiConversationRepository {
 
     /**
      * Forgets the remembered {@code --resume} session id. A method of its own because {@link #update}
-     * writes non-null fields only, so it cannot express "forget this value".
+     * writes non-null fields only, so it cannot express "forget this value". The caller supplies
+     * {@code now} so the write can stamp {@code gmt_modified} from its own clock — the column is
+     * {@code ON UPDATE CURRENT_TIMESTAMP}, and the list in {@link #findPage} orders by it.
      */
-    void clearRuntimeSessionId(Long id);
+    void clearRuntimeSessionId(Long id, LocalDateTime now);
 
     int deleteById(Long id);
 
