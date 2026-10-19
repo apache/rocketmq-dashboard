@@ -42,7 +42,7 @@ import {
 } from '../../api/producer';
 import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
-import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { buildCsv, downloadCsv, localExportDateStamp, type CsvColumn } from '../../utils/download';
 
 const readinessConfig: Record<ProducerReadiness, { color: string; type: 'success' | 'warning' }> = {
   READY: { color: 'success', type: 'success' },
@@ -314,7 +314,7 @@ const ProducerPage = () => {
       readiness: connectionSummary?.readiness,
       warnings,
     }));
-    const filename = `rocketmq-producer-connections-${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename = `rocketmq-producer-connections-${localExportDateStamp()}.csv`;
     const csv = buildCsv(PRODUCER_CONNECTION_EXPORT_COLUMNS, rows);
     downloadCsv(filename, csv);
   };

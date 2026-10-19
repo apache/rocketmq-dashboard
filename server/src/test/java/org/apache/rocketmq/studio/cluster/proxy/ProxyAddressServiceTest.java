@@ -40,6 +40,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -290,6 +291,27 @@ class ProxyAddressServiceTest {
         assertThat(custom.getStatus()).isEqualTo("UP");
         assertThat(custom.getRemotingPort()).isNull();
         assertThat(custom.isRemotingReachable()).isFalse();
+    }
+
+    @Test
+    void buildTopologyShouldProbeBracketedIpv6HostWithoutBrackets() {
+        proxyAddressService.addProxyAddr("[::1]:8081");
+
+        when(healthProbe.probe(eq("::1"), anyInt(), anyInt()))
+                .thenReturn(ProxyHealthProbe.ProbeResult.reachable(1L));
+
+        List<ProxyTopologyVO> topology = proxyAddressService.buildTopology();
+
+        ProxyTopologyVO ipv6 = topology.stream()
+                .filter(node -> node.getProxyAddr().equals("[::1]:8081"))
+                .findFirst()
+                .orElseThrow();
+        // A socket connect cannot resolve a bracketed IPv6 literal, so the brackets must be
+        // stripped before the host reaches the probe; the reported address keeps them.
+        assertThat(ipv6.getStatus()).isEqualTo("UP");
+        verify(healthProbe).probe(eq("::1"), eq(8081), anyInt());
+        verify(healthProbe).probe(eq("::1"), eq(8080), anyInt());
+        verify(healthProbe, never()).probe(eq("[::1]"), anyInt(), anyInt());
     }
 
     @Test

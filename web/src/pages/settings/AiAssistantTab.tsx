@@ -338,7 +338,7 @@ export const AiAssistantTab = () => {
   };
 
   return (
-    <Flex vertical gap={24} style={{ maxWidth: 860 }}>
+    <Flex vertical gap={24}>
       {loadError && (
         <Alert
           type="error"

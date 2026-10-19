@@ -29,6 +29,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -57,8 +58,19 @@ public class AuditService {
         log.info("Querying audit logs, page={}, pageSize={}, search={}, operationType={}, result={}",
                 page, pageSize, search, operationType, result);
 
-        return findPage(search, operationType, resourceType, target, clusterId, clusterIdMissing,
-                startDate, endDate, result, page, pageSize);
+        PageResult<AuditRecordVO> stored = findPage(search, operationType, resourceType, target,
+                clusterId, clusterIdMissing, startDate, endDate, result, page, pageSize);
+        if (stored == null || stored.getItems() == null) {
+            return stored;
+        }
+        // The page renders these timestamps in the viewer's zone, so the JSON wire carries a UTC
+        // wall clock like the alert / K8s-cert family; a zone-less server-local value would be
+        // parsed as browser-local and shift by the server-viewer offset. The stored base and the
+        // CSV export keep the server-local wall clock, and the CSV header keeps naming the
+        // server's offset.
+        return PageResult.of(
+                stored.getItems().stream().map(AuditService::toUtcWire).toList(),
+                stored.getTotal(), stored.getPage(), stored.getSize());
     }
 
     public AuditFilterOptionsVO getFilterOptions() {
@@ -69,8 +81,15 @@ public class AuditService {
                                     String clusterId, String startDate, String endDate, String result) {
         DateRange range = parseDateRange(startDate, endDate);
         String normalizedSearch = normalizeSearch(search);
-        return auditRepository.summarize(normalizedSearch, operationType, resourceType, clusterId,
-                range.start(), range.end(), result);
+        AuditSummaryVO summary = auditRepository.summarize(normalizedSearch, operationType,
+                resourceType, clusterId, range.start(), range.end(), result);
+        // latestAt rides the same wire as the page rows: zone-less server-local in storage,
+        // UTC for every JSON consumer, while the audit CSV keeps naming the server offset.
+        if (summary != null && summary.getLatestAt() != null) {
+            summary.setLatestAt(summary.getLatestAt().atZone(ZoneId.systemDefault())
+                    .withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime());
+        }
+        return summary;
     }
 
     public String exportLogs(String search, String operationType, String resourceType,
@@ -113,6 +132,28 @@ public class AuditService {
     private String serverZoneLabel() {
         ZoneOffset offset = OffsetDateTime.now().getOffset();
         return "UTC" + (offset.getTotalSeconds() == 0 ? "" : offset.getId());
+    }
+
+    /** Returns a copy with the timestamp shifted to the UTC wire; the stored row keeps its base. */
+    private static AuditRecordVO toUtcWire(AuditRecordVO record) {
+        if (record == null) {
+            return null;
+        }
+        AuditRecordVO wire = AuditRecordVO.builder()
+                .operator(record.getOperator())
+                .operationType(record.getOperationType())
+                .resourceType(record.getResourceType())
+                .target(record.getTarget())
+                .clusterId(record.getClusterId())
+                .detail(record.getDetail())
+                .result(record.getResult())
+                .errorMessage(record.getErrorMessage())
+                .timestamp(record.getTimestamp() == null ? null : record.getTimestamp()
+                        .atZone(ZoneId.systemDefault())
+                        .withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime())
+                .build();
+        wire.setId(record.getId());
+        return wire;
     }
 
 
