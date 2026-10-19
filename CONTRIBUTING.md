@@ -59,12 +59,15 @@ npm run dev                          # Vite dev server with hot reload
 
 ## Tests
 
+Run these commands from the repository root. Each subshell preserves that working directory
+for the next command.
+
 ```bash
 # Backend unit + integration tests (also runs the ArchUnit architecture checks)
-cd server && mvn -B -ntp test
+(cd server && mvn -B -ntp test)
 
 # Frontend tests (vitest), lint and production build
-cd web && npm test && npm run lint && npm run build
+(cd web && npm test && npm run lint && npm run build)
 ```
 
 The backend integration tests (`@SpringBootTest`) talk to a real datasource, so they need a
@@ -73,7 +76,7 @@ is to start the bundled one, which loads `server/src/main/resources/db/schema.sq
 automatically:
 
 ```bash
-cd deploy && docker compose up -d mysql
+(cd deploy && docker compose up -d mysql)
 ```
 
 Non-trivial changes need tests. Name test methods `somethingHappensTest` (suffix `Test`),
