@@ -644,7 +644,11 @@ const InstancePage = () => {
       title: t('instance.createdAt'),
       dataIndex: 'gmtCreate',
       key: 'gmtCreate',
-      width: 150,
+      // 156 = `YYYY-MM-DD HH:mm:ss` 在 14px 下实测 140px + 小表单元格左右各 8px，与
+      // consumer.tsx / dlq.tsx / alerts.tsx / systemAlerts.tsx 的时间列一致（#6633 刚把
+      // alerts.tsx 的 150 提到这个值）。150 时内容盒 134px 装不下 140px 的标签，时间戳会在
+      // 自己的空格处折成两行。宽度由 InstancePage.test.tsx 的用例守护。
+      width: 156,
       sorter: (a, b) => a.gmtCreate.localeCompare(b.gmtCreate),
       render: (d: string) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
@@ -656,7 +660,10 @@ const InstancePage = () => {
       title: t('instance.updatedAt'),
       dataIndex: 'gmtModified',
       key: 'gmtModified',
-      width: 150,
+      // 与「创建时间」同样的 156。三列合计比原来多 16px（声明总宽 1202 → 1218），仍低于
+      // 1600 视口下的容器宽度，多出的部分由两个未声明宽度的弹性列（实例 ID、备注）吸收，
+      // 因此不会新增横向滚动条。
+      width: 156,
       sorter: (a, b) => a.gmtModified.localeCompare(b.gmtModified),
       render: (d: string) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
@@ -667,7 +674,9 @@ const InstancePage = () => {
     {
       title: t('common.actions'),
       key: 'actions',
-      width: 150,
+      // 154 = 右对齐的两个小按钮各 66px（#6692 的实测） + 6px gap + 单元格左右各 8px。
+      // 原来声明 150px，内容盒 134px 装不下 138px 的按钮组，按钮组整体左溢 4px 压住「修改时间」列。
+      width: 154,
       render: (_: unknown, record: Instance) => (
         <Flex gap={6} justify="flex-end" onClick={(e) => e.stopPropagation()}>
           <Button

@@ -172,6 +172,28 @@ describe('InstancePage', () => {
     expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledTimes(Math.ceil(count / 100));
   });
 
+  it('declaresTheTimestampAndActionColumnsWideEnoughTest', async () => {
+    renderPage();
+    await screen.findByText('production-proxy');
+
+    const headers = screen.getAllByRole('columnheader').map((cell) => cell.textContent ?? '');
+    const columns = [...document.querySelectorAll('.ant-table-content colgroup col')].map(
+      (column) => (column as HTMLElement).style.width,
+    );
+    const widthOf = (title: string) => columns[headers.indexOf(title)];
+
+    // 两个时间列渲染 `YYYY-MM-DD HH:mm:ss`：14px 下实测 140px，加小表单元格左右各 8px 需要
+    // 156px —— consumer.tsx:1044 / dlq.tsx / alerts.tsx / systemAlerts.tsx 都是这个值，150 是
+    // #6633 把 alerts.tsx 的同一个数字提升到 156 之前的旧宽度。声明 150 时内容盒 134px 装不下
+    // 140px 的标签，时间戳在空格处折成两行（这两列没有 ellipsis，单元格照常换行）。
+    expect(widthOf('创建时间')).toBe('156px');
+    expect(widthOf('修改时间')).toBe('156px');
+
+    // 操作列右对齐两个小按钮：每个 66px（#6692 的实测）+ 6px gap + 单元格左右各 8px = 154px。
+    // 声明 150 时内容盒 134px 装不下 138px 的按钮组，右对齐的按钮组左溢 4px 压住「修改时间」列。
+    expect(widthOf('操作')).toBe('154px');
+  });
+
   it('discardsLaterCredentialPagesAfterTheVendorChangesTest', async () => {
     const oldPage = deferred<CloudCredentialPage>();
     const first = {
