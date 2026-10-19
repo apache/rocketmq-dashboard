@@ -269,7 +269,7 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
-    void listTopicsPageShouldExcludeOnlyLiteralSystemTopicPrefixes() {
+    void listTopicsPageShouldExcludeOnlyLiteralSystemTopicPrefixesTest() {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         Page<RmqTopic> databasePage = new Page<>(1, 20, 0);
         databasePage.setRecords(List.of());
@@ -281,6 +281,7 @@ class RocketMQMetadataProviderTest {
         ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> queryCaptor =
                 ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(topicMapper).selectPage(any(Page.class), queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getSqlSegment()).contains("NOT LIKE");
         assertThat(queryCaptor.getValue().getParamNameValuePairs().values())
                 .contains("rmq\\_sys\\_%", "\\%RETRY\\%%", "\\%DLQ\\%%");
     }
