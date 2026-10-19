@@ -244,7 +244,7 @@ class ToolOutputSchemaContractTest {
                         true, true, "V5_5_0")))));
 
         TopicListItem topicItem = new TopicListItem(
-                "orders", INSTANCE, TopicType.NORMAL, 8, 8, TopicPerm.RW, 100L, 1.5, 2);
+                "orders", INSTANCE, TopicType.NORMAL, 8, 8, true, TopicPerm.RW, 100L, 1.5, 2);
         samples.put("rmq.topic.list", List.of(new ListOutput<>(List.of(topicItem))));
         TopicRouteItem route = new TopicRouteItem(
                 "broker-a", "127.0.0.1:10911", "127.0.0.1:10911",
@@ -252,7 +252,7 @@ class ToolOutputSchemaContractTest {
                 "RW", 6, true, true, 0);
         samples.put("rmq.topic.route", List.of(new ListOutput<>(List.of(route))));
         samples.put("rmq.topic.detail", List.of(new TopicDetailOutput(
-                INSTANCE, "orders", INSTANCE, TopicType.NORMAL, 8, 8, TopicPerm.RW,
+                INSTANCE, "orders", INSTANCE, TopicType.NORMAL, 8, 8, true, TopicPerm.RW,
                 100L, 1.5, 2, "order topic",
                 List.of(new TopicDetailOutput.ConsumerGroup(
                         "cg-orders", "CLUSTERING", "CLUSTERING", 1.5, 50L, true)),
