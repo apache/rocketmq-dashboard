@@ -147,25 +147,32 @@ def add_component(files, components, errors, name, payload, texts, notice, sourc
             except (OSError, ValueError) as failure:
                 errors.append(f"{name}: collected license text is unusable ({source_path}): {failure}")
             else:
-                texts = dict(texts)
-                texts["LICENSE"] = collected
-                component["license"] = determination["license"]
-                component["basis"] = determination.get("basis", "")
-                component["textSource"] = f"server/{COLLECTED}/{determination['text']}"
-                # Any determination may carry an open question. Surfacing it on every build beats
-                # burying it in a JSON file nobody re-reads.
-                if determination.get("review") and determination["kind"] != "categoryB" and warnings is not None:
-                    warnings.append(f"{name}: {determination['license']} — {determination['review']}")
-                    component["review"] = determination["review"]
-                if determination["kind"] == "categoryB":
-                    review = determination.get("review")
-                    if not review:
-                        errors.append(f"{name}: ASF Category B ({determination['license']}) is bundled "
-                                      f"without a recorded review decision")
-                    else:
-                        component["categoryBReview"] = review
-                        if warnings is not None:
-                            warnings.append(f"{name}: ASF Category B ({determination['license']}) bundled — {review}")
+                if len(collected.strip()) < 300:
+                    # A collected text travels with the distribution in place of the jar's own
+                    # missing license, so it is held to the same bar as an embedded one; a stub
+                    # or truncated file must not silently become the component's terms.
+                    errors.append(f"{name}: collected license text {determination['text']} is only "
+                                  f"{len(collected.strip())} characters, under the 300-character bar")
+                else:
+                    texts = dict(texts)
+                    texts["LICENSE"] = collected
+                    component["license"] = determination["license"]
+                    component["basis"] = determination.get("basis", "")
+                    component["textSource"] = f"server/{COLLECTED}/{determination['text']}"
+                    # Any determination may carry an open question. Surfacing it on every build beats
+                    # burying it in a JSON file nobody re-reads.
+                    if determination.get("review") and determination["kind"] != "categoryB" and warnings is not None:
+                        warnings.append(f"{name}: {determination['license']} — {determination['review']}")
+                        component["review"] = determination["review"]
+                    if determination["kind"] == "categoryB":
+                        review = determination.get("review")
+                        if not review:
+                            errors.append(f"{name}: ASF Category B ({determination['license']}) is bundled "
+                                          f"without a recorded review decision")
+                        else:
+                            component["categoryBReview"] = review
+                            if warnings is not None:
+                                warnings.append(f"{name}: ASF Category B ({determination['license']}) bundled — {review}")
     for filename, data in sorted(texts.items()):
         if not data.strip():
             errors.append(f"{name}: empty license file {filename}")

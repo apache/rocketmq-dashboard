@@ -66,6 +66,44 @@ class LegalTest(unittest.TestCase):
         self.assertEqual(original, jar.read_bytes())
         self.assertTrue((self.directory / "legal/manifest.json").is_file())
 
+    def collectedFixture(self, text):
+        """A standalone gate base whose determinations table maps fixture-collected-1.0.jar
+        (artifact id fixture-collected) to a collected license text, standing in for a jar
+        that carries no embedded license of its own."""
+        base = self.directory / "gate-base"
+        (base / "scripts").mkdir(parents=True)
+        (base / "legal/licenses").mkdir(parents=True)
+        (base / "LICENSE").write_bytes(legal.read(legal.SERVER / "LICENSE"))
+        (base / "NOTICE").write_bytes(legal.read(legal.SERVER / "NOTICE"))
+        (base / "legal/licenses/fixture-collected.txt").write_bytes(text)
+        (base / "scripts/legal-determinations.json").write_text(json.dumps(
+            {"collected": {"fixture-collected": {"license": "Apache-2.0", "text": "fixture-collected.txt",
+                                                 "basis": "test fixture"}}}))
+        return base
+
+    def collectedDeterminationSuppliesMissingEmbeddedLicenseTest(self):
+        collected = legal.read(legal.SERVER / "LICENSE")
+        base = self.collectedFixture(collected)
+        jar = self.jar("fixture-collected-1.0.jar", license_present=False)
+        legal.package_jar(jar, self.directory / "legal", base=base)
+        legal.check_jar(jar, base=base)
+        with zipfile.ZipFile(jar) as archive:
+            self.assertEqual(collected, archive.read("META-INF/legal/licenses/fixture-collected-1.0.jar/LICENSE.txt"))
+        manifest = json.loads((self.directory / "legal/manifest.json").read_text())
+        component = [c for c in manifest["components"] if c["name"] == "fixture-collected-1.0.jar"][0]
+        self.assertEqual("Apache-2.0", component["license"])
+        self.assertEqual("server/legal/licenses/fixture-collected.txt", component["textSource"])
+        self.assertEqual("test fixture", component["basis"])
+
+    def shortCollectedTextStillFailsTest(self):
+        base = self.collectedFixture(b"fixture: too short to be a license text.\n" * 3)
+        jar = self.jar("fixture-collected-1.0.jar", license_present=False)
+        original = jar.read_bytes()
+        with self.assertRaisesRegex(ValueError, "300-character bar"):
+            legal.package_jar(jar, self.directory / "legal", base=base)
+        self.assertEqual(original, jar.read_bytes())
+        self.assertTrue((self.directory / "legal/manifest.json").is_file())
+
     def mysqlExceptionRequiresReviewTest(self):
         jar = self.jar("mysql-connector-j-9.7.0.jar")
         with self.assertRaisesRegex(ValueError, "Universal FOSS Exception"):
