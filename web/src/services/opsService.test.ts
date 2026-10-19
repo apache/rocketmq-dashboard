@@ -152,6 +152,18 @@ describe('ops service mock data', () => {
     await deleteAlertRule(businessRule.id, 'BUSINESS');
   });
 
+  it('rejects deleting a missing alert rule in mock mode', async () => {
+    const rule = await createAlertRule({ name: 'deleted-rule-marker', channels: ['email'] });
+    await deleteAlertRule(rule.id, 'CLUSTER');
+
+    await expect(deleteAlertRule(rule.id, 'CLUSTER')).rejects.toThrow(
+      `Alert rule not found: ${rule.id}`,
+    );
+    await expect(deleteAlertRule(rule.id, 'BUSINESS')).rejects.toThrow(
+      `Alert rule not found: ${rule.id}`,
+    );
+  });
+
   it('imports and exports alert rules within the selected domain only', async () => {
     const imported = await importAlertRulesTransfer(
       {
