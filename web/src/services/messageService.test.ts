@@ -118,6 +118,17 @@ describe('message service mock data', () => {
     expect(all.items).toHaveLength(1);
     expect(all.total).toBeGreaterThanOrEqual(1);
   });
+
+  it('matches the backend DLQ search with case-insensitive trimmed terms', async () => {
+    const byGroup = await listDLQGroups('instance-1', '  ORDER  ', 1, 20);
+    expect(byGroup.items.some((group) => group.groupName === 'cg-order-processor')).toBe(true);
+
+    const byTopic = await listDLQGroups('instance-1', '  %DLQ%CG-ORDER  ', 1, 20);
+    expect(byTopic.items.some((group) => group.groupName === 'cg-order-processor')).toBe(true);
+
+    const blank = await listDLQGroups('instance-1', '   ', 1, 20);
+    expect(blank.total).toBe((await listDLQGroups('instance-1')).total);
+  });
 });
 
 describe('DLQ mock pagination contract', () => {

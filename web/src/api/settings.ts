@@ -132,8 +132,11 @@ export async function listAllDataSources(params: { search?: string; type?: strin
     });
     allDataSources.push(...result.items);
     const total = result.total ?? allDataSources.length;
-    if (result.items.length === 0 || allDataSources.length >= total) {
+    if (allDataSources.length >= total) {
       return allDataSources;
+    }
+    if (result.items.length === 0) {
+      throw new Error(`Incomplete data source list: received ${allDataSources.length} of ${total}`);
     }
     page += 1;
   }

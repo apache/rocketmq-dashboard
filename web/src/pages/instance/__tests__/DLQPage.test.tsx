@@ -504,12 +504,16 @@ describe('DLQ page', () => {
 
     const orderRow = (await screen.findByText('cg-order')).closest('tr');
     if (!orderRow) throw new Error('DLQ group row not found');
-    await user.click(within(orderRow).getByRole('button', { name: /消息明细/ }));
+    const orderDetailButton = within(orderRow).getByRole('button', { name: /消息明细/ });
+    await expectInteractive(orderDetailButton);
+    await user.click(orderDetailButton);
     expect(await screen.findByText('order-dead-letter-1')).toBeInTheDocument();
 
     const paymentRow = (await screen.findByText('-cg-"payment"')).closest('tr');
     if (!paymentRow) throw new Error('second DLQ group row not found');
-    await user.click(within(paymentRow).getByRole('button', { name: /消息明细/ }));
+    const paymentDetailButton = within(paymentRow).getByRole('button', { name: /消息明细/ });
+    await expectInteractive(paymentDetailButton);
+    await user.click(paymentDetailButton);
 
     // the drawer already belongs to the second group while its request is still open: the first
     // group's rows and the total that enables the export must be gone before the response lands
@@ -957,7 +961,10 @@ describe('DLQ page', () => {
 
     const orderRow = (await screen.findByText('cg-order')).closest('tr');
     if (!orderRow) throw new Error('DLQ group row not found');
-    await user.click(within(orderRow).getByRole('button', { name: '重投消息' }));
+    const resendButton = within(orderRow).getByRole('button', { name: '重投消息' });
+    // The row text can appear before antd removes the table's loading overlay.
+    await expectInteractive(resendButton);
+    await user.click(resendButton);
     await user.type(screen.getByPlaceholderText('输入目标 Topic 名称'), 'orders-retry');
     await user.click(screen.getByRole('button', { name: '确认重投' }));
 
