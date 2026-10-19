@@ -170,7 +170,7 @@ class AuditServiceTest {
     }
 
     @Test
-    void exportLogsLabelsTimestampColumnWithServerZoneOffset() {
+    void exportLogsLabelsTimestampColumnWithServerZoneIdTest() {
         AuditRecordVO record = AuditRecordVO.builder()
                 .timestamp(LocalDateTime.of(2026, 8, 1, 9, 30))
                 .operator("alice")
@@ -189,12 +189,38 @@ class AuditServiceTest {
             // tells the consumer which zone the values are in.
             TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
             assertThat(auditService.exportLogs(null, null, null, null, null, false, "2026-08-01", "2026-08-02", null))
-                    .startsWith("\uFEFFtimestamp(UTC+08:00),operator,")
+                    .startsWith("\uFEFFtimestamp(Asia/Shanghai),operator,")
                     .contains("\"2026-08-01T09:30\"");
 
             TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
             assertThat(auditService.exportLogs(null, null, null, null, null, false, "2026-08-01", "2026-08-02", null))
                     .startsWith("\uFEFFtimestamp(UTC),operator,");
+        } finally {
+            TimeZone.setDefault(originalZone);
+        }
+    }
+
+    @Test
+    void exportLogsNamesServerRegionForRecordsAcrossDaylightSavingSeasonsTest() {
+        AuditRecordVO winter = AuditRecordVO.builder()
+                .timestamp(LocalDateTime.of(2026, 1, 15, 9, 30))
+                .build();
+        AuditRecordVO summer = AuditRecordVO.builder()
+                .timestamp(LocalDateTime.of(2026, 7, 15, 9, 30))
+                .build();
+        when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(), isNull(), eq(false),
+                any(LocalDateTime.class), any(LocalDateTime.class), isNull(), eq(1), eq(10_000)))
+                .thenReturn(PageResult.of(List.of(winter, summer), 2, 1, 10_000));
+
+        TimeZone originalZone = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("America/New_York"));
+
+            String csv = auditService.exportLogs(null, null, null, null, null, false,
+                    "2026-01-01", "2026-07-31", null);
+
+            assertThat(csv).startsWith("\uFEFFtimestamp(America/New_York),operator,")
+                    .contains("\"2026-01-15T09:30\"", "\"2026-07-15T09:30\"");
         } finally {
             TimeZone.setDefault(originalZone);
         }
