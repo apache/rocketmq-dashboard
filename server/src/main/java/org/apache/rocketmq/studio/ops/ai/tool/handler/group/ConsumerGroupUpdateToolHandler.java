@@ -25,6 +25,7 @@ import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupListItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.plan.PlanDescription;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.plan.ToolPlan;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 
@@ -55,7 +56,7 @@ public class ConsumerGroupUpdateToolHandler extends MutationToolHandler<GroupInp
                 context.instanceId(), input.groupName()).orElse(null);
         GroupInput before = current == null ? null : GroupInput.from(current);
         GroupInput after = current == null
-                ? GroupInput.from(input.toConsumerGroupVO())
+                ? GroupInput.from(createWithConsoleDefaults(input))
                 : GroupInput.from(input.mergeWith(current));
         return PLAN_DESCRIPTION.builder(input.groupName(), context.instanceId())
                 .before(before)
@@ -65,13 +66,28 @@ public class ConsumerGroupUpdateToolHandler extends MutationToolHandler<GroupInp
                 .build();
     }
 
+    /**
+     * The console's create dialog derives the order type from the subscription data type: selecting
+     * FIFO mounts the order-type field with {@code PARTITON_ORDER} and every create request carries
+     * it. A tool call that only names {@code subscriptionDataType=FIFO} must not create a group whose
+     * broker configuration consumes unordered.
+     */
+    private static ConsumerGroupVO createWithConsoleDefaults(GroupInput input) {
+        ConsumerGroupVO group = input.toConsumerGroupVO();
+        if ("FIFO".equalsIgnoreCase(group.getSubscriptionDataType())
+                && !StringUtils.hasText(group.getDeliveryOrderType())) {
+            group.setDeliveryOrderType("PARTITON_ORDER");
+        }
+        return group;
+    }
+
     @Override
     public GroupListItem execute(GroupInput input, ToolExecutionContext context) {
         // Update when present, create when absent; both persist idempotently.
         ConsumerGroupVO current = metadataService.findConsumerGroup(
                 context.instanceId(), input.groupName()).orElse(null);
         ConsumerGroupVO group = current == null
-                ? input.toConsumerGroupVO()
+                ? createWithConsoleDefaults(input)
                 : input.mergeWith(current);
         group.setInstanceId(context.instanceId());
         return GroupListItem.from(current == null

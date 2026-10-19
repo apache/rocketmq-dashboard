@@ -26,6 +26,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -140,6 +141,27 @@ class GroupMutationPlanTest {
         // When absent, upsert takes the create path and never calls update.
         verify(metadataService).createConsumerGroup(any());
         verify(metadataService, never()).updateConsumerGroup(any());
+    }
+
+    @Test
+    void updateCreatesAFifoGroupWithTheConsolesDefaultOrderTypeTest() {
+        MetadataService metadataService = mock(MetadataService.class);
+        when(metadataService.findConsumerGroup(any(), eq("new-fifo"))).thenReturn(Optional.empty());
+        ConsumerGroupVO created = new ConsumerGroupVO();
+        created.setName("new-fifo");
+        when(metadataService.createConsumerGroup(any())).thenReturn(created);
+
+        // The console's FIFO selector mounts the order-type field with PARTITON_ORDER and always
+        // sends it; a tool call that only names the subscription data type must not create an
+        // unordered group.
+        var input = Map.<String, Object>of("instanceId", "cluster-a", "groupName", "new-fifo",
+                "subscriptionDataType", "FIFO");
+        ToolExecutionContext ctx = context("rmq.group.update", input);
+        new ConsumerGroupUpdateToolHandler(metadataService).execute(
+                ctx.convertInput(org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupInput.class), ctx);
+
+        verify(metadataService).createConsumerGroup(argThat(group ->
+                "PARTITON_ORDER".equals(group.getDeliveryOrderType())));
     }
 
     @Test
