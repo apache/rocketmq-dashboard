@@ -118,11 +118,13 @@ const deferred = <T,>() => {
 
 const renderWithProviders = (ui: React.ReactElement, initialEntry = '/instance/consumer') =>
   render(
-    <App>
-      <LangProvider>
-        <MemoryRouter initialEntries={[initialEntry]}>{ui}</MemoryRouter>
-      </LangProvider>
-    </App>,
+    <ConfigProvider theme={{ token: { motion: false } }}>
+      <App>
+        <LangProvider>
+          <MemoryRouter initialEntries={[initialEntry]}>{ui}</MemoryRouter>
+        </LangProvider>
+      </App>
+    </ConfigProvider>,
   );
 
 // Comparing raw CSS text would depend on how each side spells a colour, so both the element's
@@ -427,10 +429,6 @@ describe('Consumer page', () => {
 
   it('reloads the server page after deleting one consumer group', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
-    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
-      void config.onOk?.();
-      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
-    });
     vi.mocked(consumerService.deleteConsumerGroup).mockResolvedValue(undefined);
     vi.mocked(consumerService.listConsumerGroupPage)
       .mockResolvedValueOnce(groupPage([group]))
@@ -439,21 +437,19 @@ describe('Consumer page', () => {
 
     const row = await screen.findByRole('row', { name: /remote-cg/ });
     await user.click(within(row).getByRole('button', { name: /删除/ }));
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: /^删\s*除$/ }),
+    );
 
     await waitFor(() =>
       expect(consumerService.deleteConsumerGroup).toHaveBeenCalledWith('remote-cg', 'instance-1'),
     );
     await waitFor(() => expect(consumerService.listConsumerGroupPage).toHaveBeenCalledTimes(2));
     expect(screen.getByText('管理消费者组订阅关系与消费进度，共 0 个 Group')).toBeInTheDocument();
-    confirmSpy.mockRestore();
   });
 
   it('moves back from an emptied last consumer group page after batch deletion', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
-    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
-      void config.onOk?.();
-      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
-    });
     const firstPage = buildGroups(20).map((item, index) => ({
       ...item,
       name: `cg-${String(index + 1).padStart(2, '0')}`,
@@ -486,6 +482,9 @@ describe('Consumer page', () => {
     await expectInteractive(firstCheckbox);
     await user.click(firstCheckbox);
     await user.click(screen.getByRole('button', { name: /删除 \(1\)$/ }));
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: /^删\s*除$/ }),
+    );
 
     await waitFor(() =>
       expect(consumerService.batchDeleteConsumerGroups).toHaveBeenCalledWith(
@@ -501,15 +500,10 @@ describe('Consumer page', () => {
       page: 1,
       pageSize: 20,
     });
-    confirmSpy.mockRestore();
   });
 
   it('keeps failed consumer groups selected after a partially successful batch deletion', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
-    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
-      void config.onOk?.();
-      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
-    });
     const groups = ['cg-01', 'cg-02', 'cg-03'].map((name) => ({ ...group, name }));
     vi.mocked(consumerService.listConsumerGroupPage)
       .mockResolvedValueOnce(groupPage(groups))
@@ -523,6 +517,9 @@ describe('Consumer page', () => {
     expect(await screen.findByText('cg-01')).toBeInTheDocument();
     await user.click(screen.getAllByRole('checkbox')[0]);
     await user.click(screen.getByRole('button', { name: /删除 \(3\)$/ }));
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: /^删\s*除$/ }),
+    );
 
     await waitFor(() =>
       expect(consumerService.batchDeleteConsumerGroups).toHaveBeenCalledWith(
@@ -540,15 +537,10 @@ describe('Consumer page', () => {
       page: 1,
       pageSize: 20,
     });
-    confirmSpy.mockRestore();
   });
 
   it('submits the canonical global delivery order type', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
-    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
-      void config.onOk?.();
-      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
-    });
     renderWithProviders(<ConsumerPage />);
 
     await screen.findByText('remote-cg');
@@ -570,6 +562,7 @@ describe('Consumer page', () => {
       await screen.findByText('全局顺序', { selector: '.ant-select-item-option-content' }),
     );
     await user.click(within(dialog).getByRole('button', { name: /创\s*建/ }));
+    await user.click(await screen.findByRole('button', { name: '确认创建' }));
 
     await waitFor(() =>
       expect(consumerService.createConsumerGroup).toHaveBeenCalledWith(
@@ -580,8 +573,7 @@ describe('Consumer page', () => {
         }),
       ),
     );
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
-    confirmSpy.mockRestore();
+    expect(consumerService.createConsumerGroup).toHaveBeenCalledTimes(1);
   });
 
   it('reloads the paginated group list after creating a group', async () => {
@@ -589,10 +581,6 @@ describe('Consumer page', () => {
     vi.mocked(consumerService.listConsumerGroupPage)
       .mockResolvedValueOnce(groupPage([group]))
       .mockResolvedValue(groupPage([created, group]));
-    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
-      void config.onOk?.();
-      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
-    });
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
@@ -605,6 +593,7 @@ describe('Consumer page', () => {
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText('Group 名称'), 'cg-created');
     await user.click(within(dialog).getByRole('button', { name: /创\s*建/ }));
+    await user.click(await screen.findByRole('button', { name: '确认创建' }));
 
     await waitFor(() => expect(consumerService.createConsumerGroup).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(consumerService.listConsumerGroupPage).toHaveBeenCalledTimes(2));
@@ -613,7 +602,6 @@ describe('Consumer page', () => {
     );
     expect(await screen.findByText('cg-created')).toBeInTheDocument();
     expect(screen.getByText('共 2 个 Group')).toBeInTheDocument();
-    confirmSpy.mockRestore();
   });
 
   it('prefills the group search from the ?group= query parameter', async () => {
@@ -2150,7 +2138,6 @@ describe('Consumer page', () => {
       ...initialSettings,
       consumeEnable: true,
     });
-    const confirm = vi.spyOn(Modal, 'confirm');
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
     const row = await screen.findByRole('row', { name: /remote-cg/ });
@@ -2171,7 +2158,7 @@ describe('Consumer page', () => {
     );
     await user.click(toggle);
     await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
-    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole('button', { name: '确认修改' })).toBeInTheDocument();
     expect(consumerService.updateConsumerGroupSettings).toHaveBeenCalledTimes(1);
     await user.click(await screen.findByRole('button', { name: /取\s*消/ }));
     expect(consumerService.updateConsumerGroupSettings).toHaveBeenCalledTimes(1);
@@ -2190,7 +2177,6 @@ describe('Consumer page', () => {
       ...settings,
       consumeMessageOrderly: true,
     });
-    const confirm = vi.spyOn(Modal, 'confirm');
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
     const row = await screen.findByRole('row', { name: /remote-cg/ });
@@ -2206,13 +2192,16 @@ describe('Consumer page', () => {
       expect(consumerService.updateConsumerGroupSettings).toHaveBeenCalledTimes(1),
     );
     await waitFor(() =>
+      expect(screen.queryByRole('button', { name: '确认修改' })).not.toBeInTheDocument(),
+    );
+    await waitFor(() =>
       expect(within(dialog).getByRole('button', { name: /保\s*存/ })).not.toHaveClass(
         'ant-btn-loading',
       ),
     );
     await user.click(toggle);
     await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
-    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole('button', { name: '确认修改' })).toBeInTheDocument();
     expect(consumerService.updateConsumerGroupSettings).toHaveBeenCalledTimes(1);
   });
 
@@ -2227,7 +2216,6 @@ describe('Consumer page', () => {
     vi.mocked(consumerService.updateConsumerGroupSettings).mockRejectedValueOnce(
       new Error('offline'),
     );
-    const confirm = vi.spyOn(Modal, 'confirm');
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
     const row = await screen.findByRole('row', { name: /remote-cg/ });
@@ -2239,8 +2227,11 @@ describe('Consumer page', () => {
     await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
     await user.click(await screen.findByRole('button', { name: '确认修改' }));
     await screen.findByText('保存消费组配置失败，请稍后重试');
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: '确认修改' })).not.toBeInTheDocument(),
+    );
     await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
-    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole('button', { name: '确认修改' })).toBeInTheDocument();
     expect(consumerService.updateConsumerGroupSettings).toHaveBeenCalledTimes(1);
   });
 
@@ -2259,7 +2250,6 @@ describe('Consumer page', () => {
       .mockResolvedValueOnce(settings)
       .mockResolvedValueOnce({ ...settings, groupName: 'other-cg', consumeEnable: true });
     vi.mocked(consumerService.updateConsumerGroupSettings).mockReturnValueOnce(pendingSave.promise);
-    const confirm = vi.spyOn(Modal, 'confirm');
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
     const row = await screen.findByRole('row', { name: /remote-cg/ });
@@ -2281,7 +2271,7 @@ describe('Consumer page', () => {
     await act(async () => pendingSave.resolve({ ...settings, consumeEnable: false }));
     await user.click(within(nextDialog).getByRole('switch', { name: '启用消费' }));
     await user.click(within(nextDialog).getByRole('button', { name: /保\s*存/ }));
-    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole('button', { name: '确认修改' })).toBeInTheDocument();
     expect(consumerService.updateConsumerGroupSettings).toHaveBeenCalledTimes(1);
   });
 
