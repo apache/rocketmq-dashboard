@@ -70,7 +70,10 @@ public class AlertStateMachine {
         }
         if (state.status() == AlertStateStatus.FIRING) {
             Instant lastNotifiedAt = state.lastNotifiedAt();
-            if (!reminderInterval.isZero() && (lastNotifiedAt == null || !now.isBefore(lastNotifiedAt.plus(reminderInterval)))) {
+            // Compare elapsed time instead of building lastNotifiedAt + interval: a representable
+            // interval such as Long.MAX_VALUE seconds would overflow the Instant deadline.
+            if (!reminderInterval.isZero() && (lastNotifiedAt == null
+                    || Duration.between(lastNotifiedAt, now).compareTo(reminderInterval) >= 0)) {
                 return new AlertStateUpdate(new AlertRuleState(AlertStateStatus.FIRING, state.consecutiveHits(), value,
                         state.firstPendingAt(), state.firedAt(), now, null), AlertStateTransition.REMINDER);
             }
@@ -79,7 +82,9 @@ public class AlertStateMachine {
         }
         int hits = state.consecutiveHits() + 1;
         Instant pendingAt = state.firstPendingAt() == null ? now : state.firstPendingAt();
-        if (hits < required || now.isBefore(pendingAt.plus(duration))) {
+        // Elapsed-versus-configured comparison keeps representable durations from overflowing the
+        // pending deadline; the reminder branch above uses the same shape.
+        if (hits < required || Duration.between(pendingAt, now).compareTo(duration) < 0) {
             return new AlertStateUpdate(new AlertRuleState(AlertStateStatus.PENDING, hits, value, pendingAt,
                     null, null, null), AlertStateTransition.PENDING);
         }
