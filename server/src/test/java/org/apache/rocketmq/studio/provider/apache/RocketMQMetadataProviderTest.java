@@ -288,6 +288,49 @@ class RocketMQMetadataProviderTest {
         assertThat(captor.getAllValues().get(0).getSqlSegment()).contains("message_model =");
         assertThat(captor.getAllValues().get(1).getSqlSegment())
                 .contains("message_model IS NULL", "message_model <>");
+    void topicListAndPageShouldSearchLiteralNameCharactersTest() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(topicMapper.selectList(any())).thenReturn(List.of());
+        Page<RmqTopic> databasePage = new Page<>(1, 20, 0);
+        databasePage.setRecords(List.of());
+        when(topicMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(databasePage);
+        RocketMQMetadataProvider provider = newProvider();
+
+        assertThat(provider.listTopics(null, null, null, "orders_%\\west")).isEmpty();
+        assertThat(provider.listTopicsPage(null, null, null, "orders_%\\west", 1, 20).getItems())
+                .isEmpty();
+
+        ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> listQuery = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> pageQuery = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(topicMapper).selectList(listQuery.capture());
+        verify(topicMapper).selectPage(any(Page.class), pageQuery.capture());
+        for (LambdaQueryWrapper<RmqTopic> query : List.of(listQuery.getValue(), pageQuery.getValue())) {
+            assertThat(query.getSqlSegment()).contains("name LIKE");
+            assertThat(query.getParamNameValuePairs().values()).contains("%orders\\_\\%\\\\west%");
+        }
+    }
+
+    @Test
+    void groupListAndPageShouldSearchLiteralNameCharactersTest() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        when(groupMapper.selectList(any())).thenReturn(List.of());
+        Page<RmqGroup> databasePage = new Page<>(1, 20, 0);
+        databasePage.setRecords(List.of());
+        when(groupMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(databasePage);
+        RocketMQMetadataProvider provider = newProvider();
+
+        assertThat(provider.listConsumerGroups(null, null, "orders_%\\west")).isEmpty();
+        assertThat(provider.listConsumerGroupsPage(null, null, "orders_%\\west", 1, 20).getItems())
+                .isEmpty();
+
+        ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> listQuery = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> pageQuery = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(groupMapper).selectList(listQuery.capture());
+        verify(groupMapper).selectPage(any(Page.class), pageQuery.capture());
+        for (LambdaQueryWrapper<RmqGroup> query : List.of(listQuery.getValue(), pageQuery.getValue())) {
+            assertThat(query.getSqlSegment()).contains("name LIKE");
+            assertThat(query.getParamNameValuePairs().values()).contains("%orders\\_\\%\\\\west%");
+        }
     }
 
     @Test

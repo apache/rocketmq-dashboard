@@ -144,6 +144,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     public List<TopicVO> listTopics(String instanceId, String clusterId, String type, String search) {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
+        String literalSearch = escapeLike(search);
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
                 .and(instanceId != null, scope -> {
                     scope.eq(RmqTopic::getInstanceId, normalizeMetadataScope(instanceId));
@@ -155,7 +156,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 })
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
                 .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
-                .like(StringUtils.hasText(search), RmqTopic::getName, search)
+                .like(StringUtils.hasText(search), RmqTopic::getName, literalSearch)
                 .orderByAsc(RmqTopic::getName);
 
         List<TopicVO> result = new ArrayList<>();
@@ -173,6 +174,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             String search, int page, int pageSize) {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
+        String literalSearch = escapeLike(search);
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
                 .and(instanceId != null, scope -> {
                     scope.eq(RmqTopic::getInstanceId, normalizeMetadataScope(instanceId));
@@ -184,7 +186,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 })
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
                 .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
-                .like(StringUtils.hasText(search), RmqTopic::getName, search)
+                .like(StringUtils.hasText(search), RmqTopic::getName, literalSearch)
                 .notIn(RmqTopic::getName, TopicValidator.getSystemTopicSet())
                 .notLikeRight(RmqTopic::getName, "rmq_sys_")
                 .notLikeRight(RmqTopic::getName, "%RETRY%")
@@ -243,6 +245,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     public List<ConsumerGroupVO> listConsumerGroups(String instanceId, String clusterId, String search) {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
+        String literalSearch = escapeLike(search);
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
                 .and(instanceId != null, scope -> {
                     scope.eq(RmqGroup::getInstanceId, normalizeMetadataScope(instanceId));
@@ -253,7 +256,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     }
                 })
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
-                .like(StringUtils.hasText(search), RmqGroup::getName, search)
+                .like(StringUtils.hasText(search), RmqGroup::getName, literalSearch)
                 .orderByAsc(RmqGroup::getName);
 
         List<ConsumerGroupVO> result = new ArrayList<>();
@@ -275,6 +278,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             String search, String subscriptionMode, int page, int pageSize) {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
+        String literalSearch = escapeLike(search);
         // message_model stores the subscription mode ("Push"/"Pop"); blank and "ALL" mean no
         // restriction, so the count and the page both describe the filtered result set.
         boolean modeRestricted = StringUtils.hasText(subscriptionMode)
@@ -290,7 +294,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     }
                 })
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
-                .like(StringUtils.hasText(search), RmqGroup::getName, search)
+                .like(StringUtils.hasText(search), RmqGroup::getName, literalSearch)
                 .and(modeRestricted, scope -> {
                     if (popOnly) {
                         scope.eq(RmqGroup::getMessageModel, SubscriptionMode.Pop.name());
@@ -302,7 +306,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                         scope.isNull(RmqGroup::getMessageModel)
                                 .or().ne(RmqGroup::getMessageModel, SubscriptionMode.Pop.name());
                     }
-                })
+                })>>>>>>> 076958a9b (fix(metadata): match literal resource search text)
                 .orderByAsc(RmqGroup::getName, RmqGroup::getId);
         Page<RmqGroup> result = groupMapper.selectPage(new Page<>(page, pageSize), query);
         List<ConsumerGroupVO> groups = result.getRecords().stream()
@@ -310,6 +314,11 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 .toList();
         enrichLiveStats(instanceId, groups);
         return PageResult.of(groups, result.getTotal(), page, pageSize);
+    }
+
+    private static String escapeLike(String search) {
+        return search == null ? null : search.replace("\\", "\\\\")
+                .replace("%", "\\%").replace("_", "\\_");
     }
 
     private static final int ONLINE_ENRICHMENT_THREADS = 8;
