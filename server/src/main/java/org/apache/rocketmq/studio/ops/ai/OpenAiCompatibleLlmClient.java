@@ -51,6 +51,7 @@ import java.util.concurrent.Flow;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 @Component
@@ -150,7 +151,16 @@ public class OpenAiCompatibleLlmClient {
             if (response.statusCode() >= 400) {
                 throw upstreamException(response.statusCode(), checkedBody(response.body().errorBody()));
             }
-            parseStreamWithTimeout(response.body().stream(), tokenConsumer);
+            AtomicBoolean emitted = new AtomicBoolean();
+            parseStreamWithTimeout(response.body().stream(), token -> {
+                emitted.set(true);
+                tokenConsumer.accept(token);
+            });
+            if (!emitted.get()) {
+                throw new LlmGatewayException(502, "llm.provider.empty_completion",
+                        "LLM provider returned an empty completion",
+                        "Check the selected model and provider response format.");
+            }
         } catch (ResponseLimitException exception) {
             throw new LlmGatewayException(502, "llm.provider.response_too_large",
                     "LLM provider stream exceeded the maximum of " + exception.limitBytes() + " bytes",

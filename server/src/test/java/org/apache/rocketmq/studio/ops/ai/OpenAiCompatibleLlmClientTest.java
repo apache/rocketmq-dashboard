@@ -227,6 +227,47 @@ class OpenAiCompatibleLlmClientTest {
                 });
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "",
+        ": keepalive\n\n",
+        "data: [DONE]\n\n",
+        "data: [DONE]",
+        "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}",
+        "data: {\"choices\":[{\"delta\":{\"content\":\"\"}}]}\n\n"
+                + "data: {\"choices\":[{\"delta\":{\"content\":null}}]}\n\n"
+                + "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"
+                + "data: {\"choices\":[],\"usage\":{\"completion_tokens\":0}}\n\n"
+                + "data: [DONE]\n\n",
+        "{\"choices\":[{\"message\":{\"content\":\"not an SSE response\"}}]}"
+    })
+    void streamShouldRejectResponsesWithoutContentTest(String body) {
+        server.createContext("/v1/chat/completions",
+                exchange -> respond(exchange, 200, body, "text/event-stream"));
+        List<String> tokens = new ArrayList<>();
+
+        assertThatThrownBy(() -> client.stream(config("openai", "sk-test"), "hello", null, tokens::add))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(502);
+                    assertThat(exception.getCode()).isEqualTo("llm.provider.empty_completion");
+                    assertThat(exception.getMessage()).isEqualTo("LLM provider returned an empty completion");
+                });
+        assertThat(tokens).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "\n\n", "\n\ndata: [DONE]\n\n"})
+    void streamShouldAcceptWhitespaceContentAtEofOrDoneTest(String ending) {
+        String body = "data: {\"choices\":[{\"delta\":{\"content\":\" \\n\"}}]}" + ending;
+        server.createContext("/v1/chat/completions",
+                exchange -> respond(exchange, 200, body, "text/event-stream"));
+        List<String> tokens = new ArrayList<>();
+
+        client.stream(config("openai", "sk-test"), "hello", null, tokens::add);
+
+        assertThat(tokens).containsExactly(" \n");
+    }
+
     @Test
     void streamShouldEnforceTimeoutWhileReadingResponseBody() {
         OpenAiCompatibleLlmClient timeoutClient = new OpenAiCompatibleLlmClient(
