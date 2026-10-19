@@ -436,7 +436,10 @@ describe('AiPage', () => {
       await act(async () => rejectCreation(new Error('conversation creation failed')));
       expect(await screen.findByText('conversation creation failed')).toBeInTheDocument();
       expect(input).toHaveValue(expected);
-      expect(sessionStorage.getItem(COMPOSER_DRAFT_STORAGE_KEY)).toBe(expected || null);
+      // The draft key is account-scoped; this describe signs every case out (user: null).
+      expect(sessionStorage.getItem(`${COMPOSER_DRAFT_STORAGE_KEY}:anonymous`)).toBe(
+        expected || null,
+      );
       expect(readProbeLocation().pathname).toBe('/ai');
       expect(openRunStream).not.toHaveBeenCalled();
     },
