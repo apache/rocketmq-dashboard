@@ -679,6 +679,8 @@ const MainLayout = () => {
               setActiveIndex(0);
             }}
             onKeyDown={(e) => {
+              // Composition keys select or confirm IME text, not navigation results.
+              if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
               if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 setActiveIndex((i) => Math.min(i + 1, Math.max(searchResults.length - 1, 0)));

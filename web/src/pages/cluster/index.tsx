@@ -53,6 +53,7 @@ import {
 } from '@ant-design/icons';
 import { Cpu, HardDrives, Globe } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
+import TagList from '../../components/TagList';
 import InfoBanner from '../../components/InfoBanner';
 import { useLang } from '../../i18n/LangContext';
 import { countClusterComponents } from './clusterStats';
@@ -88,6 +89,7 @@ import {
 import { listInstances } from '../../services/instanceService';
 import { supportsApacheRuntime } from '../../api/instance';
 import { isMockMode } from '../../services/dataMode';
+import { roundPercent } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
@@ -713,6 +715,8 @@ const ClusterPage = () => {
       readQueueNums: cfg.readQueueNums ?? 8,
       brokerPermission: cfg.brokerPermission ?? 6,
     });
+    // setFieldsValue marks fields touched; only a user edit should replace the original bytes.
+    configForm.setFields([{ name: 'maxMessageSizeMB', touched: false }]);
     setConfigModalOpen(true);
   };
 
@@ -726,7 +730,9 @@ const ClusterPage = () => {
       instanceId: selectedInstanceIdRef.current,
       ...(selectedCluster.config ?? {}),
       ...configValues,
-      maxMessageSize: maxMessageSizeMB * 1048576,
+      maxMessageSize: configForm.isFieldTouched('maxMessageSizeMB')
+        ? maxMessageSizeMB * 1048576
+        : (selectedCluster.config?.maxMessageSize ?? 4194304),
     };
   };
 
@@ -760,6 +766,11 @@ const ClusterPage = () => {
   };
 
   const handleConfigSubmit = async () => {
+    // A write can change only some Brokers. Any preview from before the write,
+    // including one still in flight, no longer describes the cluster afterward.
+    configPreviewRequest.invalidate();
+    setConfigPreview(null);
+    setConfigPreviewLoading(false);
     let values: ClusterConfigFormValues;
     try {
       values = await configForm.validateFields();
@@ -937,15 +948,17 @@ const ClusterPage = () => {
         dataIndex: 'values',
         key: 'values',
         render: (values: NameServerConfigDifference['values']) => (
-          <Space size={[0, 4]} wrap>
-            {values.map((value) => (
-              <Tag key={value.address} color={value.configured ? 'blue' : 'default'}>
-                {`${value.address}: ${
-                  value.configured ? (value.value ?? '-') : t('cluster.nsConfigDiffUnconfigured')
-                }`}
-              </Tag>
-            ))}
-          </Space>
+          <TagList
+            items={values.map((value) => ({
+              key: value.address,
+              label: `${value.address}: ${
+                value.configured ? (value.value ?? '-') : t('cluster.nsConfigDiffUnconfigured')
+              }`,
+              color: value.configured ? 'blue' : 'default',
+            }))}
+            max={3}
+            tagMaxWidth={200}
+          />
         ),
       },
     ];
@@ -1084,20 +1097,17 @@ const ClusterPage = () => {
         dataIndex: 'values',
         key: 'values',
         render: (values: BrokerConfigDifference['values']) => (
-          <Space size={[0, 4]} wrap>
-            {values.map((value) => (
-              <Tag
-                key={`${value.address}-${value.value ?? 'missing'}`}
-                color={value.configured ? 'blue' : 'default'}
-              >
-                {`${value.brokerName || value.address}: ${
-                  value.configured
-                    ? (value.value ?? '-')
-                    : t('cluster.brokerConfigDiffUnconfigured')
-                }`}
-              </Tag>
-            ))}
-          </Space>
+          <TagList
+            items={values.map((value) => ({
+              key: `${value.address}-${value.value ?? 'missing'}`,
+              label: `${value.brokerName || value.address}: ${
+                value.configured ? (value.value ?? '-') : t('cluster.brokerConfigDiffUnconfigured')
+              }`,
+              color: value.configured ? 'blue' : 'default',
+            }))}
+            max={3}
+            tagMaxWidth={200}
+          />
         ),
       },
     ];
@@ -1310,7 +1320,7 @@ const ClusterPage = () => {
             <Text type="secondary">{t('common.unavailable')}</Text>
           ) : (
             <Progress
-              percent={v}
+              percent={roundPercent(v)}
               size="small"
               strokeColor={v > 85 ? '#ff4d4f' : v > 70 ? '#faad14' : '#1677ff'}
             />
@@ -1773,7 +1783,8 @@ const ClusterPage = () => {
         title: t('cluster.remotingPort'),
         dataIndex: 'remotingPort',
         key: 'remotingPort',
-        width: 120,
+        // 「Remoting 端口」= 8 拉丁字符 + 2 汉字 + 排序图标 + padding 实测需 ~130，120 会截断表头
+        width: 140,
         align: 'center',
         sorter: (a, b) => a.remotingPort - b.remotingPort,
       },
