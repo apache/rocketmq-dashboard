@@ -44,6 +44,14 @@ public class InstanceVO extends BaseEntity {
     private String regionName;
     private int topicCount;
     private int consumerGroupCount;
+    /**
+     * Whether {@link #topicCount} and {@link #consumerGroupCount} were measured for this value.
+     * Counts are not columns on the row: they are resolved per request, so only the calls that
+     * actually resolve them ({@code listInstances}) can claim them. Defaulting to {@code true} made
+     * every value that was never measured - the create and update responses, say - report the
+     * read-back zeros as a measured fact, which the field's contract in {@code docs/api-spec.md}
+     * forbids.
+     */
     @Builder.Default
-    private boolean resourceCountsAvailable = true;
+    private boolean resourceCountsAvailable = false;
 }
