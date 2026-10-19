@@ -1019,6 +1019,37 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void updateTopicShouldKeepLiteTopicExpirationOutOfTheWriteDeltaTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        RmqTopic existing = new RmqTopic();
+        existing.setTopicType(TopicType.LITE.name());
+        existing.setWriteQueueNums(8);
+        existing.setReadQueueNums(8);
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        // A LITE parent that already carries its TTL attribute: the generic update path re-asserts
+        // message.type only, so the stored lite.topic.expiration must stay out of the write delta.
+        TopicConfig stored = new TopicConfig("orders");
+        stored.setAttributes(Map.of("lite.topic.expiration", "1440"));
+        when(adminExt.examineTopicConfig(anyString(), eq("orders"))).thenReturn(stored);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("orders");
+        topic.setType(TopicType.LITE);
+        topic.setWriteQueues(16);
+
+        adminClient.updateTopic(topic);
+
+        ArgumentCaptor<TopicConfig> captor = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt).createAndUpdateTopicConfig(anyString(), captor.capture());
+        assertThat(captor.getValue().getAttributes())
+                .containsEntry("+message.type", TopicType.LITE.name())
+                .containsOnlyKeys("+message.type");
+    }
+
+    @Test
     void updateTopicWithoutTypePreservesExistingType() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         RmqTopic existing = new RmqTopic();
