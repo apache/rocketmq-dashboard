@@ -41,6 +41,22 @@ describe('parseMessageProperties', () => {
     expect(result.errors).toEqual(['属性名“traceId”重复']);
   });
 
+  it('parses CR-only and mixed line endings as separate properties', () => {
+    const result = parseMessageProperties(
+      'traceId=first\rtenant=demo\r\nregion=cn-east\nflag=one=two',
+    );
+
+    expect(result).toEqual({
+      properties: {
+        traceId: 'first',
+        tenant: 'demo',
+        region: 'cn-east',
+        flag: 'one=two',
+      },
+      errors: [],
+    });
+  });
+
   it('preserves JavaScript object prototype property names', () => {
     const result = parseMessageProperties(
       '__proto__=trace-prototype\nconstructor=trace-constructor\ntoString=trace-string',

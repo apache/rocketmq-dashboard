@@ -25,7 +25,7 @@ interface ParsedProperties {
 export const parseMessageProperties = (text: string): ParsedProperties => {
   const entries = new Map<string, string>();
   const errors: string[] = [];
-  for (const line of text.split(/\r?\n/)) {
+  for (const line of text.split(/\r\n|\r|\n/)) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     const eqIndex = trimmed.indexOf('=');
