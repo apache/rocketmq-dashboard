@@ -112,6 +112,33 @@ class MybatisPlusInstanceRepositoryTest {
     }
 
     @Test
+    void searchShouldMatchWildcardCharactersLiterallyTest() {
+        when(instanceMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
+
+        assertThat(repository.search("prod_%\\east")).isEmpty();
+
+        ArgumentCaptor<QueryWrapper<RmqInstance>> query = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(instanceMapper).selectList(query.capture());
+        assertThat(query.getValue().getParamNameValuePairs().values())
+                .containsExactly("%prod\\_\\%\\\\east%", "%prod\\_\\%\\\\east%",
+                        "%prod\\_\\%\\\\east%");
+    }
+
+    @Test
+    void findByTypeAndSearchShouldPreserveTypeAndLiteralKeywordTest() {
+        when(instanceMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
+
+        assertThat(repository.findByTypeAndSearch(InstanceType.CLOUD, "tenant_50%")).isEmpty();
+
+        ArgumentCaptor<QueryWrapper<RmqInstance>> query = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(instanceMapper).selectList(query.capture());
+        assertThat(query.getValue().getSqlSegment()).contains("type =", "name LIKE", "endpoint LIKE", "remark LIKE");
+        assertThat(query.getValue().getParamNameValuePairs().values())
+                .containsExactly(InstanceType.CLOUD.name(), "%tenant\\_50\\%%", "%tenant\\_50\\%%",
+                        "%tenant\\_50\\%%");
+    }
+
+    @Test
     void constructorShouldNotSeedDemoInstances() {
         when(instanceMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
 
