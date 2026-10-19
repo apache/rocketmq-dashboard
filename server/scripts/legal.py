@@ -22,6 +22,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -317,6 +318,8 @@ def package_jar(jar, output, base=SERVER):
                 entry.external_attr = 0o100644 << 16
                 target.writestr(entry, data)
         check_jar(temporary_path, base)
+        # NamedTemporaryFile starts at 0600; retain the original JAR's deployment permissions.
+        shutil.copymode(jar, temporary_path)
         os.replace(temporary_path, jar)
     finally:
         if temporary_path.exists():
