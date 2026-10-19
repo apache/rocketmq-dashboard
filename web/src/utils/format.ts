@@ -50,6 +50,24 @@ export function formatTimeMs(value: number | string | null | undefined): string 
 }
 
 /**
+ * Epoch milliseconds of a backend alert timestamp, parsed the way the backend stamps it.
+ *
+ * Alert APIs serialize UTC `LocalDateTime` values without an offset, so a plain
+ * `new Date(value)` would read them in the browser's zone. An explicit offset (`Z` or
+ * `±hh:mm`) is honored; unusable input yields `NaN` so callers can treat it as absent.
+ */
+export function parseAlertTimestamp(date: string | Date | null | undefined): number {
+  if (date === null || date === undefined || (typeof date === 'string' && !date.trim())) {
+    return Number.NaN;
+  }
+  const utcDate =
+    typeof date === 'string' && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(date.trim())
+      ? new Date(`${date}Z`)
+      : new Date(date);
+  return utcDate.getTime();
+}
+
+/**
  * Format a UTC timestamp for alert events in the viewer's timezone. Alert APIs
  * serialize UTC LocalDateTime values without an offset, so normal Date parsing
  * would incorrectly treat them as browser-local timestamps.
