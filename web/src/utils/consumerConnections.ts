@@ -31,14 +31,8 @@ export const formatOnlineInstances = (
 ): string => (isOnlineInstancesAvailable(value) ? value.toLocaleString() : unavailableLabel);
 
 /**
- * Sort key that keeps an unavailable connection count after every known value in both sort
- * directions: Ant Design negates the comparator for a descending column, so the sentinel has to
- * flip with it.
+ * Group 页的呈现口径：连接信息查不到（后端 -1 sentinel）与「确认为 0」一律按 0 展示，页面上不出现
+ * 「不可用」。列表列的显示与排序必须共用这一个函数，否则会出现「显示 0 却排在 5 后面」的自相矛盾。
  */
-export const onlineInstancesSortValue = (
-  value: number | null | undefined,
-  sortOrder?: 'ascend' | 'descend' | null,
-): number => {
-  if (isOnlineInstancesAvailable(value)) return value;
-  return sortOrder === 'descend' ? Number.MIN_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
-};
+export const onlineInstancesCount = (value: number | null | undefined): number =>
+  isOnlineInstancesAvailable(value) ? value : 0;

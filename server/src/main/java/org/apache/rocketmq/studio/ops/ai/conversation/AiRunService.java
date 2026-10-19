@@ -203,10 +203,14 @@ public class AiRunService {
 
         // Prepared at admission, not on the worker: an unusable workspace configuration is an operator
         // error the caller should hear about now, and a degraded conversation must say so in its first
-        // persisted event rather than in a log line nobody reads.
+        // persisted event rather than in a log line nobody reads. The http engine is the exception: it
+        // has no agent CLI and never reads the workspace, so preparing one would let a broken tools
+        // configuration fail - and a missing one warn on every turn of - a plain completion.
+        boolean httpEngine = AiRunExecutor.isHttpEngine(engine);
         RmqctlWorkspace.Preparation preparation;
         try {
-            preparation = workspace.prepare(conversation.getId(), conversation.getInstanceId()).orElse(null);
+            preparation = httpEngine ? null
+                    : workspace.prepare(conversation.getId(), conversation.getInstanceId()).orElse(null);
         } catch (RuntimeException exception) {
             // The row is already inserted and would otherwise stay QUEUED with no owner: every later
             // message would be refused 409 until the orphan sweep reaps it. Finalize it here — through
@@ -232,9 +236,13 @@ public class AiRunService {
             // is persisted, and it reaches the timeline as a thinking block with source=enhance — which
             // is where it belongs, since merging it into the model's reasoning is the bug this design
             // exists to prevent.
+            // One verdict, used by both the persisted row and the live frame below: an http-engine
+            // turn has no workspace to be degraded about, so it gets neither.
+            TimelineEvent.Notice degraded =
+                    preparation == null && !httpEngine ? degradedNotice(conversation) : null;
             int admissionSeq = sink.writeUser(message, null);
-            if (preparation == null) {
-                admissionSeq = sink.writeTimeline(degradedNotice(conversation));
+            if (degraded != null) {
+                admissionSeq = sink.writeTimeline(degraded);
             }
             applyTurnToConversation(conversation, message, request.mode());
             session.noteWatermark(admissionSeq);
@@ -242,6 +250,14 @@ public class AiRunService {
             session.finishReplay();
             registry.publish(run.getId(), 0L, new LiveEvent.RunStarted(run.getId(), conversation.getId(),
                     conversation.getTitle(), turn));
+            if (degraded != null) {
+                // The persisted notice has to reach the wire too: a client that watches the turn
+                // live must see the same warning a reload shows, which is the live/replay
+                // equivalence the projector promises. seq 0, because the row already carried the
+                // notice and the observer noted that watermark above.
+                registry.publish(run.getId(), 0L,
+                        new LiveEvent.Notice(degraded.level(), degraded.message()));
+            }
             runExecutor.submit(context);
         } catch (RejectedExecutionException exception) {
             log.warn("agent run {} was rejected: the run executor is saturated", run.getId());
@@ -386,11 +402,21 @@ public class AiRunService {
             // worker is still flushing its buffered text.
             log.info("agent run {} is already stopping", run.getId());
         } else {
-            // The row says active but nothing in this process owns it, so no worker will ever write the
-            // terminal state. Writing it here is what keeps the stop button from spinning until the
-            // orphan sweep gets around to it.
+            // The row said active but the worker may have finalised between the read at the top of
+            // this method and the registry lookup, whose empty result is what reached this branch.
+            // Re-read before writing anything: a terminal write over a finished run would duplicate
+            // the run_status event and flip a run the user watched complete to STOPPED.
+            RmqAiRun current = runRepository.findById(runId).orElse(run);
+            RunStatus currentStatus = statusOf(current.getStatus());
+            if (currentStatus == null || currentStatus.isTerminal()) {
+                log.debug("stop of run {} found it already terminal ({})", run.getId(), current.getStatus());
+                return current;
+            }
+            // The row really is active with no owner in this process, so no worker will ever write
+            // the terminal state. Writing it here is what keeps the stop button from spinning until
+            // the orphan sweep gets around to it.
             log.warn("run {} is non-terminal with no owner in this process; stopping it directly", run.getId());
-            runExecutor.terminate(detachedContext(run), RunStatus.STOPPED, StopReason.USER_STOP, null, null);
+            runExecutor.terminate(detachedContext(current), RunStatus.STOPPED, StopReason.USER_STOP, null, null);
         }
         return runRepository.findById(runId).orElse(run);
     }
