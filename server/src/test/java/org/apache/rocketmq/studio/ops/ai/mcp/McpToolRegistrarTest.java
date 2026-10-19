@@ -21,6 +21,7 @@ import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceResolver;
 import org.apache.rocketmq.studio.ops.ai.auth.McpAuthentication;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolDefinition;
@@ -127,6 +128,84 @@ class McpToolRegistrarTest {
                 "code", originalFailure.getErrorCode(),
                 "message", originalFailure.getMessage(),
                 "hint", originalFailure.getHint()));
+    }
+
+    @Test
+    void boundsToolArgumentsLikeTheHttpToolPathsTest() {
+        ToolDefinition definition = toolDefinition();
+        CountingMutationHandler handler = new CountingMutationHandler();
+
+        McpSchema.CallToolResult result = McpToolRegistrar.toolSpecification(
+                        definition, toolExecutor(definition, handler, mock(AuditService.class)), objectMapper)
+                .callHandler()
+                .apply(exchange(AUTHENTICATION), new McpSchema.CallToolRequest(
+                        definition.name(), Map.of(
+                                "instanceId", AUTHENTICATION.instanceId(),
+                                "body", "x".repeat(300_000))));
+
+        // The arguments of an MCP call are model-controlled and arrive over the hosted agent's
+        // stdio transport; the byte budget the HTTP tool paths enforce applies here too, and it
+        // must refuse the call before the handler runs.
+        assertThat(result.isError()).isTrue();
+        assertThat(handler.executions).isZero();
+        assertThat(result.structuredContent()).asInstanceOf(
+                        org.assertj.core.api.InstanceOfAssertFactories.MAP)
+                .containsEntry("code", ToolError.TOOL_PAYLOAD_INVALID.code())
+                .containsEntry("hint", ToolError.TOOL_PAYLOAD_INVALID.hint());
+        assertThat(String.valueOf(((Map<?, ?>) result.structuredContent()).get("message")))
+                .contains("Tool input must not exceed")
+                .contains("UTF-8 bytes");
+    }
+
+    @Test
+    void anUntranslatableFailureReturnsAnErrorResultInsteadOfEscapingTheHandlerTest() {
+        ToolDefinition definition = toolDefinition();
+        ToolExecutionService executor = mock(ToolExecutionService.class);
+        // A result Jackson cannot serialise throws IllegalStateException from inside the handler;
+        // escaping it would fail the whole MCP exchange instead of reporting one bad tool call.
+        when(executor.execute(anyString(), any(), same(AUTHENTICATION)))
+                .thenReturn(new Object());
+
+        McpSchema.CallToolResult result = McpToolRegistrar.toolSpecification(
+                        definition, executor, objectMapper)
+                .callHandler()
+                .apply(exchange(AUTHENTICATION), new McpSchema.CallToolRequest(
+                        definition.name(), Map.of("instanceId", AUTHENTICATION.instanceId())));
+
+        assertThat(result.isError()).isTrue();
+        assertThat(result.structuredContent()).asInstanceOf(
+                        org.assertj.core.api.InstanceOfAssertFactories.MAP)
+                .containsEntry("code", ToolError.EXECUTION_FAILED.code())
+                .containsEntry("hint", ToolError.EXECUTION_FAILED.hint());
+        assertThat(String.valueOf(
+                ((Map<?, ?>) result.structuredContent()).get("message")))
+                .contains("Unable to serialize MCP tool result");
+    }
+
+    @Test
+    void aToolLevelRefusalKeepsItsOwnMessageOutOfTheGenericFailurePathTest() {
+        ToolDefinition definition = toolDefinition();
+        ToolExecutionService executor = mock(ToolExecutionService.class);
+        // A BusinessException the executor did not translate is a tool-level refusal: on the HTTP
+        // paths it escapes to the global handler with its own status and message, so the MCP error
+        // result must map that message through — not flatten the refusal into a generic failure
+        // whose text is the exception's toString().
+        when(executor.execute(anyString(), any(), same(AUTHENTICATION)))
+                .thenThrow(new BusinessException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST, "instance is paused"));
+
+        McpSchema.CallToolResult result = McpToolRegistrar.toolSpecification(
+                        definition, executor, objectMapper)
+                .callHandler()
+                .apply(exchange(AUTHENTICATION), new McpSchema.CallToolRequest(
+                        definition.name(), Map.of("instanceId", AUTHENTICATION.instanceId())));
+
+        assertThat(result.isError()).isTrue();
+        assertThat(result.structuredContent()).asInstanceOf(
+                        org.assertj.core.api.InstanceOfAssertFactories.MAP)
+                .containsEntry("code", ToolError.EXECUTION_FAILED.code())
+                .containsEntry("message", "instance is paused")
+                .containsEntry("hint", ToolError.EXECUTION_FAILED.hint());
     }
 
     private ToolExecutionService toolExecutor(
