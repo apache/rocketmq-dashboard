@@ -39,7 +39,7 @@ import java.util.Map;
 @DependsOnDatabaseInitialization
 @RequiredArgsConstructor
 public class ResourceOwnershipSchemaMigration implements InitializingBean {
-    /** Bounded retries for the index-metadata read; see {@link #indexes(Connection, String)}. */
+    /** Bounded retries for transient index metadata reads and publication. */
     private static final int INDEX_METADATA_ATTEMPTS = 5;
 
     private final DataSource dataSource;
@@ -132,10 +132,23 @@ public class ResourceOwnershipSchemaMigration implements InitializingBean {
             statement.executeUpdate("CREATE " + (unique ? "UNIQUE " : "") + "INDEX " + name
                     + " ON " + table + " (" + column + ")");
         } catch (SQLException failure) {
-            // Concurrent startups only accept an identical index; failures caused by duplicate data must not be swallowed.
-            if (!List.of(expected).equals(indexes(connection, table).get(name))) {
-                throw failure;
+            // H2 can report a competing index before getIndexInfo publishes its complete definition.
+            // Recheck boundedly, but only an identical definition may turn failed DDL into success.
+            for (int attempt = 1; attempt <= INDEX_METADATA_ATTEMPTS; attempt++) {
+                if (List.of(expected).equals(indexes(connection, table).get(name))) {
+                    return;
+                }
+                if (attempt < INDEX_METADATA_ATTEMPTS) {
+                    try {
+                        Thread.sleep(10L);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        failure.addSuppressed(interrupted);
+                        throw failure;
+                    }
+                }
             }
+            throw failure;
         }
     }
 
