@@ -1575,4 +1575,34 @@ class RocketMQMessageProviderTest {
                 .toList();
         return new PullResult(PullStatus.FOUND, batchEnd, 0L, endOffsetExclusive, messages);
     }
+
+    private static MessageExt offsetMessage(long queueOffset) {
+        MessageExt message = new MessageExt();
+        message.setMsgId("msg-offset-" + queueOffset);
+        message.setTopic("TopicA");
+        message.setQueueId(0);
+        message.setQueueOffset(queueOffset);
+        message.setStoreTimestamp(System.currentTimeMillis());
+        message.setBody(("body-" + queueOffset).getBytes(StandardCharsets.UTF_8));
+        return message;
+    }
+
+    @Test
+    void pullMessageAtOffsetReturnsNullWhenThePullStartsBeyondTheRequestedOffset() throws Exception {
+        when(pullConsumer.pull(any(MessageQueue.class), eq("*"), eq(10L), eq(1)))
+                .thenReturn(new PullResult(PullStatus.FOUND, 12L, 10L, 12L, List.of(offsetMessage(11L))));
+
+        assertThat(provider.pullMessageAtOffset("instance-a", "TopicA", "broker-a", 0, 10L)).isNull();
+    }
+
+    @Test
+    void pullMessageAtOffsetReturnsTheMessageAtTheExactRequestedOffset() throws Exception {
+        when(pullConsumer.pull(any(MessageQueue.class), eq("*"), eq(10L), eq(1)))
+                .thenReturn(new PullResult(PullStatus.FOUND, 11L, 10L, 11L, List.of(offsetMessage(10L))));
+
+        MessageRecordVO record = provider.pullMessageAtOffset("instance-a", "TopicA", "broker-a", 0, 10L);
+
+        assertThat(record).isNotNull();
+        assertThat(record.getMsgId()).isEqualTo("msg-offset-10");
+    }
 }
