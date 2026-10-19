@@ -35,6 +35,30 @@ description: 部署 RocketMQ Studio 与开源 RocketMQ。当用户说 部署 stu
 - 放行所需端口：模式 A 放行 web 端口（默认 6789）；模式 B/C 如需跨机访问放行
   9876、10909、10911、10912、20909、20911、20912、8080、8081。
 
+### 测试集群可直接操作（用户授权 2026-10-14）
+
+为验证 studio 功能，**测试环境（ECS 47.98.43.243 + ACK `rocketmq1` 命名空间）可以直接操作，无需先问**：
+含改 broker 配置、重启 broker / Pod、重启 ECS 上的 `rmq-loadgen` 容器、开 ACL、建演示 topic/group 等
+破坏性动作。前提是操作后**恢复原状**，或在 `rocketmq-studio-docs/progress/` 当日文档里记录留存状态。
+生产/预发集群不在此授权内。
+
+操作前必须知道的三个坑（2026-10-14 实测踩过）：
+
+- **`rocketmq1` 的 broker store 是 emptyDir**（`broker-storage` volume 没有 PVC）：**重启 broker Pod 会清空
+  全部消息与 topic / 订阅组配置**。重启后按 studio 元数据库的记录重建：`POST /api/topics/create`、
+  `POST /api/groups/create` 会把配置写回 broker；再重发演示消息、`docker restart rmq-loadgen`（ECS 上）、
+  重建集群内的演示消费者 Pod（裸 Pod 删了不会自愈，要重新 apply YAML）。
+- **开 ACL 2.0（apache/rocketmq:5.5.0）的完整配方**：broker.conf 除 `authenticationEnabled=true`、
+  `authorizationEnabled=true` 外，还必须显式配 `authenticationProvider` / `authenticationMetadataProvider` /
+  `authorizationProvider` / `authorizationMetadataProvider` 四个类名（该镜像默认为空，只开两个开关会报
+  `The authenticationMetadataProvider is not configured`，连 mqadmin 都建不了首个用户）；并用
+  `initAuthenticationUser={"username":...,"password":...,"userType":"Super"}`（**User 对象的 JSON**）播种
+  首个 Super 账号。该账号要用 studio 的 admin 凭据同一对 AK/SK（在 ECS `/opt/rocketmq-studio/.env` 的
+  `SPRING_APPLICATION_JSON` → `studio.cluster.admin.credentials.<adminCredentialRef>`），否则开关一开
+  studio 自己的 admin 通道先被拒。验完把这几行删掉再重启即恢复。
+- **broker ACL 2.0 的 resource 必须带类型前缀**：`Topic:<name>` / `Group:<name>`，集群域用 `*`。
+  裸名字会被解析成 null resource，整条账号写入报 `CODE: 16 The resource is null`。
+
 ---
 
 ## 模式 A：部署 Studio 到目标机器
@@ -102,15 +126,23 @@ XML'
 
 ```bash
 cd <项目根目录>   # rocketmq-studio 仓库根
-tar czf /tmp/src.tar.gz --exclude='web/node_modules' --exclude='web/dist' --exclude='server/target' server web deploy
+# rmqctl, LICENSE and NOTICE have to travel with the package: the server image is built with the
+# repository root as its context, and the rmqctl stage of server/Dockerfile copies all three.
+# deploy/.env is per-environment and rmqctl/bin is a local build artifact, so both stay out.
+tar czf /tmp/src.tar.gz \
+  --exclude='web/node_modules' --exclude='web/dist' --exclude='server/target' \
+  --exclude='deploy/.env' --exclude='rmqctl/bin' \
+  LICENSE NOTICE server web deploy rmqctl
 scp /tmp/src.tar.gz <user>@<host>:/opt/rocketmq-studio/
-$SSH 'cd /opt/rocketmq-studio && rm -rf server web deploy && tar xzf src.tar.gz && rm src.tar.gz'
+$SSH 'cd /opt/rocketmq-studio && rm -rf server web deploy rmqctl LICENSE NOTICE && tar xzf src.tar.gz && rm src.tar.gz'
 ```
 
 ### 4. 在目标机上编译后端 + 构建镜像
 
 复用宿主机 `~/.m2` 缓存编译 JAR，再用 Dockerfile 的 `runtime-prebuilt` target 打镜像
-（不要走默认多阶段 build target，那会在 Docker 内从零下载依赖、用不上宿主机缓存）：
+（不要走默认多阶段 build target，那会在 Docker 内从零下载依赖、用不上宿主机缓存）。
+**构建上下文是仓库根目录而不是 `server/`**：Dockerfile 的 rmqctl 阶段要 `COPY rmqctl/` 与根目录的
+`LICENSE NOTICE`，镜像才会自带 `/usr/local/bin/rmqctl`（AI 后端以 `rmqctl mcp stdio` 拉起 MCP server）：
 
 ```bash
 $SSH 'cd /opt/rocketmq-studio && \
@@ -118,7 +150,7 @@ $SSH 'cd /opt/rocketmq-studio && \
     -v $PWD/server:/app -v $HOME/.m2:/maven-cache -w /app \
     maven:3.9.16-eclipse-temurin-21 \
     mvn -B -ntp -s /maven-cache/settings.xml -Dmaven.repo.local=/maven-cache/repository package -DskipTests && \
-  docker build --target runtime-prebuilt -t rocketmq-server:latest server/'
+  docker build --target runtime-prebuilt -f server/Dockerfile -t rocketmq-server:latest .'
 ```
 
 - 若目标机 `~/.m2/settings.xml` 不存在（海外机器通常不需要镜像源），去掉 `-s /maven-cache/settings.xml`。

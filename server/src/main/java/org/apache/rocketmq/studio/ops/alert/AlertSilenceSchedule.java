@@ -20,7 +20,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -46,6 +45,12 @@ final class AlertSilenceSchedule {
         ZonedDateTime localNow = now.atZone(zone);
         ZonedDateTime seedStart = silence.getStartsAt().toInstant(ZoneOffset.UTC).atZone(zone);
         ZonedDateTime seedEnd = silence.getEndsAt().toInstant(ZoneOffset.UTC).atZone(zone);
+        // Rebuild occurrences with the offsets the seed was created with: on fall-back days the
+        // wall-clock start (and end) exists twice, and ZonedDateTime.of(LocalDateTime, ZoneId)
+        // alone always picks the earlier offset. That both skips the seeded window itself (the
+        // rebuilt start lands before startsAt) and drifts later occurrences to the earlier pass.
+        ZoneOffset preferredStartOffset = seedStart.getOffset();
+        ZoneOffset preferredEndOffset = seedEnd.getOffset();
         Duration wallDuration = Duration.between(seedStart.toLocalDateTime(), seedEnd.toLocalDateTime());
         // A weekly window may span up to 7 days, so an occurrence anchored 7 days
         // back can still be in its final hours; daily windows span at most 24 hours.
@@ -56,8 +61,12 @@ final class AlertSilenceSchedule {
             if (!runsOn(recurrence, silence.getRecurrenceDays(), candidateDate)) {
                 continue;
             }
-            ZonedDateTime candidateStart = resolve(zone, candidateDate, seedStart.toLocalTime());
-            ZonedDateTime candidateEnd = resolveEnd(zone, candidateStart, wallDuration);
+            LocalDateTime scheduledStart = LocalDateTime.of(candidateDate, seedStart.toLocalTime());
+            ZonedDateTime candidateStart = ZonedDateTime.ofLocal(scheduledStart, zone, preferredStartOffset);
+            // Resolve each wall-clock boundary independently: adjusting a start inside a DST gap
+            // must not shift an otherwise valid end by the gap a second time.
+            ZonedDateTime candidateEnd = ZonedDateTime.ofLocal(scheduledStart.plus(wallDuration),
+                    zone, preferredEndOffset);
             Instant start = candidateStart.toInstant();
             Instant end = candidateEnd.toInstant();
             Instant scheduleStart = silence.getStartsAt().toInstant(ZoneOffset.UTC);
@@ -79,14 +88,6 @@ final class AlertSilenceSchedule {
             LocalDate candidateDate) {
         return recurrence == AlertSilenceRecurrence.DAILY
                 || recurrenceDays != null && recurrenceDays.contains(candidateDate.getDayOfWeek().getValue());
-    }
-
-    private static ZonedDateTime resolve(ZoneId zone, LocalDate date, LocalTime time) {
-        return ZonedDateTime.of(LocalDateTime.of(date, time), zone);
-    }
-
-    private static ZonedDateTime resolveEnd(ZoneId zone, ZonedDateTime start, Duration wallDuration) {
-        return ZonedDateTime.of(start.toLocalDateTime().plus(wallDuration), zone);
     }
 
     private static boolean isInside(LocalDateTime now, LocalDateTime start, LocalDateTime end) {

@@ -32,6 +32,7 @@ import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { roundPercent } from '../../utils/format';
 
 // ─── Types ──────────────────────────────────────────────────────
 type NodeStatus = 'running' | 'readonly' | 'maintenance' | 'unknown';
@@ -59,7 +60,6 @@ interface NameServerRecord {
   status: NodeStatus;
   version: string;
   address: string;
-  connections: number;
 }
 
 interface ProxyRecord {
@@ -90,7 +90,6 @@ const NAMESERVER_EXPORT_COLUMNS: CsvColumn<NameServerRecord>[] = [
   { header: 'Status', value: (nameServer) => nameServer.status },
   { header: 'Version', value: (nameServer) => nameServer.version },
   { header: 'Address', value: (nameServer) => nameServer.address },
-  { header: 'Connections', value: (nameServer) => nameServer.connections },
 ];
 
 const PROXY_EXPORT_COLUMNS: CsvColumn<ProxyRecord>[] = [
@@ -158,7 +157,6 @@ function mapClusters(clusters: ClusterInfo[]): {
         status: normalizeStatus(nameServer.status),
         version: cluster.version,
         address: nameServer.addr,
-        connections: 0,
       });
     });
 
@@ -192,6 +190,7 @@ const BrokerClusterPage = () => {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined);
   const mountedRef = useRef(true);
   const loadRequestId = useRef(0);
+  const requestedInstanceRef = useRef<string | undefined>(undefined);
   const { t } = useLang();
   const { message } = App.useApp();
 
@@ -202,6 +201,11 @@ const BrokerClusterPage = () => {
   }, []);
 
   const loadData = useCallback(async () => {
+    // A completed snapshot remains useful on refresh, but never under a different instance.
+    if (requestedInstanceRef.current !== selectedInstanceId) {
+      requestedInstanceRef.current = selectedInstanceId;
+      clearData();
+    }
     if (!selectedInstanceId && !isMockMode()) {
       clearData();
       return;
@@ -288,16 +292,20 @@ const BrokerClusterPage = () => {
       status = 'active';
       color = '#fa8c16';
     }
+    const rounded = roundPercent(percent);
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {/* The label belongs to the span below. Progress renders its own text inside the 80px bar,
+            which duplicated the value and left the bar itself no width to draw. */}
         <Progress
-          percent={percent}
+          percent={rounded}
           size="small"
           status={status}
+          showInfo={false}
           style={{ width: 80, margin: 0 }}
           strokeColor={color}
         />
-        <span style={{ fontSize: 14, color, fontWeight: 500 }}>{percent}%</span>
+        <span style={{ fontSize: 14, color, fontWeight: 500 }}>{rounded}%</span>
       </div>
     );
   };
@@ -428,12 +436,6 @@ const BrokerClusterPage = () => {
           {text}
         </code>
       ),
-    },
-    {
-      title: t('brokerCluster.connections'),
-      dataIndex: 'connections',
-      key: 'connections',
-      render: (text: number) => <span style={{ fontWeight: 500 }}>{text.toLocaleString()}</span>,
     },
   ];
 

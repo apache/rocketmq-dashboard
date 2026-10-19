@@ -29,6 +29,15 @@ REMOTE="${REMOTE_USER:-root}@$REMOTE_HOST"
 REMOTE_PATH="${REMOTE_PATH:-/opt/rocketmq-studio}"
 PUBLIC_PORT="${PUBLIC_PORT:-6789}"
 MAVEN_IMAGE="${MAVEN_IMAGE:-maven:3.9.16-eclipse-temurin-21}"
+# 额外的 mvn 参数，环境专属，配在 deploy/.env 里（未入库）。
+# 例：MAVEN_ARGS=-Dmaven.antrun.skip=true 跳过 server/pom.xml 的 binary-license-gate。antrun 在 pom 里
+# 只有这一个 execution，所以跳过是精确的。该门禁要求 fat jar 里每个三方依赖都自带上游 LICENSE 全文，
+# 主干目前有 164 个 jar 过不了；它检查的是发布产物的合法性，与「把当前源码部署到测试机看效果」无关。
+MAVEN_ARGS="${MAVEN_ARGS:-}"
+# 传给 server/Dockerfile 的 LEGAL_GATE（默认 1 = 跑镜像里的 check-jar）。
+# 跳过上面那道 maven 门禁时必须同时关掉这道：jar 里的 META-INF/legal 素材正是被跳过的那一步生成的，
+# 只跳一边会从「164 个 jar 不合规」变成「jar 缺 legal 素材」。
+LEGAL_GATE="${LEGAL_GATE:-1}"
 SRC_TAR="/tmp/rocketmq-studio-src.tar.gz"
 
 TARGET="${1:-all}"  # all | server | web
@@ -56,10 +65,13 @@ package_source() {
   # deploy/.env 是环境专属配置（如 STUDIO_METRICS_PROMETHEUS_BASE_URL），不随源码覆盖远端
   # rmqctl 必须随包上传：server 镜像构建上下文是仓库根目录，Dockerfile 的 Go 阶段要 COPY rmqctl/
   # （rmqctl/bin 是本地构建产物，不上传）
+  # LICENSE and NOTICE travel with the package for the same reason: the rmqctl stage of
+  # server/Dockerfile runs `COPY LICENSE NOTICE /src/` against the repository root as its build
+  # context, so building in a fresh remote directory fails at that step without them.
   tar czf "$SRC_TAR" -C "$PROJECT_DIR" \
     --exclude='web/node_modules' --exclude='web/dist' --exclude='server/target' \
     --exclude='deploy/.env' --exclude='rmqctl/bin' \
-    server web deploy rmqctl
+    LICENSE NOTICE server web deploy rmqctl
   log "打包完成 ($(du -h "$SRC_TAR" | cut -f1))"
 }
 
@@ -67,10 +79,16 @@ upload_source() {
   info "📤 传输源码到 $REMOTE:$REMOTE_PATH ..."
   run_remote "mkdir -p $REMOTE_PATH"
   scp -q "$SRC_TAR" "$REMOTE:$REMOTE_PATH/"
-  # 保留远端环境专属配置（tar 已排除，这里防 rm -rf 误删）
-  run_remote "cd $REMOTE_PATH && [ -f deploy/.env ] && cp deploy/.env /tmp/deploy-env-backup; \
-    rm -rf server web deploy && tar xzf $(basename "$SRC_TAR") && rm $(basename "$SRC_TAR"); \
-    [ -f /tmp/deploy-env-backup ] && mv /tmp/deploy-env-backup deploy/.env || true"
+  # 保留远端环境专属配置（tar 已排除，这里防 rm -rf 误删）。
+  # 任一步失败（备份 .env、清理、解压、恢复 .env）都必须让远端命令以非零退出：
+  # 旧写法用 `;` 分隔并以 `|| true` 结尾，tar 解压失败也被吞掉，部署会带着残缺源码继续走到
+  # docker build 才在别处报错。解压失败时仍先恢复 .env，再以原退出码终止。
+  # rmqctl 也要清理：源包带 rmqctl（server 镜像的 Go 阶段 COPY 它），tar 解压只覆盖同名文件，
+  # 新提交删除/重命名的旧 Go 文件会留在远端，被 COPY 进镜像后可能重复声明编译失败、
+  # 或编出包含已删实现的 CLI。rmqctl/bin 是远端构建产物，随清理重建。
+  run_remote "cd $REMOTE_PATH && { [ ! -f deploy/.env ] || cp deploy/.env /tmp/deploy-env-backup; } && \
+    { rm -rf server web deploy rmqctl && tar xzf $(basename "$SRC_TAR") && rm $(basename "$SRC_TAR"); \
+      rc=\$?; { [ ! -f /tmp/deploy-env-backup ] || mv /tmp/deploy-env-backup deploy/.env; }; exit \$rc; }"
   run_remote 'docker network inspect rocketmq_net >/dev/null 2>&1 || docker network create rocketmq_net'
   log "源码就位，rocketmq_net 网络就绪"
 }
@@ -87,11 +105,11 @@ build_server() {
     --user \$(id -u):\$(id -g) \
     -v \$PWD/server:/app -v \$HOME/.m2:/maven-cache -w /app \
     $MAVEN_IMAGE \
-    mvn -B -ntp $settings_flag -Dmaven.repo.local=/maven-cache/repository package -DskipTests"
+    mvn -B -ntp $settings_flag $MAVEN_ARGS -Dmaven.repo.local=/maven-cache/repository package -DskipTests"
   info "🏗️  构建 rocketmq-server 镜像（runtime-prebuilt）..."
   # 构建上下文由 server/ 扩到仓库根目录：Dockerfile 的 rmqctl Go 阶段需要 COPY rmqctl/，
   # 让镜像自带 /usr/local/bin/rmqctl（AI 后端以 `rmqctl mcp stdio` 拉起 MCP server）。
-  run_remote "cd $REMOTE_PATH && docker build --target runtime-prebuilt -f server/Dockerfile -t rocketmq-server:latest ."
+  run_remote "cd $REMOTE_PATH && docker build --build-arg LEGAL_GATE=$LEGAL_GATE --target runtime-prebuilt -f server/Dockerfile -t rocketmq-server:latest ."
   log "rocketmq-server 镜像构建完成"
 }
 
@@ -132,7 +150,11 @@ verify() {
       [[ "$code" == "200" ]] && break
       sleep 5
     done
-    [[ "$code" == "200" ]] && log "前端响应正常 (HTTP $code)" || warn "前端返回 HTTP $code"
+    # The backend branch above fails the deployment on an unhealthy server;
+    # a web tier that never answers must fail it too, otherwise the run ends
+    # with the success banner pointing at an entrance that returns 503.
+    [[ "$code" == "200" ]] && log "前端响应正常 (HTTP $code)" \
+      || err "前端健康检查未通过（HTTP ${code:-000}，docker logs rocketmq-web 查看原因）"
   fi
   log "🎉 部署完成 → http://$REMOTE_HOST:$PUBLIC_PORT/"
 }

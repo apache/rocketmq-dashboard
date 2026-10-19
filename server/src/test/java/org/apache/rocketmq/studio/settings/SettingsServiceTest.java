@@ -25,6 +25,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpHeaders;
@@ -62,6 +64,7 @@ class SettingsServiceTest {
 
     private static final String PROMETHEUS_BASE_URL = "http://192.0.2.1:9090";
     private static final String PROMETHEUS_QUERY_URL = PROMETHEUS_BASE_URL + "/api/v1/query?query=up";
+    private static final String VICTORIA_QUERY_URL = PROMETHEUS_BASE_URL + "/select/0/prometheus/api/v1/query?query=up";
     private static final String VICTORIA_METRICS_QUERY_URL =
             PROMETHEUS_BASE_URL + "/select/0/prometheus/api/v1/query?query=up";
     private static final String MIMIR_QUERY_URL =
@@ -521,6 +524,41 @@ class SettingsServiceTest {
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getMessage()).isEqualTo("Connection successful");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "victoria_metrics", " VICTORIA_METRICS ", "victoria-metrics", "VictoriaMetrics",
+        "Victoria Metrics", "victoria"})
+    void connectionShouldResolveVictoriaMetricsAliasesToItsOwnQueryPathTest(String type) {
+        // The DTO accepts every alias spelling of VictoriaMetrics, including the bare "victoria"
+        // short form; the probe must reach VictoriaMetrics' own query path for all of them rather
+        // than fall back to Prometheus'.
+        prometheusServer.expect(requestTo(VICTORIA_QUERY_URL))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(PROMETHEUS_SUCCESS_BODY, MediaType.APPLICATION_JSON));
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url(PROMETHEUS_BASE_URL)
+                .type(type)
+                .build();
+
+        DataSourceTestResultVO result = settingsService.testDataSource(request);
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getMessage()).isEqualTo("Connection successful");
+    }
+
+    @Test
+    void connectionShouldStillRejectUnknownDataSourceTypesTest() {
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url(PROMETHEUS_BASE_URL)
+                .type("grafana-metrics")
+                .build();
+
+        DataSourceTestResultVO result = settingsService.testDataSource(request);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).contains("Unsupported data source type: grafana-metrics");
     }
 
     @Test

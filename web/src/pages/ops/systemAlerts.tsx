@@ -18,9 +18,11 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Card,
+  DatePicker,
   Tag,
   Flex,
   Typography,
+  Alert,
   Badge,
   Button,
   message,
@@ -30,8 +32,12 @@ import {
   Modal,
   Form,
   Input,
+  Popconfirm,
+  Segmented,
+  theme,
 } from 'antd';
-import { CheckCircle, DownloadSimple, Trash } from '@phosphor-icons/react';
+import dayjs from 'dayjs';
+import { ArrowClockwise, CheckCircle, DownloadSimple, Trash } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import useAuthStore from '../../stores/authStore';
@@ -60,6 +66,7 @@ import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 import { zonedLocalDateTimeToUtc } from '../../utils/timeZone';
 
 const { Text } = Typography;
+const { RangePicker } = DatePicker;
 
 const ALERT_EXPORT_PAGE_SIZE = 100;
 const ALERT_EXPORT_MAX_PAGES = 10_000;
@@ -90,15 +97,17 @@ const parseSilenceLabels = (
   invalidMessage: string,
 ): Record<string, string> | undefined => {
   if (!value?.trim()) return undefined;
-  const labels: Record<string, string> = {};
+  const labels = new Map<string, string>();
   for (const pair of value.split(',')) {
     const separator = pair.indexOf('=');
-    if (separator <= 0 || !pair.slice(separator + 1).trim()) {
+    const key = pair.slice(0, separator).trim();
+    const labelValue = pair.slice(separator + 1).trim();
+    if (separator <= 0 || !key || !labelValue || labels.has(key)) {
       throw new Error(invalidMessage);
     }
-    labels[pair.slice(0, separator).trim()] = pair.slice(separator + 1).trim();
+    labels.set(key, labelValue);
   }
-  return labels;
+  return Object.fromEntries(labels);
 };
 
 const localDateTimeToUtc = (value: string) => new Date(`${value}:00`).toISOString();
@@ -136,6 +145,7 @@ const SystemAlertsPage = () => {
   const userId = useAuthStore((state) => state.userId);
   const admin = useAuthStore((state) => state.admin);
   const canManageSilences = !userId || admin === true;
+  const { token } = theme.useToken();
 
   const alertLevelConfig: Record<string, { color: string; bg: string; label: string }> = {
     error: { color: '#ff4d4f', bg: '#fff2f0', label: t('sysAlerts.severe') },
@@ -144,6 +154,7 @@ const SystemAlertsPage = () => {
   };
 
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [levelFilter, setLevelFilter] = useState<string>('all');
   const [domainFilter, setDomainFilter] = useState<string>('all');
   const [transitionFilter, setTransitionFilter] = useState<string>('all');
@@ -163,6 +174,7 @@ const SystemAlertsPage = () => {
   const [exporting, setExporting] = useState(false);
   const [deliveries, setDeliveries] = useState<Record<number, NotificationDelivery[]>>({});
   const [loadingDeliveries, setLoadingDeliveries] = useState<Set<number>>(() => new Set());
+  const deliveryRequestIds = useRef<Record<number, number>>({});
   const [retryingDeliveryIds, setRetryingDeliveryIds] = useState<Set<number>>(() => new Set());
   const [relatedAlerts, setRelatedAlerts] = useState<Record<number, SystemAlert[]>>({});
   const [loadingRelatedIds, setLoadingRelatedIds] = useState<Set<number>>(() => new Set());
@@ -208,10 +220,16 @@ const SystemAlertsPage = () => {
         if (!cancelled) {
           setAlerts(data.items);
           setTotal(data.total);
+          setLoadFailed(false);
         }
       })
       .catch(() => {
-        if (!cancelled) message.error(t('sysAlerts.loadFailed'));
+        if (!cancelled) {
+          // A failed read must not leave the page reporting "0 unacknowledged" for a store it
+          // never reached, and the alert surfaces below must offer a retry.
+          message.error(t('sysAlerts.loadFailed'));
+          setLoadFailed(true);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -310,19 +328,27 @@ const SystemAlertsPage = () => {
   };
 
   const loadDeliveries = async (alertId: number, force = false) => {
-    if ((!force && deliveries[alertId]) || loadingDeliveries.has(alertId)) return;
+    if (!force && (deliveries[alertId] || loadingDeliveries.has(alertId))) return;
+    const requestId = (deliveryRequestIds.current[alertId] ?? 0) + 1;
+    deliveryRequestIds.current[alertId] = requestId;
     setLoadingDeliveries((current) => new Set(current).add(alertId));
     try {
       const result = await listAlertDeliveries(alertId);
-      setDeliveries((current) => ({ ...current, [alertId]: result }));
+      if (deliveryRequestIds.current[alertId] === requestId) {
+        setDeliveries((current) => ({ ...current, [alertId]: result }));
+      }
     } catch {
-      message.error(t('sysAlerts.deliveryLoadFailed'));
+      if (deliveryRequestIds.current[alertId] === requestId) {
+        message.error(t('sysAlerts.deliveryLoadFailed'));
+      }
     } finally {
-      setLoadingDeliveries((current) => {
-        const next = new Set(current);
-        next.delete(alertId);
-        return next;
-      });
+      if (deliveryRequestIds.current[alertId] === requestId) {
+        setLoadingDeliveries((current) => {
+          const next = new Set(current);
+          next.delete(alertId);
+          return next;
+        });
+      }
     }
   };
 
@@ -468,9 +494,28 @@ const SystemAlertsPage = () => {
     <div style={{ padding: 24 }}>
       <PageHeader
         title={t('sysAlerts.title')}
-        subtitle={t('sysAlerts.subtitle', { n: unackCount })}
+        subtitle={t('sysAlerts.subtitle', { n: loadFailed ? '-' : unackCount })}
         extra={
-          <Flex gap={8}>
+          <Flex gap={8} align="center">
+            {collectorStatus && (
+              // 与筛选控件同高同边框的状态片：Tag 的 success 配色只有 22px 高、绿底绿字，
+              // 夹在一排 32px 白底控件里既矮又跳。放在页头而不是筛选条，是因为 1600 视口下
+              // 筛选条放下 8 个控件后只剩 40px，容不下它。
+              <Flex
+                align="center"
+                gap={6}
+                style={{
+                  height: 32,
+                  padding: '0 12px',
+                  border: `1px solid ${token.colorBorder}`,
+                  borderRadius: token.borderRadius,
+                  background: token.colorBgContainer,
+                }}
+              >
+                <CheckCircle size={14} color="#52c41a" weight="fill" />
+                <Text style={{ fontSize: 14 }}>{t('sysAlerts.nativeCollectionEnabled')}</Text>
+              </Flex>
+            )}
             <Button
               icon={<DownloadSimple size={14} />}
               onClick={() => void exportAlerts()}
@@ -479,47 +524,76 @@ const SystemAlertsPage = () => {
               {t('sysAlerts.exportCsv')}
             </Button>
             <Button onClick={openSilences}>{t('sysAlerts.maintenanceWindows')}</Button>
-            <Button
-              icon={<Trash size={14} />}
-              onClick={handleClearAcked}
-              disabled={!alerts.some((a) => a.acknowledged)}
-              loading={clearing}
+            <Popconfirm
+              title={t('sysAlerts.clearAckedConfirm')}
+              description={t('sysAlerts.clearAckedConfirmDesc')}
+              onConfirm={() => void handleClearAcked()}
+              okText={t('common.confirm')}
+              cancelText={t('common.cancel')}
             >
-              {t('sysAlerts.clearAcked')}
-            </Button>
+              <Button
+                icon={<Trash size={14} />}
+                danger
+                disabled={!alerts.some((a) => a.acknowledged)}
+                loading={clearing}
+              >
+                {t('sysAlerts.clearAcked')}
+              </Button>
+            </Popconfirm>
           </Flex>
         }
       />
 
+      {loadFailed && (
+        <Alert
+          showIcon
+          type="error"
+          message={t('common.fetchDataFailed')}
+          action={
+            <Button
+              size="small"
+              icon={<ArrowClockwise size={16} />}
+              onClick={() => setRefreshNonce((value) => value + 1)}
+            >
+              {t('common.retry')}
+            </Button>
+          }
+          style={{ marginBottom: 12 }}
+        />
+      )}
+
+      {/* 筛选条：全部控件统一默认尺寸（32px 高）。时间范围用单个 RangePicker 而不是两个
+          datetime-local：368px 是填了值之后两段 `YYYY-MM-DD HH:mm` 加箭头和日历图标的实测宽，
+          再窄会裁字。整条约 1292px，在 1600 视口（容器 1332px）下保持一行。 */}
       <Flex gap={8} wrap align="center" style={{ marginBottom: 16 }}>
-        {['all', 'error', 'warning', 'info'].map((level) => (
-          <Button
-            key={level}
-            type={levelFilter === level ? 'primary' : 'default'}
-            size="small"
-            onClick={() => {
-              setLevelFilter(level);
-              setPage(1);
-            }}
-          >
-            {level === 'all' ? t('common.all') : alertLevelConfig[level]?.label}
-            {level !== 'all' && (
-              <Badge
-                count={alerts.filter((a) => normalizeAlertLevel(a.level) === level).length}
-                style={{
-                  marginLeft: 4,
-                  backgroundColor:
-                    level === 'error' ? '#ff4d4f' : level === 'warning' ? '#fa8c16' : '#1677ff',
-                }}
-                size="small"
-              />
-            )}
-          </Button>
-        ))}
+        <Segmented
+          value={levelFilter}
+          onChange={(value) => {
+            setLevelFilter(String(value));
+            setPage(1);
+          }}
+          options={['all', 'error', 'warning', 'info'].map((level) => ({
+            value: level,
+            label: (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                {level === 'all' ? t('common.all') : alertLevelConfig[level]?.label}
+                {!loadFailed && level !== 'all' && (
+                  <Badge
+                    count={alerts.filter((a) => normalizeAlertLevel(a.level) === level).length}
+                    style={{
+                      backgroundColor:
+                        level === 'error' ? '#ff4d4f' : level === 'warning' ? '#fa8c16' : '#1677ff',
+                    }}
+                    size="small"
+                  />
+                )}
+              </span>
+            ),
+          }))}
+        />
         <Select
           value={domainFilter}
-          size="small"
-          style={{ minWidth: 132 }}
+          style={{ minWidth: 120 }}
           onChange={(value) => {
             setDomainFilter(value);
             setPage(1);
@@ -532,9 +606,8 @@ const SystemAlertsPage = () => {
         />
         <Input
           aria-label={t('sysAlerts.instanceFilter')}
-          size="small"
           placeholder={t('sysAlerts.instanceId')}
-          style={{ width: 150, flex: 'none' }}
+          style={{ width: 140, flex: 'none' }}
           value={instanceFilter}
           onChange={(event) => {
             setInstanceFilter(event.target.value);
@@ -543,41 +616,31 @@ const SystemAlertsPage = () => {
         />
         <Input
           aria-label={t('sysAlerts.labelsFilter')}
-          size="small"
           placeholder={t('sysAlerts.labelsPlaceholder')}
-          style={{ width: 190, flex: 'none' }}
+          style={{ width: 140, flex: 'none' }}
           value={labelFilter}
           onChange={(event) => {
             setLabelFilter(event.target.value);
             setPage(1);
           }}
         />
-        <Input
-          aria-label={t('sysAlerts.startTimeFilter')}
-          type="datetime-local"
-          size="small"
-          style={{ width: 190, flex: 'none' }}
-          value={fromFilter}
-          onChange={(event) => {
-            setFromFilter(event.target.value);
-            setPage(1);
-          }}
-        />
-        <Input
-          aria-label={t('sysAlerts.endTimeFilter')}
-          type="datetime-local"
-          size="small"
-          style={{ width: 190, flex: 'none' }}
-          value={toFilter}
-          onChange={(event) => {
-            setToFilter(event.target.value);
+        <RangePicker
+          allowEmpty={[true, true]}
+          aria-label={t('sysAlerts.timeRangeFilter')}
+          placeholder={[t('sysAlerts.startTime'), t('sysAlerts.endTime')]}
+          showTime={{ format: 'HH:mm' }}
+          format="YYYY-MM-DD HH:mm"
+          style={{ width: 368, flex: 'none' }}
+          value={[fromFilter ? dayjs(fromFilter) : null, toFilter ? dayjs(toFilter) : null]}
+          onChange={(values) => {
+            setFromFilter(values?.[0] ? values[0].format('YYYY-MM-DDTHH:mm') : '');
+            setToFilter(values?.[1] ? values[1].format('YYYY-MM-DDTHH:mm') : '');
             setPage(1);
           }}
         />
         <Select
           value={transitionFilter}
-          size="small"
-          style={{ minWidth: 124 }}
+          style={{ minWidth: 120 }}
           onChange={(value) => {
             setTransitionFilter(value);
             setPage(1);
@@ -591,8 +654,7 @@ const SystemAlertsPage = () => {
         <Select
           aria-label={t('sysAlerts.suppressionFilter')}
           value={suppressionFilter}
-          size="small"
-          style={{ minWidth: 132 }}
+          style={{ minWidth: 140 }}
           onChange={(value) => {
             setSuppressionFilter(value);
             setPage(1);
@@ -603,11 +665,6 @@ const SystemAlertsPage = () => {
             { value: 'delivered', label: t('sysAlerts.notificationNotSuppressed') },
           ]}
         />
-        {collectorStatus && (
-          <Tag color="success" style={{ marginInlineEnd: 0 }}>
-            {t('sysAlerts.nativeCollectionEnabled')}
-          </Tag>
-        )}
       </Flex>
 
       <Flex vertical gap={12}>

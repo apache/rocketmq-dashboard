@@ -20,6 +20,7 @@ import { Alert, App, Button, Input, Modal, Select, Space, Table, Tag, Typography
 import type { ColumnsType } from 'antd/es/table';
 import { ArrowClockwise, DownloadSimple, Eye } from '@phosphor-icons/react';
 import { useLang } from '../i18n/LangContext';
+import TagList from './TagList';
 import {
   exportAlertRuleAsset,
   getAlertRuleAsset,
@@ -177,15 +178,16 @@ export const AlertRuleAssetList: React.FC = () => {
       title: t('alertAssets.severity'),
       dataIndex: 'severities',
       key: 'severities',
-      width: 180,
+      // CRITICAL + WARNING + INFO 三个标签并排实测需 239px
+      width: 240,
       render: (severities: string[]) => (
-        <Space size={[0, 4]} wrap>
-          {(severities || []).map((severity) => (
-            <Tag key={severity} color={SEVERITY_COLORS[severity] || 'default'}>
-              {severity.toUpperCase()}
-            </Tag>
-          ))}
-        </Space>
+        <TagList
+          items={(severities || []).map((severity) => ({
+            key: severity,
+            label: severity.toUpperCase(),
+            color: SEVERITY_COLORS[severity] || 'default',
+          }))}
+        />
       ),
     },
     {

@@ -131,6 +131,32 @@ describe('client connection diagnostics', () => {
     );
   });
 
+  it('keeps distinct identities containing pipe characters separate', () => {
+    const diagnostics = analyzeClientConnections([
+      connection({ clientId: 'client|partition', groupOrTopic: 'orders' }),
+      connection({ clientId: 'client', groupOrTopic: 'partition|orders' }),
+    ]);
+
+    expect(diagnostics.issues.filter((item) => item.code === 'EXACT_DUPLICATE_CONNECTION')).toEqual(
+      [],
+    );
+  });
+
+  it('preserves complete identity fields in duplicate evidence', () => {
+    const original = connection({ clientId: 'client|partition', groupOrTopic: 'orders|events' });
+    const diagnostics = analyzeClientConnections([original, { ...original }]);
+    const duplicates = diagnostics.issues.filter(
+      (item) => item.code === 'EXACT_DUPLICATE_CONNECTION',
+    );
+
+    expect(duplicates).toHaveLength(1);
+    expect(duplicates[0]).toMatchObject({
+      clientId: 'client|partition',
+      resource: 'orders|events',
+      evidence: ['address=10.0.1.10:49152', 'count=2'],
+    });
+  });
+
   it('flags mixed protocols, mixed versions, and single consumer instances per resource', () => {
     const diagnostics = analyzeClientConnections([
       connection({
@@ -177,6 +203,34 @@ describe('client connection diagnostics', () => {
         'SINGLE_CONSUMER_INSTANCE',
       ]),
     );
+  });
+
+  it('does not report proxy rows for the protocol and version the Proxy response cannot carry', () => {
+    // Proxy-derived rows have no protocol/version by design (the server comments "The Proxy
+    // response has no protocol"), and the clients page even gives them a dedicated
+    // unknown-protocol filter sentinel. Scoring them as anomalies cost 18 points per row:
+    // three gRPC consumers behind a proxy flipped the panel to "high risk" while nothing
+    // was wrong.
+    const proxyRow = (clientId: string, address: string): ClientConnection =>
+      connection({
+        clientId,
+        address,
+        type: 'Consumer',
+        groupOrTopic: 'cg-order',
+        protocol: null,
+        version: null,
+      });
+
+    const diagnostics = analyzeClientConnections([
+      proxyRow('consumer-a', '10.0.2.10:49152'),
+      proxyRow('consumer-b', '10.0.2.11:49152'),
+      proxyRow('consumer-c', '10.0.2.12:49152'),
+    ]);
+
+    expect(diagnostics.issues.map((item) => item.code)).not.toContain('UNKNOWN_PROTOCOL');
+    expect(diagnostics.issues.map((item) => item.code)).not.toContain('UNKNOWN_VERSION');
+    expect(diagnostics.status).toBe('healthy');
+    expect(diagnostics.score).toBe(100);
   });
 
   it('detects unknown fields, invalid timestamps, and address concentration', () => {

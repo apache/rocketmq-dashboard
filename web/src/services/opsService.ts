@@ -408,7 +408,12 @@ export async function getCollectorStatus(): Promise<CollectorStatus> {
 export async function acknowledgeAlert(id: number): Promise<void> {
   if (isMockMode()) {
     const a = mockSystemAlerts.find((a: Record<string, unknown>) => a.id === id);
-    if (a) (a as Record<string, unknown>).acknowledged = true;
+    if (!a) {
+      // The endpoint answers 404 "System alert not found: <id>" (AlertService.acknowledgeAlert);
+      // acknowledging nothing must not read as a success.
+      throw new Error(`System alert not found: ${id}`);
+    }
+    (a as Record<string, unknown>).acknowledged = true;
     return;
   }
   return opsApi.acknowledgeAlert(id);
