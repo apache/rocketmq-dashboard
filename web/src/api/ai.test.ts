@@ -397,6 +397,48 @@ describe('AI API', () => {
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
+    it.each([
+      ['heartbeat', ':hb\n\n'],
+      ['agent', agentFrame({ type: 'text_delta', content: 'hi' })],
+    ])('rejectsOversizedRemainderAfter%sBeforeReadingAgainTest', async (_name, prefix) => {
+      vi.useFakeTimers();
+      const onCancel = vi.fn();
+      const response = eventStreamResponse(
+        [`${prefix}event: agent\ndata: ${'x'.repeat(1024 * 1024)}`],
+        onCancel,
+      );
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+      const failure = vi.fn();
+      const stream = openRunStream(7, body, { onEvent: vi.fn() }).catch(failure);
+
+      await vi.advanceTimersByTimeAsync(0);
+      const failedImmediately = failure.mock.calls.length === 1;
+      // Also settle the unfixed reader so a failed assertion cannot leave a pending stream.
+      await vi.advanceTimersByTimeAsync(31_000);
+      await stream;
+
+      expect(failedImmediately).toBe(true);
+      expect(failure).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'llm.stream.event_too_large' }),
+      );
+      expect(onCancel).toHaveBeenCalledOnce();
+    });
+
+    it('acceptsLargeChunksContainingIndividuallyBoundedFramesTest', async () => {
+      const content = 'x'.repeat(600 * 1024);
+      const frame = agentFrame({ type: 'text_delta', content });
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(eventStreamResponse([frame + frame + doneFrame()])),
+      );
+      const onEvent = vi.fn();
+
+      await openRunStream(7, body, { onEvent });
+
+      expect(onEvent).toHaveBeenCalledTimes(2);
+      expect(onEvent).toHaveBeenLastCalledWith({ type: 'text_delta', content });
+    });
+
     it('throwsStructuredErrorsFromErrorFramesTest', async () => {
       vi.stubGlobal(
         'fetch',
