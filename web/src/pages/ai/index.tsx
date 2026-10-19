@@ -196,7 +196,7 @@ const AiPage = () => {
                   <Button
                     size="small"
                     loading={timeline.loading}
-                    onClick={() => void timeline.refetch().catch(() => undefined)}
+                    onClick={() => void run.retryTimeline().catch(() => undefined)}
                   >
                     {t('common.retry')}
                   </Button>

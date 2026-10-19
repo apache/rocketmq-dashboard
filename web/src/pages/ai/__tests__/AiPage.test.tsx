@@ -347,6 +347,64 @@ describe('AiPage', () => {
     expect(screen.getByTestId('ai-send-stop-button')).toHaveAttribute('data-state', 'send');
   });
 
+  it('replacesRetainedAnswerAfterTimelineRetrySucceedsTest', async () => {
+    const question = 'question retained during recovery';
+    const answer = 'answer retained during recovery';
+    vi.mocked(getConversationTimeline)
+      .mockResolvedValueOnce(timelinePage([]))
+      .mockRejectedValueOnce(new Error('timeline temporarily unavailable'));
+    vi.mocked(openRunStream).mockImplementation(async (_cid, _request, handlers) => {
+      handlers.onEvent({
+        type: 'run_started',
+        runId: 41,
+        conversationId: 7,
+        title: question,
+        turn: 1,
+      });
+      handlers.onEvent({ type: 'text_delta', content: answer });
+      handlers.onEvent({ type: 'run_finished', runId: 41, status: 'COMPLETED', durationMs: 12 });
+    });
+    renderRouted('/ai/c/7');
+    const input = await typeAndWaitForReady(question);
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    const retry = await screen.findByRole('button', { name: /重\s*试/ });
+    await flushFrame();
+    expect(screen.getAllByText(question)).toHaveLength(1);
+    expect(screen.getAllByText(answer)).toHaveLength(1);
+    expect(screen.getByTestId('ai-run-error')).toHaveTextContent(
+      'timeline temporarily unavailable',
+    );
+
+    let recover!: (page: AiTimelineVO) => void;
+    vi.mocked(getConversationTimeline).mockReturnValueOnce(
+      new Promise<AiTimelineVO>((resolve) => {
+        recover = resolve;
+      }),
+    );
+    await userEvent.setup().click(retry);
+    await waitFor(() => expect(getConversationTimeline).toHaveBeenCalledTimes(3));
+    // The failed refetch left these as the only copy. Do not erase them while retrying.
+    expect(screen.getAllByText(question)).toHaveLength(1);
+    expect(screen.getAllByText(answer)).toHaveLength(1);
+    await act(async () => {
+      recover(
+        timelinePage([
+          item(1, { type: 'user', text: question }),
+          item(2, { type: 'text', text: answer }),
+          item(3, { type: 'run_status', status: 'COMPLETED' }),
+        ]),
+      );
+    });
+    await flushFrame();
+
+    expect.soft(screen.getAllByText(question)).toHaveLength(1);
+    expect.soft(screen.getAllByText(answer)).toHaveLength(1);
+    expect.soft(screen.queryByTestId('ai-run-error')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /重\s*试/ })).not.toBeInTheDocument();
+    expect(openRunStream).toHaveBeenCalledTimes(1);
+  });
+
   it('attachesToTheStillRunningRunAfterNavigatingAwayAndBackTest', async () => {
     const user = userEvent.setup();
     vi.mocked(openRunStream).mockImplementation(
