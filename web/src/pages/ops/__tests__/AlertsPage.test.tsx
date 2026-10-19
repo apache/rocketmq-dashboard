@@ -415,6 +415,7 @@ describe('AlertsPage', () => {
     await user.click(within(getRuleRow('Consumer lag')).getByRole('checkbox'));
 
     await user.click(screen.getByRole('button', { name: '批量启用' }));
+    await user.click(await screen.findByRole('button', { name: 'OK' }));
 
     await waitFor(() => {
       expect(bulkToggleAlertRules).toHaveBeenCalledTimes(1);
@@ -1007,6 +1008,7 @@ describe('AlertsPage', () => {
     await user.click(within(getRuleRow('Consumer lag')).getByRole('checkbox'));
 
     await user.click(screen.getByRole('button', { name: '批量禁用' }));
+    await user.click(await screen.findByRole('button', { name: 'OK' }));
 
     await waitFor(() => {
       expect(bulkToggleAlertRules).toHaveBeenCalledTimes(1);
@@ -1039,6 +1041,7 @@ describe('AlertsPage', () => {
     await user.click(within(getRuleRow('Consumer lag')).getByRole('checkbox'));
 
     await user.click(screen.getByRole('button', { name: '批量启用' }));
+    await user.click(await screen.findByRole('button', { name: 'OK' }));
 
     expect(await screen.findByText('2 条告警规则启用失败')).toBeInTheDocument();
     expect(within(getRuleRow('Broker disk usage')).getByRole('checkbox')).toBeChecked();
@@ -1097,6 +1100,7 @@ describe('AlertsPage', () => {
     await expectRuleRowInteractive('Broker disk usage');
     await user.click(within(getRuleRow('Broker disk usage')).getByRole('checkbox'));
     await user.click(screen.getByRole('button', { name: '批量启用' }));
+    await user.click(await screen.findByRole('button', { name: 'OK' }));
 
     await waitFor(() => {
       expect(bulkToggleAlertRules).toHaveBeenCalledWith([1], true);

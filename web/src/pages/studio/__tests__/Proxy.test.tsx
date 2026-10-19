@@ -203,6 +203,7 @@ describe('ProxyPage', () => {
     await screen.findAllByText('127.0.0.1:8081');
 
     await user.click(screen.getByRole('button', { name: '重载配置' }));
+    await user.click(await screen.findByRole('button', { name: /确\s*认/ }));
 
     await waitFor(() =>
       expect(reloadProxyConfig).toHaveBeenCalledWith('DefaultCluster', '127.0.0.1:8081'),
