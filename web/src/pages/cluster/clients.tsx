@@ -1065,10 +1065,10 @@ const ClientsPage = () => {
               <Text strong>{selectedIssue.title}</Text>
             </Descriptions.Item>
             <Descriptions.Item label={t('clients.issueDescription')}>
-              <Text>{selectedIssue.description}</Text>
+              <Text>{t(selectedIssue.description)}</Text>
             </Descriptions.Item>
             <Descriptions.Item label={t('clients.diagnosticRecommendations')}>
-              <Text>{selectedIssue.recommendation}</Text>
+              <Text>{t(selectedIssue.recommendation)}</Text>
             </Descriptions.Item>
             {selectedIssue.clientId ? (
               <Descriptions.Item label={t('clients.clientId')}>
