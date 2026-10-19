@@ -417,6 +417,7 @@ const HomePage = () => {
                 onStop={() => undefined}
                 isStreaming={false}
                 stopRequested={false}
+                canStop={false}
                 llmReady={homeLlmReady}
                 llmConfig={llmConfig}
                 model={selectedModel}

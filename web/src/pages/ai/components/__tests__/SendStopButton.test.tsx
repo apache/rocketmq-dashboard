@@ -37,12 +37,18 @@ const STATES: SendStopState[] = ['send', 'stop', 'stopping'];
 /** CJK unified ideographs plus the compatibility block: what a hard-coded 停止生成 would match. */
 const CJK = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
 
-function renderButton(state: SendStopState, canSend = true) {
+function renderButton(state: SendStopState, canSend = true, canStop = true) {
   const onSend = vi.fn();
   const onStop = vi.fn();
   const view = render(
     <LangProvider>
-      <SendStopButton state={state} canSend={canSend} onSend={onSend} onStop={onStop} />
+      <SendStopButton
+        state={state}
+        canSend={canSend}
+        canStop={canStop}
+        onSend={onSend}
+        onStop={onStop}
+      />
     </LangProvider>,
   );
   return { ...view, onSend, onStop };
@@ -57,7 +63,8 @@ describe('SendStopButton', () => {
 
   it('sendsWhenTheDraftIsSendableTest', async () => {
     const user = userEvent.setup();
-    const { onSend, onStop } = renderButton('send');
+    // The home composer has no run to stop; that must not disable an otherwise valid send.
+    const { onSend, onStop } = renderButton('send', true, false);
 
     const button = screen.getByRole('button');
     expect(button).toBeEnabled();
@@ -92,6 +99,16 @@ describe('SendStopButton', () => {
 
     expect(onStop).toHaveBeenCalledTimes(1);
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('disablesStopUntilTheRunIdIsKnownTest', async () => {
+    const user = userEvent.setup();
+    const { onSend, onStop } = renderButton('stop', false, false);
+    const button = screen.getByRole('button');
+    expect(button).toBeDisabled();
+    await user.click(button);
+    expect(onSend).not.toHaveBeenCalled();
+    expect(onStop).not.toHaveBeenCalled();
   });
 
   it('ignoresClicksWhileTheStopRequestIsInFlightTest', async () => {

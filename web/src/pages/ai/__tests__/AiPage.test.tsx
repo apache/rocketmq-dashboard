@@ -347,6 +347,48 @@ describe('AiPage', () => {
     expect(screen.getByTestId('ai-send-stop-button')).toHaveAttribute('data-state', 'send');
   });
 
+  it('disablesStopUntilTheRunStartedFrameProvidesATargetTest', async () => {
+    let handlers!: Parameters<typeof openRunStream>[2];
+    let finish!: () => void;
+    vi.mocked(openRunStream).mockImplementation((_id, _request, received) => {
+      handlers = received;
+      return new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+    });
+    renderRouted('/ai/c/7');
+    const input = await typeAndWaitForReady('wait for admission');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(openRunStream).toHaveBeenCalledTimes(1));
+
+    const button = screen.getByTestId('ai-send-stop-button');
+    expect(button).toHaveAttribute('data-state', 'stop');
+    expect(button).toBeDisabled();
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(stopRun).not.toHaveBeenCalled();
+
+    act(() => {
+      handlers.onEvent({
+        type: 'run_started',
+        runId: 41,
+        conversationId: 7,
+        title: 'wait for admission',
+        turn: 1,
+      });
+    });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    await waitFor(() => expect(stopRun).toHaveBeenCalledWith(41));
+    expect(button).toHaveAttribute('data-state', 'stopping');
+    expect(button).toBeDisabled();
+
+    await act(async () => {
+      handlers.onEvent({ type: 'run_finished', runId: 41, status: 'STOPPED', durationMs: 12 });
+      finish();
+    });
+    expect(button).toHaveAttribute('data-state', 'send');
+  });
+
   it('attachesToTheStillRunningRunAfterNavigatingAwayAndBackTest', async () => {
     const user = userEvent.setup();
     vi.mocked(openRunStream).mockImplementation(

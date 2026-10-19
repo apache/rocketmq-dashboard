@@ -72,6 +72,7 @@ function baseProps(overrides: Partial<ComposerProps> = {}): ComposerProps {
     onStop: vi.fn(),
     isStreaming: false,
     stopRequested: false,
+    canStop: true,
     llmReady: true,
     llmConfig: READY_CONFIG,
     model: 'gpt-4o',
@@ -150,6 +151,20 @@ describe('Composer', () => {
     await user.click(sendStop());
     expect(props.onStop).toHaveBeenCalledTimes(1);
     expect(props.onSend).not.toHaveBeenCalled();
+  });
+
+  it('keepsButtonAndEscapeInactiveUntilTheRunCanBeStoppedTest', () => {
+    const { props, rerenderWith } = renderComposer({ isStreaming: true, canStop: false });
+    expect(sendStop()).toHaveAttribute('data-state', 'stop');
+    expect(sendStop()).toBeDisabled();
+    fireEvent.click(sendStop());
+    fireEvent.keyDown(textarea(), { key: 'Escape' });
+    expect(props.onStop).not.toHaveBeenCalled();
+
+    rerenderWith({ isStreaming: true, canStop: true });
+    expect(sendStop()).toBeEnabled();
+    fireEvent.keyDown(textarea(), { key: 'Escape' });
+    expect(props.onStop).toHaveBeenCalledTimes(1);
   });
 
   it('showsStoppingUntilTheTerminalFramesArriveTest', async () => {

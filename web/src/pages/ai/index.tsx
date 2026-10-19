@@ -211,6 +211,7 @@ const AiPage = () => {
               onStop={() => void run.stop()}
               isStreaming={run.isStreaming}
               stopRequested={run.stopRequested}
+              canStop={run.canStop}
               llmReady={llm.llmReady}
               disabled={useMock}
               // Exact negation of canSelectModel below, so the two role checks cannot drift.

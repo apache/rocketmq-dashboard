@@ -118,6 +118,8 @@ export interface ComposerProps {
   isStreaming: boolean;
   /** Stop was requested and the terminal frames have not arrived yet. */
   stopRequested: boolean;
+  /** The active run has a known id and can accept a Stop request. */
+  canStop: boolean;
   /** Provider configured, enabled and a model selected: a send would be accepted. */
   llmReady: boolean;
   /**
@@ -192,6 +194,7 @@ const Composer = ({
   onStop,
   isStreaming,
   stopRequested,
+  canStop,
   llmReady,
   disabled = false,
   readOnlyRole = false,
@@ -271,7 +274,7 @@ const Composer = ({
       // identifying it as IME input (https://bugs.webkit.org/show_bug.cgi?id=165004).
       if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
       if (event.key === 'Escape') {
-        if (generating) {
+        if (generating && canStop) {
           event.preventDefault();
           onStop();
         }
@@ -282,7 +285,7 @@ const Composer = ({
         handleSend();
       }
     },
-    [generating, handleSend, onStop],
+    [canStop, generating, handleSend, onStop],
   );
 
   // Not wrapped in useCallback: it reads `textarea.current`, and a ref read is not a dependency the
@@ -568,6 +571,7 @@ const Composer = ({
                   <SendStopButton
                     state={sendStopState}
                     canSend={canSend}
+                    canStop={canStop}
                     onSend={handleSend}
                     onStop={onStop}
                   />

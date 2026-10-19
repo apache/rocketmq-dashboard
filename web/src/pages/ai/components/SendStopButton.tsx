@@ -49,17 +49,20 @@ export interface SendStopButtonProps {
   state: SendStopState;
   /**
    * Whether a send would be accepted right now (non-empty draft, provider ready, no run in flight).
-   * Only consulted in the `send` state: `stop` is always clickable and `stopping` always disabled.
+   * Only consulted in the `send` state; `stopping` is always disabled.
    */
   canSend: boolean;
+  /** Whether the run id is known and a Stop request can be addressed. */
+  canStop: boolean;
   onSend: () => void;
   onStop: () => void;
 }
 
-const SendStopButton = ({ state, canSend, onSend, onStop }: SendStopButtonProps) => {
+const SendStopButton = ({ state, canSend, canStop, onSend, onStop }: SendStopButtonProps) => {
   const { t } = useLang();
 
-  const disabled = state === 'stopping' || (state === 'send' && !canSend);
+  const disabled =
+    state === 'stopping' || (state === 'send' && !canSend) || (state === 'stop' && !canStop);
   const title =
     state === 'send'
       ? t('ai.composer.sendHint')
