@@ -107,6 +107,23 @@ describe('compareTopicInventories', () => {
     expect(compareTopicInventories([source], [target]).rows[0].status).toBe('MATCH');
   });
 
+  it('does not report queue drift for a vendor that carries no queue counts', () => {
+    // A vendor API without queue counts reports 0, which is a placeholder rather than a
+    // measurement: comparing it with a real count would report drift for every such topic.
+    const source = topic('Orders.Created');
+    const target = topic('Orders.Created', {
+      queueCountsAvailable: false,
+      writeQueues: 0,
+      readQueues: 0,
+    });
+
+    const result = compareTopicInventories([source], [target]);
+
+    expect(result.rows[0].status).toBe('MATCH');
+    expect(result.rows[0].differences).toEqual([]);
+    expect(result.summary.drifted).toBe(0);
+  });
+
   it('reports source-only and target-only topics', () => {
     const result = compareTopicInventories(
       [topic('source-only'), topic('shared')],
