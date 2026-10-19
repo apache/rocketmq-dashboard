@@ -421,4 +421,17 @@ class CloudCredentialServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("narrow the filters");
     }
+
+    @Test
+    void exportShouldRejectShortPageInsteadOfReturningIncompleteCsvTest() {
+        CloudCredentialVO stored = new CloudCredentialVO();
+        stored.setName("first");
+        when(credentialRepository.findPage(isNull(), isNull(), eq(1), eq(10_000)))
+                .thenReturn(PageResult.of(List.of(stored), 2, 1, 10_000));
+
+        assertThatThrownBy(() -> service.exportMaskedCsv(null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("incomplete CSV")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
+    }
 }
