@@ -18,12 +18,15 @@
 """Regression tests for the Grafana dashboard asset generator."""
 
 import json
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gen_grafana_dashboards import gauge_panel, layout_panels, specs
+from gen_grafana_dashboards import gauge_panel, layout_panels, specs, template_vars
 
 DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "src" / "main" / "resources" / "grafana"
 
@@ -81,12 +84,12 @@ class OverviewPanelsTest(unittest.TestCase):
         panels = {item["title"]: item for item in overview[3]}
         expr = panels["Broker Count"]["targets"][0]["expr"]
 
-        # rocketmq_messages_in_total carries both broker and topic labels - the same dashboard
+        # rocketmq_messages_in_total carries both node_id and topic labels - the same dashboard
         # derives its $broker and $topic template variables from them - so a bare count() returns
         # one series per broker/topic pair and reads hundreds on a two-broker cluster. The
         # neighbouring "Total Topics" panel already counts with count(count by (topic) (...)).
         self.assertEqual(
-            'count(count by (broker) (rocketmq_messages_in_total{cluster="$cluster"}))',
+            'count(count by (node_id) (rocketmq_messages_in_total{cluster="$cluster"}))',
             expr,
         )
 
@@ -98,6 +101,62 @@ class OverviewPanelsTest(unittest.TestCase):
             panels["Broker Count"]["targets"][0]["expr"],
             shipped_panel_expr("rocketmq-overview", "Broker Count"),
         )
+
+
+class NativeBrokerLabelsTest(unittest.TestCase):
+
+    def test_broker_variable_uses_native_node_id_on_every_dashboard(self):
+        expected = 'label_values(rocketmq_messages_in_total{cluster="$cluster"}, node_id)'
+        broker = next(item for item in template_vars()["list"] if item["name"] == "broker")
+        self.assertEqual(broker["query"], expected)
+        for path in DASHBOARD_DIR.glob("*.json"):
+            with self.subTest(dashboard=path.stem):
+                model = json.loads(path.read_text(encoding="utf-8"))
+                broker = next(item for item in model["templating"]["list"] if item["name"] == "broker")
+                self.assertEqual(broker["query"], expected)
+
+    def test_native_broker_panels_match_generator_and_keep_node_id_legends(self):
+        for uid, _, _, panels in specs:
+            for item in panels:
+                expr = item["targets"][0]["expr"]
+                if "rocketmq_messages_" not in expr or "$broker" not in expr:
+                    continue
+                with self.subTest(dashboard=uid, panel=item["title"]):
+                    self.assertIn('node_id="$broker"', expr)
+                    self.assertIn("sum by (node_id)", expr)
+                    self.assertEqual(item["targets"][0]["legendFormat"], "{{node_id}}")
+                    self.assertEqual(shipped_panel_expr(uid, item["title"]), expr)
+
+    @unittest.skipUnless(shutil.which("promtool"), "promtool is required for PromQL evaluation")
+    def test_native_broker_count_and_tps_against_prometheus(self):
+        # RocketMQ 5 native metrics carry node_id, not the legacy exporter broker label.
+        series = [
+            ('rocketmq_messages_in_total{cluster="prod",node_id="broker-a",topic="orders"}', "0+15x4"),
+            ('rocketmq_messages_in_total{cluster="prod",node_id="broker-a",topic="payments"}', "0+30x4"),
+            ('rocketmq_messages_in_total{cluster="prod",node_id="broker-b",topic="orders"}', "0+150x4"),
+            ('rocketmq_messages_in_total{cluster="other",node_id="broker-c",topic="orders"}', "0+1500x4"),
+            ('rocketmq_messages_out_total{cluster="prod",node_id="broker-a",topic="orders"}', "0+45x4"),
+            ('rocketmq_messages_out_total{cluster="prod",node_id="broker-b",topic="orders"}', "0+150x4"),
+        ]
+        cases = []
+        for uid, title, labels, value in [
+            ("rocketmq-overview", "Broker Count", "{}", 2),
+            ("rocketmq-broker", "Broker Messages In TPS", '{node_id="broker-a"}', 3),
+            ("rocketmq-broker", "Broker Messages Out TPS", '{node_id="broker-a"}', 3),
+            ("rocketmq-tps", "Per-Broker TPS In", '{node_id="broker-a"}', 3),
+        ]:
+            expr = shipped_panel_expr(uid, title).replace("$cluster", "prod").replace("$broker", "broker-a")
+            cases.append({"expr": expr, "eval_time": "1m",
+                          "exp_samples": [{"labels": labels, "value": value}]})
+        fixture = {"evaluation_interval": "15s", "fuzzy_compare": True, "tests": [{
+            "interval": "15s", "input_series": [{"series": name, "values": values} for name, values in series],
+            "promql_expr_test": cases,
+        }]}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "native-broker.json"
+            path.write_text(json.dumps(fixture), encoding="utf-8")
+            result = subprocess.run(["promtool", "test", "rules", str(path)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 class ShippedDashboardPanelsTest(unittest.TestCase):

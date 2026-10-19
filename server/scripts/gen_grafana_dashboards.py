@@ -96,7 +96,7 @@ def template_vars(extra=None):
             "name": "broker",
             "type": "query",
             "datasource": {"type": "prometheus", "uid": DS},
-            "query": "label_values(rocketmq_messages_in_total{cluster=\"$cluster\"}, broker)",
+            "query": "label_values(rocketmq_messages_in_total{cluster=\"$cluster\"}, node_id)",
             "refresh": 2,
             "current": {},
             "hide": 0,
@@ -173,7 +173,7 @@ specs.append((
         stat_panel(3, "Total Topics", "count(count by (topic) (rocketmq_messages_in_total{cluster=\"$cluster\"}))", 6, 8),
         stat_panel(4, "Total Consumer Groups", "count(count by (group) (rocketmq_messages_out_total{cluster=\"$cluster\"}))", 6, 8),
         stat_panel(5, "Producer Count", "max(rocketmq_producer_count{cluster=\"$cluster\"})", 6, 8),
-        stat_panel(6, "Broker Count", "count(count by (broker) (rocketmq_messages_in_total{cluster=\"$cluster\"}))", 6, 8),
+        stat_panel(6, "Broker Count", "count(count by (node_id) (rocketmq_messages_in_total{cluster=\"$cluster\"}))", 6, 8),
     ],
 ))
 
@@ -182,8 +182,8 @@ specs.append((
     "rocketmq-broker", "RocketMQ Broker",
     "Per-broker throughput, dispatch backlog and thread pool pressure.",
     [
-        ts_panel(1, "Broker Messages In TPS", "sum by (broker) (rate(rocketmq_messages_in_total{cluster=\"$cluster\",broker=\"$broker\"}[1m]))", 12, 0, "{{broker}}", "ops"),
-        ts_panel(2, "Broker Messages Out TPS", "sum by (broker) (rate(rocketmq_messages_out_total{cluster=\"$cluster\",broker=\"$broker\"}[1m]))", 12, 0, "{{broker}}", "ops"),
+        ts_panel(1, "Broker Messages In TPS", "sum by (node_id) (rate(rocketmq_messages_in_total{cluster=\"$cluster\",node_id=\"$broker\"}[1m]))", 12, 0, "{{node_id}}", "ops"),
+        ts_panel(2, "Broker Messages Out TPS", "sum by (node_id) (rate(rocketmq_messages_out_total{cluster=\"$cluster\",node_id=\"$broker\"}[1m]))", 12, 0, "{{node_id}}", "ops"),
         ts_panel(3, "Dispatch Behind Bytes", "rocketmq_dispatch_behind_bytes{cluster=\"$cluster\",broker=\"$broker\"}", 12, 8, "{{broker}}", "bytes"),
         ts_panel(4, "Thread Pool Queue Size", "rocketmq_threadpool_queue_size{cluster=\"$cluster\",broker=\"$broker\"}", 12, 8, "{{broker}}"),
     ],
@@ -229,7 +229,7 @@ specs.append((
     [
         ts_panel(1, "Cluster TPS In", "sum(rate(rocketmq_messages_in_total{cluster=\"$cluster\"}[1m]))", 12, 0, "", "ops"),
         ts_panel(2, "Cluster TPS Out", "sum(rate(rocketmq_messages_out_total{cluster=\"$cluster\"}[1m]))", 12, 0, "", "ops"),
-        ts_panel(3, "Per-Broker TPS In", "sum by (broker) (rate(rocketmq_messages_in_total{cluster=\"$cluster\",broker=\"$broker\"}[1m]))", 24, 8, "{{broker}}", "ops"),
+        ts_panel(3, "Per-Broker TPS In", "sum by (node_id) (rate(rocketmq_messages_in_total{cluster=\"$cluster\",node_id=\"$broker\"}[1m]))", 24, 8, "{{node_id}}", "ops"),
     ],
 ))
 
