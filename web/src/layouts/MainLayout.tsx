@@ -17,7 +17,7 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Layout, Menu, Breadcrumb, Avatar, Dropdown, Empty, Modal, message } from 'antd';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, matchPath, useNavigate, useLocation } from 'react-router-dom';
 import {
   House,
   Database,
@@ -166,9 +166,14 @@ const MainLayout = () => {
   const instanceCapabilities =
     capabilityState?.instanceId === selectedInstanceId ? capabilityState.capabilities : null;
 
+  const isAiRoute = Boolean(
+    matchPath('/ai', location.pathname) || matchPath('/ai/c/:conversationId', location.pathname),
+  );
   const selectedMenuKey = instanceScopedMatch
     ? `/instance/${instanceScopedMatch[1]}`
-    : location.pathname;
+    : isAiRoute
+      ? '/ai'
+      : location.pathname;
 
   const menuItems = useMemo(
     () => [
@@ -411,7 +416,6 @@ const MainLayout = () => {
     () => resultSections.flatMap((section) => section.entries),
     [resultSections],
   );
-  const isAiRoute = location.pathname === '/ai';
 
   return (
     <>
