@@ -467,6 +467,44 @@ class NotificationOutboxServiceTest {
     }
 
     @Test
+    void emailSubjectStaysOnOneLineForAMultiLineAlertTitleTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        SettingsRepository settings = mock(SettingsRepository.class);
+        AlertRepository alerts = mock(AlertRepository.class);
+        OperationAuditService audit = mock(OperationAuditService.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        RmqAlertNotificationOutbox row = new RmqAlertNotificationOutbox();
+        row.setId(20L);
+        row.setAlertId(9L);
+        row.setChannel("email");
+        row.setStatus("PENDING");
+        row.setAttemptCount(0);
+        when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
+                .thenReturn(List.of(row));
+        when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
+                any(LocalDateTime.class), anyString(), anyInt())).thenReturn(1);
+        when(mapper.update(any(), any())).thenReturn(1);
+        // The alert title is the rule's name verbatim (NativeAlertProcessor), and no rule-name
+        // constraint keeps it to one line, so a REST caller can store a name with a line break.
+        when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
+                .level(AlertLevel.warning).title("High lag\nBcc: attacker@example.com")
+                .description("high").instanceId("local").build()));
+        when(settings.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .emailRecipients("ops@example.com").build());
+
+        new NotificationOutboxService(mapper, settings, mock(AlertSilenceService.class), alerts, audit,
+                new RestTemplate(), () -> mailSender).dispatch();
+
+        // A message subject is one header line. Keeping the line break makes MimeMessage write
+        // "Subject: [RocketMQ Studio] High lag\r\n Bcc: attacker@example.com", so the rest of the
+        // rule name lands in the header as a folded continuation instead of the subject text.
+        verify(mailSender).send(argThat((SimpleMailMessage message) -> message.getSubject() != null
+                && !message.getSubject().contains("\n")
+                && !message.getSubject().contains("\r")
+                && message.getSubject().startsWith("[RocketMQ Studio] High lag")));
+    }
+
+    @Test
     void dispatchesEmailWithQuotedDisplayNameRecipientsTest() {
         RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
         SettingsRepository settings = mock(SettingsRepository.class);
