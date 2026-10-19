@@ -468,6 +468,8 @@ const AclPageContent = ({
   };
 
   const openEditUserModal = (user: NormalizedAclUser) => {
+    // Wait for the admin update before copying the user's privileges into the form.
+    if (adminUpdateInFlightRef.current.has(user.id)) return;
     setEditingUser(user);
     userForm.setFieldsValue({
       username: user.username,
@@ -992,6 +994,7 @@ const AclPageContent = ({
             size="small"
             icon={<EditOutlined />}
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
+            disabled={adminUpdatingIds.has(record.id)}
             onClick={() => openEditUserModal(record)}
           >
             {t('common.edit')}
