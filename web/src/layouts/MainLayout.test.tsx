@@ -16,10 +16,12 @@
  */
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { message } from 'antd';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { logout } from '../api/auth';
 import { LangProvider } from '../i18n/LangContext';
+import translations from '../i18n/translations';
 import useAuthStore from '../stores/authStore';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import MainLayout from './MainLayout';
@@ -133,6 +135,33 @@ describe('MainLayout authentication navigation', () => {
     expect(screen.queryByText('protected home')).not.toBeInTheDocument();
     expect(logout).toHaveBeenCalledOnce();
     expect(localStorage.getItem('token')).toBeNull();
+  });
+
+  it('reports a failed server logout in the language the console is in', async () => {
+    localStorage.setItem('rocketmq-studio-language', 'en');
+    vi.mocked(message.warning).mockClear();
+    vi.mocked(logout).mockRejectedValueOnce(new Error('server gone'));
+    render(
+      <LangProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={['/instance/topic']}>
+            <Routes>
+              <Route path="/login" element={<div>login page</div>} />
+              <Route path="/" element={<MainLayout />}>
+                <Route path="instance/topic" element={<div>protected topic</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </LangProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: translations['user.logout'].en }));
+    await waitFor(() => expect(screen.getByText('login page')).toBeInTheDocument());
+
+    // The toast has to come out of the dictionary in the active language: it used to be a
+    // literal, so an English console reported the failed server logout in Chinese.
+    expect(vi.mocked(message.warning)).toHaveBeenCalledWith(translations['user.logoutFailed'].en);
   });
 
   it('exposes global layout commands as localized semantic buttons', () => {

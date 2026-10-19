@@ -285,6 +285,24 @@ class CloudCredentialServiceTest {
     }
 
     @Test
+    void revealShouldAuditTheSecretReadWithoutRecordingTheSecretTest() {
+        CloudCredentialVO stored = new CloudCredentialVO();
+        stored.setId(9L);
+        stored.setName("prod-aliyun");
+        stored.setVendor(InstanceVendor.ALIYUN);
+        stored.setAccessKey("LTAI5tRevealKey000000009");
+        stored.setSecretKey("plain-secret");
+        when(credentialRepository.findById(9L)).thenReturn(Optional.of(stored));
+
+        service.reveal(9L);
+
+        verify(operationAuditService).record(eq("REVEAL_CLOUD_CREDENTIAL"), eq("CLOUD_CREDENTIAL"),
+                eq("9"), isNull(),
+                argThat((String detail) -> detail.contains("prod-aliyun") && !detail.contains("plain-secret")),
+                eq("SUCCESS"), isNull());
+    }
+
+    @Test
     void repositoryShouldBase64EncodeSecretTest() {
         String encoded = CredentialUtils.encodeBase64("plain-secret");
         assertThat(encoded).isNotEqualTo("plain-secret");

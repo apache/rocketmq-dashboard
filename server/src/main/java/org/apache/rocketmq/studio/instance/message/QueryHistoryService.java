@@ -114,8 +114,8 @@ public class QueryHistoryService {
                 m.put("tag", r.getTag() == null ? "" : r.getTag());
                 m.put("key", r.getKey() == null ? "" : r.getKey());
                 m.put("brokerName", r.getBrokerName() == null ? "" : r.getBrokerName());
-                m.put("queueId", r.getQueueId() == null ? 0 : r.getQueueId());
-                m.put("queueOffset", r.getQueueOffset() == null ? 0L : r.getQueueOffset());
+                m.put("queueId", r.getQueueId());
+                m.put("queueOffset", r.getQueueOffset());
                 m.put("storeTime", r.getStoreTime());
                 m.put("bornHost", r.getBornHost() == null ? "" : r.getBornHost());
                 m.put("storeHost", r.getStoreHost() == null ? "" : r.getStoreHost());

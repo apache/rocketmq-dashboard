@@ -33,6 +33,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -105,7 +106,10 @@ public class RocketMQConsumerDiagnosticsProvider implements ConsumerDiagnosticsP
         return ConsumerStackTraceVO.builder()
                 .groupName(groupName)
                 .clientId(clientId)
-                .capturedAt(LocalDateTime.now())
+                // The stack capture time follows the backend-wide UTC convention for LocalDateTime
+                // values; the frontend renders it through formatUtcDateTime. now() in the default
+                // zone would ship a wall clock no viewer outside the server's zone can interpret.
+                .capturedAt(LocalDateTime.now(ZoneOffset.UTC))
                 .threadCount(threads.size())
                 .threads(threads)
                 .build();

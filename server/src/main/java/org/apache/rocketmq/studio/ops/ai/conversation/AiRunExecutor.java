@@ -283,6 +283,14 @@ public class AiRunExecutor {
         } catch (RuntimeException exception) {
             log.error("agent run {} failed unexpectedly", run.getId(), exception);
             outcome.unexpected = exception;
+        } catch (Error error) {
+            // A RuntimeException is a failure of the run; an Error (an OOM or a stack overflow while
+            // decoding a tool payload, say) is a failure of the worker. It still has to reach the
+            // terminal write below — without this branch it skipped both catches, and decide() read an
+            // empty outcome and marked a crashed run COMPLETED.
+            log.error("agent run {} died with an error", run.getId(), error);
+            outcome.unexpected = error;
+            throw error;
         } finally {
             try {
                 finalizeRun(context, decide(context, outcome));
@@ -724,7 +732,7 @@ public class AiRunExecutor {
         private boolean successTerminalProjected;
         private boolean stopRacedSuccess;
         private LlmGatewayException gatewayFailure;
-        private RuntimeException unexpected;
+        private Throwable unexpected;
 
         /**
          * Drops everything the attempt that asked for the missing session reported, so the retry's own

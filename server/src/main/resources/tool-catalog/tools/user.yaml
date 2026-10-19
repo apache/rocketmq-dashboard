@@ -29,14 +29,15 @@ tools:
           items:
             type: object
             required:
-              - id
               - username
               - admin
               - clusters
             additionalProperties: false
             properties:
               id:
-                type: string
+                type:
+                  - string
+                  - 'null'
               username:
                 type: string
               admin:
@@ -72,13 +73,14 @@ tools:
     outputSchema:
       type: object
       required:
-        - id
         - username
         - admin
       additionalProperties: false
       properties:
         id:
-          type: string
+          type:
+            - string
+            - 'null'
         username:
           type: string
         admin:
@@ -171,13 +173,14 @@ tools:
         result:
           type: object
           required:
-            - id
             - username
             - admin
           additionalProperties: false
           properties:
             id:
-              type: string
+              type:
+                - string
+                - 'null'
             username:
               type: string
             admin:

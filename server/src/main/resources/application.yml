@@ -117,7 +117,7 @@ studio:
       orphan-run-timeout: PT10M
       stop-grace: PT3S
       workspace-dir: ${STUDIO_AI_CONVERSATION_WORKSPACE_DIR:/tmp/rocketmq-studio-ai}
-      rmqctl-enabled: true
+      rmqctl-enabled: ${STUDIO_AI_RMQCTL_ENABLED:true}
       rmqctl-server-url: ${STUDIO_AI_RMQCTL_SERVER_URL:}
       rmqctl-timeout: PT60S
   alerting:

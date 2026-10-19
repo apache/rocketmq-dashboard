@@ -417,9 +417,9 @@ export async function attachRunStream(
   await consumeRunStream(response, handlers, 'AI run stream failed');
 }
 
-export async function listTools(cluster?: string) {
+export async function listTools(instanceId?: string) {
   const res = await client.get<{ data: McpTool[] }>('/ai/tools', {
-    params: cluster ? { cluster } : undefined,
+    params: instanceId ? { instanceId } : undefined,
   });
   return res.data.data;
 }

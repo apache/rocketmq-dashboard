@@ -87,7 +87,7 @@ export interface UseConversationTimelineResult {
   error: string;
   /** True when the bounded forward walk stopped before the tail; `loadMore` continues it. */
   hasMore: boolean;
-  /** Reload the whole transcript from `seq > 0`. Awaitable: `useAgentRun` depends on that. */
+  /** Reload the whole transcript from `seq > 0`; reject on failure so live blocks are retained. */
   refetch: () => Promise<void>;
   loadMore: () => Promise<void>;
 }
@@ -105,7 +105,9 @@ export function useConversationTimeline(
   const [runSpeeds, setRunSpeeds] = useState<Map<number, number>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const requestId = useRef(0);
+  const refetchRequestId = useRef(0);
+  const activeRefetchRef = useRef<number | null>(null);
+  const loadMoreRequestId = useRef(0);
   /**
    * Request id of the in-flight `loadMore`, or null. Guards `loadMore` only — `refetch` must stay
    * callable while another load is in flight, because `useAgentRun` awaits it in a finally block.
@@ -116,6 +118,10 @@ export function useConversationTimeline(
 
   const refetch = useCallback(async (): Promise<void> => {
     if (conversationId === null) {
+      refetchRequestId.current += 1;
+      activeRefetchRef.current = null;
+      loadMoreRequestId.current += 1;
+      loadingMoreRef.current = null;
       setItems([]);
       setLoadedActiveRun(null);
       setNextAfter(null);
@@ -124,7 +130,11 @@ export function useConversationTimeline(
       return;
     }
 
-    const id = ++requestId.current;
+    const id = ++refetchRequestId.current;
+    activeRefetchRef.current = id;
+    // A newer full snapshot supersedes an incremental page that started from the old cursor.
+    loadMoreRequestId.current += 1;
+    loadingMoreRef.current = null;
     setLoading(true);
     setError('');
     try {
@@ -136,7 +146,7 @@ export function useConversationTimeline(
 
       for (let page = 0; page < maxPages; page += 1) {
         const result = await getConversationTimeline(conversationId, { after, limit });
-        if (id !== requestId.current) return;
+        if (id !== refetchRequestId.current) return;
         collected = collected.concat(result.items);
         run = result.activeRun;
         cursor = result.nextAfter;
@@ -145,15 +155,23 @@ export function useConversationTimeline(
         after = cursor;
       }
 
+      // A load-more call may have started while this request was in flight. The complete snapshot is
+      // authoritative, so its commit also invalidates that incremental write.
+      loadMoreRequestId.current += 1;
+      loadingMoreRef.current = null;
       setItems(collected);
       setLoadedActiveRun({ conversationId, run });
       setNextAfter(cursor);
       setRunSpeeds(speeds);
     } catch (loadError) {
-      if (id !== requestId.current) return;
+      if (id !== refetchRequestId.current) return;
       setError(describeThrownMessage(loadError));
+      throw loadError;
     } finally {
-      if (id === requestId.current) setLoading(false);
+      if (activeRefetchRef.current === id) {
+        activeRefetchRef.current = null;
+        if (loadingMoreRef.current === null) setLoading(false);
+      }
     }
   }, [conversationId, limit, maxPages]);
 
@@ -161,13 +179,14 @@ export function useConversationTimeline(
     if (conversationId === null || nextAfter === null || loadingMoreRef.current !== null) return;
 
     const after = nextAfter;
-    const id = ++requestId.current;
+    const id = ++loadMoreRequestId.current;
+    const refetchId = refetchRequestId.current;
     loadingMoreRef.current = id;
     setLoading(true);
     setError('');
     try {
       const result = await getConversationTimeline(conversationId, { after, limit });
-      if (id !== requestId.current) return;
+      if (id !== loadMoreRequestId.current || refetchId !== refetchRequestId.current) return;
       setItems((previous) => previous.concat(result.items));
       setLoadedActiveRun({ conversationId, run: result.activeRun });
       setNextAfter(result.nextAfter);
@@ -177,20 +196,25 @@ export function useConversationTimeline(
         return merged;
       });
     } catch (loadError) {
-      if (id !== requestId.current) return;
+      if (id !== loadMoreRequestId.current || refetchId !== refetchRequestId.current) return;
       setError(describeThrownMessage(loadError));
     } finally {
-      if (loadingMoreRef.current === id) loadingMoreRef.current = null;
-      if (id === requestId.current) setLoading(false);
+      if (loadingMoreRef.current === id) {
+        loadingMoreRef.current = null;
+        if (activeRefetchRef.current === null) setLoading(false);
+      }
     }
   }, [conversationId, limit, nextAfter]);
 
   useEffect(() => {
     // Loading is asynchronous; state updates happen after the timeline API resolves.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void refetch();
+    void refetch().catch(() => undefined);
     return () => {
-      requestId.current += 1;
+      refetchRequestId.current += 1;
+      activeRefetchRef.current = null;
+      loadMoreRequestId.current += 1;
+      loadingMoreRef.current = null;
     };
   }, [refetch]);
 

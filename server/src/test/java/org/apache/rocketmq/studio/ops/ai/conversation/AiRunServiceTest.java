@@ -262,6 +262,37 @@ class AiRunServiceTest {
     }
 
     @Test
+    void aFailingWorkspacePreparationShouldFinalizeTheRunInsteadOfStrandingItTest() {
+        // prepare() throws for configuration problems (a bound instance whose credential is gone,
+        // an unusable rmqctl-server-url). The run row is already inserted by then; if the exception
+        // simply propagates, the row stays QUEUED, every later message is refused 409 "busy", and
+        // only the scheduled orphan sweep (up to a day) reaps it. The row must reach a terminal
+        // state now, and the caller must still hear the reason.
+        when(workspace.prepare(anyLong(), any()))
+                .thenThrow(new BusinessException(404, "Instance not found: localtest"));
+
+        assertThatThrownBy(() -> service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("hello")))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getCode()).isEqualTo(404));
+
+        // The stranded-QUEUED regression: exactly one insert, updated straight to a terminal row.
+        assertThat(runInserts).hasSize(1);
+        assertThat(runInserts.get(0).getStatus()).isEqualTo(RunStatus.QUEUED.name());
+        assertThat(lastRun().getStatus()).isEqualTo(RunStatus.FAILED.name());
+        assertThat(lastRun().getStopReason()).isEqualTo(StopReason.PROVIDER_ERROR.name());
+        assertThat(registry.isLive(RUN_ID)).isFalse();
+
+        // Recovery half of the contract: the failed row is terminal, so the conversation is
+        // immediately usable again — a second message admits a new run instead of hitting the
+        // 409 the stranded-QUEUED row produced for up to a day.
+        org.mockito.Mockito.reset(workspace);
+        when(workspace.prepare(anyLong(), any())).thenReturn(Optional.of(preparation()));
+        service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("second try"));
+        assertThat(runInserts).hasSize(2);
+        assertThat(lastRun().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
+    }
+
+    @Test
     void aBlankOrOversizedMessageShouldBeRefusedBeforeARowIsWrittenTest() {
         assertThatThrownBy(() -> service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("   ")))
                 .isInstanceOfSatisfying(BusinessException.class,
@@ -289,12 +320,14 @@ class AiRunServiceTest {
             service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("a long answer"));
             assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
             assertThat(registry.isLive(RUN_ID)).isTrue();
+            // Capture the handle before stopping: stop() cancels the worker, and the worker's own
+            // finalisation removes the registration, so looking it up again afterwards races with
+            // that cleanup and is legitimately empty on a loaded machine.
+            AgentRunHandle handle = registry.handle(RUN_ID).orElseThrow();
 
             RmqAiRun stopped = service.stop(RUN_ID);
 
-            assertThat(registry.handle(RUN_ID))
-                    .get()
-                    .satisfies(handle -> assertThat(handle.abortReason()).contains(AbortReason.USER_STOP));
+            assertThat(handle.abortReason()).contains(AbortReason.USER_STOP);
             release.countDown();
             assertThat(stopped.getId()).isEqualTo(RUN_ID);
             assertThat(awaitRunStatus(RunStatus.STOPPED, Duration.ofSeconds(5))).isTrue();
@@ -317,6 +350,53 @@ class AiRunServiceTest {
         assertThat(service.stop(RUN_ID)).isSameAs(finished);
         assertThat(runUpdates).isEmpty();
         assertThat(inserted).isEmpty();
+    }
+
+    @Test
+    void secondStopOfAnAbortingRunShouldNotWriteItsOwnTerminalStateTest() {
+        RmqAiRun running = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.RUNNING);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(running));
+        when(runRepository.findActiveByConversationId(CONVERSATION_ID))
+                .thenReturn(Optional.of(running));
+        // A worker in this process owns the run and is already aborting, which is exactly what
+        // registry.stop() reports as false - the same value it returns for a run nobody owns here.
+        AgentRunHandle handle = new AgentRunHandle(RUN_ID, Duration.ofSeconds(3));
+        registry.register(RUN_ID, handle);
+        assertThat(handle.requestStop(AbortReason.USER_STOP)).isTrue();
+
+        service.stop(RUN_ID);
+
+        // The worker writes the terminal state itself; a fabricated one here would append a second
+        // terminal row and close the observers mid-flush.
+        assertThat(runUpdates).isEmpty();
+        assertThat(inserted).isEmpty();
+    }
+
+    @Test
+    void reportSpeedShouldTouchOnlyTheSpeedColumnTest() {
+        // The client reports the speed as its stream closes, which also happens mid-run when the
+        // connection drops while the run keeps executing. A full-row write read before the worker
+        // finalises would race finalizeRun's terminal update and write the stale RUNNING state back
+        // over it, resurrecting the run as active and locking the conversation with 409s until the
+        // orphan sweep reaps the row. The update must therefore carry only the id and the speed.
+        RmqAiRun running = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.RUNNING);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(running));
+
+        service.reportSpeed(RUN_ID, 42.5);
+
+        assertThat(runUpdates).hasSize(1);
+        RmqAiRun update = runUpdates.get(0);
+        assertThat(update.getId()).isEqualTo(RUN_ID);
+        assertThat(update.getTokensPerSecond()).isEqualTo(42.5);
+        // Everything the finalize path owns must stay null so updateById cannot touch those columns.
+        assertThat(update.getStatus()).isNull();
+        assertThat(update.getStopReason()).isNull();
+        assertThat(update.getFinishedAt()).isNull();
+        assertThat(update.getDurationMs()).isNull();
+        assertThat(update.getEndSeq()).isNull();
+        assertThat(update.getInputTokens()).isNull();
+        assertThat(update.getOutputTokens()).isNull();
+        assertThat(update.getGmtModified()).isNull();
     }
 
     @Test
