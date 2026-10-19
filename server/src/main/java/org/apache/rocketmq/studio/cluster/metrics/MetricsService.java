@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.model.MetricsDataSourceConfig;
 import org.apache.rocketmq.studio.model.request.MetricsDataSourceQueryRequest;
+import org.apache.rocketmq.studio.instance.InstanceService;
 import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.SettingsService;
 import org.springframework.http.HttpStatus;
@@ -64,6 +65,7 @@ public class MetricsService {
     private final MetricProfileService metricProfileService;
     private final MetricsSourceFactory metricsSourceFactory;
     private final SettingsService settingsService;
+    private final InstanceService instanceService;
 
     public MetricDataVO query(MetricQueryDTO query) {
         if (query == null) {
@@ -108,9 +110,12 @@ public class MetricsService {
      */
     public MetricDataVO queryInstance(String instanceId, MetricQueryDTO query) {
         if (!StringUtils.hasText(instanceId)) throw badRequest("Instance is required for metrics query");
+        String canonicalInstanceId = canonicalIdentifier(instanceId);
         List<DataSourceVO> boundSources = settingsService.listDataSources().stream()
                 .filter(source -> source.getInstanceIds() != null
-                        && source.getInstanceIds().contains(instanceId)).toList();
+                        && source.getInstanceIds().stream()
+                                .anyMatch(binding -> canonicalIdentifier(binding).equals(canonicalInstanceId)))
+                .toList();
         List<DataSourceVO> dedicatedSources = boundSources.stream()
                 .filter(source -> source.getInstanceIds().size() == 1).toList();
         DataSourceVO source;
@@ -137,9 +142,31 @@ public class MetricsService {
             return;
         }
         String normalizedInstanceId = StringUtils.hasText(instanceId) ? instanceId.strip() : null;
-        if (normalizedInstanceId == null || !bindings.contains(normalizedInstanceId)) {
+        if (normalizedInstanceId == null) {
+            throw badRequest("Data source " + dataSourceKey + " is not available for instance <missing>");
+        }
+        // Bindings are persisted as supplied, so a binding may address the instance by its
+        // legacy numeric id while the request uses the canonical name (or vice versa); both
+        // forms address the same instance, mirroring InstanceService.resolveInstanceId().
+        String canonicalInstanceId = canonicalIdentifier(normalizedInstanceId);
+        boolean bound = bindings.stream()
+                .anyMatch(binding -> canonicalIdentifier(binding).equals(canonicalInstanceId));
+        if (!bound) {
             throw badRequest("Data source " + dataSourceKey + " is not available for instance "
-                    + (normalizedInstanceId == null ? "<missing>" : normalizedInstanceId));
+                    + normalizedInstanceId);
+        }
+    }
+
+    /** Resolves any accepted instance identifier (canonical name or legacy numeric id) to the name. */
+    private String canonicalIdentifier(String identifier) {
+        if (!StringUtils.hasText(identifier)) {
+            return identifier;
+        }
+        try {
+            String canonical = instanceService.normalizeIdentifier(identifier);
+            return StringUtils.hasText(canonical) ? canonical : identifier;
+        } catch (RuntimeException unresolved) {
+            return identifier;
         }
     }
 
