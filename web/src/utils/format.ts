@@ -63,10 +63,7 @@ export function formatUtcDateTime(
   timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
 ): string {
   if (date === null || date === undefined || (typeof date === 'string' && !date.trim())) return '-';
-  const utcDate =
-    typeof date === 'string' && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(date.trim())
-      ? new Date(`${date}Z`)
-      : new Date(date);
+  const utcDate = typeof date === 'string' ? new Date(parseUtcDateTime(date)) : new Date(date);
   if (Number.isNaN(utcDate.getTime())) return '-';
 
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -90,6 +87,21 @@ export function formatUtcDateTime(
   return year && month && day && hour && minute && second
     ? `${year}-${month}-${day} ${hour}:${minute}:${second}`
     : '-';
+}
+
+/**
+ * Parse a UTC timestamp serialized without an offset into epoch milliseconds. Same guard as
+ * {@link formatUtcDateTime}: a value that already names its zone is parsed as-is, a zone-less
+ * one is read as UTC — without the suffix Date would treat it as browser-local instead.
+ */
+export function parseUtcDateTime(date: string | null | undefined): number {
+  if (date === null || date === undefined || !date.trim()) return Number.NaN;
+  const trimmed = date.trim();
+  const normalized = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(trimmed)
+    ? trimmed
+    : `${trimmed.replace(' ', 'T')}Z`;
+  const parsed = new Date(normalized).getTime();
+  return Number.isNaN(parsed) ? Number.NaN : parsed;
 }
 
 /**

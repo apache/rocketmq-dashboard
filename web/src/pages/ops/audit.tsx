@@ -49,7 +49,7 @@ import {
   listAuditRecords,
 } from '../../services/opsService';
 import { downloadBlob } from '../../utils/download';
-import { formatDateTime } from '../../utils/format';
+import { formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import {
   describeAuditRecord,
@@ -333,9 +333,10 @@ const AuditPage: React.FC = () => {
       title: t('audit.time'),
       dataIndex: 'timestamp',
       width: 180,
-      sorter: (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+      // The wire carries a UTC wall clock; parsing it as browser-local would shift the render
+      // by the server-viewer offset. The sorter is left to #6687's removal direction.
       defaultSortOrder: 'descend',
-      render: (timestamp: string) => formatDateTime(timestamp),
+      render: (timestamp: string) => formatUtcDateTime(timestamp),
     },
     {
       title: t('audit.operator'),
