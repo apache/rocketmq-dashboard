@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App, ConfigProvider, Form, Modal } from 'antd';
+import { App, ConfigProvider, Form, message, Modal } from 'antd';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useEffect } from 'react';
@@ -413,6 +413,56 @@ describe('Consumer confirmation ownership', () => {
       expect(consumerService.listConsumerGroupPage).not.toHaveBeenCalled();
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
       expect(screen.getByRole('row', { name: /orders-consumer/ })).toBeInTheDocument();
+    },
+  );
+  describe.each(['instance', 'navigation'] as const)(
+    'after %s departure during a confirmed deletion refresh',
+    (departure) => {
+      it.each(['single', 'batch'] as const)(
+        'does not notify when the abandoned %s refresh rejects',
+        async (kind) => {
+          const error = vi.spyOn(message, 'error');
+          const success = vi.spyOn(message, 'success');
+          renderPage();
+          const dialog = await openDelete(kind);
+          let release!: () => void;
+          const gate = new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          vi.mocked(consumerService.listConsumerGroupPage).mockImplementationOnce(async () => {
+            await gate;
+            throw new Error('refresh failed');
+          });
+          vi.mocked(consumerService.listConsumerGroupPage).mockClear();
+          await userEvent.setup().click(within(dialog).getByRole('button', { name: /^删 ?除$/ }));
+          await waitFor(() =>
+            expect(consumerService.listConsumerGroupPage).toHaveBeenCalledTimes(1),
+          );
+          await act(async () => {
+            if (departure === 'instance') await navigate('/instance/instance-b/consumer');
+            else await navigate(-1);
+          });
+          if (departure === 'instance') {
+            await waitFor(() =>
+              expect(consumerService.listConsumerGroupPage).toHaveBeenLastCalledWith(
+                expect.objectContaining({ instanceId: 'instance-b' }),
+              ),
+            );
+            await screen.findByRole('row', { name: /orders-consumer/ });
+          } else {
+            expect(screen.getByText('Another page')).toBeInTheDocument();
+          }
+          vi.mocked(consumerService.listConsumerGroupPage).mockClear();
+          await act(async () => {
+            release();
+            await gate;
+          });
+          expect(error).not.toHaveBeenCalled();
+          expect(success).not.toHaveBeenCalled();
+          expect(consumerService.listConsumerGroupPage).not.toHaveBeenCalled();
+          expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        },
+      );
     },
   );
 });

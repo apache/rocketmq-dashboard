@@ -329,6 +329,7 @@ const ConsumerPageContent = ({
     () => () => {
       // Also invalidate work that is still validating or awaiting a confirmed mutation.
       confirmationGenerationRef.current += 1;
+      groupRequestIdRef.current += 1;
       settingsRequestIdRef.current += 1;
     },
     [],

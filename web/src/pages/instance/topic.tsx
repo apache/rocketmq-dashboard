@@ -39,7 +39,6 @@ import {
   Typography,
   Spin,
   message,
-  App,
 } from 'antd';
 import type { TableColumnsType } from 'antd';
 import {
@@ -342,7 +341,9 @@ const TopicPageContent = ({
   const [sending, setSending] = useState(false);
   const [sendForm] = Form.useForm();
   const [propsMode, setPropsMode] = useState<'form' | 'text'>('form');
-  const { modal } = App.useApp();
+  // Keep confirmations inside this keyed page's lifetime instead of the application shell.
+  const [modal, confirmationHolder] = Modal.useModal();
+  const confirmationGenerationRef = useRef(0);
   const importInputRef = useRef<HTMLInputElement>(null);
   const importReadIdRef = useRef(0);
   useEffect(
@@ -368,6 +369,9 @@ const TopicPageContent = ({
 
   useEffect(
     () => () => {
+      // Invalidate confirmed mutations and any refresh already started by them.
+      confirmationGenerationRef.current += 1;
+      topicRequestIdRef.current += 1;
       syncRequestIdRef.current += 1;
     },
     [],
@@ -652,6 +656,7 @@ const TopicPageContent = ({
       sendForm.setFieldsValue({ topic: topic.name, tag: '', key: '', body: '', properties: [] });
       setSendModalOpen(true);
     } else if (key === 'delete') {
+      const generation = confirmationGenerationRef.current;
       modal.confirm({
         title: '确认删除',
         content: `确定要删除 Topic「${topic.name}」吗？此操作不可撤销。`,
@@ -659,15 +664,19 @@ const TopicPageContent = ({
         okType: 'danger',
         cancelText: '取消',
         onOk: async () => {
+          if (generation !== confirmationGenerationRef.current) return;
           try {
             await deleteTopic(topic.name, selectedInstanceId || undefined);
+            if (generation !== confirmationGenerationRef.current) return;
             // Drop the deleted row from the selection: a checked row that disappears would
             // otherwise keep the batch delete armed with a name that no longer exists, and its
             // failure path re-seeds that same selection - leaving nothing to uncheck.
             setSelectedRowKeys((previous) => previous.filter((key) => key !== topic.name));
             await reloadTopicPage();
+            if (generation !== confirmationGenerationRef.current) return;
             message.success(`Topic「${topic.name}」已删除`);
           } catch {
+            if (generation !== confirmationGenerationRef.current) return;
             message.error('删除 Topic 失败，请稍后重试');
           }
         },
@@ -1211,6 +1220,7 @@ const TopicPageContent = ({
   // ═══════════════════════════════════════════════════════════════
   return (
     <div style={{ padding: 24 }}>
+      {confirmationHolder}
       {/* ── Header ────────────────────────────────────────────── */}
       <PageHeader title={t('topic.title')} subtitle={`共 ${totalTopics} 个 Topic`} />
 
@@ -1310,20 +1320,24 @@ const TopicPageContent = ({
               danger
               icon={<DeleteOutlined />}
               onClick={() => {
-                Modal.confirm({
+                const generation = confirmationGenerationRef.current;
+                modal.confirm({
                   title: '确认批量删除',
                   content: `确定要删除选中的 ${selectedRowKeys.length} 个 Topic 吗？此操作不可撤销。`,
                   okText: '删除',
                   okType: 'danger',
                   cancelText: '取消',
                   onOk: async () => {
+                    if (generation !== confirmationGenerationRef.current) return;
                     try {
                       const names = selectedRowKeys.map(String);
                       const { deleted, failed } = await batchDeleteTopics(
                         names,
                         selectedInstanceId || undefined,
                       );
+                      if (generation !== confirmationGenerationRef.current) return;
                       if (deleted.length > 0) await reloadTopicPage();
+                      if (generation !== confirmationGenerationRef.current) return;
                       setSelectedRowKeys(failed);
 
                       if (failed.length === 0) {
@@ -1336,6 +1350,7 @@ const TopicPageContent = ({
                         message.error(`${failed.length} 个 Topic 删除失败，请稍后重试`);
                       }
                     } catch {
+                      if (generation !== confirmationGenerationRef.current) return;
                       message.error('批量删除 Topic 失败，请稍后重试');
                     }
                   },
