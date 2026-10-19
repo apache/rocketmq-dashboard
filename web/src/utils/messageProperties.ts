@@ -21,11 +21,12 @@ interface ParsedProperties {
 }
 
 // 解析批量粘贴的用户属性串：每行一个 key=value，等号只取第一个。
+// CR、LF、CRLF 及混合换行都视为记录分隔符，避免纯 CR 粘贴时后续属性被吞进前一个值。
 // 逗号属于合法属性值，不能同时作为记录分隔符，否则会破坏地址、列表等常见值。
 export const parseMessageProperties = (text: string): ParsedProperties => {
   const entries = new Map<string, string>();
   const errors: string[] = [];
-  for (const line of text.split(/\r?\n/)) {
+  for (const line of text.split(/\r\n|\r|\n/)) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     const eqIndex = trimmed.indexOf('=');
