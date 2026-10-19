@@ -172,10 +172,14 @@ public class NativeAlertProcessor {
                 // emit is gated on the save result: an alert that already moved on must
                 // not receive a RESOLVED event.
                 isolatedTx.executeWithoutResult(txStatus -> {
+                    Optional<AlertRuleVO> current = NativeAlertRulePolicy.lockMatchingRule(alertRepository, rule);
+                    if (current.isEmpty()) {
+                        return;
+                    }
                     if (!stateRepository.save(active.key(), update.state())) {
                         return;
                     }
-                    emitLifecycleEvent(rule, active.key(), update, scope.domain(),
+                    emitLifecycleEvent(current.get(), active.key(), update, scope.domain(),
                             active.instanceId(), rule.getMetric(), active.labels(), resolvedAt);
                 });
             } catch (RuntimeException error) {
