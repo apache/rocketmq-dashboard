@@ -412,6 +412,7 @@ const MessagePageContent = ({
   const [directConsumeGroup, setDirectConsumeGroup] = useState('');
   const [directConsumeClientId, setDirectConsumeClientId] = useState('');
   const [directConsumeSubmitting, setDirectConsumeSubmitting] = useState(false);
+  const directConsumeRequestRef = useRef<symbol | null>(null);
   // 直接消费的目标只能是在线的组与客户端，所以两个下拉的选项都来自后端实时数据：
   // 组来自消费组分页（按 onlineInstances > 0 过滤），客户端来自选中组的连接明细。
   const [onlineGroups, setOnlineGroups] = useState<ConsumerGroup[]>([]);
@@ -434,6 +435,7 @@ const MessagePageContent = ({
     () => () => {
       queryGenerationRef.current += 1;
       traceGenerationRef.current += 1;
+      directConsumeRequestRef.current = null;
     },
     [],
   );
@@ -730,6 +732,8 @@ const MessagePageContent = ({
 
   const openDetail = (record: MessageRecord, tab = 'content') => {
     traceGenerationRef.current += 1;
+    directConsumeRequestRef.current = null;
+    setDirectConsumeSubmitting(false);
     setSelectedMsg(record);
     setModalTab(tab);
     setModalOpen(true);
@@ -793,12 +797,15 @@ const MessagePageContent = ({
 
   const closeDetail = () => {
     traceGenerationRef.current += 1;
+    directConsumeRequestRef.current = null;
+    setDirectConsumeSubmitting(false);
     setModalOpen(false);
     setTraceLoading(false);
     setTraceError(null);
   };
 
   const handleDirectConsume = async () => {
+    if (directConsumeRequestRef.current !== null) return;
     if (
       !selectedInstanceId ||
       !selectedMsg ||
@@ -808,6 +815,8 @@ const MessagePageContent = ({
       message.warning(t('messagePage.directConsumeRequired'));
       return;
     }
+    const request = Symbol();
+    directConsumeRequestRef.current = request;
     setDirectConsumeSubmitting(true);
     try {
       const result = await consumeMessageDirectly({
@@ -817,6 +826,7 @@ const MessagePageContent = ({
         consumerGroup: directConsumeGroup.trim(),
         clientId: directConsumeClientId.trim(),
       });
+      if (directConsumeRequestRef.current !== request) return;
       const detail = [result.consumeResult, result.remark].filter(Boolean).join('：');
       message.info(
         t('messagePage.directConsumeResult', {
@@ -825,9 +835,14 @@ const MessagePageContent = ({
         }),
       );
     } catch (error) {
-      message.error(describeThrownMessage(error) || t('messagePage.directConsumeFailed'));
+      if (directConsumeRequestRef.current === request) {
+        message.error(describeThrownMessage(error) || t('messagePage.directConsumeFailed'));
+      }
     } finally {
-      setDirectConsumeSubmitting(false);
+      if (directConsumeRequestRef.current === request) {
+        directConsumeRequestRef.current = null;
+        setDirectConsumeSubmitting(false);
+      }
     }
   };
 
