@@ -16,7 +16,10 @@
 
 import io
 import json
+import os
 from pathlib import Path
+import shutil
+import stat
 import tempfile
 import unittest
 import zipfile
@@ -57,6 +60,22 @@ class LegalTest(unittest.TestCase):
             self.assertEqual(b"fixture copyright statement\n", archive.read("META-INF/legal/licenses/fixture-1.0.jar/META-INF/COPYRIGHT.txt"))
             self.assertEqual(zipfile.ZIP_STORED, archive.getinfo("BOOT-INF/lib/fixture-1.0.jar").compress_type)
             self.assertNotIn("META-INF/legal/licenses/fixture-1.0.jar/fixture/Notice.class.txt", archive.namelist())
+
+    @unittest.skipUnless(os.name == "posix", "POSIX permission bits are required")
+    def packagingPreservesJarPermissionsTest(self):
+        source = self.jar()
+        # Use the local temporary filesystem: a Windows bind mount cannot model POSIX modes.
+        with tempfile.TemporaryDirectory() as directory:
+            jar = Path(directory) / "app.jar"
+            for mode in (0o644, 0o640, 0o755):
+                with self.subTest(mode=oct(mode)):
+                    shutil.copyfile(source, jar)
+                    jar.chmod(mode)
+                    legal.package_jar(jar, Path(directory) / "legal")
+                    self.assertEqual(stat.S_IMODE(jar.stat().st_mode), mode)
+                    legal.check_jar(jar)
+                    legal.package_jar(jar, Path(directory) / "legal")
+                    self.assertEqual(stat.S_IMODE(jar.stat().st_mode), mode)
 
     def missingLicenseFailsWithoutReplacingJarTest(self):
         jar = self.jar(license_present=False)
