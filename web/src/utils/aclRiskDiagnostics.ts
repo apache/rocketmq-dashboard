@@ -96,7 +96,20 @@ const PERMISSION_ALLOW_RANK: Record<AclPermission, number> = {
   UNKNOWN: 0,
 };
 
-const OPEN_WHITELIST_VALUES = new Set(['*', '0.0.0.0/0', '::/0', '0/0']);
+// The wildcard spellings of "every address" mirror PlainAclRemoteAddressValidator#isAllAddresses.
+const OPEN_WHITELIST_VALUES = new Set([
+  '*',
+  '*.*.*.*',
+  '*:*:*:*:*:*:*:*',
+  '0.0.0.0/0',
+  '::/0',
+  '0/0',
+]);
+
+// Breadth thresholds shared by CIDR and native wildcard expressions: an IPv4 /8 and an
+// IPv6 /16 are the widest ranges still reported as broad instead of scoped.
+const IPV4_BROAD_PREFIX_BITS = 8;
+const IPV6_BROAD_PREFIX_BITS = 16;
 
 /**
  * The rule editor lets one rule carry several actions, and the repository stores them as a
@@ -131,18 +144,115 @@ const cidrPrefix = (address: string): number | null => {
   return Number.isFinite(prefix) ? prefix : null;
 };
 
+const isDecimalOctet = (value: string): boolean =>
+  /^\d{1,3}$/.test(value) && Number(value) <= 255;
+
+const isHexGroup = (value: string): boolean => /^[0-9a-f]{1,4}$/.test(value);
+
+const isDecimalRange = (value: string): boolean => {
+  const match = value.match(/^(\d{1,3})-(\d{1,3})$/);
+  if (!match) return false;
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  return start <= end && end <= 255;
+};
+
+const isHexRange = (value: string): boolean => {
+  const match = value.match(/^([0-9a-f]{1,4})-([0-9a-f]{1,4})$/);
+  if (!match) return false;
+  const start = parseInt(match[1], 16);
+  const end = parseInt(match[2], 16);
+  return start <= end && end <= 0xffff;
+};
+
+/**
+ * Mirror the IPv4 range grammar of PlainAclRemoteAddressValidator: a leading run of
+ * decimal octets, then one wildcard or decimal-range segment, then only wildcards.
+ * Return the fixed prefix length in bits, or null when the expression is not a form
+ * the plain ACL address grammar recognizes.
+ */
+const ipv4WildcardPrefixBits = (normalized: string): number | null => {
+  const segments = normalized.split('.');
+  if (segments.length !== 4 || !isDecimalOctet(segments[0])) return null;
+  let fixed = 1;
+  let sawVariable = false;
+  for (let i = 1; i < segments.length; i += 1) {
+    const segment = segments[i];
+    if (!sawVariable && isDecimalOctet(segment)) {
+      fixed += 1;
+    } else if (!sawVariable && (segment === '*' || isDecimalRange(segment))) {
+      sawVariable = true;
+    } else if (sawVariable && segment === '*') {
+      continue;
+    } else {
+      return null;
+    }
+  }
+  return sawVariable ? fixed * 8 : null;
+};
+
+/**
+ * Mirror the IPv6 range grammar of PlainAclRemoteAddressValidator: hex groups with at
+ * most one "::" run, one wildcard or hex-range segment anchored at the end (only a
+ * range may sit right before a trailing wildcard), and at least one concrete group
+ * before it. Return the fixed prefix length in bits, or null when the expression is
+ * not a form the plain ACL address grammar recognizes.
+ */
+const ipv6WildcardPrefixBits = (normalized: string): number | null => {
+  if (normalized.includes('.') || normalized.split('::').length > 2) return null;
+  const segments = normalized.split(':');
+  const lastIndex = segments.length - 1;
+  let nonEmpty = 0;
+  let fixed = 0;
+  let variableIndex = -1;
+  let variableIsStar = false;
+  for (let i = 0; i < segments.length; i += 1) {
+    const segment = segments[i];
+    if (!segment) continue;
+    nonEmpty += 1;
+    if (variableIndex < 0 && isHexGroup(segment)) {
+      fixed += 1;
+    } else if (variableIndex < 0 && (segment === '*' || isHexRange(segment))) {
+      variableIndex = i;
+      variableIsStar = segment === '*';
+    } else if (variableIndex >= 0 && segment === '*' && i === lastIndex) {
+      continue;
+    } else {
+      return null;
+    }
+  }
+  if (variableIndex < 0 || fixed < 1 || nonEmpty > 8) return null;
+  // The validator only accepts a "*" variable as the final segment, and a range
+  // variable as the final segment or right before one trailing wildcard.
+  const atEnd = variableIndex === lastIndex;
+  const beforeTrailingStar = variableIndex === lastIndex - 1 && segments[lastIndex] === '*';
+  if (variableIsStar ? !atEnd : !(atEnd || beforeTrailingStar)) return null;
+  return fixed * 16;
+};
+
 const classifyWhitelistAddress = (address: string): WhitelistClass => {
   const normalized = address.trim().toLowerCase();
   if (!normalized) return 'scoped';
   if (OPEN_WHITELIST_VALUES.has(normalized)) return 'open';
-  if (normalized.includes('*')) return 'open';
+  if (normalized.includes('*')) {
+    // Grade recognized native expressions by the same breadth thresholds as CIDR, and
+    // keep the conservative "open" verdict for anything the grammar would reject.
+    const prefixBits = normalized.includes(':')
+      ? ipv6WildcardPrefixBits(normalized)
+      : ipv4WildcardPrefixBits(normalized);
+    if (prefixBits === null) return 'open';
+    const broadPrefixBits = normalized.includes(':')
+      ? IPV6_BROAD_PREFIX_BITS
+      : IPV4_BROAD_PREFIX_BITS;
+    return prefixBits <= broadPrefixBits ? 'broad' : 'scoped';
+  }
 
   const prefix = cidrPrefix(normalized);
   if (prefix === null) return 'scoped';
   if (normalized.includes(':')) {
-    return prefix <= 16 ? 'broad' : 'scoped';
+    return prefix <= IPV6_BROAD_PREFIX_BITS ? 'broad' : 'scoped';
   }
-  return prefix <= 8 ? 'broad' : 'scoped';
+  return prefix <= IPV4_BROAD_PREFIX_BITS ? 'broad' : 'scoped';
 };
 
 const classifyWhitelist = (addresses: string[]): WhitelistClass => {

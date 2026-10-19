@@ -240,4 +240,114 @@ describe('ACL risk diagnostics', () => {
       ]),
     );
   });
+
+  it('treats bounded native IPv4 wildcards as scoped instead of critical', () => {
+    const diagnostics = analyzeAclRisk(
+      config({
+        accounts: [
+          account({ accessKey: 'svc-edge', whiteRemoteAddress: '10.0.2.*' }),
+          account({ accessKey: 'svc-office', whiteRemoteAddress: '192.168.*.*' }),
+        ],
+        accountCount: 2,
+      }),
+    );
+
+    expect(diagnostics.status).toBe('healthy');
+    expect(diagnostics.summary.broadWhitelistCount).toBe(0);
+    expect(diagnostics.issues.map((item) => item.code)).not.toContain('BROAD_ACCOUNT_WHITELIST');
+  });
+
+  it('grades a /8-sized native IPv4 wildcard as broad but not open', () => {
+    const diagnostics = analyzeAclRisk(
+      config({
+        accounts: [account({ whiteRemoteAddress: '10.*.*.*' })],
+      }),
+    );
+
+    expect(diagnostics.summary.broadWhitelistCount).toBe(1);
+    expect(diagnostics.issues).toEqual([
+      expect.objectContaining({
+        code: 'BROAD_ACCOUNT_WHITELIST',
+        severity: 'warning',
+        evidence: ['10.*.*.*'],
+      }),
+    ]);
+  });
+
+  it('follows the /16 threshold for recognized native IPv6 wildcards', () => {
+    const diagnostics = analyzeAclRisk(
+      config({
+        accounts: [
+          account({
+            accessKey: 'svc-v6-scoped',
+            whiteRemoteAddress: '1050::0005:0600:300c:1-20:*',
+          }),
+          account({ accessKey: 'svc-v6-broad', whiteRemoteAddress: '1050:1-20:*' }),
+        ],
+        accountCount: 2,
+      }),
+    );
+
+    expect(diagnostics.summary.broadWhitelistCount).toBe(1);
+    expect(diagnostics.issues).toEqual([
+      expect.objectContaining({
+        code: 'BROAD_ACCOUNT_WHITELIST',
+        severity: 'warning',
+        account: 'svc-v6-broad',
+      }),
+    ]);
+  });
+
+  it('keeps entire-address-space wildcards critical', () => {
+    const diagnostics = analyzeAclRisk(
+      config({
+        accounts: [
+          account({ accessKey: 'all-bare', whiteRemoteAddress: '*' }),
+          account({ accessKey: 'all-v4', whiteRemoteAddress: '*.*.*.*' }),
+          account({ accessKey: 'all-v6', whiteRemoteAddress: '*:*:*:*:*:*:*:*' }),
+        ],
+        accountCount: 3,
+      }),
+    );
+
+    expect(diagnostics.status).toBe('critical');
+    expect(
+      diagnostics.issues.filter((item) => item.code === 'BROAD_ACCOUNT_WHITELIST'),
+    ).toEqual([
+      expect.objectContaining({ account: 'all-bare', severity: 'critical' }),
+      expect.objectContaining({ account: 'all-v4', severity: 'critical' }),
+      expect.objectContaining({ account: 'all-v6', severity: 'critical' }),
+    ]);
+  });
+
+  it('keeps the conservative critical fallback for unrecognized wildcard forms', () => {
+    const diagnostics = analyzeAclRisk(
+      config({
+        accounts: [
+          // A concrete octet after the variable segment is outside the plain ACL grammar.
+          account({ accessKey: 'bad-v4', whiteRemoteAddress: '10.0.*.15' }),
+          account({ accessKey: 'bad-octet', whiteRemoteAddress: '300.168.*.*' }),
+          // "::1-20:*" anchors the range on the first group without a concrete prefix.
+          account({ accessKey: 'bad-v6', whiteRemoteAddress: '::1-20:*' }),
+          // A "*" variable must be the final segment, so one before a trailing wildcard
+          // and a range ahead of a compressed tail are both outside the grammar.
+          account({ accessKey: 'bad-v6-star', whiteRemoteAddress: '1050:*:*' }),
+          account({ accessKey: 'bad-v6-compressed', whiteRemoteAddress: '1050:1-20::*' }),
+          // Wildcards mixed into a CIDR mask are not a native expression either.
+          account({ accessKey: 'bad-cidr-mix', whiteRemoteAddress: '10.0.*.0/24' }),
+        ],
+        accountCount: 6,
+      }),
+    );
+
+    expect(diagnostics.status).toBe('critical');
+    expect(
+      diagnostics.issues
+        .filter((item) => item.code === 'BROAD_ACCOUNT_WHITELIST')
+        .every((item) => item.severity === 'critical'),
+    ).toBe(true);
+    expect(
+      diagnostics.issues.filter((item) => item.code === 'BROAD_ACCOUNT_WHITELIST'),
+    ).toHaveLength(6);
+  });
 });
