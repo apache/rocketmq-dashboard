@@ -16,7 +16,11 @@
  */
 package org.apache.rocketmq.studio.ops.ai.conversation;
 
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import org.apache.rocketmq.studio.ops.ai.AgentProviderRegistry;
 import org.apache.rocketmq.studio.ops.ai.LlmConfigVO;
 import org.apache.rocketmq.studio.ops.ai.LlmGatewayException;
@@ -28,6 +32,7 @@ import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEventProjector;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.RunStatus;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.StopReason;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.ThinkingSource;
+import org.apache.rocketmq.studio.ops.ai.conversation.event.TimelineEvent;
 import org.apache.rocketmq.studio.persistence.entity.RmqAiConversation;
 import org.apache.rocketmq.studio.persistence.entity.RmqAiEvent;
 import org.apache.rocketmq.studio.persistence.entity.RmqAiRun;
@@ -35,11 +40,14 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -296,6 +304,87 @@ class AiRunExecutorTest {
         assertThat(emitters.get(0).completed()).isTrue();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"text", "run_status", "serialization"})
+    void failedEventWritesShouldBeVisibleWithoutRepeatingTheProviderTerminalTest(String failedType) {
+        if ("serialization".equals(failedType)) {
+            SimpleModule module = new SimpleModule();
+            module.addSerializer(TimelineEvent.Text.class, new JsonSerializer<TimelineEvent.Text>() {
+                @Override
+                public void serialize(TimelineEvent.Text value, JsonGenerator generator,
+                                      SerializerProvider serializers) throws IOException {
+                    throw new IOException("private serialization diagnostic");
+                }
+            });
+            objectMapper.registerModule(module);
+        }
+        doAnswer(invocation -> {
+            RmqAiEvent row = invocation.getArgument(0);
+            if (failedType.equals(row.getType())) throw new IllegalStateException("private SQL diagnostic");
+            inserted.add(row);
+            return null;
+        }).when(eventRepository).insert(any(RmqAiEvent.class));
+        provider.emit(new AgentEvent.TextDelta("answer"));
+        provider.emit(new AgentEvent.ResultMeta("session-9", 12L, 3, 9,
+                AgentEventProjector.SUCCESS_SUBTYPE));
+
+        startAndRun();
+
+        assertThat(runRow().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
+        assertThat(runRow().getErrorCode()).isEqualTo("ai.timeline.persistence_failed");
+        assertThat(types()).contains("notice");
+        assertThat(emitters.get(0).eventText()).contains("history may be incomplete")
+                .doesNotContain("private SQL diagnostic");
+        assertThat(emitters.get(0).eventCount("\"type\":\"run_finished\"")).isEqualTo(1);
+        assertThat(runRow().getEndSeq()).isEqualTo(inserted.get(inserted.size() - 1).getSeq());
+        assertThat(emitters.get(0).eventCount("history may be incomplete")).isEqualTo(1);
+        if (!"serialization".equals(failedType)) {
+            verify(eventRepository).insert(argThat(row -> failedType.equals(row.getType())));
+        }
+    }
+
+    @Test
+    void persistenceWarningsShouldNotReplaceAUserStopTest() {
+        doAnswer(invocation -> {
+            RmqAiEvent row = invocation.getArgument(0);
+            if ("text".equals(row.getType())) throw new IllegalStateException("storage failed");
+            inserted.add(row);
+            return null;
+        }).when(eventRepository).insert(any(RmqAiEvent.class));
+        provider.beforeStream = options -> ((AgentRunHandle) options.getProcessSink())
+                .stop(AbortReason.USER_STOP);
+        provider.emit(new AgentEvent.TextDelta("partial"));
+        provider.emit(new AgentEvent.ResultMeta("session-9", 12L, 3, 9,
+                AgentEventProjector.SUCCESS_SUBTYPE));
+
+        startAndRun();
+
+        assertThat(runRow().getStatus()).isEqualTo(RunStatus.STOPPED.name());
+        assertThat(runRow().getStopReason()).isEqualTo(StopReason.USER_STOP.name());
+        assertThat(runRow().getErrorCode()).isEqualTo("ai.timeline.persistence_failed");
+        assertThat(emitters.get(0).eventCount("\"type\":\"run_finished\"")).isEqualTo(1);
+        assertThat(emitters.get(0).eventCount("history may be incomplete")).isEqualTo(1);
+    }
+
+    @Test
+    void persistenceWarningsShouldNotReplaceTheProviderFailureTest() {
+        doAnswer(invocation -> {
+            RmqAiEvent row = invocation.getArgument(0);
+            if ("text".equals(row.getType())) throw new IllegalStateException("storage failed");
+            inserted.add(row);
+            return null;
+        }).when(eventRepository).insert(any(RmqAiEvent.class));
+        provider.emit(new AgentEvent.TextDelta("partial"));
+        provider.failure = new LlmGatewayException(504, "llm.provider.timeout", "timed out", "retry");
+
+        startAndRun();
+
+        assertThat(runRow().getStatus()).isEqualTo(RunStatus.FAILED.name());
+        assertThat(runRow().getErrorCode()).isEqualTo("llm.provider.timeout");
+        assertThat(emitters.get(0).eventText()).contains("history may be incomplete");
+        assertThat(types()).contains("notice");
+    }
+
     @Test
     void aNonSuccessResultSubtypeShouldWriteFailedWithTheSubtypeTest() {
         // The projector persists the error and stops there: it cannot decide the run's terminal state,
@@ -468,6 +557,9 @@ class AiRunExecutorTest {
         assertThat(runRow().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
         assertThat(emitters.get(0).eventText()).contains("\"type\":\"text_delta\"");
         assertThat(emitters.get(0).completed()).isTrue();
+        assertThat(runRow().getErrorCode()).isEqualTo("ai.timeline.persistence_failed");
+        assertThat(runRow().getErrorMessage()).doesNotContain("deadlock");
+        assertThat(emitters.get(0).eventText()).contains("history may be incomplete");
     }
 
     @Test
