@@ -105,6 +105,37 @@ export async function getCluster(id: string, instanceId?: string): Promise<Clust
   return clusterApi.getCluster(id, instanceId);
 }
 
+/**
+ * The comparison scope of a NameServer drift result. NameServerConfigDiffService loads its compared
+ * keys from server/src/main/resources/cluster/nameserver-safe-config-keys.yml and returns them as
+ * comparedKeys; the drift panel then renders them as chips, so a mock list that names a key the
+ * service never compares - or omits the ones it does - advertises a comparison the product does not
+ * perform. Keep this list identical to that resource (clusterService.test.ts pins the two together).
+ */
+function nameserverComparedKeys(): string[] {
+  return [
+    'listenPort',
+    'serverWorkerThreads',
+    'serverCallbackExecutorThreads',
+    'serverSelectorThreads',
+    'serverOnewaySemaphoreValue',
+    'serverAsyncSemaphoreValue',
+    'serverChannelMaxIdleTimeSeconds',
+    'serverSocketSndBufSize',
+    'serverSocketRcvBufSize',
+    'serverPooledByteBufAllocatorEnable',
+    'useEpollNativeSelector',
+    'orderMessageEnable',
+    'returnOrderTopicConfigToBroker',
+    'enableControllerInNamesrv',
+    'enableUncleanMasterElection',
+    'notifyMinBrokerIdChanged',
+    'supportActingMaster',
+    'scanNotActiveBrokerInterval',
+    'unRegisterBrokerQueueCapacity',
+  ];
+}
+
 export async function getNameServerConfigDiff(
   clusterId: string,
   instanceId?: string,
@@ -125,7 +156,7 @@ export async function getNameServerConfigDiff(
     driftDetected,
     nodeCount: nodes.length,
     reachableNodeCount: reachableAddresses.length,
-    comparedKeys: ['listenPort', 'serverWorkerThreads', 'clientRequestThreadPoolNums'],
+    comparedKeys: nameserverComparedKeys(),
     nodes,
     differences: driftDetected
       ? [
