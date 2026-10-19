@@ -255,7 +255,8 @@ describe('MetricsExplorer', () => {
         expect(queryMetrics).not.toHaveBeenCalled();
         expect(queryByDataSource).not.toHaveBeenCalled();
         if (nextAction === 'unmount') {
-          expect(screen.queryAllByTitle('Scoped A')).toHaveLength(0);
+          // Scoped to the render container: antd keeps select-option portals on document.body.
+          expect(view.container).toBeEmptyDOMElement();
         } else {
           expect(screen.getAllByTitle('Scoped A').length).toBeGreaterThan(0);
         }
