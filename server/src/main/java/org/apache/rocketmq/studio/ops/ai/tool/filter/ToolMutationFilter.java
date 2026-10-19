@@ -26,6 +26,8 @@ import org.apache.rocketmq.studio.ops.ai.tool.service.ToolTokenService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
+
 @Component
 public class ToolMutationFilter implements ToolExecutionFilter {
 
@@ -64,11 +66,16 @@ public class ToolMutationFilter implements ToolExecutionFilter {
         if (context.definition().requiresReason()) {
             plan = plan.withWarning(L3_WARNING);
         }
+        Map<String, Object> confirmationState = invocation.confirmationState(plan);
         if (context.dryRun()) {
-            String token = tokenService.issue(context);
+            String token = confirmationState == null
+                    ? tokenService.issue(context) : tokenService.issue(context, confirmationState);
             return new MutationOutput<>(MutationOutput.Status.PLANNED, context.instanceId(), plan, token, null);
         }
 
+        if (confirmationState != null) {
+            tokenService.verifyPlan(context, confirmationState);
+        }
         Object result = chain.proceed(invocation);
         return new MutationOutput<>(MutationOutput.Status.EXECUTED, context.instanceId(), plan, null, result);
     }

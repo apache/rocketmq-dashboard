@@ -20,6 +20,8 @@ import org.apache.rocketmq.studio.ops.ai.tool.contract.plan.ToolPlan;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolHandler;
 
+import java.util.Map;
+
 public abstract class MutationToolHandler<I, R>
         implements ToolHandler<I, R> {
 
@@ -32,6 +34,14 @@ public abstract class MutationToolHandler<I, R>
     @Override
     public final Class<I> inputType() {
         return inputType;
+    }
+
+    /**
+     * Stable business state to bind to confirmation, or null to retain request-only confirmation.
+     * Opt in only when the projection excludes presentation text and volatile measurements.
+     */
+    public Map<String, Object> confirmationState(ToolPlan plan) {
+        return null;
     }
 
     public abstract ToolPlan preview(I input, ToolExecutionContext context);

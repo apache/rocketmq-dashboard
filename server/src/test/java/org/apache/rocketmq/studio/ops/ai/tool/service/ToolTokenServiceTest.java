@@ -115,6 +115,62 @@ class ToolTokenServiceTest {
         assertThatCode(() -> tokens.verify(withToken(request, token))).doesNotThrowAnyException();
     }
 
+    @Test
+    void boundTokenCanonicalizesNestedStateAndPreservesListOrderTest() {
+        Map<String, Object> before = new LinkedHashMap<>();
+        before.put("readQueues", 8);
+        before.put("writeQueues", 4);
+        Map<String, Object> state = Map.of("before", before, "after", Map.of("queues", List.of(1, 2)));
+        String token = tokens.issue(context(INPUT), state);
+        ToolExecutionContext apply = withToken(context(INPUT), token);
+        Map<String, Object> reordered = Map.of("after", Map.of("queues", List.of(1, 2)),
+                "before", Map.of("writeQueues", 4, "readQueues", 8));
+
+        assertThat(tokens.issue(context(INPUT), reordered)).isEqualTo(token);
+        assertThatCode(() -> tokens.verifyPlan(apply, reordered)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> tokens.verifyPlan(apply,
+                Map.of("before", before, "after", Map.of("queues", List.of(2, 1)))))
+                .isInstanceOfSatisfying(ToolExecutionException.class,
+                        failure -> assertThat(failure.getErrorCode()).isEqualTo("CONFLICT"));
+    }
+
+    @Test
+    void boundTokenAuthenticatesDigestBeforeComparingStateTest() {
+        Map<String, Object> state = Map.of("before", Map.of("readQueues", 8));
+        String token = tokens.issue(context(INPUT), state);
+        byte[] modified = Base64.getDecoder().decode(token);
+        int digestStart = "v1p.1789092600.".length();
+        modified[digestStart] = modified[digestStart] == 'a' ? (byte) 'b' : (byte) 'a';
+        ToolExecutionContext request = withToken(context(INPUT), Base64.getEncoder().encodeToString(modified));
+
+        assertInvalid(tokens, request);
+        assertThatThrownBy(() -> tokens.verifyPlan(request, state))
+                .isInstanceOfSatisfying(ToolExecutionException.class,
+                        failure -> assertThat(failure.getErrorCode()).isEqualTo("INVALID_ARGUMENT"));
+    }
+
+    @Test
+    void boundTokenStillBindsCallerToolInstanceInputAndExpiryTest() {
+        Map<String, Object> state = Map.of("before", Map.of("readQueues", 8));
+        String token = tokens.issue(context(INPUT), state);
+        List<ToolExecutionContext> changedRequests = List.of(
+                ToolExecutionContext.of("instance-dev", catalog.getDefinition("rmq.topic.delete"), INPUT, "alice"),
+                ToolExecutionContext.of("instance-dev", catalog.getDefinition("rmq.topic.update"), INPUT, "bob"),
+                ToolExecutionContext.of("other-instance", catalog.getDefinition("rmq.topic.update"), INPUT, "alice"),
+                context(Map.of("instanceId", "instance-dev", "topicName", "orders", "writeQueues", 16)));
+        changedRequests.forEach(request -> assertInvalid(tokens, withToken(request, token)));
+        ToolTokenService expired = new ToolTokenService(new ObjectMapper(),
+                Clock.offset(CLOCK, Duration.ofMinutes(10)), SECRET);
+        assertInvalid(expired, withToken(context(INPUT), token));
+    }
+
+    @Test
+    void boundVerificationRequiresAStateBoundTokenTest() {
+        assertThatThrownBy(() -> tokens.verifyPlan(withToken(context(INPUT), TOKEN), Map.of()))
+                .isInstanceOfSatisfying(ToolExecutionException.class,
+                        failure -> assertThat(failure.getErrorCode()).isEqualTo("INVALID_ARGUMENT"));
+    }
+
     private ToolExecutionContext context(Map<String, Object> input) {
         return ToolExecutionContext.of("instance-dev", catalog.getDefinition("rmq.topic.update"), input, "alice");
     }
