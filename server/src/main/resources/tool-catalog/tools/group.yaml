@@ -371,9 +371,6 @@ tools:
         retryMaxTimes:
           type: integer
           minimum: 0
-        delaySeconds:
-          type: integer
-          minimum: 0
         dry_run:
           type: boolean
           description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
