@@ -890,6 +890,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '查询历史加载失败',
     en: 'Failed to load query history',
   },
+  'messageHistory.summaryLoadFailed': {
+    zh: '查询历史统计加载失败',
+    en: 'Failed to load query history summary',
+  },
   'messageHistory.resultCount': { zh: '结果数', en: 'Results' },
   'messageHistory.operator': { zh: '操作者', en: 'Operator' },
   'messageHistory.queryTime': { zh: '查询时间', en: 'Query Time' },

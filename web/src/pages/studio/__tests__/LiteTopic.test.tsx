@@ -328,6 +328,36 @@ describe('LiteTopic Page', () => {
     });
   });
 
+  it('ignores an old instance lookup after the TTL dialog is reopened', async () => {
+    const first = createDeferred<Instance[]>();
+    const second = createDeferred<Instance[]>();
+    instanceApiMocks.listInstances
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise);
+    const user = userEvent.setup();
+    renderPage();
+
+    const open = await screen.findByText('延长 TTL');
+    await user.click(open);
+    await waitFor(() => expect(instanceApiMocks.listInstances).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: /取\s*消/ }));
+    await user.click(open);
+    await waitFor(() => expect(instanceApiMocks.listInstances).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      first.resolve([{ id: 1, name: 'previous-owner', vendor: 'APACHE' } as Instance]);
+    });
+    expect(document.querySelector('.ant-modal .ant-select-selection-item')).toBeNull();
+
+    await act(async () => {
+      second.resolve([{ id: 2, name: 'current-owner', vendor: 'APACHE' } as Instance]);
+    });
+    await waitFor(() =>
+      expect(document.querySelector('.ant-modal .ant-select-selection-item')?.textContent).toBe(
+        'current-owner',
+      ),
+    );
+  });
+
   it('returns to the first page when the local TTL filter changes', async () => {
     apiMocks.queryLiteTopicList.mockResolvedValue([
       ...Array.from({ length: 11 }, (_, index) => ({
