@@ -243,14 +243,15 @@ public class SettingsService {
     // The full-list endpoint is hit by every metrics tab on first paint and
     // every time the datasource dropdown re-fetches. Caching it with the
     // write paths evicted below keeps the user-visible list correct while
-    // removing a per-tab DB round trip.
-    @Cacheable(DATA_SOURCE_CACHE)
+    // removing a per-tab DB round trip. Synchronized loading also makes the ConcurrentMap
+    // cache wait for an in-flight miss before clearing it, preventing late stale publication.
+    @Cacheable(value = DATA_SOURCE_CACHE, sync = true)
     public List<DataSourceVO> listDataSources() {
         log.debug("Listing all data sources");
         return settingsRepository.findAllDataSources();
     }
 
-    @Cacheable(DATA_SOURCE_CACHE)
+    @Cacheable(value = DATA_SOURCE_CACHE, sync = true)
     public PageResult<DataSourceVO> listDataSources(String search, String type, int page, int pageSize) {
         if (page < 1) {
             throw new BusinessException(400, "page must be greater than zero");
