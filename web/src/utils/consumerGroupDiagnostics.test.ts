@@ -166,4 +166,17 @@ describe('consumer group diagnostics', () => {
       expect.arrayContaining(['SUBSCRIPTION_UNKNOWN', 'UNKNOWN_QUEUE_LAG', 'STALE_HEARTBEAT']),
     );
   });
+
+  it('reports a group whose consume stats could not be read as unknown instead of healthy', () => {
+    const diagnostics = analyzeConsumerGroupHealth(
+      group({ consumeStatsAvailable: false, totalLag: 0, delaySeconds: 0, onlineInstances: 0 }),
+      [],
+      [],
+    );
+
+    // The placeholder zeros must not read as "caught up" or as a healthy group.
+    expect(diagnostics.summary.reportedLag).toBeNull();
+    expect(diagnostics.issues.map((item) => item.code)).toContain('CONSUME_STATS_UNAVAILABLE');
+    expect(diagnostics.status).not.toBe('healthy');
+  });
 });

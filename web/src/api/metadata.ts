@@ -109,6 +109,11 @@ export interface ConsumerGroup {
   gmtCreate: string;
   gmtModified: string;
   delaySeconds: number;
+  /**
+   * Whether the provider read broker-side consume stats at all. When false, `totalLag` and
+   * `delaySeconds` are the provider's placeholder zeros rather than measurements.
+   */
+  consumeStatsAvailable?: boolean;
   instances: ConsumerInstance[];
 }
 
