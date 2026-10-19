@@ -334,7 +334,7 @@ const AuditPage: React.FC = () => {
       dataIndex: 'timestamp',
       width: 180,
       // The wire carries a UTC wall clock; parsing it as browser-local would shift the render
-      // by the server-viewer offset. The sorter is left to #6687's removal direction.
+      // by the server-viewer offset; the sorter is gone with the other page-local ones.
       defaultSortOrder: 'descend',
       render: (timestamp: string) => formatUtcDateTime(timestamp),
     },
@@ -343,14 +343,12 @@ const AuditPage: React.FC = () => {
       dataIndex: 'operator',
       width: 130,
       align: 'center',
-      sorter: (a, b) => (a.operator ?? '').localeCompare(b.operator ?? ''),
     },
     {
       title: t('audit.opType'),
       dataIndex: 'operationType',
       width: 190,
       align: 'center',
-      sorter: (a, b) => (a.operationType ?? '').localeCompare(b.operationType ?? ''),
       render: renderOperationType,
     },
     {
@@ -359,7 +357,6 @@ const AuditPage: React.FC = () => {
       width: 150,
       ellipsis: true,
       align: 'right',
-      sorter: (a, b) => (a.resourceType ?? '').localeCompare(b.resourceType ?? ''),
       render: renderResourceType,
     },
     {
@@ -367,7 +364,6 @@ const AuditPage: React.FC = () => {
       dataIndex: 'clusterId',
       width: 140,
       ellipsis: true,
-      sorter: (a, b) => (a.clusterId ?? '').localeCompare(b.clusterId ?? ''),
     },
     {
       title: t('audit.target'),
@@ -425,7 +421,6 @@ const AuditPage: React.FC = () => {
       dataIndex: 'result',
       width: 80,
       align: 'center',
-      sorter: (a, b) => (a.result ?? '').localeCompare(b.result ?? ''),
       render: renderResult,
     },
     {
