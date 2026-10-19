@@ -248,6 +248,9 @@ const ConsumerPageContent = ({
 }: ConsumerPageContentProps) => {
   const { t, lang } = useLang();
   const { token } = theme.useToken();
+  // A confirmation belongs to this keyed instance page, not to AntD's global static root.
+  const [modal, confirmationHolder] = Modal.useModal();
+  const confirmationGenerationRef = useRef(0);
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const hasSelectedInstance = Boolean(selectedInstanceId);
@@ -322,6 +325,15 @@ const ConsumerPageContent = ({
   const subscriptionRequestIdRef = useRef<Record<string, number>>({});
   const stackRequestIdRef = useRef(0);
   const settingsRequestIdRef = useRef(0);
+  useEffect(
+    () => () => {
+      // Also invalidate work that is still validating or awaiting a confirmed mutation.
+      confirmationGenerationRef.current += 1;
+      groupRequestIdRef.current += 1;
+      settingsRequestIdRef.current += 1;
+    },
+    [],
+  );
   // Consumption switches as loaded from the broker, used to detect high-risk changes
   // (disabling consumption / toggling ordered consumption) that need a confirm before saving.
   const originalSettingsRef = useRef<{
@@ -606,7 +618,7 @@ const ConsumerPageContent = ({
     }
     if (risks.length > 0) {
       const confirmed = await new Promise<boolean>((resolve) => {
-        Modal.confirm({
+        modal.confirm({
           title: '确认修改高危消费配置？',
           content: `${risks.join('；')}。`,
           okText: '确认修改',
@@ -1109,15 +1121,19 @@ const ConsumerPageContent = ({
             style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
             onClick={(e) => {
               e.stopPropagation();
-              Modal.confirm({
+              const generation = confirmationGenerationRef.current;
+              modal.confirm({
                 title: `确认删除消费组 "${record.name}"？`,
                 content: '删除后该消费组的所有配置和消费进度将被清除，此操作不可恢复。',
                 okText: '删除',
                 okButtonProps: { danger: true },
                 cancelText: '取消',
                 onOk: async () => {
+                  if (generation !== confirmationGenerationRef.current) return;
                   await deleteConsumerGroup(record.name, selectedInstanceId || undefined);
+                  if (generation !== confirmationGenerationRef.current) return;
                   await reloadConsumerGroupPage();
+                  if (generation !== confirmationGenerationRef.current) return;
                   setSelectedRowKeys((prev) => prev.filter((key) => key !== record.name));
                   message.success(`消费组 ${record.name} 已删除`);
                 },
@@ -1502,6 +1518,7 @@ const ConsumerPageContent = ({
      ═══════════════════════════════════════════ */
   return (
     <div style={{ padding: 24 }}>
+      {confirmationHolder}
       {/* ─── Header ─── */}
       <PageHeader
         title={t('group.title')}
@@ -1556,19 +1573,23 @@ const ConsumerPageContent = ({
               danger
               icon={<DeleteOutlined />}
               onClick={() => {
-                Modal.confirm({
+                const generation = confirmationGenerationRef.current;
+                modal.confirm({
                   title: '确认批量删除',
                   content: `确定要删除选中的 ${selectedRowKeys.length} 个 Group 吗？`,
                   okText: '删除',
                   okButtonProps: { danger: true },
                   cancelText: '取消',
                   onOk: async () => {
+                    if (generation !== confirmationGenerationRef.current) return;
                     const names = selectedRowKeys.map(String);
                     const { deleted, failed } = await batchDeleteConsumerGroups(
                       names,
                       selectedInstanceId || undefined,
                     );
+                    if (generation !== confirmationGenerationRef.current) return;
                     if (deleted.length > 0) await reloadConsumerGroupPage();
+                    if (generation !== confirmationGenerationRef.current) return;
                     if (failed.length > 0) {
                       message.warning(
                         `已删除 ${deleted.length} 个，失败 ${failed.length} 个：${failed.join(', ')}`,
@@ -2408,19 +2429,22 @@ const ConsumerPageContent = ({
           setDataTypeValue(undefined);
         }}
         onOk={() => {
+          const generation = confirmationGenerationRef.current;
           form
             .validateFields()
             .then((values) => {
+              if (generation !== confirmationGenerationRef.current) return;
               if (!selectedInstanceId) {
                 message.error('请先选择实例');
                 return;
               }
-              Modal.confirm({
+              modal.confirm({
                 title: '确认创建',
                 content: `将创建消费组 "${values.name}"`,
                 okText: '确认创建',
                 cancelText: '取消',
                 onOk: async () => {
+                  if (generation !== confirmationGenerationRef.current) return;
                   setSubmitting(true);
                   try {
                     await createConsumerGroup({
@@ -2433,19 +2457,22 @@ const ConsumerPageContent = ({
                       subscribedTopics: [],
                       instanceId: selectedInstanceId,
                     });
+                    if (generation !== confirmationGenerationRef.current) return;
                     // The list is server-paginated: refetch the current page so the new
                     // group lands where the server sorts it and the total stays truthful,
                     // mirroring the topic inventory behavior after create.
                     await reloadConsumerGroupPage();
+                    if (generation !== confirmationGenerationRef.current) return;
                     message.success(`消费组 ${values.name} 创建成功`);
                     setCreateModalOpen(false);
                     form.resetFields();
                     setDataTypeValue(undefined);
                   } catch {
+                    if (generation !== confirmationGenerationRef.current) return;
                     message.error(t('consumer.createFailed'));
                     throw new Error(t('consumer.createFailed'));
                   } finally {
-                    setSubmitting(false);
+                    if (generation === confirmationGenerationRef.current) setSubmitting(false);
                   }
                 },
               });
