@@ -31,7 +31,7 @@ func TestMCPConfigResolvesSelectedPathBeforeClientLaunch(t *testing.T) {
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 			app := NewApp(stdout, stderr)
 			app.Store.Getenv = emptyEnv
-			if code := app.Execute([]string{"mcp", "config", "--config", supplied}); code != 0 {
+			if code := app.Execute([]string{"mcp", "config", "--config", supplied, "--instance-id", "x"}); code != 0 {
 				t.Fatalf("exit = %d: %s", code, stderr)
 			}
 			var snippet struct {
@@ -47,7 +47,7 @@ func TestMCPConfigResolvesSelectedPathBeforeClientLaunch(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !reflect.DeepEqual(args, []string{"mcp", "stdio", "--config", expected}) {
+			if !reflect.DeepEqual(args, []string{"mcp", "stdio", "--config", expected, "--instance-id", "x"}) {
 				t.Fatalf("args = %q; want selected absolute config %q", args, expected)
 			}
 			// A client can launch in another working directory without changing the selected file.
@@ -64,7 +64,7 @@ func TestMCPConfigLeavesUnspecifiedPathUnbound(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	app := NewApp(stdout, stderr)
 	app.Store.Getenv = emptyEnv
-	if code := app.Execute([]string{"mcp", "config"}); code != 0 {
+	if code := app.Execute([]string{"mcp", "config", "--instance-id", "x"}); code != 0 {
 		t.Fatalf("exit = %d: %s", code, stderr)
 	}
 	if bytes.Contains(stdout.Bytes(), []byte("--config")) {
