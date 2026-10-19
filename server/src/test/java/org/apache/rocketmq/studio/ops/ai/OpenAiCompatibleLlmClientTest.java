@@ -328,6 +328,39 @@ class OpenAiCompatibleLlmClientTest {
     }
 
     @Test
+    void streamTimeoutIncludesTimeSpentWaitingForHeadersTest() {
+        OpenAiCompatibleLlmClient timeoutClient = new OpenAiCompatibleLlmClient(
+                objectMapper, HttpClient.newHttpClient(), Duration.ofSeconds(1));
+        server.createContext("/v1/chat/completions", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            try {
+                Thread.sleep(600);
+                exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+                exchange.sendResponseHeaders(200, 0);
+                exchange.getResponseBody().flush();
+                Thread.sleep(600);
+                exchange.getResponseBody().write("""
+                        data: {"choices":[{"delta":{"content":"late answer"}}]}
+
+                        data: [DONE]
+
+                        """.getBytes(StandardCharsets.UTF_8));
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            } finally {
+                exchange.close();
+            }
+        });
+
+        assertThatThrownBy(() -> timeoutClient.stream(
+                config("openai", "sk-test"), "hello", null, token -> { }))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(504);
+                    assertThat(exception.getCode()).isEqualTo("llm.provider.timeout");
+                });
+    }
+
+    @Test
     void ollamaShouldAllowMissingApiKeyAndOmitAuthorizationHeader() {
         AtomicReference<String> authorization = new AtomicReference<>();
         server.createContext("/v1/chat/completions", exchange -> {

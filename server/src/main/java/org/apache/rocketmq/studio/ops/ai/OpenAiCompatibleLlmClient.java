@@ -180,12 +180,13 @@ public class OpenAiCompatibleLlmClient {
         messages.add(Map.of("role", "user", "content", StringUtils.hasText(prompt) ? prompt.trim() : ""));
         requestBody.put("messages", messages);
         HttpRequest request = request(config, "text/event-stream", requestBody);
+        long startedAtNanos = System.nanoTime();
         try {
             HttpResponse<StreamBody> response = httpClient.send(request, streamBodyHandler());
             if (response.statusCode() >= 400) {
                 throw upstreamException(response.statusCode(), checkedBody(response.body().errorBody()));
             }
-            parseStreamWithTimeout(response.body().stream(), tokenConsumer);
+            parseStreamWithTimeout(response.body().stream(), tokenConsumer, startedAtNanos);
         } catch (ResponseLimitException exception) {
             throw new LlmGatewayException(502, "llm.provider.response_too_large",
                     "LLM provider stream exceeded the maximum of " + exception.limitBytes() + " bytes",
@@ -205,7 +206,7 @@ public class OpenAiCompatibleLlmClient {
         }
     }
 
-    private void parseStreamWithTimeout(InputStream input, Consumer<String> tokenConsumer)
+    private void parseStreamWithTimeout(InputStream input, Consumer<String> tokenConsumer, long startedAtNanos)
             throws IOException, InterruptedException {
         FutureTask<Void> readerTask = new FutureTask<>(() -> {
             parseStream(input, tokenConsumer);
@@ -213,7 +214,10 @@ public class OpenAiCompatibleLlmClient {
         });
         Thread.ofVirtual().name("openai-sse-reader").start(readerTask);
         try {
-            readerTask.get(requestTimeout.toNanos(), TimeUnit.NANOSECONDS);
+            // The input-stream body handler returns after headers; their wait has already
+            // consumed part of the same request budget.
+            long remainingNanos = requestTimeout.toNanos() - (System.nanoTime() - startedAtNanos);
+            readerTask.get(remainingNanos, TimeUnit.NANOSECONDS);
         } catch (TimeoutException exception) {
             throw new HttpTimeoutException("LLM provider stream timed out");
         } catch (ExecutionException exception) {
