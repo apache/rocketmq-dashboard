@@ -2486,6 +2486,10 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Failed to load consume progress for consumer group {name}',
   },
   'consumer.createFailed': { zh: '消费组创建失败', en: 'Failed to create consumer group' },
+  'consumer.settingsLoadFailed': {
+    zh: '加载消费组配置失败，请稍后重试',
+    en: 'Failed to load consumer group settings. Please retry.',
+  },
   'consumer.resetFailed': { zh: '消费位点重置失败', en: 'Failed to reset consume offset' },
 
   // ─── Home Page (additional) ───

@@ -266,6 +266,8 @@ const ConsumerPageContent = ({
   const [selectedGroup, setSelectedGroup] = useState<ConsumerGroup | null>(null);
   const [settingsGroup, setSettingsGroup] = useState<ConsumerGroup | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsReady, setSettingsReady] = useState(false);
+  const [settingsFailed, setSettingsFailed] = useState(false);
   const [settingsSubmitting, setSettingsSubmitting] = useState(false);
   const [settingsForm] = Form.useForm<{
     retryQueueNums: number;
@@ -556,6 +558,9 @@ const ConsumerPageContent = ({
     const requestId = ++settingsRequestIdRef.current;
     setSettingsGroup(group);
     setSettingsLoading(true);
+    setSettingsReady(false);
+    setSettingsFailed(false);
+    originalSettingsRef.current = null;
     try {
       const settings = await getConsumerGroupSettings(group.name, selectedInstanceId);
       if (requestId === settingsRequestIdRef.current) {
@@ -564,10 +569,12 @@ const ConsumerPageContent = ({
           consumeEnable: settings.consumeEnable,
           consumeMessageOrderly: settings.consumeMessageOrderly,
         };
+        setSettingsReady(true);
       }
     } catch {
       if (requestId === settingsRequestIdRef.current) {
-        message.error('加载消费组配置失败，请稍后重试');
+        setSettingsFailed(true);
+        message.error(t('consumer.settingsLoadFailed'));
       }
     } finally {
       if (requestId === settingsRequestIdRef.current) {
@@ -588,7 +595,7 @@ const ConsumerPageContent = ({
   };
 
   const saveSettings = async () => {
-    if (!settingsGroup || !selectedInstanceId) return;
+    if (!settingsGroup || !selectedInstanceId || !settingsReady || settingsLoading) return;
     const requestId = settingsRequestIdRef.current;
     const values = await settingsForm.validateFields();
     if (requestId !== settingsRequestIdRef.current) return;
@@ -1710,6 +1717,8 @@ const ConsumerPageContent = ({
           setShowOnlyInconsistent(false);
           setSettingsGroup(null);
           setSettingsLoading(false);
+          setSettingsReady(false);
+          setSettingsFailed(false);
           setSettingsSubmitting(false);
           originalSettingsRef.current = null;
           settingsForm.resetFields();
@@ -2224,7 +2233,27 @@ const ConsumerPageContent = ({
                 disabled: isCloudInstance,
                 children: (
                   <Spin spinning={settingsLoading}>
-                    <Form form={settingsForm} layout="vertical">
+                    {settingsFailed && (
+                      <Alert
+                        type="error"
+                        showIcon
+                        message={t('consumer.settingsLoadFailed')}
+                        style={{ marginBottom: 16 }}
+                        action={
+                          <Button
+                            size="small"
+                            onClick={() => void loadGroupSettings(selectedGroup)}
+                          >
+                            {t('common.retry')}
+                          </Button>
+                        }
+                      />
+                    )}
+                    <Form
+                      form={settingsForm}
+                      layout="vertical"
+                      disabled={!settingsReady || settingsLoading}
+                    >
                       <Row gutter={16}>
                         <Col span={8}>
                           <Form.Item label="Group 名称">
@@ -2279,6 +2308,7 @@ const ConsumerPageContent = ({
                         <Button
                           type="primary"
                           loading={settingsSubmitting}
+                          disabled={!settingsReady || settingsLoading}
                           onClick={() => void saveSettings()}
                         >
                           保存

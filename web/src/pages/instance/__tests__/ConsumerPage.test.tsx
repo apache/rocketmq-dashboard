@@ -2041,6 +2041,157 @@ describe('Consumer page', () => {
     expect(cells[protocolIndex].querySelector('.ant-tag')).toBeNull();
   });
 
+  it('doesNotSubmitConsumerSettingsAfterTheInitialReadFailsTest', async () => {
+    vi.mocked(consumerService.getConsumerGroupSettings).mockRejectedValueOnce(
+      new Error('read failed'),
+    );
+    vi.mocked(consumerService.updateConsumerGroupSettings).mockResolvedValue({
+      groupName: 'remote-cg',
+      retryQueueNums: 1,
+      retryMaxTimes: 16,
+      consumeEnable: false,
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+    const row = await screen.findByRole('row', { name: /remote-cg/ });
+    await user.click(within(row).getByRole('button', { name: '详情' }));
+    const dialog = await screen.findByRole('dialog', { name: /remote-cg/ });
+    await user.click(within(dialog).getByRole('tab', { name: '配置' }));
+    await screen.findAllByText('加载消费组配置失败，请稍后重试');
+    await user.type(within(dialog).getByLabelText('重试队列数'), '1');
+    await user.type(within(dialog).getByLabelText('最大重试次数'), '16');
+    await user.click(within(dialog).getByRole('switch', { name: '启用消费' }));
+    await user.click(within(dialog).getByRole('switch', { name: '启用消费' }));
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    expect(consumerService.updateConsumerGroupSettings).not.toHaveBeenCalled();
+    expect(within(dialog).getByRole('button', { name: /保\s*存/ })).toBeDisabled();
+    expect(within(dialog).getByLabelText('重试队列数')).toBeDisabled();
+    expect(within(dialog).getByRole('switch', { name: '启用消费' })).toBeDisabled();
+  });
+
+  it('blocksSettingsSavesWhileTheInitialReadIsPendingTest', async () => {
+    const pendingSettings = deferred<{
+      groupName: string;
+      retryQueueNums: number;
+      retryMaxTimes: number;
+      consumeEnable: boolean;
+    }>();
+    vi.mocked(consumerService.getConsumerGroupSettings).mockReturnValueOnce(
+      pendingSettings.promise,
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+    const row = await screen.findByRole('row', { name: /remote-cg/ });
+    await user.click(within(row).getByRole('button', { name: '详情' }));
+    const dialog = await screen.findByRole('dialog', { name: /remote-cg/ });
+    await user.click(within(dialog).getByRole('tab', { name: '配置' }));
+    await waitFor(() => expect(consumerService.getConsumerGroupSettings).toHaveBeenCalledTimes(1));
+    expect(within(dialog).getByRole('button', { name: /保\s*存/ })).toBeDisabled();
+    expect(within(dialog).getByLabelText('重试队列数')).toBeDisabled();
+    expect(within(dialog).getByLabelText('最大重试次数')).toBeDisabled();
+    expect(within(dialog).getByRole('switch', { name: '启用消费' })).toBeDisabled();
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+    expect(consumerService.updateConsumerGroupSettings).not.toHaveBeenCalled();
+    await act(async () =>
+      pendingSettings.resolve({
+        groupName: 'remote-cg',
+        retryQueueNums: 1,
+        retryMaxTimes: 16,
+        consumeEnable: true,
+      }),
+    );
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: /保\s*存/ })).toBeEnabled(),
+    );
+    expect(within(dialog).getByRole('switch', { name: '启用消费' })).toBeChecked();
+  });
+
+  it('retriesAFailedInitialSettingsReadBeforeAllowingConfirmedChangesTest', async () => {
+    vi.mocked(consumerService.getConsumerGroupSettings)
+      .mockRejectedValueOnce(new Error('read failed'))
+      .mockResolvedValueOnce({
+        groupName: 'remote-cg',
+        retryQueueNums: 1,
+        retryMaxTimes: 16,
+        consumeEnable: true,
+      });
+    vi.mocked(consumerService.updateConsumerGroupSettings).mockResolvedValue({
+      groupName: 'remote-cg',
+      retryQueueNums: 1,
+      retryMaxTimes: 16,
+      consumeEnable: false,
+    });
+    const confirm = vi.spyOn(Modal, 'confirm');
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+    const row = await screen.findByRole('row', { name: /remote-cg/ });
+    await user.click(within(row).getByRole('button', { name: '详情' }));
+    const dialog = await screen.findByRole('dialog', { name: /remote-cg/ });
+    await user.click(within(dialog).getByRole('tab', { name: '配置' }));
+    await screen.findAllByText('加载消费组配置失败，请稍后重试');
+    await user.click(within(dialog).getByRole('button', { name: /重\s*试/ }));
+    await waitFor(() => expect(within(dialog).getByLabelText('重试队列数')).toHaveValue('1'));
+    expect(consumerService.getConsumerGroupSettings).toHaveBeenCalledTimes(2);
+    expect(within(dialog).getByRole('switch', { name: '启用消费' })).toBeChecked();
+    await user.click(within(dialog).getByRole('switch', { name: '启用消费' }));
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    expect(consumerService.updateConsumerGroupSettings).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole('button', { name: '确认修改' }));
+    await waitFor(() =>
+      expect(consumerService.updateConsumerGroupSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          instanceId: 'instance-1',
+          name: 'remote-cg',
+          retryQueueNums: 1,
+          retryMaxTimes: 16,
+          consumeEnable: false,
+        }),
+      ),
+    );
+  });
+
+  it('doesNotUnlockAnotherGroupsSettingsWhenAClosedReadCompletesTest', async () => {
+    const settings = { groupName: 'remote-cg', retryQueueNums: 1, retryMaxTimes: 16 };
+    const previousRead = deferred<typeof settings>();
+    const currentRead = deferred<typeof settings>();
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([group, { ...group, name: 'other-cg' }]),
+    );
+    vi.mocked(consumerService.refreshConsumerGroup).mockImplementation(async (name) => ({
+      ...group,
+      name,
+    }));
+    vi.mocked(consumerService.getConsumerGroupSettings)
+      .mockReturnValueOnce(previousRead.promise)
+      .mockReturnValueOnce(currentRead.promise);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+    const row = await screen.findByRole('row', { name: /remote-cg/ });
+    await user.click(within(row).getByRole('button', { name: '详情' }));
+    const firstDialog = await screen.findByRole('dialog', { name: /remote-cg/ });
+    await user.click(within(firstDialog).getByRole('tab', { name: '配置' }));
+    await waitFor(() => expect(consumerService.getConsumerGroupSettings).toHaveBeenCalledTimes(1));
+    fireEvent.click(within(firstDialog).getByRole('button', { name: 'Close' }));
+    fireEvent.click(
+      within(screen.getByRole('row', { name: /other-cg/ })).getByRole('button', { name: '详情' }),
+    );
+    const currentDialog = await screen.findByRole('dialog', { name: /other-cg/ });
+    await user.click(within(currentDialog).getByRole('tab', { name: '配置' }));
+    await waitFor(() => expect(consumerService.getConsumerGroupSettings).toHaveBeenCalledTimes(2));
+    await act(async () => previousRead.resolve(settings));
+    expect(within(currentDialog).getByRole('button', { name: /保\s*存/ })).toBeDisabled();
+    expect(within(currentDialog).getByLabelText('重试队列数')).toHaveValue('');
+    await act(async () =>
+      currentRead.resolve({ ...settings, groupName: 'other-cg', retryQueueNums: 3 }),
+    );
+    await waitFor(() =>
+      expect(within(currentDialog).getByRole('button', { name: /保\s*存/ })).toBeEnabled(),
+    );
+    expect(within(currentDialog).getByLabelText('重试队列数')).toHaveValue('3');
+  });
+
   it('edits retry settings from the detail modal settings tab', async () => {
     vi.mocked(consumerService.getConsumerGroupSettings).mockResolvedValue({
       groupName: 'remote-cg',
