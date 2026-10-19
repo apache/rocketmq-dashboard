@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+import { ConfigProvider, theme } from 'antd';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import PromptTemplateModal from '../PromptTemplateModal';
@@ -25,6 +26,14 @@ import {
   deleteCustomPromptTemplate,
 } from '../../promptTemplates';
 import useAuthStore from '../../../../stores/authStore';
+
+// Comparing raw CSS text would depend on how each side spells a colour, so both the element's
+// value and the expected token go through the same parser before they are compared.
+const normalizeBackground = (value: string): string => {
+  const probe = document.createElement('span');
+  probe.style.background = value;
+  return probe.style.background;
+};
 
 describe('prompt templates with denied storage access', () => {
   beforeAll(() => {
@@ -111,6 +120,37 @@ describe('prompt templates with denied storage access', () => {
       if (original === null) storage.removeItem('rocketmq-studio-ai-prompt-templates');
       else storage.setItem('rocketmq-studio-ai-prompt-templates', original);
     }
+  });
+
+  it('rendersTheSaveBlockOnThemeTokensInDarkModeTest', async () => {
+    render(
+      <ConfigProvider theme={{ algorithm: theme.darkAlgorithm }}>
+        <PromptTemplateModal
+          open
+          onClose={vi.fn()}
+          inputValue=""
+          mode="chat"
+          enhance={false}
+          onApply={vi.fn()}
+        />
+      </ConfigProvider>,
+    );
+
+    const saveBlock = (await screen.findByText('保存当前输入')).closest('div') as HTMLElement;
+    // Fixed light values leave the dark theme's light text unreadable on them, so the block has
+    // to follow the theme's fill and border tokens instead.
+    const dark = theme.getDesignToken({ algorithm: theme.darkAlgorithm });
+    expect(normalizeBackground(saveBlock.style.background)).toBe(
+      normalizeBackground(dark.colorFillQuaternary),
+    );
+    expect(normalizeBackground(saveBlock.style.background)).not.toBe(
+      normalizeBackground('#fafafa'),
+    );
+    // Same parser trick for the border: jsdom spells the token's hex as rgb(), so both sides of
+    // the comparison go through a probe before they are matched.
+    const borderProbe = document.createElement('span');
+    borderProbe.style.border = `1px solid ${dark.colorBorderSecondary}`;
+    expect(saveBlock.style.border).toBe(borderProbe.style.border);
   });
 });
 
