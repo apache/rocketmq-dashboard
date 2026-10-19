@@ -28,6 +28,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
+import org.apache.rocketmq.studio.common.util.CsvUtil;
 import org.apache.rocketmq.studio.common.util.EntityIds;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.cluster.broker.BrokerVO;
@@ -59,6 +60,9 @@ public class AclService {
     private static final SecureRandom CREDENTIAL_RANDOM = new SecureRandom();
     private static final int DEFAULT_RULE_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
+    private static final int MAX_EXPORT_USERS = 10_000;
+    private static final String USERS_EXPORT_CSV_HEADER = "User ID,Username,Access Key,Admin,Clusters,"
+            + "Read Permission,Write Permission,IP Whitelist,Created\r\n";
     /** Broker ACL 2.0 subjects are prefixed with {@code User:}; the store uses {@code user:}. */
     private static final String SUBJECT_PREFIX = "User:";
     private static final String USER_TYPE_SUPER = "Super";
@@ -207,14 +211,7 @@ public class AclService {
             throw new BusinessException(400, "page must be >= 1 and pageSize must be between 1 and 100");
         }
         if (isTencentInstance(instanceId)) {
-            String query = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
-            List<AclUserVO> users = tencentAclService.listUsers(instanceId).stream()
-                .filter(user -> query.isEmpty()
-                        || containsIgnoreCase(user.getUsername(), query)
-                        || containsIgnoreCase(user.getAccessKey(), query))
-                .sorted(Comparator.comparing(AclUserVO::getGmtCreate, Comparator.nullsLast(Comparator.reverseOrder()))
-                        .thenComparing(AclUserVO::getId, Comparator.nullsLast(Comparator.naturalOrder())))
-                .toList();
+            List<AclUserVO> users = filterAndSortTencentUsers(instanceId, keyword);
             int from = (int) Math.min(Pagination.pageOffset(page, pageSize), users.size());
             int to = Math.min(from + pageSize, users.size());
             return PageResult.of(
@@ -225,6 +222,74 @@ public class AclService {
                 StringUtils.hasText(keyword) ? keyword.trim() : null, page, pageSize);
         return PageResult.of(result.getItems().stream().map(this::maskCredentials).toList(),
                 result.getTotal(), result.getPage(), result.getSize());
+    }
+
+    /**
+     * Renders the filtered ACL account inventory as a CSV document for the export endpoint. The
+     * rows and the keyword filter are the same ones the users table reads, so the file matches
+     * what the operator sees after typing a keyword; credentials are masked exactly like the
+     * list view and the secret key has no column at all. The inventory is materialized, so the
+     * row count is bounded.
+     *
+     * <p>Tencent instances are exported with a single provider list call: paging that branch
+     * would re-list the whole directory for every page and the pages are not transactional, so
+     * rows could duplicate or vanish between pages of a document meant for access review.
+     */
+    public String exportUsersCsv(String instanceId, String keyword) {
+        String query = keyword == null ? null : keyword.strip();
+        List<AclUserVO> users;
+        if (isTencentInstance(instanceId)) {
+            users = filterAndSortTencentUsers(instanceId, query).stream()
+                    .map(this::maskCredentials)
+                    .toList();
+            requireWithinExportBound(users.size());
+            return renderUsersCsv(users);
+        }
+        users = new ArrayList<>();
+        int page = 1;
+        PageResult<AclUserVO> chunk;
+        do {
+            chunk = pageUsers(instanceId, page, MAX_PAGE_SIZE, query);
+            if (page == 1) {
+                requireWithinExportBound(chunk.getTotal());
+            }
+            users.addAll(chunk.getItems());
+            page++;
+        } while (users.size() < chunk.getTotal() && !chunk.getItems().isEmpty());
+        return renderUsersCsv(users);
+    }
+
+    private void requireWithinExportBound(long recordCount) {
+        if (recordCount > MAX_EXPORT_USERS) {
+            throw new BusinessException(400, "ACL user export exceeds the maximum of "
+                    + MAX_EXPORT_USERS + " records; narrow the keyword filter");
+        }
+    }
+
+    /**
+     * One provider call shared by the users page and the export so both show the same rows in
+     * the same order; the keyword filter mirrors the repository-side search semantics.
+     */
+    private List<AclUserVO> filterAndSortTencentUsers(String instanceId, String keyword) {
+        String query = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
+        return tencentAclService.listUsers(instanceId).stream()
+            .filter(user -> query.isEmpty()
+                    || containsIgnoreCase(user.getUsername(), query)
+                    || containsIgnoreCase(user.getAccessKey(), query))
+            .sorted(Comparator.comparing(AclUserVO::getGmtCreate, Comparator.nullsLast(Comparator.reverseOrder()))
+                    .thenComparing(AclUserVO::getId, Comparator.nullsLast(Comparator.naturalOrder())))
+            .toList();
+    }
+
+    private static String renderUsersCsv(List<AclUserVO> users) {
+        StringBuilder csv = new StringBuilder("\uFEFF").append(USERS_EXPORT_CSV_HEADER);
+        for (AclUserVO user : users) {
+            CsvUtil.appendRow(csv, user.getId(), user.getUsername(), user.getAccessKey(), user.isAdmin(),
+                    String.join(";", user.getClusters() == null ? List.of() : user.getClusters()),
+                    user.getPermRead(), user.getPermWrite(), user.getWhiteRemoteAddress(),
+                    user.getGmtCreate());
+        }
+        return csv.toString();
     }
 
 

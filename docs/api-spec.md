@@ -155,6 +155,7 @@
 | 111 | GET | `/api/groups/:name/refresh` | 刷新单个消费组 |
 | 112 | GET | `/api/groups/:name/instances/:clientId/stack` | 消费者线程栈 |
 | 113 | POST | `/api/groups/reset-offset/preview` | 预览重置消费位点 |
+| 114 | GET | `/api/acl/users/export` | 导出 ACL 用户清单（CSV） |
 
 ## 通用响应格式
 
@@ -1624,6 +1625,25 @@ GET /api/acl/users/:id/credentials
 返回单个用户的明文 AccessKey / SecretKey（存储为 base64，读取时解码）。明文凭证只通过该显式端点提供；用户列表与集群 ACL 概要均只返回脱敏值。
 
 **Response `data`:** `AclUser`（`accessKey` / `secretKey` 为明文）
+
+### 7.11 导出 ACL 用户清单
+
+```
+GET /api/acl/users/export?instanceId={instanceId}&keyword={keyword}
+```
+
+导出当前过滤条件下的全部 ACL 账号为 CSV 文档（不分页，返回全部匹配记录）。`keyword` 的过滤行为与 7.4 的用户列表一致，导出内容即用户表格在当前关键字下看到的全部行。Apache 实例复用用户列表的同一个分页查询逐页读取；Tencent 实例只发起一次云端账号列表调用，在内存中完成过滤与排序（避免逐页拉取全量目录导致行重复或丢失）。
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 否 | 实例 ID |
+| `keyword` | `string` | 否 | 按用户名或 AccessKey 过滤 |
+
+**Response `data`:** 带 UTF-8 BOM 的 CSV 字符串。CSV 列依次为 `User ID` / `Username` / `Access Key`（脱敏值）/ `Admin` / `Clusters`（`;` 连接）/ `Read Permission` / `Write Permission` / `IP Whitelist` / `Created`；字段使用双引号包裹并转义逗号、双引号和换行符。没有 Secret Key 列，所有凭证均为脱敏值，与 7.4 的列表展示一致。
+
+匹配记录超过 10000 条时接口返回 HTTP 400（`ACL user export exceeds the maximum of 10000 records; narrow the keyword filter`）。
 
 ---
 
