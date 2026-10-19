@@ -119,8 +119,9 @@ class MybatisPlusInstanceRepositoryTest {
 
         ArgumentCaptor<QueryWrapper<RmqInstance>> query = ArgumentCaptor.forClass(QueryWrapper.class);
         verify(instanceMapper).selectList(query.capture());
+        assertThat(query.getValue().getSqlSegment()).contains("name LIKE", "endpoint LIKE", "remark LIKE");
         assertThat(query.getValue().getParamNameValuePairs().values())
-                .containsExactly("%prod\\_\\%\\\\east%", "%prod\\_\\%\\\\east%",
+                .containsExactlyInAnyOrder("%prod\\_\\%\\\\east%", "%prod\\_\\%\\\\east%",
                         "%prod\\_\\%\\\\east%");
     }
 
@@ -134,7 +135,7 @@ class MybatisPlusInstanceRepositoryTest {
         verify(instanceMapper).selectList(query.capture());
         assertThat(query.getValue().getSqlSegment()).contains("type =", "name LIKE", "endpoint LIKE", "remark LIKE");
         assertThat(query.getValue().getParamNameValuePairs().values())
-                .containsExactly(InstanceType.CLOUD.name(), "%tenant\\_50\\%%", "%tenant\\_50\\%%",
+                .containsExactlyInAnyOrder(InstanceType.CLOUD.name(), "%tenant\\_50\\%%", "%tenant\\_50\\%%",
                         "%tenant\\_50\\%%");
     }
 
