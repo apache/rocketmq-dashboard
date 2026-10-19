@@ -156,6 +156,25 @@ describe('Audit page', () => {
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:audit');
   });
 
+  it('surfaces the export cap instead of telling the user to retry', async () => {
+    vi.mocked(opsService.exportAuditLogs).mockRejectedValueOnce({
+      response: {
+        data: {
+          code: 400,
+          message: 'Audit log export exceeds the maximum of 10000 records; narrow the filters',
+        },
+      },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findAllByText('topic-a')).not.toHaveLength(0);
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+
+    expect(await screen.findByText(/narrow the filters/)).toBeInTheDocument();
+    expect(screen.queryByText('导出审计日志失败，请稍后重试')).not.toBeInTheDocument();
+  });
+
   it('renders control-plane audit labels and parsed detail values', async () => {
     vi.mocked(opsService.listAuditRecords).mockResolvedValueOnce({
       items: [
