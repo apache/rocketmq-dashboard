@@ -383,7 +383,9 @@ describe('Audit page', () => {
     const user = userEvent.setup();
     renderWithProviders(<AuditPage />);
 
-    expect(await screen.findByRole('button', { name: '查看 topic-a 操作时间线' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: '查看 topic-a 操作时间线' }),
+    ).toBeInTheDocument();
     expect(await screen.findByText('80')).toBeInTheDocument();
     vi.mocked(opsService.listAuditRecords).mockRejectedValueOnce(new Error('records offline'));
     vi.mocked(opsService.getAuditSummary).mockRejectedValueOnce(new Error('summary offline'));
@@ -393,7 +395,9 @@ describe('Audit page', () => {
     await waitFor(() => expect(opsService.listAuditRecords).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(opsService.getAuditSummary).toHaveBeenCalledTimes(2));
     await waitFor(() =>
-      expect(screen.queryByRole('button', { name: '查看 topic-a 操作时间线' })).not.toBeInTheDocument(),
+      expect(
+        screen.queryByRole('button', { name: '查看 topic-a 操作时间线' }),
+      ).not.toBeInTheDocument(),
     );
     expect(screen.queryByText('80')).not.toBeInTheDocument();
     expect(screen.getByText('获取数据失败')).toBeInTheDocument();
