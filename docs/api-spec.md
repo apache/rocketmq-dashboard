@@ -1041,7 +1041,7 @@ POST /api/topics/update
 | `clusterId` | `string` | 否 | 所属集群；Apache 写路径按实例与所有权记录解析目标集群，不读取该字段 |
 | `writeQueues` | `number` | 否 | 写队列数，须 ≥ 0；缺省或非正数时保留现值 |
 | `readQueues` | `number` | 否 | 读队列数，须 ≥ 0；缺省或非正数时保留现值 |
-| `perm` | `string` | 否 | 权限，默认 `RW` |
+| `perm` | `string` | 否 | Apache: an explicit value updates permissions; omission preserves each existing Broker's live permission mask and leaves the stored permission unchanged. A new Broker uses the stored permission, falling back to `RW` when unavailable. |
 | `remark` | `string` | 否 | 备注 |
 
 **Response `data`:** `Topic`

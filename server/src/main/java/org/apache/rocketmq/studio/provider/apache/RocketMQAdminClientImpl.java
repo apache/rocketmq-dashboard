@@ -401,10 +401,14 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 // Preflight every broker before any write so a failed read cannot erase its
                 // configuration or leave earlier brokers updated. Each broker keeps its flags.
                 for (String addr : brokerAddrs.stream().sorted().toList()) {
-                    TopicConfig topicConfig = topicConfigForUpdate(admin, addr, topicName);
+                    TopicConfig topicConfig = topicConfigForUpdate(admin, addr, topicName, perm);
                     topicConfig.setWriteQueueNums(writeQueues);
                     topicConfig.setReadQueueNums(readQueues);
-                    topicConfig.setPerm(perm);
+                    // A broker may have been made read-only outside Studio. An omitted permission
+                    // must keep its live mask, including non-editable bits, rather than replay stale metadata.
+                    if (topic.getPerm() != null) {
+                        topicConfig.setPerm(perm);
+                    }
                     // Broker attributes are merged separately and writes require delta keys.
                     topicConfig.setAttributes(Map.of());
                     applyTopicType(topicConfig, topic.getType());
@@ -418,7 +422,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 if (existing != null) {
                     existing.setWriteQueueNums(writeQueues);
                     existing.setReadQueueNums(readQueues);
-                    existing.setPerm(perm);
+                    if (topic.getPerm() != null) {
+                        existing.setPerm(perm);
+                    }
                     if (topic.getType() != null) {
                         existing.setTopicType(topic.getType().name());
                     }
@@ -461,7 +467,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
         });
     }
 
-    private TopicConfig topicConfigForUpdate(MQAdminExt admin, String brokerAddr, String topicName)
+    private TopicConfig topicConfigForUpdate(MQAdminExt admin, String brokerAddr, String topicName, int fallbackPerm)
             throws Exception {
         TopicConfig current;
         try {
@@ -473,7 +479,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
             current = null;
         }
         // A newly added master may not hold the topic yet. Preserve update's provisioning behavior.
-        return current == null ? new TopicConfig(topicName) : new TopicConfig(current);
+        if (current == null) {
+            TopicConfig created = new TopicConfig(topicName);
+            created.setPerm(fallbackPerm);
+            return created;
+        }
+        return new TopicConfig(current);
     }
 
     private void applyTopicType(TopicConfig topicConfig, TopicType topicType) {
