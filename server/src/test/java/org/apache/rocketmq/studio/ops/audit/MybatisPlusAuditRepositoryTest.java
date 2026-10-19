@@ -103,7 +103,7 @@ class MybatisPlusAuditRepositoryTest {
     }
 
     @Test
-    void findPageTreatsSearchWildcardsAsLiteralAuditText() {
+    void findPageTreatsSearchWildcardsAsLiteralAuditTextTest() {
         when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
                 .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
 
@@ -112,6 +112,8 @@ class MybatisPlusAuditRepositoryTest {
 
         ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
         verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        assertThat(((QueryWrapper<RmqOperationAudit>) queryCaptor.getValue()).getSqlSegment())
+                .contains("operator LIKE", "resource_name LIKE", "detail LIKE");
         assertThat(((QueryWrapper<RmqOperationAudit>) queryCaptor.getValue())
                 .getParamNameValuePairs().values())
                 .containsExactlyInAnyOrder("%topic\\_\\%%", "%topic\\_\\%%", "%topic\\_\\%%");
