@@ -443,6 +443,19 @@ const DLQPage = () => {
       const unmatched = msgIds.length - result.matched;
       if (result.failed > 0) {
         showResendFailures(result);
+        // `showResendFailures` only reports resent + failed, so the partial-match information
+        // would be dropped on this path. Emit the same supplementary warning as the branches
+        // below, mirroring the time-range resend handler which also warns on top of the failure
+        // summary when its scan was incomplete.
+        if (unmatched > 0 || result.scanIncomplete) {
+          message.warning(
+            t(unmatched > 0 ? 'dlq.resendUnmatchedSummary' : 'dlq.resendScanIncompleteSummary', {
+              resent: result.resent,
+              unmatched,
+              queues: result.failedQueueCount ?? 0,
+            }),
+          );
+        }
       } else if (unmatched > 0) {
         message.warning(t('dlq.resendUnmatchedSummary', { resent: result.resent, unmatched }));
       } else if (result.scanIncomplete) {
