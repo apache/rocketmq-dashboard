@@ -24,7 +24,6 @@ import {
   Progress,
   Row,
   Skeleton,
-  Space,
   Statistic,
   Table,
   Tag,
@@ -36,6 +35,7 @@ import type { AuditRecord } from '../../api/ops';
 import { useLang } from '../../i18n/LangContext';
 import { formatDateTime, formatNumber } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
+import TagList from '../../components/TagList';
 import {
   auditRiskOperationLabel,
   buildAuditRiskInsights,
@@ -151,14 +151,17 @@ const AuditRiskInsights = ({ summary, records, loading }: Props) => {
       title: t('audit.opType'),
       dataIndex: 'operationTypes',
       key: 'operationTypes',
+      width: 240,
+      // 原来 slice(0, 3) 把第 4 个起静默丢掉，换成 TagList 的 +N 至少悬停能看到
       render: (operationTypes: string[]) => (
-        <Space size={[4, 4]} wrap>
-          {operationTypes.slice(0, 3).map((operationType) => (
-            <Tag key={operationType} style={{ marginInlineEnd: 0 }}>
-              {formatOperationLabel(operationType, t)}
-            </Tag>
-          ))}
-        </Space>
+        <TagList
+          items={operationTypes.map((operationType) => ({
+            key: operationType,
+            label: formatOperationLabel(operationType, t),
+          }))}
+          max={2}
+          tagMaxWidth={88}
+        />
       ),
     },
     {

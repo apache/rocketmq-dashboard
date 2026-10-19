@@ -56,6 +56,31 @@ describe('LlmSettingsPage', () => {
     ]);
   });
 
+  it('mirrors the server curated model list per provider', () => {
+    // LlmConfigService.PROVIDER_MODELS is the source of truth (GET /llm/models and the home page
+    // picker). The fallback is what the settings dialog shows when that endpoint fails or the
+    // provider is re-selected, so a shorter list hides models the gateway serves.
+    expect(fallbackModelOptions('tongyi').map((option) => option.value)).toEqual([
+      'qwen3.8-max',
+      'qwen3.7-max',
+      'qwen3.7-plus',
+      'gpt-5',
+      'gpt-5.1',
+      'claude-fable-5',
+      'claude-opus-5',
+      'claude-sonnet-5',
+      'deepseek-v4-pro',
+      'deepseek-v4-flash',
+      'MiniMax-M2.5',
+      'glm-5.2',
+    ]);
+    expect(fallbackModelOptions('ollama').map((option) => option.value)).toEqual([
+      'llama3',
+      'mistral',
+      'qwen2.5',
+    ]);
+  });
+
   it('falls back to the current model for unknown providers', () => {
     expect(fallbackModelOptions('custom', 'custom-model')).toEqual([
       { value: 'custom-model', label: 'custom-model' },

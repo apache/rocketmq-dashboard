@@ -16,10 +16,11 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, App, Button, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd';
+import { Alert, App, Button, Input, Modal, Select, Space, Table, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ArrowClockwise, DownloadSimple, Eye } from '@phosphor-icons/react';
 import { useLang } from '../i18n/LangContext';
+import TagList from './TagList';
 import {
   getGrafanaDashboard,
   exportGrafanaDashboard,
@@ -184,15 +185,13 @@ export const GrafanaDashboardList: React.FC = () => {
       title: t('grafana.tags'),
       dataIndex: 'tags',
       key: 'tags',
-      width: 140,
+      width: 200,
       render: (tags: string[]) => (
-        <Space size={[0, 4]} wrap>
-          {(tags || []).map((tag) => (
-            <Tag key={tag} color="blue">
-              {tag}
-            </Tag>
-          ))}
-        </Space>
+        <TagList
+          items={(tags || []).map((tag) => ({ key: tag, label: tag, color: 'blue' }))}
+          max={2}
+          tagMaxWidth={70}
+        />
       ),
     },
     {
