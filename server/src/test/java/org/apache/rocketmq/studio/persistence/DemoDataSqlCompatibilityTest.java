@@ -30,6 +30,9 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Types;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -84,6 +87,55 @@ class DemoDataSqlCompatibilityTest {
             assertThat(hasColumn(connection, "rmq_alert_rule", "gmt_modified")).isTrue();
             assertThat(hasColumn(connection, "rmq_alert_rule", "created_at")).isFalse();
             assertThat(hasColumn(connection, "rmq_system_alert", "updated_at")).isFalse();
+        }
+    }
+
+    @Test
+    void cloudVendorUpgradeCreatesUsableNumericCredentialsTest() throws Exception {
+        String script = Files.readString(resolveDeployScript("upgrade-cloud-vendor.sql"), StandardCharsets.UTF_8);
+        // H2 cannot execute the MySQL PREPARE/EXECUTE guards. Exercise the actual DDL
+        // selected by those guards; full-script guard coverage requires MySQL.
+        Matcher credentialColumn = Pattern.compile("\"(ALTER TABLE rmq_instance ADD COLUMN credential_id [^\"]+)\"")
+                .matcher(script);
+        assertThat(credentialColumn.find()).isTrue();
+        String createCredentials = script.substring(script.indexOf("CREATE TABLE IF NOT EXISTS rmq_cloud_credential"));
+        try (Connection connection = DriverManager.getConnection(
+                "jdbc:h2:mem:cloud-vendor-sql;MODE=MySQL;DATABASE_TO_LOWER=TRUE", "sa", "");
+             Statement statement = connection.createStatement()) {
+            statement.executeUpdate("CREATE TABLE rmq_instance (id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                    + " cloud_instance_id VARCHAR(128))");
+            statement.executeUpdate(credentialColumn.group(1));
+            ScriptUtils.executeSqlScript(connection, new ByteArrayResource(
+                    createCredentials.getBytes(StandardCharsets.UTF_8), "cloud credential DDL"));
+
+            assertThat(hasColumn(connection, "rmq_cloud_credential", "gmt_create")).isTrue();
+            assertThat(hasColumn(connection, "rmq_cloud_credential", "gmt_modified")).isTrue();
+            assertThat(hasColumn(connection, "rmq_cloud_credential", "created_at")).isFalse();
+            try (ResultSet columns = connection.getMetaData().getColumns(null, null, "rmq_cloud_credential", "id")) {
+                assertThat(columns.next()).isTrue();
+                assertThat(columns.getInt("DATA_TYPE")).isEqualTo(Types.BIGINT);
+                assertThat(columns.getString("IS_AUTOINCREMENT")).isEqualTo("YES");
+            }
+            try (ResultSet columns = connection.getMetaData().getColumns(null, null, "rmq_instance", "credential_id")) {
+                assertThat(columns.next()).isTrue();
+                assertThat(columns.getInt("DATA_TYPE")).isEqualTo(Types.BIGINT);
+            }
+            statement.executeUpdate("INSERT INTO rmq_cloud_credential (name, vendor, access_key, secret_key)"
+                    + " VALUES ('test-credential', 'ALIYUN', 'test-access-key', 'dGVzdA==')");
+            statement.executeUpdate("INSERT INTO rmq_instance (credential_id)"
+                    + " SELECT id FROM rmq_cloud_credential WHERE name = 'test-credential'");
+            statement.executeUpdate("ALTER TABLE rmq_instance ADD CONSTRAINT fk_test_credential"
+                    + " FOREIGN KEY (credential_id) REFERENCES rmq_cloud_credential(id)");
+            ScriptUtils.executeSqlScript(connection, new ByteArrayResource(
+                    createCredentials.getBytes(StandardCharsets.UTF_8), "repeated cloud credential DDL"));
+            try (ResultSet rows = statement.executeQuery("SELECT c.id, c.gmt_create, c.gmt_modified"
+                    + " FROM rmq_cloud_credential c JOIN rmq_instance i ON i.credential_id = c.id")) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.getLong("id")).isPositive();
+                assertThat(rows.getTimestamp("gmt_create")).isNotNull();
+                assertThat(rows.getTimestamp("gmt_modified")).isNotNull();
+                assertThat(rows.next()).isFalse();
+            }
         }
     }
 
