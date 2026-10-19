@@ -241,4 +241,18 @@ describe('GeneralSettingsTab', () => {
       ),
     );
   });
+
+  it('reports a failed initial load instead of an editable form', async () => {
+    vi.mocked(getGeneralSettings).mockRejectedValue(new Error('settings row is corrupt'));
+    renderTab();
+
+    // An unreadable record must not be presented as an empty one: the alert is the failure signal,
+    // and the write buttons stay disabled because there is no snapshot a save could merge into.
+    expect(await screen.findByText('settings row is corrupt')).toBeInTheDocument();
+    const saveButtons = screen.getAllByRole('button', { name: '保存设置' });
+    expect(saveButtons.length).toBeGreaterThan(0);
+    for (const button of saveButtons) {
+      expect(button).toBeDisabled();
+    }
+  });
 });
