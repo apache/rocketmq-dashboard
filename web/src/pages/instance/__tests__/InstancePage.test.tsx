@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App, Modal } from 'antd';
+import { App, ConfigProvider, Modal } from 'antd';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -129,27 +129,256 @@ describe('InstancePage', () => {
     ]);
   });
 
-  it('loads server-filtered results when the search or type changes', async () => {
+  it.each([20, 21, 201])('offersEveryCloudCredentialForInventoryOf%sTest', async (count) => {
     const user = userEvent.setup();
+    const allCredentials: CloudCredential[] = Array.from({ length: count }, (_, index) => ({
+      id: index + 1,
+      name: `cloud-account-${index + 1}`,
+      vendor: 'ALIYUN',
+      accessKey: 'LTAI-masked',
+      gmtCreate: '2026-01-01T00:00:00Z',
+    }));
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockImplementation(
+      async (_vendor, _search, page = 1, pageSize = 20) => ({
+        items: allCredentials.slice((page - 1) * pageSize, page * pageSize),
+        total: allCredentials.length,
+        page,
+        size: pageSize,
+      }),
+    );
+    render(
+      <ConfigProvider virtual={false}>
+        <App>
+          <LangProvider>
+            <MemoryRouter>
+              <InstancePage />
+            </MemoryRouter>
+          </LangProvider>
+        </App>
+      </ConfigProvider>,
+    );
+    await screen.findByText('production-proxy');
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('tab', { name: /Aliyun 版/ }));
+    await waitFor(() => expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalled());
+    await user.click(within(dialog).getAllByRole('combobox')[0]);
+    await user.click(
+      await screen.findByText(new RegExp(`cloud-account-${count}（`), {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+    await waitFor(() => expect(aliyunCatalogApi.listAliyunRegions).toHaveBeenCalledWith(count));
+    expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledTimes(Math.ceil(count / 100));
+  });
+
+  it('discardsLaterCredentialPagesAfterTheVendorChangesTest', async () => {
+    const oldPage = deferred<CloudCredentialPage>();
+    const first = {
+      id: 1,
+      name: 'old-aliyun',
+      vendor: 'ALIYUN' as const,
+      accessKey: 'masked',
+      gmtCreate: '',
+    };
+    const current = { ...first, id: 300, name: 'current-tencent', vendor: 'TENCENT' as const };
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockImplementation(
+      async (vendor, _search, page) => {
+        if (vendor === 'TENCENT') return { items: [current], total: 1, page: 1, size: 100 };
+        if (page === 1)
+          return {
+            items: Array.from({ length: 100 }, (_, index) => ({
+              ...first,
+              id: index + 1,
+              name: `old-aliyun-${index + 1}`,
+            })),
+            total: 201,
+            page: 1,
+            size: 100,
+          };
+        return oldPage.promise;
+      },
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('production-proxy');
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('tab', { name: /Aliyun 版/ }));
+    await waitFor(() =>
+      expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledWith(
+        'ALIYUN',
+        undefined,
+        2,
+        100,
+      ),
+    );
+    await user.click(within(dialog).getByRole('tab', { name: /Tencent 版/ }));
+    await waitFor(() =>
+      expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledWith(
+        'TENCENT',
+        undefined,
+        1,
+        100,
+      ),
+    );
+    await act(async () =>
+      oldPage.resolve({ items: [{ ...first, id: 101 }], total: 201, page: 2, size: 100 }),
+    );
+    await user.click(within(dialog).getAllByRole('combobox')[0]);
+    expect(
+      await screen.findByText(/current-tencent（/, { selector: '.ant-select-item-option-content' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/old-aliyun/, { selector: '.ant-select-item-option-content' }),
+    ).not.toBeInTheDocument();
+    expect(cloudCredentialApi.listCloudCredentials).not.toHaveBeenCalledWith(
+      'ALIYUN',
+      undefined,
+      3,
+      100,
+    );
+  });
+
+  it('stopsCredentialPaginationWhenTheDialogClosesTest', async () => {
+    const oldPage = deferred<CloudCredentialPage>();
+    const credential = {
+      id: 1,
+      name: 'masked-account',
+      vendor: 'ALIYUN' as const,
+      accessKey: 'masked',
+      gmtCreate: '',
+    };
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockImplementation(
+      async (_vendor, _search, page) => {
+        if (page === 1)
+          return {
+            items: Array.from({ length: 100 }, (_, index) => ({ ...credential, id: index + 1 })),
+            total: 201,
+            page: 1,
+            size: 100,
+          };
+        return oldPage.promise;
+      },
+    );
+    const user = userEvent.setup();
+    // jsdom does not complete AntD's CSS leave animation; disable only the motion.
+    render(
+      <ConfigProvider theme={{ token: { motion: false } }}>
+        <App>
+          <LangProvider>
+            <MemoryRouter>
+              <InstancePage />
+            </MemoryRouter>
+          </LangProvider>
+        </App>
+      </ConfigProvider>,
+    );
+    await screen.findByText('production-proxy');
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('tab', { name: /Aliyun 版/ }));
+    await waitFor(() =>
+      expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledWith(
+        'ALIYUN',
+        undefined,
+        2,
+        100,
+      ),
+    );
+    await user.click(within(dialog).getByRole('button', { name: /取\s*消/ }));
+    await act(async () =>
+      oldPage.resolve({ items: [{ ...credential, id: 101 }], total: 201, page: 2, size: 100 }),
+    );
+    expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('doesNotPublishAPartialCredentialInventoryAfterALaterPageFailsTest', async () => {
+    const credential = {
+      id: 1,
+      name: 'partial-credential',
+      vendor: 'ALIYUN' as const,
+      accessKey: 'masked',
+      gmtCreate: '',
+    };
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockImplementation(
+      async (_vendor, _search, page) => {
+        if (page === 1)
+          return {
+            items: Array.from({ length: 100 }, (_, index) => ({ ...credential, id: index + 1 })),
+            total: 101,
+            page: 1,
+            size: 100,
+          };
+        throw new Error('second page unavailable');
+      },
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('production-proxy');
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('tab', { name: /Aliyun 版/ }));
+    await waitFor(() =>
+      expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledWith(
+        'ALIYUN',
+        undefined,
+        2,
+        100,
+      ),
+    );
+    expect(await screen.findByText('云凭据列表加载失败')).toBeInTheDocument();
+    await user.click(within(dialog).getAllByRole('combobox')[0]);
+    expect(
+      screen.queryByText(/partial-credential/, { selector: '.ant-select-item-option-content' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('boundsCredentialPaginationBeforePublishingAnOversizedInventoryTest', async () => {
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue({
+      items: [],
+      total: 10001,
+      page: 1,
+      size: 100,
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('production-proxy');
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('tab', { name: /Aliyun 版/ }));
+    expect(await screen.findByText('云凭据列表加载失败')).toBeInTheDocument();
+    expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledTimes(1);
+  });
+  it('loads server-filtered results when the search or type changes', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
 
     expect(await screen.findByText('production-proxy')).toBeInTheDocument();
-    expect(instanceService.listInstances).toHaveBeenCalledWith({});
+    expect(instanceService.listInstances).toHaveBeenCalledWith({ withCounts: true });
 
     fireEvent.change(screen.getByPlaceholderText('搜索实例 ID 或地址'), {
       target: { value: 'proxy-hz' },
     });
     await waitFor(
-      () => expect(instanceService.listInstances).toHaveBeenCalledWith({ search: 'proxy-hz' }),
+      () =>
+        expect(instanceService.listInstances).toHaveBeenCalledWith({
+          search: 'proxy-hz',
+          withCounts: true,
+        }),
       { timeout: 1000 },
     );
 
     fireEvent.change(screen.getByPlaceholderText('搜索实例 ID 或地址'), {
       target: { value: '' },
     });
-    await waitFor(() => expect(instanceService.listInstances).toHaveBeenLastCalledWith({}), {
-      timeout: 1000,
-    });
+    await waitFor(
+      () => expect(instanceService.listInstances).toHaveBeenLastCalledWith({ withCounts: true }),
+      {
+        timeout: 1000,
+      },
+    );
 
     const typeSelect = screen.getByRole('combobox');
     fireEvent.mouseDown(typeSelect.parentElement!);
@@ -158,7 +387,10 @@ describe('InstancePage', () => {
     );
 
     await waitFor(() =>
-      expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' }),
+      expect(instanceService.listInstances).toHaveBeenLastCalledWith({
+        type: 'DIRECT',
+        withCounts: true,
+      }),
     );
   });
 
@@ -227,7 +459,11 @@ describe('InstancePage', () => {
     const searchInput = screen.getByPlaceholderText('搜索实例 ID 或地址');
     fireEvent.change(searchInput, { target: { value: 'old' } });
     await waitFor(
-      () => expect(instanceService.listInstances).toHaveBeenCalledWith({ search: 'old' }),
+      () =>
+        expect(instanceService.listInstances).toHaveBeenCalledWith({
+          search: 'old',
+          withCounts: true,
+        }),
       {
         timeout: 1000,
       },
@@ -235,7 +471,11 @@ describe('InstancePage', () => {
 
     fireEvent.change(searchInput, { target: { value: 'latest' } });
     await waitFor(
-      () => expect(instanceService.listInstances).toHaveBeenCalledWith({ search: 'latest' }),
+      () =>
+        expect(instanceService.listInstances).toHaveBeenCalledWith({
+          search: 'latest',
+          withCounts: true,
+        }),
       { timeout: 1000 },
     );
 
@@ -248,7 +488,7 @@ describe('InstancePage', () => {
   });
 
   it('ignores duplicate create submissions while the first request is pending', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.createInstance).mockImplementation(() => new Promise(() => {}));
     renderPage();
 
@@ -272,7 +512,7 @@ describe('InstancePage', () => {
   });
 
   it('reloads the current filters after creating an instance', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.createInstance).mockResolvedValue(instance(9, 'new-proxy'));
     renderPage();
 
@@ -283,7 +523,10 @@ describe('InstancePage', () => {
       await screen.findByText('Direct 模式', { selector: '.ant-select-item-option-content' }),
     );
     await waitFor(() =>
-      expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' }),
+      expect(instanceService.listInstances).toHaveBeenLastCalledWith({
+        type: 'DIRECT',
+        withCounts: true,
+      }),
     );
 
     await user.click(screen.getByRole('button', { name: /添加实例/ }));
@@ -305,11 +548,14 @@ describe('InstancePage', () => {
         endpoint: 'proxy-new:8080',
       }),
     );
-    expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' });
+    expect(instanceService.listInstances).toHaveBeenLastCalledWith({
+      type: 'DIRECT',
+      withCounts: true,
+    });
   });
 
   it('creates an Apache instance with an explicit Proxy Local deployment type', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.createInstance).mockResolvedValue(
       instance(3, 'local-proxy', 'PROXY_LOCAL'),
     );
@@ -339,7 +585,7 @@ describe('InstancePage', () => {
   });
 
   it('updates instance type and endpoint through the edit dialog', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.updateInstance).mockResolvedValue(
       instance(1, 'production-proxy', 'DIRECT'),
     );
@@ -373,7 +619,7 @@ describe('InstancePage', () => {
   });
 
   it('keeps the endpoint editable for Apache instances but read-only for cloud vendors', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       instance(1, 'production-proxy'),
       {
@@ -409,7 +655,7 @@ describe('InstancePage', () => {
   });
 
   it('submits a cloud instance whose stored endpoint is blank', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const blankEndpointCloud = {
       ...instance(2, 'aliyun-prod'),
       vendor: 'ALIYUN' as InstanceVendor,
@@ -441,7 +687,7 @@ describe('InstancePage', () => {
   });
 
   it('surfaces the server error reason when creating an instance fails', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.createInstance).mockRejectedValue({
       response: { data: { message: 'Instance name already exists: new-proxy' } },
     });
@@ -465,7 +711,7 @@ describe('InstancePage', () => {
   });
 
   it('surfaces the server error reason when updating an instance fails', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.updateInstance).mockRejectedValue({
       response: { data: { message: 'Instance endpoint is not reachable' } },
     });
@@ -486,7 +732,7 @@ describe('InstancePage', () => {
   });
 
   it('reloads the latest filters after a pending instance deletion completes', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const pendingDelete = deferred<void>();
     vi.mocked(instanceService.deleteInstance).mockReturnValue(pendingDelete.promise);
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
@@ -507,18 +753,24 @@ describe('InstancePage', () => {
       await screen.findByText('Direct 模式', { selector: '.ant-select-item-option-content' }),
     );
     await waitFor(() =>
-      expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' }),
+      expect(instanceService.listInstances).toHaveBeenLastCalledWith({
+        type: 'DIRECT',
+        withCounts: true,
+      }),
     );
 
     await act(async () => pendingDelete.resolve());
 
     await waitFor(() => expect(instanceService.listInstances).toHaveBeenCalledTimes(3));
-    expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' });
+    expect(instanceService.listInstances).toHaveBeenLastCalledWith({
+      type: 'DIRECT',
+      withCounts: true,
+    });
     confirmSpy.mockRestore();
   });
 
   it('shows vendor tabs in the add instance modal and switches description', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
 
     expect(await screen.findByText('production-proxy')).toBeInTheDocument();
@@ -535,7 +787,7 @@ describe('InstancePage', () => {
   });
 
   it('imports every Aliyun instance of the credential via one-click import', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue(
       cloudCredentialPage([
         {
@@ -587,7 +839,7 @@ describe('InstancePage', () => {
   });
 
   it('imports every Tencent instance of the credential via one-click import', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue(
       cloudCredentialPage([
         {
@@ -614,7 +866,12 @@ describe('InstancePage', () => {
     const dialog = await screen.findByRole('dialog');
     await user.click(within(dialog).getByRole('tab', { name: /Tencent 版/ }));
     await waitFor(() =>
-      expect(cloudCredentialApi.listCloudCredentials).toHaveBeenLastCalledWith('TENCENT'),
+      expect(cloudCredentialApi.listCloudCredentials).toHaveBeenLastCalledWith(
+        'TENCENT',
+        undefined,
+        1,
+        100,
+      ),
     );
 
     const importButton = within(dialog).getByRole('button', { name: /一键导入/ });
@@ -643,7 +900,7 @@ describe('InstancePage', () => {
   });
 
   it('shows the total cloud import failure count when details are truncated', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue(
       cloudCredentialPage([
         {
@@ -688,7 +945,7 @@ describe('InstancePage', () => {
   });
 
   it('ignores a stale region response after the cloud credential changes', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const oldRegions = deferred<Array<{ regionId: string; regionName: string }>>();
     const latestRegions = deferred<Array<{ regionId: string; regionName: string }>>();
     vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue(
@@ -751,7 +1008,7 @@ describe('InstancePage', () => {
   });
 
   it('ignores a stale instance response after the cloud region changes', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const oldInstances =
       deferred<
         Array<{ instanceId: string; instanceName: string; status: string; regionId: string }>
@@ -840,7 +1097,7 @@ describe('InstancePage', () => {
   });
 
   it('clears a pending region load when the cloud vendor changes', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const pendingRegions = deferred<Array<{ regionId: string; regionName: string }>>();
     vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue(
       cloudCredentialPage([
@@ -898,7 +1155,7 @@ describe('InstancePage', () => {
   });
 
   it('clears a pending instance load when the cloud vendor changes', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const pendingInstances =
       deferred<
         Array<{ instanceId: string; instanceName: string; status: string; regionId: string }>
@@ -974,7 +1231,7 @@ describe('InstancePage', () => {
   });
 
   it('sorts and renders instances without remarks', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       instance(10, 'instance-without-remark', 'PROXY_CLUSTER', null),
       instance(11, 'instance-with-remark', 'PROXY_CLUSTER', 'production'),
@@ -1009,7 +1266,7 @@ describe('InstancePage', () => {
   });
 
   it('deletes selected instances through the toolbar batch delete button', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       instance(20, 'batch-a'),
       instance(21, 'batch-b'),
@@ -1044,7 +1301,7 @@ describe('InstancePage', () => {
   });
 
   it('clears selections hidden by a search result', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.listInstances)
       .mockResolvedValueOnce([instance(22, 'search-selected'), instance(23, 'search-visible')])
       .mockResolvedValueOnce([instance(23, 'search-visible')]);
@@ -1059,14 +1316,17 @@ describe('InstancePage', () => {
     await user.type(screen.getByPlaceholderText('搜索实例 ID 或地址'), 'visible');
 
     await waitFor(() =>
-      expect(instanceService.listInstances).toHaveBeenLastCalledWith({ search: 'visible' }),
+      expect(instanceService.listInstances).toHaveBeenLastCalledWith({
+        search: 'visible',
+        withCounts: true,
+      }),
     );
     await waitFor(() => expect(screen.queryByText('search-selected')).not.toBeInTheDocument());
     expect(deleteButton).toBeDisabled();
   });
 
   it('clears selections hidden by a type-filter result', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.listInstances)
       .mockResolvedValueOnce([
         instance(24, 'proxy-selected'),
@@ -1087,14 +1347,17 @@ describe('InstancePage', () => {
     );
 
     await waitFor(() =>
-      expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' }),
+      expect(instanceService.listInstances).toHaveBeenLastCalledWith({
+        type: 'DIRECT',
+        withCounts: true,
+      }),
     );
     await waitFor(() => expect(screen.queryByText('proxy-selected')).not.toBeInTheDocument());
     expect(deleteButton).toBeDisabled();
   });
 
   it('reconciles selections when a mutation refresh removes an instance', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.listInstances)
       .mockResolvedValueOnce([instance(26, 'refresh-selected'), instance(27, 'refresh-trigger')])
       .mockResolvedValueOnce([instance(27, 'refresh-trigger')]);

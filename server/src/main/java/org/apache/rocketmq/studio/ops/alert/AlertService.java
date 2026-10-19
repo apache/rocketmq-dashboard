@@ -201,12 +201,19 @@ public class AlertService {
         Long id = rule.getId();
         log.info("Updating alert rule: {}", id);
         validateRuleId(id);
+        String previousSemanticFingerprint = alertRepository.findRuleById(id)
+                .map(AlertRuleSemanticFingerprint::evaluationIdentity)
+                .orElse(null);
         NativeAlertRulePolicy.validate(rule);
         rejectDuplicateSemanticRule(rule, id);
         if (!replaceRuleWithoutDuplicate(rule)) {
             throw ruleNotFound(id);
         }
-        alertStateRepository.deleteByRuleId(id);
+        // Disabled rules are excluded from evaluation/reconciliation; their runtime must be purged.
+        if (!rule.isEnabled() || previousSemanticFingerprint == null
+                || !previousSemanticFingerprint.equals(AlertRuleSemanticFingerprint.evaluationIdentity(rule))) {
+            alertStateRepository.deleteByRuleId(id);
+        }
         auditRule("UPDATE_ALERT_RULE", rule, null);
         return rule;
     }
@@ -284,7 +291,9 @@ public class AlertService {
         if (!alertRepository.replaceRule(rule)) {
             throw ruleNotFound(id);
         }
-        alertStateRepository.deleteByRuleId(id);
+        if (!enabled) {
+            alertStateRepository.deleteByRuleId(id);
+        }
         auditRule("TOGGLE_ALERT_RULE", rule, "enabled=" + enabled);
         return rule;
     }
@@ -297,7 +306,9 @@ public class AlertService {
         if (!alertRepository.replaceRule(rule)) {
             throw ruleNotFound(id);
         }
-        alertStateRepository.deleteByRuleId(id);
+        if (!enabled) {
+            alertStateRepository.deleteByRuleId(id);
+        }
         auditRule("TOGGLE_ALERT_RULE", rule, "enabled=" + enabled);
         return rule;
     }
@@ -346,7 +357,9 @@ public class AlertService {
                     failures.put(id, "Alert rule not found");
                     continue;
                 }
-                alertStateRepository.deleteByRuleId(id);
+                if (!enabled) {
+                    alertStateRepository.deleteByRuleId(id);
+                }
                 auditRule("TOGGLE_ALERT_RULE", rule, "enabled=" + enabled + ", bulk=true");
                 succeeded.add(id);
                 updated.add(rule);
@@ -435,7 +448,9 @@ public class AlertService {
                     failures.put(id, "Alert rule not found");
                     continue;
                 }
-                alertStateRepository.deleteByRuleId(id);
+                if (!rule.isEnabled()) {
+                    alertStateRepository.deleteByRuleId(id);
+                }
                 auditRule(auditOperation, rule, auditDetail);
                 succeeded.add(id);
                 updated.add(rule);
@@ -831,7 +846,8 @@ public class AlertService {
         if (!Double.isFinite(threshold)) {
             return "0";
         }
-        if (threshold == Math.rint(threshold)) {
+        // Long.MAX_VALUE rounds up to 2^63 as a double; the upper cast bound is exclusive.
+        if (threshold == Math.rint(threshold) && threshold >= Long.MIN_VALUE && threshold < 0x1.0p63) {
             return Long.toString((long) threshold);
         }
         return Double.toString(threshold);

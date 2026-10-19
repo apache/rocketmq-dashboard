@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Card, Flex, Tag, Tooltip, Typography, theme } from 'antd';
 import { Check, Copy } from '@phosphor-icons/react';
 import { useLang } from '../../../i18n/LangContext';
@@ -41,6 +41,11 @@ import { modelBrandLogo } from './ModelBadge';
  * `streaming` marks the bubble the run in flight is filling. It drives exactly two things: the
  * pending dots before the first block lands, and the auto-expand of the LAST thinking block (see
  * `ThinkingBlock`). `toolCatalog` is passed through to `ToolBlock` for its risk tag.
+ *
+ * Memoised because a streaming run re-renders the page at display rate, and a persisted bubble's
+ * props (the folded `Bubble` object, the catalog array, the model string) keep their identity
+ * across those renders: without the bailout every tick re-ran ReactMarkdown over EVERY persisted
+ * answer, i.e. one full transcript re-parse per frame once a conversation collected a few runs.
  */
 
 export interface AssistantBubbleProps {
@@ -102,28 +107,32 @@ const AssistantBubble = ({
 
   // The standard per-message action: copy the answer as markdown. Clipboard API first, the
   // hidden-textarea fallback second (non-secure contexts), silent no-op third.
-  const handleCopy = () => {
+  const handleCopy = async () => {
     const done = () => {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     };
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard
-        .writeText(answerText)
-        .then(done)
-        .catch(() => undefined);
-      return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(answerText);
+        done();
+        return;
+      }
+    } catch {
+      // A denied Clipboard API write can still succeed through the textarea fallback.
     }
     const textarea = document.createElement('textarea');
     textarea.value = answerText;
     textarea.style.position = 'fixed';
     textarea.style.opacity = '0';
-    document.body.appendChild(textarea);
-    textarea.select();
     try {
-      if (document.execCommand('copy')) done();
+      document.body.appendChild(textarea);
+      textarea.select();
+      if (document.execCommand?.('copy')) done();
+    } catch {
+      // Unsupported copying degrades silently without reporting success.
     } finally {
-      document.body.removeChild(textarea);
+      textarea.remove();
     }
   };
 
@@ -137,7 +146,9 @@ const AssistantBubble = ({
             width: 36,
             height: 36,
             borderRadius: '50%',
-            background: '#ffffff',
+            // Theme surface instead of a fixed white: the avatar matches the neighbouring bubble
+            // card, which already sits on colorBgElevated (white in light mode, elevated in dark).
+            background: token.colorBgElevated,
             border: `1px solid ${token.colorBorderSecondary}`,
             flexShrink: 0,
             display: 'flex',
@@ -224,6 +235,7 @@ const AssistantBubble = ({
                     key={`tool-${index}-${block.tcId}`}
                     block={block}
                     toolCatalog={toolCatalog}
+                    runStatus={bubble.runStatus}
                   />
                 );
               case 'notice':
@@ -302,4 +314,4 @@ const AssistantBubble = ({
   );
 };
 
-export default AssistantBubble;
+export default memo(AssistantBubble);

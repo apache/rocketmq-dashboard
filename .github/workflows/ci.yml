@@ -1,13 +1,30 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 name: CI
 
-# 检测前端与后端是否都能正确编译
+# Verify the build, tests, and generated artifacts for the frontend, backend, and CLI.
 on:
   push:
     branches:
       - master
+      - rocketmq-studio
   pull_request:
     branches:
       - master
+      - rocketmq-studio
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -37,6 +54,19 @@ jobs:
   backend-test:
     name: Backend Tests (Java 21)
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: studio123
+          MYSQL_DATABASE: rocketmq
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
     defaults:
       run:
         working-directory: server
@@ -50,6 +80,11 @@ jobs:
           distribution: dragonwell
           java-version: "21"
           cache: maven
+
+      - name: Initialize test schema
+        env:
+          MYSQL_PWD: studio123
+        run: docker exec -e MYSQL_PWD -i "${{ job.services.mysql.id }}" mysql -uroot rocketmq < src/main/resources/db/schema.sql
 
       - name: Run backend tests
         run: mvn -B -ntp test
@@ -72,7 +107,19 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - name: Install dependencies
+        # Keep the dependency install scripts, but forbid husky in prepare from modifying the Git hooks config.
+        env:
+          HUSKY: "0"
         run: npm ci
+
+      - name: Lint frontend
+        run: npm run lint
+
+      - name: Run all frontend tests
+        run: npm test
+
+      - name: Run frontend license tests
+        run: npm run license:test
 
       - name: Build frontend
         run: npm run build
@@ -85,10 +132,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Build frontend Docker image (cached)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ./web
           push: false
@@ -115,9 +162,7 @@ jobs:
       - name: Check formatting
         run: make fmt
 
-      # catalog-verify regenerates internal/catalog/catalog_gen.go from
-      # ../server/src/main/resources/tool-catalog/tools and fails on drift, so the
-      # full repository (rmqctl/ + server/) must be checked out.
+      # Check whether the Go catalog is stale against the server-side YAML, so the full repository must be checked out.
       - name: Verify generated tool catalog
         run: make catalog-verify
 
@@ -129,3 +174,6 @@ jobs:
 
       - name: Build rmqctl binary
         run: make build
+
+      - name: Build rmqctl for all supported platforms
+        run: make build-all

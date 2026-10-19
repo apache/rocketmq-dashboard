@@ -114,11 +114,13 @@ export interface ConsumerGroup {
 
 export interface ConsumerInstance {
   clientId: string;
-  protocol: string;
+  /** Absent when the backend cannot tell (Apache connections carry no protocol marker). */
+  protocol?: string;
   address: string;
-  subscribedTopics: string[];
-  lastHeartbeat: string;
-  topicLag: Record<string, number>;
+  /** Populated only when the provider reports per-topic lag for the instance. */
+  subscribedTopics?: string[];
+  lastHeartbeat?: string;
+  topicLag?: Record<string, number>;
 }
 
 export interface ConsumerThreadStack {
@@ -286,7 +288,8 @@ export interface SendTopicMessageRequest {
 
 export interface SendTopicMessageResult {
   msgId: string;
-  sendTime: string;
+  /** Epoch milliseconds, mirroring the server's `SendMessageVO.sendTime`. */
+  sendTime: number;
   offsetMsgId: string;
 }
 

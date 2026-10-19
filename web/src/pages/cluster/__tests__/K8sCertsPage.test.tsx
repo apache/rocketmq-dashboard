@@ -22,11 +22,19 @@ import { App } from 'antd';
 import type { K8sCertInfo } from '../../../api/cluster';
 import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../../services/clusterService';
 import K8sCertsPage from '../certs';
+import { LangProvider } from '../../../i18n/LangContext';
 
 vi.mock('../../../services/clusterService', () => ({
   listK8sCerts: vi.fn(),
   createK8sCert: vi.fn(),
   deleteK8sCert: vi.fn(),
+}));
+
+const languagePreference = vi.hoisted(() => ({ initial: 'zh' as 'zh' | 'en' }));
+
+vi.mock('../../../i18n/languagePreference', () => ({
+  getInitialLanguage: () => languagePreference.initial,
+  persistLanguage: vi.fn(),
 }));
 
 const certs: K8sCertInfo[] = [
@@ -36,8 +44,8 @@ const certs: K8sCertInfo[] = [
     cluster: 'prod-cluster',
     type: 'TLS',
     issuer: 'kubernetes-ca',
-    notBefore: '2026-01-01T00:00:00Z',
-    notAfter: '2027-01-01T00:00:00Z',
+    notBefore: '2026-01-01T00:00:00',
+    notAfter: '2027-01-01T00:00:00',
     status: 'valid',
     daysRemaining: 365,
     san: ['broker.prod.example.com'],
@@ -60,8 +68,8 @@ const certs: K8sCertInfo[] = [
     cluster: 'staging-cluster',
     type: 'TLS',
     issuer: 'kubernetes-ca',
-    notBefore: '2026-01-01T00:00:00Z',
-    notAfter: '2027-01-01T00:00:00Z',
+    notBefore: '2026-01-01T00:00:00',
+    notAfter: '2027-01-01T00:00:00',
     status: 'valid',
     daysRemaining: 365,
     // The backend returns null when SAN is omitted.
@@ -87,6 +95,7 @@ beforeAll(() => {
 
 describe('K8sCertsPage', () => {
   beforeEach(() => {
+    languagePreference.initial = 'zh';
     vi.clearAllMocks();
     vi.mocked(listK8sCerts).mockResolvedValue(certs);
   });
@@ -94,7 +103,9 @@ describe('K8sCertsPage', () => {
   const renderPage = () =>
     render(
       <App>
-        <K8sCertsPage />
+        <LangProvider>
+          <K8sCertsPage />
+        </LangProvider>
       </App>,
     );
 
@@ -107,6 +118,33 @@ describe('K8sCertsPage', () => {
     expect(screen.queryByText('broker.prod.example.com')).not.toBeInTheDocument();
     expect(screen.queryByText('命名空间')).not.toBeInTheDocument();
     expect(screen.queryByText('SAN')).not.toBeInTheDocument();
+  });
+
+  it('renders the zoneless backend expiry timestamp in the viewer timezone', async () => {
+    // The backend serializes notAfter as a UTC LocalDateTime without a zone
+    // designator. The column must interpret it as UTC and render it in the
+    // viewer's timezone; parsing it as browser-local (Date(value)) silently
+    // shifts the displayed expiry by the viewer's UTC offset.
+    renderPage();
+
+    await screen.findByText('rocketmq-prod-tls');
+
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date('2027-01-01T00:00:00Z'));
+    const value = (type: string) => parts.find((part) => part.type === type)?.value;
+    const expected =
+      `${value('year')}-${value('month')}-${value('day')} ` +
+      `${value('hour')}:${value('minute')}:${value('second')}`;
+
+    expect(screen.getAllByText(expected).length).toBeGreaterThan(0);
   });
 
   it('renders and sorts incomplete certificate metadata safely', async () => {
@@ -180,7 +218,9 @@ describe('K8sCertsPage', () => {
 
   it('deletes a certificate after confirmation', async () => {
     vi.mocked(deleteK8sCert).mockResolvedValue();
-    const user = userEvent.setup();
+    // The row is rendered before the table's loading mask finishes leaving, and while it does the
+    // action buttons carry `pointer-events: none`, so a strict pointer check flakes under load.
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
 
     await screen.findByText('rocketmq-prod-tls');
@@ -191,5 +231,76 @@ describe('K8sCertsPage', () => {
 
     await waitFor(() => expect(deleteK8sCert).toHaveBeenCalledWith(1));
     await waitFor(() => expect(screen.queryByText('rocketmq-prod-tls')).not.toBeInTheDocument());
+  });
+
+  it('surfaces the server rejection reason when the certificate list cannot be loaded', async () => {
+    const failure: Error & { response?: { data?: { message?: unknown } } } = new Error(
+      'Request failed with status code 500',
+    );
+    failure.response = { data: { message: 'k8s cluster unreachable' } };
+    vi.mocked(listK8sCerts).mockRejectedValue(failure);
+
+    renderPage();
+
+    expect(await screen.findByText('k8s cluster unreachable')).toBeInTheDocument();
+    expect(screen.queryByText('Request failed with status code 500')).not.toBeInTheDocument();
+  });
+
+  it('accepts a rejection reason carried by a bare object', async () => {
+    vi.mocked(listK8sCerts).mockRejectedValue({ message: 'certificate store offline' });
+
+    renderPage();
+
+    expect(await screen.findByText('certificate store offline')).toBeInTheDocument();
+  });
+
+  it('keeps the generic fallback when the rejection carries nothing usable', async () => {
+    vi.mocked(listK8sCerts).mockRejectedValue({});
+
+    renderPage();
+
+    expect(await screen.findByText('请求失败，请稍后重试')).toBeInTheDocument();
+  });
+
+  it('reports a failed certificate load with a retry instead of an empty inventory', async () => {
+    vi.mocked(listK8sCerts).mockRejectedValueOnce(new Error('certificate store offline'));
+    const user = userEvent.setup();
+
+    renderPage();
+
+    expect(await screen.findByText('获取数据失败')).toBeInTheDocument();
+    // A failed read must not be presented as a measured zero.
+    expect(screen.getByText('不可用')).toBeInTheDocument();
+    expect(screen.queryByText('共 0 个证书')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /重试/ }));
+
+    await screen.findByText('rocketmq-prod-tls');
+    await waitFor(() => expect(screen.queryByText('获取数据失败')).not.toBeInTheDocument());
+    expect(screen.getByText('共 3 个证书')).toBeInTheDocument();
+  });
+});
+
+describe('K8sCertsPage English localization', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    languagePreference.initial = 'en';
+    vi.mocked(listK8sCerts).mockResolvedValue(certs);
+  });
+
+  it('renders English labels inside the language provider', async () => {
+    render(
+      <LangProvider>
+        <K8sCertsPage />
+      </LangProvider>,
+    );
+
+    await screen.findByText('rocketmq-prod-tls');
+    expect(screen.getByRole('heading', { name: 'K8s Certificate Config' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Add Certificate/ })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'K8s Cluster Name' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Expiry Time' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Days Remaining' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeInTheDocument();
   });
 });

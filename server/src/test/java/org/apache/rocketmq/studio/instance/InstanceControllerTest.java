@@ -73,7 +73,7 @@ class InstanceControllerTest extends WebMvcAuthTestSupport {
     void listInstancesShouldReturnAllInstances() throws Exception {
         InstanceVO inst = buildInstance(1L, "production-proxy", InstanceType.PROXY_CLUSTER, "10.0.1.1:8080");
 
-        when(instanceService.listInstances(isNull(), isNull())).thenReturn(List.of(inst));
+        when(instanceService.listInstances(isNull(), isNull(), eq(false))).thenReturn(List.of(inst));
 
         mockMvc.perform(get("/api/instances"))
                 .andExpect(status().isOk())
@@ -83,13 +83,31 @@ class InstanceControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data[0].name").value("production-proxy"))
                 .andExpect(jsonPath("$.data[0].type").value("PROXY_CLUSTER"))
                 .andExpect(jsonPath("$.data[0].endpoint").value("10.0.1.1:8080"));
+
+        // Counts cost a remote call per cloud instance, so the default listing must not ask for them.
+        verify(instanceService).listInstances(isNull(), isNull(), eq(false));
+    }
+
+    @Test
+    void listInstancesShouldPassWithCountsThrough() throws Exception {
+        InstanceVO inst = buildInstance(1L, "production-proxy", InstanceType.PROXY_CLUSTER, "10.0.1.1:8080");
+
+        when(instanceService.listInstances(isNull(), isNull(), eq(true))).thenReturn(List.of(inst));
+
+        mockMvc.perform(get("/api/instances")
+                        .param("withCounts", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].name").value("production-proxy"));
+
+        verify(instanceService).listInstances(isNull(), isNull(), eq(true));
     }
 
     @Test
     void listInstancesShouldFilterByType() throws Exception {
         InstanceVO inst = buildInstance(1L, "proxy-1", InstanceType.CLOUD, "10.0.1.1:8080");
 
-        when(instanceService.listInstances(eq(InstanceType.CLOUD), isNull())).thenReturn(List.of(inst));
+        when(instanceService.listInstances(eq(InstanceType.CLOUD), isNull(), eq(false)))
+                .thenReturn(List.of(inst));
 
         mockMvc.perform(get("/api/instances")
                         .param("type", "CLOUD"))
@@ -97,21 +115,21 @@ class InstanceControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data[0].type").value("CLOUD"));
 
-        verify(instanceService).listInstances(eq(InstanceType.CLOUD), isNull());
+        verify(instanceService).listInstances(eq(InstanceType.CLOUD), isNull(), eq(false));
     }
 
     @Test
     void listInstancesShouldFilterBySearch() throws Exception {
         InstanceVO inst = buildInstance(1L, "production", InstanceType.PROXY_CLUSTER, "10.0.1.1:8080");
 
-        when(instanceService.listInstances(isNull(), eq("prod"))).thenReturn(List.of(inst));
+        when(instanceService.listInstances(isNull(), eq("prod"), eq(false))).thenReturn(List.of(inst));
 
         mockMvc.perform(get("/api/instances")
                         .param("search", "prod"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].name").value("production"));
 
-        verify(instanceService).listInstances(isNull(), eq("prod"));
+        verify(instanceService).listInstances(isNull(), eq("prod"), eq(false));
     }
 
     @Test

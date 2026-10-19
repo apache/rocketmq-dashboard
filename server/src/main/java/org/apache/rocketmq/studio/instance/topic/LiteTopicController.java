@@ -51,7 +51,7 @@ public class LiteTopicController {
 
     @PostMapping("/extendTTL")
     public Result<Void> extendTTL(@Valid @RequestBody LiteTopicTTLUpdateDTO request) {
-        liteTopicService.extendTTL(request.getTopicPattern(), request.getNewTTL());
+        liteTopicService.extendTTL(request.getInstanceId(), request.getTopicPattern(), request.getNewTTL());
         return Result.ok();
     }
 

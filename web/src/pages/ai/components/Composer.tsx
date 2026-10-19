@@ -24,7 +24,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
-import { Button, Progress, Select, Tag, Tooltip, theme } from 'antd';
+import { Button, Flex, Progress, Select, Tag, Tooltip, theme } from 'antd';
 import {
   BookOpen,
   CaretDown,
@@ -59,12 +59,13 @@ import SendStopButton, { type SendStopState } from './SendStopButton';
  * ```ts
  * const generating = isStreaming && !stopRequested;
  * state = stopRequested ? 'stopping' : generating ? 'stop' : 'send';
- * canSend = value.trim() && !disabled && !readOnlyRole && llmReady && !generating;
+ * canSend = value.trim() && !disabled && !readOnlyRole && llmReady && !isStreaming;
  * ```
  *
  * `stopRequested` is what separates "the stop is on its way" from "the run is still going": the stop
  * is a server round-trip and the stream stays open to deliver the terminal frames, so the button sits
- * in `stopping` until they arrive rather than flipping straight back to `send`.
+ * in `stopping` until they arrive rather than flipping straight back to `send`. `canSend` follows the
+ * whole streaming window, so the keyboard cannot submit into that same window.
  *
  * ─── Keyboard ──────────────────────────────────────────────────
  * Enter sends, Shift+Enter inserts a newline, and Escape stops while generating. The `isComposing`
@@ -106,7 +107,7 @@ export interface ComposerProps {
   value: string;
   onChange: (value: string) => void;
   /**
-   * Called with the trimmed draft once a send was accepted. The composer clears the draft itself, so
+   * Called with the trimmed draft after the composer clears it, so
    * a caller that has to reject the send (no conversation yet, 409 from the server) should put the
    * text back with `onChange`.
    */
@@ -247,7 +248,10 @@ const Composer = ({
 
   const generating = isStreaming && !stopRequested;
   const sendStopState: SendStopState = stopRequested ? 'stopping' : generating ? 'stop' : 'send';
-  const canSend = !disabled && !readOnlyRole && llmReady && !generating && value.trim().length > 0;
+  // `isStreaming`, not `generating`: while the stop is still in flight the button is in its
+  // disabled `stopping` state because the stream guard would refuse a new run, and Enter must not
+  // be a hidden second way in - it used to clear the draft for a send that silently never left.
+  const canSend = !disabled && !readOnlyRole && llmReady && !isStreaming && value.trim().length > 0;
 
   const contextPercent = Math.min(100, Math.round((contextTokens / CONTEXT_WINDOW_TOKENS) * 100));
   const contextColor =
@@ -256,14 +260,16 @@ const Composer = ({
   const handleSend = useCallback(() => {
     const text = value.trim();
     if (!text || !canSend) return;
-    onSend(text);
     onChange('');
+    onSend(text);
   }, [canSend, onChange, onSend, value]);
 
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
       // An IME candidate being confirmed must not send the half-typed prompt.
-      if (event.nativeEvent.isComposing) return;
+      // WebKit can deliver the confirming key after compositionend, with only keyCode 229
+      // identifying it as IME input (https://bugs.webkit.org/show_bug.cgi?id=165004).
+      if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
       if (event.key === 'Escape') {
         if (generating) {
           event.preventDefault();
@@ -333,7 +339,9 @@ const Composer = ({
           }
         >
           <div className="flex items-center justify-between gap-3 px-3 pt-2.5">
-            <div className="flex flex-1 min-w-0 items-center gap-2">
+            {/* Wraps on narrow viewports: the selectors carry min-widths and the provider status
+                never shrinks, so without wrap the row overflows the panel instead of reflowing. */}
+            <div className="flex flex-1 min-w-0 items-center gap-2 flex-wrap">
               <span className="shrink-0 text-gray-500" style={{ fontSize: '0.893rem' }}>
                 {t('ai.composer.modelLabel')}
               </span>
@@ -519,7 +527,11 @@ const Composer = ({
                   </div>
                 </div>
                 <div className="shrink-0 flex items-center gap-2">
-                  {showContextBar && (
+                  {/* Context-usage meter, the pattern the AI products converged on (ChatGPT's
+                      "Context left" pill, Cursor's composer meter): a mini bar PLUS the percent
+                      number — a bare bar is unreadable at a glance — hidden while the conversation
+                      is still under 1% of the window so a fresh chat carries no noise. */}
+                  {showContextBar && contextPercent >= 1 && (
                     <Tooltip
                       title={t('ai.composer.contextUsage', {
                         used: contextTokens.toLocaleString(),
@@ -527,15 +539,30 @@ const Composer = ({
                         percent: contextPercent,
                       })}
                     >
-                      <div data-testid="ai-context-bar" style={{ width: 96 }}>
+                      <Flex
+                        align="center"
+                        gap={6}
+                        data-testid="ai-context-bar"
+                        style={{ cursor: 'default' }}
+                      >
                         <Progress
                           percent={contextPercent}
                           showInfo={false}
-                          strokeWidth={10}
+                          strokeWidth={8}
                           strokeColor={contextColor}
-                          style={{ margin: 0 }}
+                          trailColor={token.colorFillSecondary}
+                          style={{ margin: 0, width: 56 }}
                         />
-                      </div>
+                        <span
+                          style={{
+                            fontSize: 14,
+                            color: token.colorTextSecondary,
+                            fontVariantNumeric: 'tabular-nums',
+                          }}
+                        >
+                          {contextPercent}%
+                        </span>
+                      </Flex>
                     </Tooltip>
                   )}
                   <SendStopButton

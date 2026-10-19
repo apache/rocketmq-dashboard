@@ -76,6 +76,17 @@ public class NativeAlertProcessor {
                         && sample.labels().isEmpty());
     }
 
+    /**
+     * A rule stored without a metric - legacy rows, and rules imported through the JSON transfer
+     * where {@code metric} is not validated - belongs to no collection scope. An absent metric
+     * must not reach the membership test either: {@link MetricCollectionScope#metricKeys()} is an
+     * immutable set, whose {@code contains(null)} throws instead of answering false.
+     */
+    private static String normalizedMetric(AlertRuleVO rule) {
+        String metric = StringUtils.trimWhitespace(rule.getMetric());
+        return metric == null ? "" : metric;
+    }
+
     private void processSamples(List<MetricSample> samples) {
         Map<AlertDomain, List<AlertRuleVO>> rulesByDomain = new EnumMap<>(AlertDomain.class);
         int failedEvaluations = 0;
@@ -102,7 +113,7 @@ public class NativeAlertProcessor {
         List<AlertRuleVO> rules = alertService.listRules(scope.domain()).stream()
                 .filter(rule -> rule.getId() != null)
                 .filter(AlertRuleVO::isEnabled)
-                .filter(rule -> scope.metricKeys().contains(StringUtils.trimWhitespace(rule.getMetric())))
+                .filter(rule -> scope.metricKeys().contains(normalizedMetric(rule)))
                 .filter(rule -> !StringUtils.hasText(rule.getInstanceId())
                         || scope.instanceId().equals(StringUtils.trimWhitespace(rule.getInstanceId())))
                 .toList();
@@ -117,6 +128,10 @@ public class NativeAlertProcessor {
                         .map(rule -> new AlertStateKey(rule.getId(),
                                 AlertFingerprint.of(rule.getId(), sample.instanceId(), sample.labels()))))
                 .collect(Collectors.toSet());
+        List<MetricSample> unavailableSamples = samples.stream()
+                .filter(scope::contains)
+                .filter(sample -> sample.availability() != MetricAvailability.AVAILABLE)
+                .toList();
         Map<Long, AlertRuleVO> byId = rules.stream().collect(Collectors.toMap(AlertRuleVO::getId, rule -> rule,
                 (left, right) -> left));
         Instant resolvedAt = samples.stream().filter(scope::contains).map(MetricSample::collectedAt).max(Instant::compareTo)
@@ -131,6 +146,14 @@ public class NativeAlertProcessor {
             }
             AlertRuleVO rule = byId.get(active.key().ruleId());
             if (rule == null) {
+                continue;
+            }
+            // A group-level failure cannot enumerate its topics. Keep any previously active
+            // topic fingerprint covered by that failure until a successful collection can
+            // distinguish a disappeared topic from unavailable progress data.
+            if (unavailableSamples.stream().anyMatch(sample ->
+                    sample.metricKey().equals(StringUtils.trimWhitespace(rule.getMetric()))
+                            && active.labels().entrySet().containsAll(sample.labels().entrySet()))) {
                 continue;
             }
             AlertStateUpdate update = stateMachine.advance(active.state(), clear,

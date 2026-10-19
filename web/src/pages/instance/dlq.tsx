@@ -25,7 +25,6 @@ import {
   Space,
   Flex,
   Modal,
-  Drawer,
   DatePicker,
   Tooltip,
   Typography,
@@ -39,7 +38,7 @@ import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
-import type { DLQGroup, DLQMessage } from '../../api/message';
+import type { DLQGroup, DLQMessage, DLQResendResult } from '../../api/message';
 import {
   exportDLQExcel,
   listDLQGroups,
@@ -49,6 +48,8 @@ import {
 } from '../../services/messageService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { buildCsv, downloadBlob, downloadCsv, type CsvColumn } from '../../utils/download';
+import { describeThrownMessage } from '../../utils/apiError';
+import { formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
@@ -57,27 +58,6 @@ const DEFAULT_LOAD_ERROR = '死信队列加载失败，请稍后重试';
 const DEFAULT_RETRY_ERROR = '提交重投任务失败，请稍后重试';
 
 /* ─── Helpers ─── */
-
-type ApiErrorLike = {
-  message?: unknown;
-  response?: {
-    data?: {
-      message?: unknown;
-    };
-  };
-};
-
-const getErrorMessage = (error: unknown, fallback: string): string => {
-  const apiError = error as ApiErrorLike;
-  const responseMessage = apiError.response?.data?.message;
-  if (typeof responseMessage === 'string' && responseMessage.trim()) {
-    return responseMessage;
-  }
-  if (typeof apiError.message === 'string' && apiError.message.trim()) {
-    return apiError.message;
-  }
-  return fallback;
-};
 
 export const formatDateTime = (value?: string | number | null): string => {
   if (value === undefined || value === null || value === '') return '-';
@@ -93,7 +73,7 @@ const DLQ_EXPORT_COLUMNS: CsvColumn<DLQGroup>[] = [
   { header: 'Message Count', value: (group) => group.messageCount },
   { header: 'Retry Count', value: (group) => group.retryCount },
   { header: 'Status', value: (group) => group.status },
-  { header: 'Last Enqueue Time', value: (group) => group.lastEnqueueTime },
+  { header: 'Last Enqueue Time', value: (group) => formatUtcDateTime(group.lastEnqueueTime) },
 ];
 
 const exportDLQGroups = (groups: DLQGroup[], filename: string) => {
@@ -105,7 +85,8 @@ const exportDLQGroups = (groups: DLQGroup[], filename: string) => {
    ═══════════════════════════════════════════ */
 const DLQPage = () => {
   const { t } = useLang();
-  const { selectedInstanceId, selectInstance, instanceOptions } = useInstanceFilter();
+  const { selectedInstanceId, selectInstance, instanceOptions, instancesFailed, reloadInstances } =
+    useInstanceFilter();
   const [groups, setGroups] = useState<DLQGroup[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -142,6 +123,7 @@ const DLQPage = () => {
   const [detailResending, setDetailResending] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const detailRequestIdRef = useRef(0);
+  const detailPaginationRef = useRef({ page: 1, pageSize: 20 });
   const detailResendRequestIdRef = useRef(0);
   const retryRequestIdRef = useRef(0);
   const groupRequestIdRef = useRef(0);
@@ -188,6 +170,18 @@ const DLQPage = () => {
     setLoading(true);
   }
 
+  // The search term filters the group list of one instance only, so switching
+  // instances has to drop it — otherwise the first request for the new instance
+  // is filtered by a term that can never match there. Kept separate from the
+  // `scopeKey` block above on purpose: that key also moves when a completed
+  // retry bumps `refreshKey`, and a reload of the same instance must keep the
+  // term the user is still working with.
+  const [prevInstanceId, setPrevInstanceId] = useState(selectedInstanceId);
+  if (prevInstanceId !== selectedInstanceId) {
+    setPrevInstanceId(selectedInstanceId);
+    setSearch('');
+  }
+
   useEffect(() => {
     const requestId = ++groupRequestIdRef.current;
 
@@ -219,7 +213,7 @@ const DLQPage = () => {
       })
       .catch((error) => {
         if (groupRequestIdRef.current === requestId) {
-          setLoadError(getErrorMessage(error, DEFAULT_LOAD_ERROR));
+          setLoadError(describeThrownMessage(error) || DEFAULT_LOAD_ERROR);
           setLoading(false);
         }
       });
@@ -257,6 +251,57 @@ const DLQPage = () => {
     setRetryModalOpen(true);
   };
 
+  const showResendFailures = (result: DLQResendResult) => {
+    const summaryKey =
+      result.outcome === 'FAILED' ? 'dlq.resendFailedSummary' : 'dlq.resendPartialSummary';
+    const summary = t(summaryKey, { resent: result.resent, failed: result.failed });
+    const failures = result.failures ?? [];
+    if (failures.length === 0) {
+      if (result.outcome === 'FAILED') {
+        message.error(summary);
+      } else {
+        message.warning(summary);
+      }
+      return;
+    }
+
+    const openFailureModal = result.outcome === 'FAILED' ? Modal.error : Modal.warning;
+    openFailureModal({
+      title: summary,
+      width: 720,
+      content: (
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <Text strong>{t('dlq.failureDetails')}</Text>
+          <div role="list" style={{ maxHeight: 360, overflowY: 'auto' }}>
+            {failures.map((failure, index) => (
+              <div
+                role="listitem"
+                key={`${failure.msgId}-${index}`}
+                style={{ borderBottom: '1px solid #f0f0f0', padding: '8px 0' }}
+              >
+                <div>
+                  <Text type="secondary">{t('dlq.failureMessageId')}: </Text>
+                  <Text code>{failure.msgId || '-'}</Text>
+                </div>
+                <div>
+                  <Text type="secondary">{t('dlq.failureTargetTopic')}: </Text>
+                  <Text code>{failure.targetTopic || '-'}</Text>
+                </div>
+                <div>
+                  <Text type="secondary">{t('dlq.failureReason')}: </Text>
+                  <Text>{failure.reason}</Text>
+                </div>
+              </div>
+            ))}
+          </div>
+          {result.failuresTruncated && (
+            <Alert type="warning" showIcon message={t('dlq.failureDetailsTruncated')} />
+          )}
+        </Space>
+      ),
+    });
+  };
+
   const handleRetry = async () => {
     if (!retryTargetTopic) {
       message.warning('请输入目标 Topic');
@@ -282,12 +327,17 @@ const DLQPage = () => {
       });
       if (retryRequestIdRef.current !== requestId) return;
       setRefreshKey((key) => key + 1);
-      if (result.scanIncomplete) {
+      if (result.failed > 0) {
+        showResendFailures(result);
+        if (result.scanIncomplete) {
+          message.warning(
+            `重投扫描不完整：${result.failedQueueCount ?? 0} 个队列无法扫描，已重投 ${result.resent} 条`,
+          );
+        }
+      } else if (result.scanIncomplete) {
         message.warning(
           `重投扫描不完整：${result.failedQueueCount ?? 0} 个队列无法扫描，已重投 ${result.resent} 条`,
         );
-      } else if (result.failed > 0) {
-        message.warning(`重投部分完成：成功 ${result.resent}，失败 ${result.failed}`);
       } else {
         message.success(`重投完成：${groupName} → ${targetTopic}（${result.resent} 条）`);
       }
@@ -296,7 +346,7 @@ const DLQPage = () => {
       setRetryError(null);
     } catch (error) {
       if (retryRequestIdRef.current === requestId) {
-        setRetryError(getErrorMessage(error, DEFAULT_RETRY_ERROR));
+        setRetryError(describeThrownMessage(error) || DEFAULT_RETRY_ERROR);
       }
     } finally {
       if (retryRequestIdRef.current === requestId) {
@@ -323,7 +373,7 @@ const DLQPage = () => {
         message.success(`已导出 ${group.groupName} 的死信消息（${blob.size} 字节）`);
       }
     } catch (error) {
-      message.error(getErrorMessage(error, '导出死信消息失败，请稍后重试'));
+      message.error(describeThrownMessage(error) || '导出死信消息失败，请稍后重试');
     }
   };
 
@@ -332,8 +382,8 @@ const DLQPage = () => {
     exportDLQGroups(selectedGroups, 'dlq-groups.csv');
   };
 
-  /* ─── DLQ Message Details Drawer ─── */
-  const openDetailDrawer = (group: DLQGroup) => {
+  /* ─── DLQ Message Details Modal ─── */
+  const openDetailModal = (group: DLQGroup) => {
     detailRequestIdRef.current += 1;
     detailResendRequestIdRef.current += 1;
     detailResendInFlightRef.current = false;
@@ -341,6 +391,10 @@ const DLQPage = () => {
     setDetailGroup(group);
     setDetailOpen(true);
     setDetailPage(1);
+    // The drawer now belongs to another group: its rows, and the total the export and the
+    // pagination are driven by, must not survive from the group that was open before.
+    setDetailMessages([]);
+    setDetailTotal(0);
     setDetailSelectedMsgIds([]);
     setDetailError(null);
     void loadDetailMessages(group, 1, detailPageSize);
@@ -350,6 +404,7 @@ const DLQPage = () => {
     if (!selectedInstanceId) return;
     const requestId = detailRequestIdRef.current + 1;
     detailRequestIdRef.current = requestId;
+    detailPaginationRef.current = { page, pageSize };
     setDetailLoading(true);
     setDetailError(null);
     try {
@@ -367,7 +422,7 @@ const DLQPage = () => {
       setDetailPage(page);
     } catch (error) {
       if (detailRequestIdRef.current === requestId) {
-        setDetailError(getErrorMessage(error, '死信消息明细加载失败，请稍后重试'));
+        setDetailError(describeThrownMessage(error) || '死信消息明细加载失败，请稍后重试');
       }
     } finally {
       if (detailRequestIdRef.current === requestId) {
@@ -384,8 +439,6 @@ const DLQPage = () => {
     detailResendRequestIdRef.current = requestId;
     const instanceId = selectedInstanceId;
     const group = detailGroup;
-    const pageToReload = detailPage;
-    const pageSizeToReload = detailPageSize;
     setDetailResending(true);
     setDetailError(null);
     try {
@@ -395,18 +448,46 @@ const DLQPage = () => {
         msgIds,
       });
       if (detailResendRequestIdRef.current !== requestId) return;
-      if (result.outcome === 'FAILED' && result.failed > 0) {
-        message.error(`重发失败：成功 ${result.resent}，失败 ${result.failed}`);
-      } else if (result.resent > 0 && result.failed > 0) {
-        message.warning(`重发部分完成：成功 ${result.resent}，失败 ${result.failed}`);
+      // The server reports `matched` separately from `resent`: a selected message that can no
+      // longer be resolved (purged, broker gone) is dropped with failed=0, and a queue that could
+      // not be scanned is reported separately too. Mirror the time-range resend handler: never show
+      // the success toast unless every selected message was matched and resent.
+      const unmatched = msgIds.length - result.matched;
+      if (result.failed > 0) {
+        showResendFailures(result);
+        // `showResendFailures` only reports resent + failed, so the partial-match information
+        // would be dropped on this path. Emit the same supplementary warning as the branches
+        // below, mirroring the time-range resend handler which also warns on top of the failure
+        // summary when its scan was incomplete.
+        if (unmatched > 0 || result.scanIncomplete) {
+          message.warning(
+            t(unmatched > 0 ? 'dlq.resendUnmatchedSummary' : 'dlq.resendScanIncompleteSummary', {
+              resent: result.resent,
+              unmatched,
+              queues: result.failedQueueCount ?? 0,
+            }),
+          );
+        }
+      } else if (unmatched > 0) {
+        message.warning(t('dlq.resendUnmatchedSummary', { resent: result.resent, unmatched }));
+      } else if (result.scanIncomplete) {
+        message.warning(
+          t('dlq.resendScanIncompleteSummary', {
+            resent: result.resent,
+            queues: result.failedQueueCount ?? 0,
+          }),
+        );
       } else {
         message.success(`重发完成：成功 ${result.resent} 条`);
       }
-      setDetailSelectedMsgIds([]);
-      await loadDetailMessages(group, pageToReload, pageSizeToReload);
+      // A resend may finish after the operator has paged elsewhere in this drawer.
+      // Refresh the current query and retain selections made since the submitted batch.
+      setDetailSelectedMsgIds((selected) => selected.filter((id) => !msgIds.includes(id)));
+      const currentPagination = detailPaginationRef.current;
+      await loadDetailMessages(group, currentPagination.page, currentPagination.pageSize);
     } catch (error) {
       if (detailResendRequestIdRef.current === requestId) {
-        setDetailError(getErrorMessage(error, '重发死信消息失败，请稍后重试'));
+        setDetailError(describeThrownMessage(error) || '重发死信消息失败，请稍后重试');
       }
     } finally {
       if (detailResendRequestIdRef.current === requestId) {
@@ -437,7 +518,7 @@ const DLQPage = () => {
         );
       }
     } catch (error) {
-      message.error(getErrorMessage(error, '导出死信消息失败，请稍后重试'));
+      message.error(describeThrownMessage(error) || '导出死信消息失败，请稍后重试');
     }
   };
 
@@ -501,11 +582,11 @@ const DLQPage = () => {
       title: '最近入队时间',
       dataIndex: 'lastEnqueueTime',
       key: 'lastEnqueueTime',
-      width: 180,
+      width: 156,
       sorter: (a, b) => (a.lastEnqueueTime || '').localeCompare(b.lastEnqueueTime || ''),
       render: (time?: string | null) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
-          {formatDateTime(time)}
+          {formatUtcDateTime(time)}
         </Text>
       ),
     },
@@ -519,7 +600,7 @@ const DLQPage = () => {
             size="small"
             icon={<Eye size={14} />}
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
-            onClick={() => openDetailDrawer(record)}
+            onClick={() => openDetailModal(record)}
           >
             消息明细
           </Button>
@@ -546,13 +627,16 @@ const DLQPage = () => {
     },
   ];
 
-  /* ─── Detail Drawer Columns ─── */
+  /* ─── Detail Modal Columns ─── */
   const detailColumns: ColumnsType<DLQMessage> = [
     {
       title: 'Message ID',
       dataIndex: 'msgId',
       key: 'msgId',
+      // monospace 32 字符 + 复制图标实测 min-content ~306，不加 ellipsis 会把整表撑出弹窗
+      // （实测表 1210 > 弹窗 body 1132，用户约定 2026-10-16 弹窗巡检）
       width: 240,
+      ellipsis: { showTitle: true },
       render: (msgId: string) => (
         <Text copyable style={{ fontFamily: 'monospace', fontSize: 14 }}>
           {msgId}
@@ -587,7 +671,8 @@ const DLQPage = () => {
       title: '入队时间',
       dataIndex: 'storeTime',
       key: 'storeTime',
-      width: 160,
+      // monospace 时间戳 19 字符实测 ~160 + padding，160 会截断
+      width: 176,
       render: (storeTime: number) => (
         <Text style={{ fontFamily: 'monospace', fontSize: 14 }}>{formatDateTime(storeTime)}</Text>
       ),
@@ -644,6 +729,8 @@ const DLQPage = () => {
             onChange={handleInstanceChange}
             options={instanceOptions}
             style={{ width: 220 }}
+            failed={instancesFailed}
+            onRetry={reloadInstances}
           />
           <Input.Search
             placeholder="搜索 Group 名称或 DLQ Topic"
@@ -737,12 +824,17 @@ const DLQPage = () => {
         }
         open={retryModalOpen}
         onCancel={() => {
+          if (retryInFlightRef.current) return;
           setRetryModalOpen(false);
           setRetryGroup(null);
           setRetryError(null);
         }}
         onOk={handleRetry}
         confirmLoading={retrySubmitting}
+        cancelButtonProps={{ disabled: retrySubmitting }}
+        closable={!retrySubmitting}
+        keyboard={!retrySubmitting}
+        maskClosable={!retrySubmitting}
         okText="确认重投"
         cancelText="取消"
         width={520}
@@ -818,13 +910,15 @@ const DLQPage = () => {
       </Modal>
 
       {/* ═══════════════════════════════════════════
-         Message Detail Drawer
+         Message Detail Modal
          ═══════════════════════════════════════════ */}
-      <Drawer
+      <Modal
         title={detailGroup ? `DLQ 消息明细 · ${detailGroup.groupName}` : 'DLQ 消息明细'}
-        width={1180}
+        // 8 列 monospace 数据实测需 ~1146（含 Message ID ellipsis 后），1180 弹窗的 body 只有
+        // 1132 装不下；加宽到 1280（1600 视口仍留 32px 边距）
+        width="min(1280px, calc(100vw - 32px))"
         open={detailOpen}
-        onClose={() => {
+        onCancel={() => {
           detailRequestIdRef.current += 1;
           detailResendRequestIdRef.current += 1;
           detailResendInFlightRef.current = false;
@@ -835,7 +929,11 @@ const DLQPage = () => {
           setDetailSelectedMsgIds([]);
           setDetailError(null);
         }}
+        footer={null}
         destroyOnHidden
+        styles={{
+          body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden' },
+        }}
       >
         {detailGroup && (
           <>
@@ -882,7 +980,7 @@ const DLQPage = () => {
                     最近入队时间
                   </Text>
                   <Text style={{ fontFamily: 'monospace' }}>
-                    {formatDateTime(detailGroup.lastEnqueueTime)}
+                    {formatUtcDateTime(detailGroup.lastEnqueueTime)}
                   </Text>
                 </div>
               </Space>
@@ -991,7 +1089,7 @@ const DLQPage = () => {
             )}
           </>
         )}
-      </Drawer>
+      </Modal>
     </div>
   );
 };

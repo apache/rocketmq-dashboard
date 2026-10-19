@@ -52,8 +52,11 @@ export interface MetricResultSummary {
 export interface MetricCsvContext {
   profileName: string;
   sourceName: string;
+  /** Epoch seconds of the query window start. */
   queryStart?: number;
+  /** Epoch seconds of the query window end. */
   queryEnd?: number;
+  /** Wall-clock `Date.now()` of the query, in epoch milliseconds. */
   queriedAt?: number;
 }
 
@@ -74,8 +77,11 @@ export interface MetricCsvRow {
   value: number;
   histogramCount?: number;
   histogramSum?: number;
+  /** Epoch seconds, like every other epoch column in the row. */
   queryStart?: number;
+  /** Epoch seconds, like every other epoch column in the row. */
   queryEnd?: number;
+  /** Epoch seconds, like every other epoch column in the row. */
   queriedAt?: number;
 }
 
@@ -143,13 +149,32 @@ const sortedEntries = (labels: Record<string, string>) =>
 export const stableLabelsText = (labels: Record<string, string>) =>
   JSON.stringify(Object.fromEntries(sortedEntries(labels)));
 
-export const metricSeriesLabel = (series: MetricSeries, fallback: string) => {
+// Only the first few labels fit the compact legend row. The complete set stays
+// available through metricSeriesFullLabel and metricSeriesIdentity.
+const METRIC_SERIES_LABEL_LIMIT = 3;
+
+export const metricSeriesLabel = (
+  series: MetricSeries,
+  fallback: string,
+  limit: number = METRIC_SERIES_LABEL_LIMIT,
+) => {
   const labels = sortedEntries(series.labels)
     .filter(([key]) => key !== '__name__')
-    .slice(0, 3)
+    .slice(0, limit)
     .map(([key, value]) => `${key}=${value}`);
   return labels.length > 0 ? labels.join(' / ') : series.labels.__name__ || fallback;
 };
+
+// The whole label set in the same compact notation, for places where two series
+// must stay tellable apart: the legend hover tooltip.
+export const metricSeriesFullLabel = (series: MetricSeries, fallback: string) =>
+  metricSeriesLabel(series, fallback, Number.POSITIVE_INFINITY);
+
+// A rendering identity that is unique per original series. The display label is
+// not: it drops every label past the limit, so two series differing only in a
+// later label share one display label.
+export const metricSeriesIdentity = (series: MetricSeries, seriesIndex: number) =>
+  `${seriesIndex}-${stableLabelsText(series.labels)}`;
 
 const sortMetricSamples = (samples: NumericMetricSample[]) =>
   samples
@@ -160,7 +185,7 @@ const toScalarSamples = (series: MetricSeries): NumericMetricSample[] =>
   sortMetricSamples(
     series.values.map((sample, index) => ({
       timestamp: sample.timestamp,
-      value: Number(sample.value),
+      value: finiteNumber(sample.value) ?? Number.NaN,
       kind: 'scalar',
       index,
     })),
@@ -239,6 +264,11 @@ export const buildMetricCsvRows = (
     const { samples } = toMetricSeriesSamples(series);
     const seriesLabel = metricSeriesLabel(series, metric.name);
     const labels = stableLabelsText(series.labels);
+    // Timestamp / Query Start / Query End are epoch seconds; `queriedAt` is a wall-clock
+    // `Date.now()` in milliseconds. One CSV file must not mix the two units, so the query
+    // instant is emitted in the same seconds unit as the rest of the epoch columns.
+    const queriedAtSeconds =
+      context.queriedAt === undefined ? undefined : Math.floor(context.queriedAt / 1000);
     return samples.map((sample) => ({
       profileName: context.profileName,
       sourceName: context.sourceName,
@@ -258,7 +288,7 @@ export const buildMetricCsvRows = (
       histogramSum: sample.histogramSum,
       queryStart: context.queryStart,
       queryEnd: context.queryEnd,
-      queriedAt: context.queriedAt,
+      queriedAt: queriedAtSeconds,
     }));
   });
 
@@ -316,12 +346,14 @@ export const buildMetricSeriesDetailRows = (
     const { samples, fromHistogram } = toMetricSeriesSamples(series);
     const latest = samples[samples.length - 1];
     return {
-      key: `${seriesIndex}-${stableLabelsText(series.labels)}`,
+      key: metricSeriesIdentity(series, seriesIndex),
       seriesIndex: seriesIndex + 1,
       seriesLabel: metricSeriesLabel(series, metric.name),
       labels: stableLabelsText(series.labels),
       sampleType: fromHistogram
-        ? samples.some((sample) => sample.kind === 'scalar') ? 'mixed' : 'histogram'
+        ? samples.some((sample) => sample.kind === 'scalar')
+          ? 'mixed'
+          : 'histogram'
         : 'scalar',
       sampleCount: samples.length,
       latestTimestamp: latest?.timestamp,
@@ -436,14 +468,14 @@ export const createMetricsQueryHistoryEntry = ({
   instanceId,
   summary,
 }: MetricsQueryHistoryInput): MetricsQueryHistoryEntry => ({
-  id: [
+  id: JSON.stringify([
     profileId,
     metric.semanticMetric,
     rangeId,
-    dataSourceKey || 'default',
-    instanceId || 'global',
+    dataSourceKey,
+    instanceId ?? null,
     queriedAt,
-  ].join(':'),
+  ]),
   profileId,
   profileName,
   metricId: metric.semanticMetric,
@@ -463,23 +495,30 @@ export const createMetricsQueryHistoryEntry = ({
 });
 
 const historyIdentity = (entry: MetricsQueryHistoryEntry) =>
-  [
+  JSON.stringify([
     entry.profileId,
     entry.metricId,
     entry.rangeId,
-    entry.dataSourceKey || 'default',
-    entry.instanceId || 'global',
+    entry.dataSourceKey,
+    entry.instanceId ?? null,
     entry.promql,
-  ].join('\n');
+  ]);
 
 export const mergeMetricsQueryHistory = (
   entries: MetricsQueryHistoryEntry[],
   entry: MetricsQueryHistoryEntry,
   limit = METRICS_QUERY_HISTORY_LIMIT,
 ) => {
-  const duplicateKey = historyIdentity(entry);
-  return [entry, ...entries.filter((item) => historyIdentity(item) !== duplicateKey)].slice(
-    0,
-    limit,
-  );
+  // Responses can finish out of order. Keep the newest query for each identity before
+  // applying the cap; a late older response must not displace more recent history.
+  const identities = new Set<string>();
+  return [entry, ...entries]
+    .sort((left, right) => right.queriedAt - left.queriedAt)
+    .filter((item) => {
+      const identity = historyIdentity(item);
+      if (identities.has(identity)) return false;
+      identities.add(identity);
+      return true;
+    })
+    .slice(0, limit);
 };

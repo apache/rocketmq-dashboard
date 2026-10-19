@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useMemo, useState, type Key } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type Key } from 'react';
 import {
   Alert,
   Button,
@@ -29,11 +29,11 @@ import {
   Typography,
   message,
 } from 'antd';
-import { Trash } from '@phosphor-icons/react';
+import { Archive, TrayArrowUp, Trash } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
 import { useLang } from '../../../i18n/LangContext';
 import type { AiConversationListItemVO, RunStatus } from '../../../api/aiEvents';
-import { deleteConversation } from '../../../api/aiConversations';
+import { deleteConversation, updateConversation } from '../../../api/aiConversations';
 import { useConversationList } from '../hooks/useConversationList';
 import { formatUtcDateTime } from '../../../utils/format';
 import { tableScrollX } from '../../../utils/table';
@@ -119,7 +119,7 @@ const COLUMN_WIDTHS = {
   instance: 120,
   status: 106,
   updatedAt: 176,
-  action: 56,
+  action: 88,
 } as const;
 
 const TABLE_SCROLL_X = tableScrollX(
@@ -163,17 +163,49 @@ export interface ConversationListModalProps {
 const ConversationListPanel = ({
   activeConversationId,
   onSelect,
-  onActiveDeleted,
-}: Omit<ConversationListModalProps, 'open' | 'onClose'>) => {
+  onDeleted,
+}: Pick<ConversationListModalProps, 'activeConversationId' | 'onSelect'> & {
+  onDeleted: (ids: readonly number[]) => boolean;
+}) => {
   const { t } = useLang();
   const list = useConversationList();
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const [deletingIds, setDeletingIds] = useState<readonly number[]>([]);
+  const [archivingIds, setArchivingIds] = useState<readonly number[]>([]);
   const deleting = deletingIds.length > 0;
   // Pulled out of `list` for the callback below: the hook returns a fresh object every render, so
   // depending on it would rebuild `columns` — and with it every cell — on each one.
-  const { items, page, setPage, reload } = list;
+  const { items, page, setPage, reload, archived } = list;
   const rowCount = items.length;
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  /**
+   * Flips the row's archived flag (PATCH) and reloads the scope: an archived conversation leaves
+   * the active list and the other way round, so the row disappearing IS the feedback — the toast
+   * only names what happened. Archiving the conversation currently on screen is allowed: the
+   * transcript stays open, the flag only files it out of the active list.
+   */
+  const toggleArchive = useCallback(
+    async (id: number) => {
+      setArchivingIds((ids) => [...ids, id]);
+      try {
+        await updateConversation(id, { archived: !archived });
+        message.success(archived ? t('ai.list.unarchivedToast') : t('ai.list.archivedToast'));
+        reload();
+      } catch {
+        message.error(t('ai.list.archiveFailed'));
+      } finally {
+        setArchivingIds((ids) => ids.filter((entry) => entry !== id));
+      }
+    },
+    [archived, reload, t],
+  );
 
   /**
    * Hard-deletes conversations one request at a time.
@@ -197,6 +229,9 @@ const ConversationListPanel = ({
         }
       }
       const deletedCount = ids.length - failed.length;
+      // The modal shell survives closing its panel and knows which conversation is
+      // active now. Notify it even when the panel was closed during deletion.
+      const activeDeleted = onDeleted(ids.filter((id) => !failed.includes(id)));
       setDeletingIds([]);
       setSelectedRowKeys((keys) => keys.filter((key) => failed.includes(Number(key))));
       if (failed.length === 0) {
@@ -208,10 +243,16 @@ const ConversationListPanel = ({
       } else {
         message.error(t('ai.list.deleteFailed'));
       }
-      if (activeConversationId != null && ids.includes(activeConversationId)) {
-        onActiveDeleted?.();
+      // Only a delete that SUCCEEDED ends the open conversation: deletion may have failed, and then
+      // the conversation is still on screen, so the caller must stay put and the list still refresh.
+      if (activeDeleted) {
         return;
       }
+      // The toasts above are global — antd mounts them at document level, not inside this panel — so
+      // closing the panel mid-delete must not swallow the outcome, least of all a failure. What does
+      // belong to the panel is the refresh below: re-querying a list nobody renders any more wastes a
+      // request and drives this hook's state from a component that is already gone.
+      if (!mountedRef.current) return;
       // A page emptied by the delete has to fall back one, or the pager keeps offering a page that
       // no longer exists; `setPage` re-queries through the hook, `reload` covers every other case.
       if (deletedCount > 0 && deletedCount >= rowCount && page > 1) {
@@ -220,7 +261,7 @@ const ConversationListPanel = ({
         reload();
       }
     },
-    [activeConversationId, onActiveDeleted, page, reload, rowCount, setPage, t],
+    [onDeleted, page, reload, rowCount, setPage, t],
   );
 
   const columns = useMemo<ColumnsType<AiConversationListItemVO>>(
@@ -322,37 +363,55 @@ const ConversationListPanel = ({
         dataIndex: 'updatedAt',
         key: 'updatedAt',
         width: COLUMN_WIDTHS.updatedAt,
-        // No zone name: it is the viewer's own and identical on every row, so it would only make
-        // this the widest column in the table to say something the reader already knows.
-        render: (updatedAt: string) => formatUtcDateTime(updatedAt, undefined, { zone: false }),
+        render: (updatedAt: string) => formatUtcDateTime(updatedAt),
       },
       {
         title: t('ai.list.columnAction'),
         key: 'action',
         width: COLUMN_WIDTHS.action,
         render: (_: unknown, row) => (
-          <Popconfirm
-            title={t('ai.list.deleteConfirm')}
-            description={t('ai.list.deleteHint')}
-            okText={t('common.delete')}
-            cancelText={t('common.cancel')}
-            okButtonProps={{ danger: true }}
-            onConfirm={() => void remove([row.id])}
-          >
+          <Flex align="center" gap={0}>
             <Button
               type="text"
               size="small"
-              danger
-              loading={deletingIds.includes(row.id)}
-              aria-label={t('ai.list.deleteAria', { title: row.title })}
-              data-testid={`ai-conversation-row-delete-${row.id}`}
-              icon={<Trash size={16} />}
+              loading={archivingIds.includes(row.id)}
+              aria-label={
+                archived
+                  ? t('ai.list.unarchiveAria', { title: row.title })
+                  : t('ai.list.archiveAria', { title: row.title })
+              }
+              title={
+                archived
+                  ? t('ai.list.unarchiveAria', { title: row.title })
+                  : t('ai.list.archiveAria', { title: row.title })
+              }
+              data-testid={`ai-conversation-row-archive-${row.id}`}
+              icon={archived ? <TrayArrowUp size={16} /> : <Archive size={16} />}
+              onClick={() => void toggleArchive(row.id)}
             />
-          </Popconfirm>
+            <Popconfirm
+              title={t('ai.list.deleteConfirm')}
+              description={t('ai.list.deleteHint')}
+              okText={t('common.delete')}
+              cancelText={t('common.cancel')}
+              okButtonProps={{ danger: true }}
+              onConfirm={() => void remove([row.id])}
+            >
+              <Button
+                type="text"
+                size="small"
+                danger
+                loading={deletingIds.includes(row.id)}
+                aria-label={t('ai.list.deleteAria', { title: row.title })}
+                data-testid={`ai-conversation-row-delete-${row.id}`}
+                icon={<Trash size={16} />}
+              />
+            </Popconfirm>
+          </Flex>
         ),
       },
     ],
-    [activeConversationId, deletingIds, onSelect, remove, t],
+    [activeConversationId, archivingIds, archived, deletingIds, onSelect, remove, t, toggleArchive],
   );
 
   return (
@@ -460,6 +519,23 @@ const ConversationListModal = ({
   onActiveDeleted,
 }: ConversationListModalProps) => {
   const { t } = useLang();
+  const deletionContextRef = useRef<{
+    activeId: number | null;
+    notify: (() => void) | undefined;
+  } | null>(null);
+  useEffect(() => {
+    deletionContextRef.current = { activeId: activeConversationId, notify: onActiveDeleted };
+    return () => {
+      deletionContextRef.current = null;
+    };
+  }, [activeConversationId, onActiveDeleted]);
+
+  const handleDeleted = useCallback((ids: readonly number[]) => {
+    const context = deletionContextRef.current;
+    if (context?.activeId == null || !ids.includes(context.activeId)) return false;
+    context.notify?.();
+    return true;
+  }, []);
 
   return (
     <Modal
@@ -474,7 +550,7 @@ const ConversationListModal = ({
       <ConversationListPanel
         activeConversationId={activeConversationId}
         onSelect={onSelect}
-        onActiveDeleted={onActiveDeleted}
+        onDeleted={handleDeleted}
       />
     </Modal>
   );

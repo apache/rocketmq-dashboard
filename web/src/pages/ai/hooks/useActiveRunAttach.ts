@@ -27,11 +27,14 @@ import type { UseConversationTimelineResult } from './useConversationTimeline';
  * that row into exactly one `attach(conversationId, runId, lastSeq)` per run id per visit — `lastSeq`
  * being the replay cursor that keeps the attach from rendering persisted rows twice.
  *
- * ─── One attempt per run id per visit ───────────────────────────
+ * ─── One attempt per run state per visit ────────────────────────
  * `requestedRunRef` is what stands between a dead attach (idle timeout, server restart mid-run) and
  * a hot re-attach loop: the failure surfaces through the run's error state and a reload retries.
  * The ref is cleared when the conversation changes, so navigating away mid-run and BACK re-attaches
- * to the same run id — which is the whole point of the exercise.
+ * to the same run id — which is the whole point of the exercise. It also lets a run that has moved
+ * on from the state this visit attached to be attached once more: a reload during admission observes
+ * QUEUED, whose stream closes immediately because no worker exists yet, and the run only becomes
+ * observable when the timeline reports it RUNNING.
  *
  * The reset effect is declared before the attach effect on purpose: within one commit effects run
  * in declaration order, and arriving at a conversation must clear the previous visit's marker
@@ -42,7 +45,12 @@ export function useActiveRunAttach(
   timeline: Pick<UseConversationTimelineResult, 'activeRun' | 'lastSeq'>,
   run: Pick<UseAgentRunResult, 'isStreaming' | 'attach'>,
 ): void {
-  const requestedRunRef = useRef<number | null>(null);
+  // What the last attach observed, not just which run: a reload during admission attaches to a
+  // QUEUED row that has no worker yet, the server closes that stream with a bare `done`, and the run
+  // then starts generating with nobody watching. Remembering the status too lets the next timeline
+  // fetch - which reports the same run as RUNNING - attach again, while a repeated identical status
+  // still cannot loop.
+  const requestedRunRef = useRef<{ id: number; status: string } | null>(null);
   const { activeRun, lastSeq } = timeline;
   const { isStreaming, attach } = run;
 
@@ -53,8 +61,15 @@ export function useActiveRunAttach(
   useEffect(() => {
     if (conversationId === null || activeRun === null || isStreaming) return;
     if (activeRun.status !== 'QUEUED' && activeRun.status !== 'RUNNING') return;
-    if (requestedRunRef.current === activeRun.id) return;
-    requestedRunRef.current = activeRun.id;
+    const requested = requestedRunRef.current;
+    if (
+      requested !== null &&
+      requested.id === activeRun.id &&
+      requested.status === activeRun.status
+    ) {
+      return;
+    }
+    requestedRunRef.current = { id: activeRun.id, status: activeRun.status };
     void attach(conversationId, activeRun.id, lastSeq);
   }, [activeRun, attach, conversationId, isStreaming, lastSeq]);
 }

@@ -6,11 +6,14 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Button,
   Card,
+  DatePicker,
   Descriptions,
-  Drawer,
+  Modal,
   Flex,
+  Input,
   Select,
   Table,
   Tag,
@@ -32,6 +35,7 @@ import {
 } from '../../services/opsService';
 import { formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
+import { localizeDeliveryError } from '../../utils/deliveryResult';
 
 const statusColors: Record<NotificationDeliveryRecord['status'], string> = {
   PENDING: 'default',
@@ -52,7 +56,11 @@ const NotificationDeliveriesPage = () => {
   const [channel, setChannel] = useState<string>();
   const [status, setStatus] = useState<NotificationDeliveryRecord['status']>();
   const [instanceId, setInstanceId] = useState<string>();
+  const [searchDraft, setSearchDraft] = useState('');
+  const [search, setSearch] = useState<string>();
+  const [timeRange, setTimeRange] = useState<{ from?: string; to?: string }>({});
   const [instanceLoadFailed, setInstanceLoadFailed] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [instanceReloadNonce, setInstanceReloadNonce] = useState(0);
   const [selectedDelivery, setSelectedDelivery] = useState<NotificationDeliveryRecord>();
   const [retryingIds, setRetryingIds] = useState<Set<number>>(() => new Set());
@@ -63,16 +71,30 @@ const NotificationDeliveriesPage = () => {
 
   const refresh = () => {
     setLoading(true);
+    setLoadFailed(false);
     setRefreshNonce((current) => current + 1);
   };
 
   const retryDelivery = async (record: NotificationDeliveryRecord) => {
+    if (loading || loadFailed) return;
     if (retryingVisibleInFlight.current || retryingIdsInFlight.current.has(record.id)) return;
     retryingIdsInFlight.current.add(record.id);
     setRetryingIds((current) => new Set(current).add(record.id));
     try {
       await retryAlertDelivery(record.id);
       message.success(t('deliveries.retryQueued'));
+      // The dialog reads `items` first and the snapshot only as a fallback, so the optimistic patch
+      // has to cover both: without the row patch, the stale FAILED row still on the page wins until
+      // the reload lands; without the snapshot patch, a row the reload drops off the page (a FAILED
+      // filter stops matching it once the retry is queued) falls back to FAILED and offers a retry
+      // the backend refuses.
+      setItems((rows) =>
+        rows.map((row) =>
+          row.id === record.id
+            ? { ...row, status: 'PENDING', attemptCount: 0, lastError: null }
+            : row,
+        ),
+      );
       setSelectedDelivery((current) =>
         current?.id === record.id
           ? { ...current, status: 'PENDING', attemptCount: 0, lastError: null }
@@ -92,6 +114,7 @@ const NotificationDeliveriesPage = () => {
   };
 
   const retryVisibleFailures = async () => {
+    if (loading || loadFailed) return;
     const ids = items.filter((item) => item.status === 'FAILED').map((item) => item.id);
     if (ids.length === 0) return;
     if (retryingVisibleInFlight.current || ids.some((id) => retryingIdsInFlight.current.has(id)))
@@ -136,14 +159,27 @@ const NotificationDeliveriesPage = () => {
 
   useEffect(() => {
     let cancelled = false;
-    void listAlertDeliveriesPage({ channel, status, instanceId, page, pageSize })
+    void listAlertDeliveriesPage({
+      channel,
+      status,
+      instanceId,
+      search,
+      ...timeRange,
+      page,
+      pageSize,
+    })
       .then((result) => {
         if (cancelled) return;
         setItems(result.items);
         setTotal(result.total);
+        setLoadFailed(false);
       })
       .catch(() => {
-        if (!cancelled) message.error(t('deliveries.loadFailed'));
+        if (cancelled) return;
+        setItems([]);
+        setTotal(0);
+        setSelectedDelivery(undefined);
+        setLoadFailed(true);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -151,12 +187,27 @@ const NotificationDeliveriesPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [channel, status, instanceId, page, pageSize, refreshNonce, t]);
+  }, [channel, status, instanceId, search, timeRange, page, pageSize, refreshNonce, t]);
+
+  // The dialog shows the freshest row it can see. A bulk retry — or another operator — reloads the
+  // page, and a snapshot taken when the dialog opened would keep rendering FAILED and offer a retry
+  // the backend refuses ("Only failed notification deliveries can be retried"). The snapshot stays
+  // as the fallback for a row the current page no longer carries.
+  const currentDelivery = selectedDelivery
+    ? (items.find((item) => item.id === selectedDelivery.id) ?? selectedDelivery)
+    : undefined;
 
   const resetPage = (change: () => void) => {
     setLoading(true);
+    setLoadFailed(false);
+    setSelectedDelivery(undefined);
     change();
     setPage(1);
+  };
+
+  const applySearch = (value: string) => {
+    const normalized = value.trim() || undefined;
+    if (normalized !== search) resetPage(() => setSearch(normalized));
   };
 
   const columns: ColumnsType<NotificationDeliveryRecord> = [
@@ -195,8 +246,11 @@ const NotificationDeliveriesPage = () => {
       width: 240,
       render: (_, record) =>
         record.lastError ? (
-          <Typography.Text type="danger" ellipsis={{ tooltip: record.lastError }}>
-            {record.lastError}
+          <Typography.Text
+            type="danger"
+            ellipsis={{ tooltip: localizeDeliveryError(record.lastError, t) }}
+          >
+            {localizeDeliveryError(record.lastError, t)}
           </Typography.Text>
         ) : record.deliveredAt ? (
           t('deliveries.delivered')
@@ -222,6 +276,7 @@ const NotificationDeliveriesPage = () => {
             size="small"
             icon={<Eye size={18} />}
             aria-label={t('deliveries.viewDetails')}
+            disabled={loading || loadFailed}
             onClick={() => setSelectedDelivery(record)}
           />
           {record.status === 'FAILED' && (
@@ -232,6 +287,7 @@ const NotificationDeliveriesPage = () => {
                 icon={<ArrowClockwise size={18} />}
                 aria-label={t('deliveries.retry')}
                 loading={retryingIds.has(record.id)}
+                disabled={loading || loadFailed}
                 onClick={() => void retryDelivery(record)}
               />
             </Tooltip>
@@ -249,7 +305,7 @@ const NotificationDeliveriesPage = () => {
           <Flex gap={12} wrap="wrap" style={{ marginBottom: 20 }}>
             <Button
               icon={<ArrowClockwise size={18} />}
-              disabled={!items.some((item) => item.status === 'FAILED')}
+              disabled={loading || loadFailed || !items.some((item) => item.status === 'FAILED')}
               loading={retryingVisible}
               onClick={() => void retryVisibleFailures()}
             >
@@ -285,6 +341,38 @@ const NotificationDeliveriesPage = () => {
               }))}
               onChange={(value) => resetPage(() => setInstanceId(value))}
             />
+            <Input.Search
+              aria-label={t('deliveries.search')}
+              placeholder={t('deliveries.search')}
+              allowClear
+              value={searchDraft}
+              style={{ width: 280, flex: '1 1 280px' }}
+              onChange={(event) => {
+                setSearchDraft(event.target.value);
+                if (!event.target.value) applySearch('');
+              }}
+              onBlur={() => applySearch(searchDraft)}
+              onSearch={applySearch}
+            />
+            <DatePicker.RangePicker
+              aria-label={t('deliveries.timeRange')}
+              showTime
+              format="YYYY-MM-DD HH:mm:ss"
+              placeholder={[t('deliveries.startTime'), t('deliveries.endTime')]}
+              style={{ width: 380, flex: '1 1 380px' }}
+              onChange={(dates) =>
+                resetPage(() =>
+                  setTimeRange(
+                    dates?.[0] && dates[1]
+                      ? {
+                          from: dates[0].toDate().toISOString().replace('Z', ''),
+                          to: dates[1].toDate().toISOString().replace('Z', ''),
+                        }
+                      : {},
+                  ),
+                )
+              }
+            />
             {instanceLoadFailed && (
               <Tooltip title={t('deliveries.instancesLoadFailed')}>
                 <Button
@@ -297,6 +385,15 @@ const NotificationDeliveriesPage = () => {
               </Tooltip>
             )}
           </Flex>
+          {loadFailed && (
+            <Alert
+              type="error"
+              showIcon
+              message={t('deliveries.loadFailed')}
+              action={<Button onClick={refresh}>{t('common.retry')}</Button>}
+              style={{ marginBottom: 16 }}
+            />
+          )}
           <Table
             rowKey="id"
             columns={columns}
@@ -312,6 +409,7 @@ const NotificationDeliveriesPage = () => {
               showTotal: (count) => `${t('common.total')} ${count}`,
               onChange: (nextPage, nextPageSize) => {
                 setLoading(true);
+                setLoadFailed(false);
                 setPage(nextPage);
                 setPageSize(nextPageSize);
               },
@@ -319,55 +417,61 @@ const NotificationDeliveriesPage = () => {
           />
         </Card>
       </div>
-      <Drawer
+      <Modal
         title={t('deliveries.details')}
-        width={640}
-        open={selectedDelivery !== undefined}
-        onClose={() => setSelectedDelivery(undefined)}
+        width="min(640px, calc(100vw - 32px))"
+        open={currentDelivery !== undefined}
+        onCancel={() => setSelectedDelivery(undefined)}
+        footer={null}
+        destroyOnHidden
+        styles={{
+          body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden' },
+        }}
       >
-        {selectedDelivery && (
+        {currentDelivery && (
           <Flex vertical gap={20}>
             <Descriptions size="small" column={1} bordered>
               <Descriptions.Item label={t('deliveries.event')}>
-                {selectedDelivery.alertTitle} · #{selectedDelivery.alertId} ·{' '}
-                {selectedDelivery.transition ?? '-'}
+                {currentDelivery.alertTitle} · #{currentDelivery.alertId} ·{' '}
+                {currentDelivery.transition ?? '-'}
               </Descriptions.Item>
               <Descriptions.Item label={t('deliveries.instance')}>
-                {selectedDelivery.instanceId ?? '-'}
+                {currentDelivery.instanceId ?? '-'}
               </Descriptions.Item>
               <Descriptions.Item label={t('deliveries.channel')}>
-                {selectedDelivery.channel}
+                {currentDelivery.channel}
               </Descriptions.Item>
               <Descriptions.Item label={t('common.status')}>
-                <Tag color={statusColors[selectedDelivery.status]}>{selectedDelivery.status}</Tag>
+                <Tag color={statusColors[currentDelivery.status]}>{currentDelivery.status}</Tag>
               </Descriptions.Item>
               <Descriptions.Item label={t('deliveries.attempts')}>
-                {selectedDelivery.attemptCount}
+                {currentDelivery.attemptCount}
               </Descriptions.Item>
               <Descriptions.Item label={t('deliveries.createdAt')}>
-                {formatUtcDateTime(selectedDelivery.createdAt)}
+                {formatUtcDateTime(currentDelivery.createdAt)}
               </Descriptions.Item>
               <Descriptions.Item label={t('deliveries.deliveredAt')}>
-                {formatUtcDateTime(selectedDelivery.deliveredAt)}
+                {formatUtcDateTime(currentDelivery.deliveredAt)}
               </Descriptions.Item>
-              {selectedDelivery.nextAttemptAt && (
+              {currentDelivery.nextAttemptAt && (
                 <Descriptions.Item label={t('deliveries.retryAt')}>
-                  {formatUtcDateTime(selectedDelivery.nextAttemptAt)}
+                  {formatUtcDateTime(currentDelivery.nextAttemptAt)}
                 </Descriptions.Item>
               )}
-              {selectedDelivery.lastError && (
+              {currentDelivery.lastError && (
                 <Descriptions.Item label={t('deliveries.result')}>
                   <Typography.Text type="danger" style={{ overflowWrap: 'anywhere' }}>
-                    {selectedDelivery.lastError}
+                    {localizeDeliveryError(currentDelivery.lastError, t)}
                   </Typography.Text>
                 </Descriptions.Item>
               )}
             </Descriptions>
-            {selectedDelivery.status === 'FAILED' && (
+            {currentDelivery.status === 'FAILED' && (
               <Button
                 icon={<ArrowClockwise size={18} />}
-                loading={retryingIds.has(selectedDelivery.id)}
-                onClick={() => void retryDelivery(selectedDelivery)}
+                loading={retryingIds.has(currentDelivery.id)}
+                disabled={loading || loadFailed}
+                onClick={() => void retryDelivery(currentDelivery)}
               >
                 {t('deliveries.retry')}
               </Button>
@@ -375,7 +479,7 @@ const NotificationDeliveriesPage = () => {
             <div>
               <Typography.Text strong>{t('deliveries.messageContent')}</Typography.Text>
               <Typography.Paragraph
-                copyable={{ text: selectedDelivery.messageContent ?? '' }}
+                copyable={{ text: currentDelivery.messageContent ?? '' }}
                 style={{
                   marginTop: 8,
                   marginBottom: 0,
@@ -383,12 +487,12 @@ const NotificationDeliveriesPage = () => {
                   overflowWrap: 'anywhere',
                 }}
               >
-                {selectedDelivery.messageContent || '-'}
+                {currentDelivery.messageContent || '-'}
               </Typography.Paragraph>
             </div>
           </Flex>
         )}
-      </Drawer>
+      </Modal>
     </>
   );
 };

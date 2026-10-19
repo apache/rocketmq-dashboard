@@ -98,17 +98,24 @@ const PERMISSION_ALLOW_RANK: Record<AclPermission, number> = {
 
 const OPEN_WHITELIST_VALUES = new Set(['*', '0.0.0.0/0', '::/0', '0/0']);
 
+/**
+ * The rule editor lets one rule carry several actions, and the repository stores them as a
+ * single comma-joined value (MybatisPlusAclRepository#joinNormalizedCsv) that
+ * examineBrokerClusterAclConfig hands back verbatim as e.g. "order-events=PUB,SUB".
+ * Rank the strongest action of such a list instead of treating the whole value as unknown:
+ * PUB+SUB grants the same access as ALL, while a value with no recognised action stays UNKNOWN.
+ */
 const normalizePermission = (value?: string | null): AclPermission => {
-  const normalized = (value ?? '').trim().toUpperCase();
-  if (
-    normalized === 'DENY' ||
-    normalized === 'PUB' ||
-    normalized === 'SUB' ||
-    normalized === 'ALL'
-  ) {
-    return normalized;
+  const actions = (value ?? '')
+    .split(/[,\s;|]+/)
+    .map((action) => action.trim().toUpperCase())
+    .filter(Boolean);
+  if (actions.includes('ALL') || (actions.includes('PUB') && actions.includes('SUB'))) {
+    return 'ALL';
   }
-  return 'UNKNOWN';
+  if (actions.includes('PUB')) return 'PUB';
+  if (actions.includes('SUB')) return 'SUB';
+  return actions.includes('DENY') ? 'DENY' : 'UNKNOWN';
 };
 
 const splitWhitelist = (value?: string | null): string[] =>
@@ -199,7 +206,9 @@ const hasDefaultAllow = (account: PlainAccessConfig): boolean =>
   PERMISSION_ALLOW_RANK[normalizePermission(account.defaultGroupPerm)] > 0;
 
 const wildcardEntries = (entries: ParsedPermissionEntry[]): ParsedPermissionEntry[] =>
-  entries.filter((entry) => isWildcardResource(entry.resource) && entry.permission !== 'DENY');
+  entries.filter(
+    (entry) => isWildcardResource(entry.resource) && PERMISSION_ALLOW_RANK[entry.permission] > 0,
+  );
 
 const hasWildcardPermission = (account: PlainAccessConfig): boolean =>
   wildcardEntries(parsePermissionEntries(account.topicPerms)).length > 0 ||

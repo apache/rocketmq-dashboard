@@ -41,7 +41,11 @@ public class CorsConfig implements WebMvcConfigurer {
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
                 .allowedOrigins(allowedOrigins)
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                // PATCH must stay in this list: browsers attach an Origin header to every
+                // non-GET request, so Spring's CORS processor vets even the same-origin PATCHes
+                // (conversation rename/archive), and a method missing here answers 403
+                // "Invalid CORS request" before the handler ever runs.
+                .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 // Without exposedHeaders, browsers hide the DLQ export scan-completeness
                 // headers from cross-origin JavaScript and the export truncation warning

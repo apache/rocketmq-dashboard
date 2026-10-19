@@ -2,28 +2,51 @@
 
 [English](README.md) | **中文**
 
-> 跨集群 · 跨架构 · 跨云的 RocketMQ 统一管控平台
+> 跨集群 · 跨架构的 RocketMQ 统一管控平台
 
-RocketMQ Studio 是一个面向多集群、多架构、多云环境的 RocketMQ 管控平台，提供实例管理、集群运维、Topic / 消费组 CRUD、ACL 权限管控、消息查询与轨迹追踪、死信队列处理、监控告警、审计日志以及 AI 智能助手等一站式能力。
+RocketMQ Studio 是一个面向多集群、多架构环境的 RocketMQ 管控平台，提供实例管理、集群运维、Topic / 消费组 CRUD、ACL 权限管控、消息查询与轨迹追踪、死信队列处理、监控告警、审计日志以及 AI 智能助手等一站式能力。
 
-## 一键构建 & 运行
+## 用 AI 启动
 
-```bash
-(docker network create rocketmq_net 2>/dev/null || true) && docker compose -f deploy/rocketmq/docker-compose.yml up -d && docker compose -f deploy/docker-compose.yml up -d --build
+可以让 AI 编码 agent（Claude Code、Qoder、Cursor 等）帮你把 Studio 装好并跑起来。
+在仓库根目录打开 agent，把下面的提示词粘贴给它：
+
+```text
+从当前仓库在本地拉起并运行 RocketMQ Studio：
+1. 确认已安装 Docker 与 Docker Compose；若未安装，告诉我安装方式并停止。
+2. 若共享网络不存在则创建：`docker network inspect rocketmq_net >/dev/null 2>&1 || docker network create rocketmq_net`。
+3. 构建并启动 Studio：`docker compose -f deploy/docker-compose.yml up -d --build`。
+4. 等待后端健康检查通过后，打开 http://127.0.0.1:6789 确认页面正常加载。
+最后报告运行中的容器与任何错误。不要修改源码，也不要提交任何改动。
 ```
 
-在仓库根目录执行。开头的 `docker network create` 必不可少：两个 compose 文件都把
-`rocketmq_net` 声明为 `external`，自身都不会创建它。第一个 compose 启动内置
-RocketMQ 拓扑（nameserver、broker-0/broker-1、proxy、producer/consumer 测试挂具、
-prometheus）；第二个构建并启动 Studio 三件套（mysql、rocketmq-server、
-rocketmq-web）。启动 Studio 前可用
-`docker compose -f deploy/rocketmq/docker-compose.yml ps` 确认 RocketMQ 已就绪。
+如果还想启动可选的内置 RocketMQ 演示集群，在第 3 步之前插入
+`docker compose -f deploy/rocketmq/docker-compose.yml up -d`，并等待它的 `ps` 输出显示就绪。
+
+## 快速开始
+
+在仓库根目录执行：
+
+```bash
+# 1. 创建共享 Docker 网络（compose 文件以 external 方式引用它）
+docker network inspect rocketmq_net >/dev/null 2>&1 || docker network create rocketmq_net
+
+# 2. 构建并启动 RocketMQ Studio（mysql + rocketmq-server + rocketmq-web）
+docker compose -f deploy/docker-compose.yml up -d --build
+```
 
 启动后访问 **http://127.0.0.1:6789** 即可使用。
 
-**Studio 服务端口：** 前端 6789（Nginx）、后端 8888（Spring Boot）
+这一步只启动 Studio 和它自己的 MySQL 数据库，足以打开控制台、登录并浏览界面，不包含
+RocketMQ 集群。要管理真实资源，请注册一个指向你自己 RocketMQ 的实例，或启动下方的
+「内置 RocketMQ 集群（可选）」。
 
-**RocketMQ 服务端端口：** NameServer 9876、Broker 10911、Proxy Remoting 8080、Proxy gRPC 8081
+默认 schema 只创建 Studio 所需的表，不写入实例、Topic、消费组或 ACL 示例数据。开发用的演示数据需从
+`deploy/mysql/` 显式导入，不属于默认部署的一部分：先导入 `upgrade-demo-instance.sql`，再导入
+`upgrade-demo-acl.sql`。两个脚本都按当前数字主键 schema 编写、可重复执行，只是示例数据装载器而非
+升级迁移脚本，切勿导入生产数据库。
+
+**Studio 服务端口：** 前端 6789（Nginx，同时代理 `/api`）、后端 8888（Spring Boot，仅容器内可达；后端在 compose 之外直接运行时才对外暴露）
 
 共享环境可复制 `deploy/.env.example` 为 `deploy/.env`，设置
 `STUDIO_AUTH_LOGIN_REQUIRED=true`，并配置 `STUDIO_AUTH_ADMIN_USERNAME` /
@@ -32,6 +55,21 @@ rocketmq-web）。启动 Studio 前可用
 才是账号与账号状态的唯一来源。管理员可以在用户管理页维护账号（创建用户、
 启用/停用、重置密码）；浏览器使用 `HttpOnly` 会话 Cookie 认证，API 客户端
 可显式换取 bearer token。关闭登录保护只会跳过本地开发场景下的 API 拦截。
+
+## 内置 RocketMQ 集群（可选）
+
+上面的快速开始只跑了 Studio 和数据库。想连一个现成的 RocketMQ 试用，可在同一
+`rocketmq_net` 网络上启动内置的演示集群，包含 nameserver、两个 broker、proxy、producer/consumer
+压测客户端，以及 Prometheus：
+
+```bash
+docker compose -f deploy/rocketmq/docker-compose.yml up -d
+```
+
+用 `docker compose -f deploy/rocketmq/docker-compose.yml ps` 确认集群就绪。Studio 通过共享网络
+以 `nameserver:9876`（后端默认值）访问它。
+
+**RocketMQ 服务端端口：** NameServer 9876、Broker 10911、Proxy Remoting 8080、Proxy gRPC 8081
 
 ## 界面预览
 
@@ -53,7 +91,7 @@ rocketmq-web）。启动 Studio 前可用
 |------|------|
 | **监控面板** | 集群/ Broker / Topic / 消费组全局统计，TPS 趋势图 |
 | **实例管理** | 多实例接入（Proxy / Direct 模式），实例 CRUD |
-| **集群管理** | 集群详情、Broker / NameServer / Proxy 节点运维、集群配置热更新 |
+| **集群管理** | 集群详情、Broker / NameServer / Proxy 节点运维、集群配置热更新、NameServer 配置漂移检测 |
 | **K8s 证书** | Studio 本地 TLS / mTLS / ServiceAccount 证书配置 |
 | **Topic 管理** | Topic CRUD、路由查看、消费者列表、多类型支持（Normal / FIFO / Delay / Transaction / Lite） |
 | **消费组管理** | 消费组 CRUD、消费进度、订阅详情、位点重置、配置导入导出 |

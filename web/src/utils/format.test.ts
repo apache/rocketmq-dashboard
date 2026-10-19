@@ -10,6 +10,9 @@ import {
   formatPercent,
   formatRelativeTime,
   formatTimeOfDay,
+  formatTimeMs,
+  ratioToPercent,
+  roundPercent,
 } from './format';
 
 describe('formatBytes', () => {
@@ -35,6 +38,22 @@ describe('formatBytes', () => {
     expect(formatBytes(1024 * 1024 * 1024 - 1, 2)).toBe('1.00 GB');
     expect(formatBytes(1024 ** 6)).toBe('1024.0 PB');
   });
+
+  it('keeps scaling past megabytes instead of capping at MB', () => {
+    expect(formatBytes(5 * 1024 ** 3)).toBe('5.0 GB');
+    expect(formatBytes(2 * 1024 ** 4)).toBe('2.0 TB');
+  });
+
+  it('renders whole bytes because a byte count has no fraction', () => {
+    expect(formatBytes(1)).toBe('1 B');
+    expect(formatBytes(512)).toBe('512 B');
+    expect(formatBytes(512, 2)).toBe('512 B');
+    expect(formatBytes(-2048)).toBe('-2.0 KB');
+  });
+
+  it('promotes a sub-kilobyte value that only rounds up at whole-byte width', () => {
+    expect(formatBytes(1023.6)).toBe('1.0 KB');
+  });
   it('handles non-finite input', () => {
     expect(formatBytes(Number.NaN)).toBe('-');
     expect(formatBytes(Number.POSITIVE_INFINITY)).toBe('-');
@@ -46,6 +65,25 @@ describe('formatBytes', () => {
     expect(formatBytes(1536, -2)).toBe('2 KB');
     expect(formatPercent(12.345, Number.NaN)).toBe('12.3%');
     expect(formatPercent(12.345, -1)).toBe('12%');
+  });
+
+  it('rounds percentages to the tenth the progress bars display', () => {
+    expect(roundPercent(28.999999999999996)).toBe(29);
+    expect(roundPercent(62.5)).toBe(62.5);
+    expect(roundPercent(0)).toBe(0);
+  });
+
+  it('scales a stored ratio to its percent without floating point residue', () => {
+    // The alert pages used to scale with `threshold * 100`, which does not round trip for 8 of
+    // the 99 whole percents: 0.29 * 100 renders as 28.999999999999996.
+    expect(ratioToPercent(0.29)).toBe(29);
+    expect(ratioToPercent(0.07)).toBe(7);
+    expect(ratioToPercent(0.58)).toBe(58);
+    expect(ratioToPercent(0.1234)).toBe(12.34);
+    expect(ratioToPercent(0.295)).toBe(29.5);
+    expect(ratioToPercent(0)).toBe(0);
+    expect(ratioToPercent(1)).toBe(100);
+    expect(ratioToPercent(0.0000001)).toBe(0.00001);
   });
 
   it('uses a placeholder for invalid dates and numeric values', () => {
@@ -62,9 +100,9 @@ describe('formatBytes', () => {
 
   it('treats timezone-less alert timestamps as UTC', () => {
     expect(formatUtcDateTime('2026-08-23T10:35:38.590731', 'America/Los_Angeles')).toBe(
-      '2026-08-23 03:35:38 PDT',
+      '2026-08-23 03:35:38',
     );
-    expect(formatUtcDateTime('2026-08-23T10:35:38Z', 'UTC')).toBe('2026-08-23 10:35:38 UTC');
+    expect(formatUtcDateTime('2026-08-23T10:35:38Z', 'UTC')).toBe('2026-08-23 10:35:38');
   });
 
   it('formats recent timestamps for compact conversation history', () => {
@@ -79,5 +117,47 @@ describe('formatBytes', () => {
     expect(formatRelativeTime(now - 5 * 60_000, 'en', en, now)).toBe('5 min ago');
     expect(formatRelativeTime(now - 2 * 60 * 60_000, 'zh', zh, now)).toBe('13:30');
     expect(formatTimeOfDay(now)).toBe('15:30');
+  });
+});
+
+describe('formatTimeMs', () => {
+  it.each([8_640_000_000_000_001, -8_640_000_000_000_001, Number.MAX_VALUE, -Number.MAX_VALUE])(
+    'uses the placeholder for finite timestamps outside the Date range: %s',
+    (value) => {
+      expect(formatTimeMs(value)).toBe('-');
+      expect(formatRelativeTime(value, 'en', (key) => key, Date.now())).toBe('-');
+      expect(formatRelativeTime(Date.now(), 'en', (key) => key, value)).toBe('-');
+    },
+  );
+
+  it.each([8_640_000_000_000_000, -8_640_000_000_000_000])(
+    'keeps representable boundary dates: %s',
+    (value) => {
+      expect(formatTimeMs(value)).toBe(`${formatDateTime(new Date(value))}.000`);
+      expect(formatRelativeTime(value, 'en', (key) => key, value)).toBe('ai.history.justNow');
+    },
+  );
+
+  const shape = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$/;
+
+  it('preserves the Unix epoch timestamp', () => {
+    expect(formatTimeMs(0)).not.toBe('-');
+    expect(formatTimeMs(0)).toMatch(shape);
+  });
+
+  it.each(['not-a-date', Number.NaN, Number.POSITIVE_INFINITY, null, undefined, ''])(
+    'returns a placeholder for an unusable timestamp %s',
+    (value) => {
+      expect(formatTimeMs(value)).toBe('-');
+    },
+  );
+
+  it('renders epoch milliseconds in the console-wide timestamp format', () => {
+    const timestamp = Date.parse('2026-07-31T00:00:00.123Z');
+    expect(formatTimeMs(timestamp)).toBe(`${formatDateTime(new Date(timestamp))}.123`);
+  });
+
+  it('accepts the formatted strings cloud providers return', () => {
+    expect(formatTimeMs('2026-07-31T00:00:00Z')).toMatch(shape);
   });
 });
