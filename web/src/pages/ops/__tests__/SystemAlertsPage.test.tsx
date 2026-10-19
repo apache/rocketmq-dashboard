@@ -201,6 +201,29 @@ describe('SystemAlertsPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('localizes the REMINDER transition instead of leaking the raw enum', async () => {
+    vi.mocked(listSystemAlertsPage).mockResolvedValue({
+      items: [
+        {
+          id: 10,
+          level: 'warning',
+          title: 'Disk still high',
+          description: 'disk usage reminder interval elapsed',
+          time: '2026-08-23T11:00:00.000000',
+          transition: 'REMINDER',
+          acknowledged: false,
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    renderPage();
+
+    expect(await screen.findByText('再次提醒')).toBeInTheDocument();
+    expect(screen.queryByText('REMINDER')).not.toBeInTheDocument();
+  });
+
   it('filters backend alert levels case-insensitively', async () => {
     vi.mocked(listSystemAlertsPage).mockReset();
     vi.mocked(listSystemAlertsPage)

@@ -79,8 +79,10 @@ const formatAlertTransition = (
   transition: SystemAlert['transition'] | undefined,
   firingLabel: string,
   resolvedLabel: string,
+  reminderLabel: string,
 ) => {
   if (transition === 'FIRING') return firingLabel;
+  if (transition === 'REMINDER') return reminderLabel;
   if (transition === 'RESOLVED') return resolvedLabel;
   return transition;
 };
@@ -663,6 +665,7 @@ const SystemAlertsPage = () => {
                           alert.transition,
                           t('sysAlerts.firing'),
                           t('sysAlerts.resolved'),
+                          t('sysAlerts.reminder'),
                         )}
                       </Tag>
                     )}
@@ -722,6 +725,7 @@ const SystemAlertsPage = () => {
                                 related.transition,
                                 t('sysAlerts.firing'),
                                 t('sysAlerts.resolved'),
+                                t('sysAlerts.reminder'),
                               )}
                             </Tag>
                           )}
