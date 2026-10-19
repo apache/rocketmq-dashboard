@@ -256,7 +256,7 @@ Only the active lease holder collects and evaluates. Notification outbox rows us
 
 ## Notifications and Silences
 
-The supported notification channels are DingTalk, the SMS webhook configured in General Settings, and Email. A real event creates outbox rows for enabled supported channels. Independent notification-channel and notification-policy CRUD are future work.
+The supported notification channels are DingTalk, the SMS webhook configured in General Settings, and Email. DingTalk delivery requires an HTTP success response with a numeric zero `errcode`; nonzero values, including fractions, are rejected. A real event creates outbox rows for enabled supported channels. Independent notification-channel and notification-policy CRUD are future work.
 
 The dispatcher claims a row for one minute by default and renews the claim every 20 seconds while the external
 delivery is running. Deployments with slower receivers can tune `studio.alerting.notification-claim-timeout` and
