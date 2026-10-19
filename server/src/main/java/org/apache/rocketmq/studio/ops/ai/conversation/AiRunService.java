@@ -295,17 +295,26 @@ public class AiRunService {
         // rows the run persisted while the reconnecting client was catching up.
         boolean live = registry.attach(run.getId(), session);
         AgentEventProjector projector = new AgentEventProjector(run.getId());
-        List<RmqAiEvent> rows = eventRepository.findByConversationIdAfterSeq(run.getConversationId(),
-                Math.max(0, afterSeq), AiConversationService.DEFAULT_TIMELINE_LIMIT);
         boolean terminalReplayed = false;
-        for (RmqAiEvent row : rows) {
-            session.noteWatermark(row.getSeq());
-            Optional<TimelineEvent> event = AiEventCodec.read(objectMapper, row);
-            if (event.isEmpty()) {
-                continue;
+        List<RmqAiEvent> rows;
+        try {
+            rows = eventRepository.findByConversationIdAfterSeq(run.getConversationId(),
+                    Math.max(0, afterSeq), AiConversationService.DEFAULT_TIMELINE_LIMIT);
+            for (RmqAiEvent row : rows) {
+                session.noteWatermark(row.getSeq());
+                Optional<TimelineEvent> event = AiEventCodec.read(objectMapper, row);
+                if (event.isEmpty()) {
+                    continue;
+                }
+                terminalReplayed = terminalReplayed || event.get() instanceof TimelineEvent.RunStatus;
+                projector.replay(event.get()).ifPresent(session::sendReplayed);
             }
-            terminalReplayed = terminalReplayed || event.get() instanceof TimelineEvent.RunStatus;
-            projector.replay(event.get()).ifPresent(session::sendReplayed);
+        } catch (RuntimeException exception) {
+            // The session this method created never reaches a response now, so no transport
+            // callback will ever close it; closing it here is what stops its heartbeat, which
+            // would otherwise keep firing into a buffer nobody drains for the life of the process.
+            session.complete();
+            throw exception;
         }
         session.finishReplay();
         if (!live) {
