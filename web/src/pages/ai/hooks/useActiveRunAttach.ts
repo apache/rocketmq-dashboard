@@ -34,7 +34,8 @@ import type { UseConversationTimelineResult } from './useConversationTimeline';
  * to the same run id — which is the whole point of the exercise. It also lets a run that has moved
  * on from the state this visit attached to be attached once more: a reload during admission observes
  * QUEUED, whose stream closes immediately because no worker exists yet, and the run only becomes
- * observable when the timeline reports it RUNNING.
+ * observable when the timeline reports it RUNNING. While idle on QUEUED, up to thirty serial
+ * one-second refreshes discover that transition; a read failure stops discovery until a reload.
  *
  * The reset effect is declared before the attach effect on purpose: within one commit effects run
  * in declaration order, and arriving at a conversation must clear the previous visit's marker
@@ -42,7 +43,7 @@ import type { UseConversationTimelineResult } from './useConversationTimeline';
  */
 export function useActiveRunAttach(
   conversationId: number | null,
-  timeline: Pick<UseConversationTimelineResult, 'activeRun' | 'lastSeq'>,
+  timeline: Pick<UseConversationTimelineResult, 'activeRun' | 'lastSeq' | 'refetch'>,
   run: Pick<UseAgentRunResult, 'isStreaming' | 'attach'>,
 ): void {
   // What the last attach observed, not just which run: a reload during admission attaches to a
@@ -53,6 +54,30 @@ export function useActiveRunAttach(
   const requestedRunRef = useRef<{ id: number; status: string } | null>(null);
   const { activeRun, lastSeq } = timeline;
   const { isStreaming, attach } = run;
+  const queuedRunId = activeRun?.status === 'QUEUED' ? activeRun.id : null;
+  const { refetch } = timeline;
+
+  useEffect(() => {
+    if (conversationId === null || queuedRunId === null || isStreaming) return;
+    let cancelled = false;
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const discover = async () => {
+      if (cancelled) return;
+      attempts += 1;
+      try {
+        await refetch();
+      } catch {
+        return; // The timeline already exposes the failure; do not turn it into a retry loop.
+      }
+      if (!cancelled && attempts < 30) timer = setTimeout(() => void discover(), 1000);
+    };
+    timer = setTimeout(() => void discover(), 1000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [conversationId, isStreaming, queuedRunId, refetch]);
 
   useEffect(() => {
     requestedRunRef.current = null;
