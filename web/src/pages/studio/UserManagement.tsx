@@ -602,7 +602,11 @@ const UserManagementPage = () => {
           showIcon
           message={t('userMgmt.sessionOverviewLoadFailed')}
           action={
-            <Button size="small" loading={loading} onClick={() => setRefreshVersion((version) => version + 1)}>
+            <Button
+              size="small"
+              loading={loading}
+              onClick={() => setRefreshVersion((version) => version + 1)}
+            >
               {t('common.retry')}
             </Button>
           }

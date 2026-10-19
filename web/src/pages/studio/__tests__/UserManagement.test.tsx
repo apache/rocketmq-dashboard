@@ -198,8 +198,9 @@ describe('UserManagementPage', () => {
   });
 
   it('reports an independent session overview failure and recovers on retry', async () => {
-    vi.mocked(getStudioUserSessionOverview)
-      .mockRejectedValueOnce(new Error('overview unavailable'));
+    vi.mocked(getStudioUserSessionOverview).mockRejectedValueOnce(
+      new Error('overview unavailable'),
+    );
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
 
