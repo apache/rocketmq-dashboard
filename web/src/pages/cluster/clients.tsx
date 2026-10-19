@@ -173,6 +173,7 @@ const ClientsPage = () => {
   const [selectedConnection, setSelectedConnection] = useState<ClientConnection | null>(null);
   const [selectedIssue, setSelectedIssue] = useState<ClientConnectionIssue | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadedConnectionQueryKey, setLoadedConnectionQueryKey] = useState<string | null>(null);
   const [registryLoadKey, setRegistryLoadKey] = useState(0);
   const [connectionLoadKey, setConnectionLoadKey] = useState(0);
   const [columnFilters, setColumnFilters] = useState<ClientTableFilters>({});
@@ -182,6 +183,8 @@ const ClientsPage = () => {
   const connectionRequestRef = useRef(0);
 
   const selectedCluster = registryClusters.find((cluster) => cluster.endpoint === selectedEndpoint);
+  const connectionQueryKey = JSON.stringify([selectedEndpoint, clusterFilter, typeFilter]);
+  const showDiagnostics = loadedConnectionQueryKey === connectionQueryKey && !loading && !loadError;
 
   const nameserverOptions = useMemo(
     () =>
@@ -241,7 +244,11 @@ const ClientsPage = () => {
       return;
     }
     void Promise.resolve().then(() => {
-      if (connectionRequestRef.current === requestId) setLoading(true);
+      if (connectionRequestRef.current === requestId) {
+        setLoading(true);
+        // Registry discovery shares the loading flag and can finish before this read.
+        setLoadedConnectionQueryKey(null);
+      }
     });
 
     void listConnections({
@@ -252,6 +259,7 @@ const ClientsPage = () => {
       .then((nextConnections) => {
         if (connectionRequestRef.current === requestId) {
           setConnections(nextConnections);
+          setLoadedConnectionQueryKey(connectionQueryKey);
           setLoadError(null);
         }
       })
@@ -267,7 +275,14 @@ const ClientsPage = () => {
       .finally(() => {
         if (connectionRequestRef.current === requestId) setLoading(false);
       });
-  }, [connectionLoadKey, clusterFilter, selectedEndpoint, selectedCluster, typeFilter]);
+  }, [
+    connectionLoadKey,
+    clusterFilter,
+    connectionQueryKey,
+    selectedEndpoint,
+    selectedCluster,
+    typeFilter,
+  ]);
 
   useEffect(
     () => () => {
@@ -876,94 +891,96 @@ const ClientsPage = () => {
         </div>
       </Flex>
 
-      <div
-        data-testid="client-connection-diagnostics"
-        style={{
-          marginBottom: 16,
-          padding: '16px',
-          background: token.colorBgContainer,
-          border: `1px solid ${token.colorBorderSecondary}`,
-          borderRadius: token.borderRadiusLG,
-        }}
-      >
-        <Flex gap={20} align="center" wrap="wrap" style={{ marginBottom: 16 }}>
-          <Progress
-            type="circle"
-            // 健康分被扣到 0 时 antd 圆环不画任何弧线，看起来像「没算出来」的空组件，与旁边
-            // 「存在高风险 / 风险项 N」的结论自相矛盾（用户约定 2026-10-16）。弧线保底 2% 保证
-            // 始终有一段红色可见弧，环内文字仍显示真实分数并带 /100 标明量纲。
-            percent={Math.max(2, clientDiagnostics.score)}
-            size={92}
-            status={diagnosticProgressStatus}
-            strokeColor={diagnosticStrokeColor}
-            format={() => `${clientDiagnostics.score}/100`}
-          />
-          <div style={{ minWidth: 220, flex: '1 1 260px' }}>
-            <Typography.Title level={5} style={{ margin: 0 }}>
-              {t('clients.diagnostics')}
-            </Typography.Title>
-            <Text type="secondary">{clientDiagnostics.statusText}</Text>
-            <div style={{ marginTop: 8 }}>
-              <Tag color={clientDiagnostics.statusColor}>
-                {t('clients.diagnosticIssues')}: {clientDiagnostics.issues.length}
-              </Tag>
-              <Tag>
-                {t('clients.diagnosticUniqueClients')}:{' '}
-                {clientDiagnostics.summary.uniqueClientCount}
-              </Tag>
-              <Tag>
-                {t('clients.diagnosticUniqueAddresses')}:{' '}
-                {clientDiagnostics.summary.uniqueAddressCount}
-              </Tag>
-            </div>
-          </div>
-          <Flex gap={16} wrap="wrap" style={{ flex: '2 1 440px' }}>
-            {diagnosticSummaryItems.map((item) => (
-              <div key={item.key} style={{ minWidth: 126 }}>
-                <Statistic title={item.title} value={item.value} valueStyle={{ fontSize: 22 }} />
+      {showDiagnostics && (
+        <div
+          data-testid="client-connection-diagnostics"
+          style={{
+            marginBottom: 16,
+            padding: '16px',
+            background: token.colorBgContainer,
+            border: `1px solid ${token.colorBorderSecondary}`,
+            borderRadius: token.borderRadiusLG,
+          }}
+        >
+          <Flex gap={20} align="center" wrap="wrap" style={{ marginBottom: 16 }}>
+            <Progress
+              type="circle"
+              // 健康分被扣到 0 时 antd 圆环不画任何弧线，看起来像「没算出来」的空组件，与旁边
+              // 「存在高风险 / 风险项 N」的结论自相矛盾（用户约定 2026-10-16）。弧线保底 2% 保证
+              // 始终有一段红色可见弧，环内文字仍显示真实分数并带 /100 标明量纲。
+              percent={Math.max(2, clientDiagnostics.score)}
+              size={92}
+              status={diagnosticProgressStatus}
+              strokeColor={diagnosticStrokeColor}
+              format={() => `${clientDiagnostics.score}/100`}
+            />
+            <div style={{ minWidth: 220, flex: '1 1 260px' }}>
+              <Typography.Title level={5} style={{ margin: 0 }}>
+                {t('clients.diagnostics')}
+              </Typography.Title>
+              <Text type="secondary">{clientDiagnostics.statusText}</Text>
+              <div style={{ marginTop: 8 }}>
+                <Tag color={clientDiagnostics.statusColor}>
+                  {t('clients.diagnosticIssues')}: {clientDiagnostics.issues.length}
+                </Tag>
+                <Tag>
+                  {t('clients.diagnosticUniqueClients')}:{' '}
+                  {clientDiagnostics.summary.uniqueClientCount}
+                </Tag>
+                <Tag>
+                  {t('clients.diagnosticUniqueAddresses')}:{' '}
+                  {clientDiagnostics.summary.uniqueAddressCount}
+                </Tag>
               </div>
-            ))}
+            </div>
+            <Flex gap={16} wrap="wrap" style={{ flex: '2 1 440px' }}>
+              {diagnosticSummaryItems.map((item) => (
+                <div key={item.key} style={{ minWidth: 126 }}>
+                  <Statistic title={item.title} value={item.value} valueStyle={{ fontSize: 22 }} />
+                </div>
+              ))}
+            </Flex>
           </Flex>
-        </Flex>
 
-        <Table<ClientResourceSummary>
-          columns={resourceColumns}
-          dataSource={clientDiagnostics.resources}
-          rowKey="id"
-          pagination={false}
-          size="small"
-          tableLayout="fixed"
-          scroll={{ x: tableScrollX(resourceColumns) }}
-          locale={{ emptyText: t('common.noData') }}
-          style={{ marginBottom: 12 }}
-        />
-
-        {clientDiagnostics.issues.length > 0 ? (
-          <Table<ClientConnectionIssue>
-            columns={issueColumns}
-            dataSource={clientDiagnostics.issues}
+          <Table<ClientResourceSummary>
+            columns={resourceColumns}
+            dataSource={clientDiagnostics.resources}
             rowKey="id"
             pagination={false}
             size="small"
             tableLayout="fixed"
-            scroll={{ x: tableScrollX(issueColumns) }}
+            scroll={{ x: tableScrollX(resourceColumns) }}
+            locale={{ emptyText: t('common.noData') }}
             style={{ marginBottom: 12 }}
           />
-        ) : (
-          <Alert type="success" showIcon message={t('clients.diagnosticHealthyMessage')} />
-        )}
 
-        <div style={{ marginTop: 12 }}>
-          <Text strong>{t('clients.diagnosticRecommendations')}</Text>
-          <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
-            {clientDiagnostics.recommendations.map((item) => (
-              <li key={item}>
-                <Text>{item}</Text>
-              </li>
-            ))}
-          </ul>
+          {clientDiagnostics.issues.length > 0 ? (
+            <Table<ClientConnectionIssue>
+              columns={issueColumns}
+              dataSource={clientDiagnostics.issues}
+              rowKey="id"
+              pagination={false}
+              size="small"
+              tableLayout="fixed"
+              scroll={{ x: tableScrollX(issueColumns) }}
+              style={{ marginBottom: 12 }}
+            />
+          ) : (
+            <Alert type="success" showIcon message={t('clients.diagnosticHealthyMessage')} />
+          )}
+
+          <div style={{ marginTop: 12 }}>
+            <Text strong>{t('clients.diagnosticRecommendations')}</Text>
+            <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
+              {clientDiagnostics.recommendations.map((item) => (
+                <li key={item}>
+                  <Text>{item}</Text>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ─── Table ─── */}
       <Card styles={{ body: { padding: 0 } }}>
