@@ -487,13 +487,48 @@ public class AiConversationService implements ApplicationRunner {
             if (ids.isEmpty()) {
                 break;
             }
-            int deleted = deleteCascade(ids);
+            List<Long> purgable = skipConversationsWithARunInFlight(ids);
+            if (purgable.isEmpty()) {
+                // The whole page is mid-run, so nothing was deleted and the next query returns this
+                // same page: no cursor here, and the loop stays bounded by maxBatches. This is only
+                // reachable while a run is genuinely live — reapOrphanedRuns() has already turned
+                // every ownerless non-terminal run into FAILED/ORPHANED earlier in the same pass — so
+                // what is left finishes on its own and a later pass purges it.
+                continue;
+            }
+            int deleted = deleteCascade(purgable);
             totalDeleted += deleted;
-            if (deleted < batchSize) {
+            // The page size says whether the backlog is gone, not the delete count: a full page can
+            // still yield fewer deletes than batchSize once the busy conversations are skipped, and
+            // stopping there would abandon the rest of the backlog for this pass.
+            if (ids.size() < batchSize) {
                 break;
             }
         }
         return totalDeleted;
+    }
+
+    /**
+     * Drops the ids that still have a run in flight. The on-request {@link #delete(Long, String)}
+     * stops that run before it removes anything, because the user asked for the conversation to go;
+     * retention has no such mandate, so a busy conversation is left for a later pass rather than
+     * having its rows and its workspace removed while a worker is still streaming into them.
+     *
+     * <p>One batch query for the whole page, not one {@code findActiveByConversationId} per id: a
+     * retention pass looks at up to {@code cleanup-batch-size} conversations per batch, so the N+1
+     * would be 500 SELECTs a pass at the default, for an answer one statement gives.
+     */
+    private List<Long> skipConversationsWithARunInFlight(List<Long> ids) {
+        Set<Long> busy = runRepository.findActiveConversationIds(ids);
+        List<Long> purgable = new ArrayList<>(ids.size());
+        for (Long id : ids) {
+            if (busy.contains(id)) {
+                log.info("skipping the retention purge of conversation {}: it has a run in flight", id);
+                continue;
+            }
+            purgable.add(id);
+        }
+        return purgable;
     }
 
     /**

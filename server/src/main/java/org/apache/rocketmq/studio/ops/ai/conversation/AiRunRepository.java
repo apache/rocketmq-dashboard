@@ -23,6 +23,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /** Persistence port for rmq_ai_run. */
 public interface AiRunRepository {
@@ -34,6 +35,16 @@ public interface AiRunRepository {
 
     /** The conversation's run in QUEUED or RUNNING, if any. At most one by admission rule. */
     Optional<RmqAiRun> findActiveByConversationId(Long conversationId);
+
+    /**
+     * The subset of the given conversations that still have a run in QUEUED or RUNNING.
+     *
+     * <p>A batch for the same reason {@link #findLatestByConversationIds} is one: the retention pass
+     * asks about a whole page of up to {@code studio.ai.conversation.cleanup-batch-size} conversations
+     * at once, and answering that through {@link #findActiveByConversationId} would be one SELECT per
+     * row on every pass. This is one statement, served by {@code idx_ai_run_conversation}.
+     */
+    Set<Long> findActiveConversationIds(List<Long> conversationIds);
 
     List<RmqAiRun> findByConversationId(Long conversationId);
 
