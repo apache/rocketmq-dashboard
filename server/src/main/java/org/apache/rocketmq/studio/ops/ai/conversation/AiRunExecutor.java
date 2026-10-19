@@ -126,6 +126,8 @@ public class AiRunExecutor {
     static final String ERROR_CODE_INTERNAL = "ai.run.internal_error";
 
     private static final String PROVIDER_TIMEOUT_CODE = "llm.provider.timeout";
+    /** The agent stream closed without ever delivering a result frame. */
+    static final String ERROR_CODE_NO_RESULT = "llm.provider.no_result";
     private static final Set<String> OUTPUT_LIMIT_CODES =
             Set.of("llm.provider.output_too_large", "llm.provider.response_too_large");
     private static final String ERROR_MAX_TURNS_SUBTYPE = "error_max_turns";
@@ -468,18 +470,23 @@ public class AiRunExecutor {
         }
     }
 
-    /** Maps what happened onto the terminal state to write. An abort always wins: it is the decision
-     * a human or the server made about this run, and a provider frame that arrived afterwards does not
-     * unmake it. */
+    /**
+     * Maps what happened onto the terminal state to write. A success frame that was already projected
+     * wins over everything: the projector persisted the terminal {@code run_status} and published the
+     * live {@code run_finished} at that moment, so any abort that lands afterwards (a user stop that
+     * raced the finalisation, say) must not write a second terminal event over a finished run. An
+     * abort that landed <em>before</em> the success frame still wins - that is the
+     * {@code stopRacedSuccess} case, where the frame was swallowed and nothing terminal was projected.
+     */
     private Terminal decide(RunContext context, Outcome outcome) {
+        if (outcome.successTerminalProjected) {
+            return new Terminal(RunStatus.COMPLETED, null, null, null, outcome, true);
+        }
         AbortReason abort = context.getHandle() == null
                 ? null
                 : context.getHandle().abortReason().orElse(null);
         if (abort != null) {
             return new Terminal(abort.status(), abort.stopReason(), null, null, outcome, false);
-        }
-        if (outcome.successTerminalProjected) {
-            return new Terminal(RunStatus.COMPLETED, null, null, null, outcome, true);
         }
         if (outcome.gatewayFailure != null) {
             LlmGatewayException failure = outcome.gatewayFailure;
@@ -497,6 +504,14 @@ public class AiRunExecutor {
             return new Terminal(RunStatus.FAILED, stopReasonForSubtype(outcome.subtype),
                     "llm.provider." + outcome.subtype,
                     "agent run ended with subtype: " + outcome.subtype, outcome, false);
+        }
+        if (!isHttpEngine(context.getEngine()) && !StringUtils.hasText(outcome.subtype)) {
+            // The agent stream closed without ever delivering a result frame: nothing was projected,
+            // nothing failed with a frame of its own — the provider process simply went away mid-turn.
+            // A turn with no answer is not a successful one. HTTP completion turns never carry a result
+            // frame at all, so their fall through to COMPLETED stays correct — that is the exclusion here.
+            return new Terminal(RunStatus.FAILED, StopReason.PROVIDER_ERROR, ERROR_CODE_NO_RESULT,
+                    "agent stream ended without a result frame", outcome, false);
         }
         return new Terminal(RunStatus.COMPLETED, null, null, null, outcome, false);
     }

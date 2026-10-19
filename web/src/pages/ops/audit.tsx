@@ -29,7 +29,6 @@ import {
   InputNumber,
   Typography,
   message,
-  Space,
   Tooltip,
 } from 'antd';
 import { Trash } from '@phosphor-icons/react';
@@ -38,6 +37,7 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
+import TagList from '../../components/TagList';
 import { useLang } from '../../i18n/LangContext';
 import type { AuditFilter, AuditFilterOptions, AuditSummary } from '../../api/audit';
 import type { AuditRecord } from '../../api/ops';
@@ -61,9 +61,9 @@ import {
 } from './auditPresentation';
 import AuditSummaryCards from './AuditSummaryCards';
 import AuditRiskInsights from './AuditRiskInsights';
-import ResourceOperationTimelineDrawer, {
+import ResourceOperationTimelineModal, {
   type AuditTimelineResource,
-} from './ResourceOperationTimelineDrawer';
+} from './ResourceOperationTimelineModal';
 
 const emptyFilterOptions: AuditFilterOptions = {
   operationTypes: [],
@@ -107,12 +107,14 @@ const AuditPage: React.FC = () => {
   const [filterOptions, setFilterOptions] = useState<AuditFilterOptions>(emptyFilterOptions);
   const [cleanupModalOpen, setCleanupModalOpen] = useState(false);
   const [cleanupDays, setCleanupDays] = useState(30);
+  const [cleaning, setCleaning] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [summary, setSummary] = useState<AuditSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [timelineResource, setTimelineResource] = useState<AuditTimelineResource | null>(null);
   const recordsRequestRef = useRef(0);
   const filterOptionsRequestRef = useRef(0);
+  const cleanupInFlightRef = useRef(false);
 
   useEffect(() => {
     const requestId = ++filterOptionsRequestRef.current;
@@ -164,7 +166,7 @@ const AuditPage: React.FC = () => {
       })
       .catch(() => {
         if (recordsRequestRef.current === requestId) {
-          message.error('审计日志加载失败，请稍后重试');
+          message.error(t('audit.loadFailed'));
         }
       })
       .finally(() => {
@@ -180,6 +182,7 @@ const AuditPage: React.FC = () => {
     dateRange,
     resultFilter,
     refreshKey,
+    t,
   ]);
 
   useEffect(
@@ -223,7 +226,7 @@ const AuditPage: React.FC = () => {
         if (!cancelled) setSummary(value);
       })
       .catch(() => {
-        if (!cancelled) message.error('审计概览加载失败，请稍后重试');
+        if (!cancelled) message.error(t('audit.summaryLoadFailed'));
       })
       .finally(() => {
         if (!cancelled) setSummaryLoading(false);
@@ -231,7 +234,7 @@ const AuditPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeFilter, refreshKey]);
+  }, [activeFilter, refreshKey, t]);
 
   const { Text } = Typography;
 
@@ -279,17 +282,21 @@ const AuditPage: React.FC = () => {
       );
     }
     return (
-      <Space size={[4, 4]} wrap>
-        {tokens.map((token) => (
-          <Tag key={`${token.label}:${token.value}`} style={{ marginInlineEnd: 0 }}>
-            {token.label}: {token.value}
-          </Tag>
-        ))}
-      </Space>
+      <TagList
+        items={tokens.map((token) => ({
+          key: `${token.label}:${token.value}`,
+          label: `${token.label}: ${token.value}`,
+        }))}
+        max={3}
+        tagMaxWidth={190}
+      />
     );
   };
 
   const handleCleanup = async () => {
+    if (cleanupInFlightRef.current) return;
+    cleanupInFlightRef.current = true;
+    setCleaning(true);
     try {
       await cleanupAuditLogs(cleanupDays);
       setPage(1);
@@ -297,7 +304,10 @@ const AuditPage: React.FC = () => {
       message.success(t('audit.cleanupSuccess', { n: cleanupDays }));
       setCleanupModalOpen(false);
     } catch {
-      message.error('清理审计日志失败，请稍后重试');
+      message.error(t('audit.cleanupFailed'));
+    } finally {
+      cleanupInFlightRef.current = false;
+      setCleaning(false);
     }
   };
 
@@ -310,7 +320,7 @@ const AuditPage: React.FC = () => {
     } catch (error) {
       // The server refuses an export above AuditService.MAX_EXPORT_RECORDS with a 400 that names
       // the cap and says to narrow the filters; retrying the same request can never succeed.
-      message.error(describeApiError(error, '导出审计日志失败，请稍后重试'));
+      message.error(describeApiError(error, t('audit.exportFailed')));
     } finally {
       setExporting(false);
     }
@@ -396,6 +406,14 @@ const AuditPage: React.FC = () => {
     {
       title: t('audit.detail'),
       dataIndex: 'detail',
+      // 三个 token 的自然宽实测 209 + 123 + 104（量 scrollWidth，不能量 getBoundingClientRect：
+      // 后者在已被 flex-shrink 压窄的单元格里量到的是收缩后的值，拿它算列宽会循环论证）。
+      // 必须用 `width` 不能用 `minWidth`：antd 只把 `width` 落成 <col>，`minWidth` 仅参与
+      // tableScrollX 求和；table-layout:fixed 下没有 width 的列只会和「失败原因」平分余量
+      // （实测各 290），配合 TagList 的 nowrap 会把标签压窄到逐个带省略号。
+      // 450 = 190(tagMaxWidth 上限) + 123 + 104 + gap 8 + 单元格内边距 16，留 9px 余量；
+      // 全表合计 1640，1920 视口下容器 1650，不会引出横向滚动条。
+      width: 450,
       ellipsis: true,
       render: renderDetail,
     },
@@ -553,7 +571,7 @@ const AuditPage: React.FC = () => {
       </Card>
 
       {timelineResource && (
-        <ResourceOperationTimelineDrawer
+        <ResourceOperationTimelineModal
           open
           resource={timelineResource}
           onClose={() => setTimelineResource(null)}
@@ -565,9 +583,16 @@ const AuditPage: React.FC = () => {
         title={t('audit.cleanupTitle')}
         open={cleanupModalOpen}
         onOk={handleCleanup}
-        onCancel={() => setCleanupModalOpen(false)}
+        onCancel={() => {
+          if (!cleanupInFlightRef.current) setCleanupModalOpen(false);
+        }}
         okText={t('audit.cleanupConfirm')}
         cancelText={t('common.cancel')}
+        confirmLoading={cleaning}
+        closable={!cleaning}
+        keyboard={!cleaning}
+        maskClosable={!cleaning}
+        cancelButtonProps={{ disabled: cleaning }}
         okButtonProps={{ danger: true }}
       >
         <Flex vertical gap={12}>
@@ -580,7 +605,7 @@ const AuditPage: React.FC = () => {
               value={cleanupDays}
               onChange={(v) => setCleanupDays(v ?? 30)}
             />
-            <span>天之前的日志</span>
+            <span>{t('audit.cleanupDaysSuffix')}</span>
           </Flex>
         </Flex>
       </Modal>

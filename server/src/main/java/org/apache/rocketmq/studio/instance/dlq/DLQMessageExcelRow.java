@@ -70,20 +70,25 @@ public class DLQMessageExcelRow {
                 Instant.ofEpochMilli(vo.getStoreTime()), ZoneId.systemDefault()).format(STORE_TIME_FORMAT));
         row.setReconsumeTimes(vo.getReconsumeTimes());
         row.setKeys(vo.getKeys());
-        row.setBody(abbreviateBody(vo.getBody()));
-        row.setBodyBase64(vo.getBody() == null ? vo.getBodyBase64() : null);
+        row.setBody(abbreviateForExcelCell(vo.getBody()));
+        row.setBodyBase64(abbreviateForExcelCell(vo.getBody() == null ? vo.getBodyBase64() : null));
         return row;
     }
 
-    private static String abbreviateBody(String body) {
-        if (body == null || body.length() <= MAX_EXCEL_CELL_CHARS) {
-            return body;
+    /**
+     * Caps any cell-bound text at {@link #MAX_EXCEL_CELL_CHARS} so POI never rejects the row. The
+     * cut lands on a code-point boundary so a surrogate pair is never split; for Base64 (pure ASCII)
+     * the guard never fires and the method is just a length cap.
+     */
+    private static String abbreviateForExcelCell(String text) {
+        if (text == null || text.length() <= MAX_EXCEL_CELL_CHARS) {
+            return text;
         }
         int keep = MAX_EXCEL_CELL_CHARS - TRUNCATION_SUFFIX.length();
         // Back off onto a code-point boundary so the cut never splits a surrogate pair.
-        if (Character.isHighSurrogate(body.charAt(keep - 1))) {
+        if (Character.isHighSurrogate(text.charAt(keep - 1))) {
             keep--;
         }
-        return body.substring(0, keep) + TRUNCATION_SUFFIX;
+        return text.substring(0, keep) + TRUNCATION_SUFFIX;
     }
 }

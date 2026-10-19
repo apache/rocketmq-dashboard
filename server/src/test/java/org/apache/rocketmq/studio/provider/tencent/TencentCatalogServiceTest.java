@@ -22,10 +22,13 @@ import com.tencentcloudapi.trocket.v20230308.models.DescribeInstanceResponse;
 import com.tencentcloudapi.trocket.v20230308.models.Endpoint;
 import com.tencentcloudapi.trocket.v20230308.models.InstanceItem;
 import com.tencentcloudapi.trocket.v20230308.TrocketClient;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
 import org.apache.rocketmq.studio.provider.CloudInstanceOptionVO;
 import org.apache.rocketmq.studio.provider.CloudRegionVO;
+import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
+import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,6 +36,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -41,6 +45,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -53,17 +58,65 @@ class TencentCatalogServiceTest {
     private TencentClientFactory clientFactory;
 
     @Mock
+    private CloudCredentialRepository credentialRepository;
+
+    @Mock
     private TrocketClient client;
 
     private TencentCatalogService service;
 
     @BeforeEach
     void setUp() {
-        service = new TencentCatalogService(clientFactory);
+        service = new TencentCatalogService(clientFactory, credentialRepository);
+        lenient().when(credentialRepository.findById(CREDENTIAL_ID))
+                .thenReturn(Optional.of(credential(CREDENTIAL_ID, InstanceVendor.TENCENT)));
         lenient().when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenAnswer(invocation -> {
             TencentClientFactory.TencentCall<Object> action = invocation.getArgument(2);
             return action.execute(client);
         });
+    }
+
+    private static CloudCredentialVO credential(Long id, InstanceVendor vendor) {
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId(id);
+        credential.setVendor(vendor);
+        return credential;
+    }
+
+    @Test
+    void listRegionsShouldRejectAnUnknownCredentialTest() {
+        when(credentialRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.listRegions(99L))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(404);
+                    assertThat(exception.getMessage()).contains("Cloud credential not found", "99");
+                });
+        verifyNoInteractions(clientFactory);
+    }
+
+    @Test
+    void listRegionsShouldRejectACredentialOfTheOtherVendorTest() {
+        when(credentialRepository.findById(CREDENTIAL_ID))
+                .thenReturn(Optional.of(credential(CREDENTIAL_ID, InstanceVendor.ALIYUN)));
+
+        assertThatThrownBy(() -> service.listRegions(CREDENTIAL_ID))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(400);
+                    assertThat(exception.getMessage()).contains("does not match", "TENCENT");
+                });
+        verifyNoInteractions(clientFactory);
+    }
+
+    @Test
+    void listCloudInstancesShouldRejectACredentialOfTheOtherVendorTest() {
+        when(credentialRepository.findById(CREDENTIAL_ID))
+                .thenReturn(Optional.of(credential(CREDENTIAL_ID, InstanceVendor.ALIYUN)));
+
+        assertThatThrownBy(() -> service.listCloudInstances(CREDENTIAL_ID, REGION, null))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getCode()).isEqualTo(400));
+        verifyNoInteractions(clientFactory);
     }
 
     @Test
