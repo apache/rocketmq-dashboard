@@ -43,6 +43,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -425,8 +426,7 @@ class AiConversationServiceTest {
     void retentionShouldSkipAConversationWhoseRunIsStillInFlightTest() {
         when(conversationRepository.findIdsCreatedBefore(any(LocalDateTime.class), eq(500)))
                 .thenReturn(List.of(1L, 2L));
-        when(runRepository.findActiveByConversationId(2L))
-                .thenReturn(Optional.of(AiRunTestSupport.run(21L, 2L, 3, RunStatus.RUNNING)));
+        when(runRepository.findActiveConversationIds(List.of(1L, 2L))).thenReturn(Set.of(2L));
         when(conversationRepository.deleteByIds(anyList())).thenReturn(1);
 
         service.purgeExpired();
@@ -437,6 +437,48 @@ class AiConversationServiceTest {
         verify(eventRepository).deleteByConversationIds(List.of(1L));
         verify(runRepository).deleteByConversationIds(List.of(1L));
         verify(conversationRepository).deleteByIds(List.of(1L));
+        verify(workspace, never()).delete(2L);
+    }
+
+    @Test
+    void retentionShouldKeepPagingPastABatchThatHeldABusyConversationTest() {
+        properties.setCleanupBatchSize(2);
+        properties.setCleanupMaxBatches(5);
+        service = newService();
+        when(conversationRepository.findIdsCreatedBefore(any(LocalDateTime.class), eq(2)))
+                .thenReturn(List.of(1L, 2L), List.of(3L, 4L), List.of());
+        when(runRepository.findActiveConversationIds(List.of(1L, 2L))).thenReturn(Set.of(2L));
+        when(conversationRepository.deleteByIds(anyList())).thenReturn(1, 2);
+
+        service.purgeExpired();
+
+        // The first page came back full, so the backlog is not necessarily gone even though only one
+        // of its two rows was deletable. Judging that by the delete count would stop the pass here
+        // and leave conversations 3 and 4 to a later pass for no reason but a busy neighbour.
+        verify(conversationRepository, times(3)).findIdsCreatedBefore(any(), anyInt());
+        verify(conversationRepository).deleteByIds(List.of(1L));
+        verify(conversationRepository).deleteByIds(List.of(3L, 4L));
+        verify(workspace, never()).delete(2L);
+    }
+
+    @Test
+    void retentionShouldNotGiveUpWhenAWholeBatchIsBusyTest() {
+        properties.setCleanupBatchSize(2);
+        properties.setCleanupMaxBatches(5);
+        service = newService();
+        when(conversationRepository.findIdsCreatedBefore(any(LocalDateTime.class), eq(2)))
+                .thenReturn(List.of(1L, 2L), List.of(3L, 4L), List.of());
+        when(runRepository.findActiveConversationIds(List.of(1L, 2L))).thenReturn(Set.of(1L, 2L));
+        when(conversationRepository.deleteByIds(anyList())).thenReturn(2);
+
+        service.purgeExpired();
+
+        // Nothing on the first page is deletable, so the query answers the same page again: bounded
+        // by cleanupMaxBatches, and only reachable while a run is genuinely live, because the orphan
+        // sweep already terminated every ownerless one earlier in this same pass.
+        verify(conversationRepository, times(3)).findIdsCreatedBefore(any(), anyInt());
+        verify(conversationRepository).deleteByIds(List.of(3L, 4L));
+        verify(workspace, never()).delete(1L);
         verify(workspace, never()).delete(2L);
     }
 
