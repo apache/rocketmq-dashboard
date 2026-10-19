@@ -269,6 +269,24 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void listTopicsPageShouldExcludeOnlyLiteralSystemTopicPrefixesTest() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        Page<RmqTopic> databasePage = new Page<>(1, 20, 0);
+        databasePage.setRecords(List.of());
+        when(topicMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
+                .thenReturn(databasePage);
+
+        newProvider().listTopicsPage(null, null, null, null, 1, 20);
+
+        ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> queryCaptor =
+                ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(topicMapper).selectPage(any(Page.class), queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getSqlSegment()).contains("NOT LIKE");
+        assertThat(queryCaptor.getValue().getParamNameValuePairs().values())
+                .contains("rmq\\_sys\\_%", "\\%RETRY\\%%", "\\%DLQ\\%%");
+    }
+
+    @Test
     void getTopicRoutesShouldUseSelectedInstanceRuntimeClient() {
         List<BrokerRouteVO> routes = List.of(BrokerRouteVO.builder().brokerName("broker-a").build());
         when(runtimeAdminClientResolver.execute(eq("instance-a"), any())).thenReturn(routes);
