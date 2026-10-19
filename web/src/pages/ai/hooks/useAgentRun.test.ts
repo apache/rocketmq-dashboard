@@ -28,6 +28,7 @@ vi.mock('../../../api/ai', () => ({
 
 vi.mock('../../../api/aiConversations', () => ({
   stopRun: vi.fn(),
+  reportRunSpeed: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { attachRunStream, openRunStream, type RunStreamHandlers } from '../../../api/ai';
@@ -234,6 +235,73 @@ describe('useAgentRun', () => {
       await flushFrame();
     });
     expect(result.current.blocksRef.current).toEqual([]);
+  });
+
+  it('clearsTheFinishedRunSpeedWhenChangingConversationsTest', async () => {
+    const now = vi.spyOn(Date, 'now');
+    const { result, rerender } = render();
+    let sent!: Promise<void>;
+    try {
+      await act(async () => {
+        sent = result.current.send(7, { message: 'first conversation' });
+        openedStreams[0].emit(runStarted());
+        now.mockReturnValue(1000);
+        openedStreams[0].emit(textDelta('abcd'));
+        now.mockReturnValue(3000);
+        openedStreams[0].emit(textDelta('efgh'));
+        await flushFrame();
+      });
+      expect(result.current.liveTokensPerSecond).toBe(1);
+
+      await act(async () => {
+        openedStreams[0].emit(runFinished());
+        openedStreams[0].finish();
+        await sent;
+      });
+      // The same conversation can use this fallback if the speed report was unavailable.
+      expect(result.current.lastRunTokensPerSecond).toBe(1);
+
+      await act(async () => {
+        rerender({ id: 8 });
+      });
+      // BubbleList must not attribute conversation 7's measurement to an unmeasured answer in 8.
+      expect(result.current.lastRunTokensPerSecond).toBeNull();
+      expect(result.current.liveTokensPerSecond).toBeNull();
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it('clearsLiveRunSpeedWhenReturningToTheNewConversationRouteTest', async () => {
+    const now = vi.spyOn(Date, 'now');
+    const { result, rerender } = render();
+    let sent!: Promise<void>;
+    try {
+      await act(async () => {
+        sent = result.current.send(7, { message: 'first conversation' });
+        now.mockReturnValue(1000);
+        openedStreams[0].emit(textDelta('abcd'));
+        now.mockReturnValue(3000);
+        openedStreams[0].emit(textDelta('efgh'));
+        await flushFrame();
+      });
+      expect(result.current.liveTokensPerSecond).toBe(1);
+
+      await act(async () => {
+        rerender({ id: null });
+      });
+      expect(result.current.liveTokensPerSecond).toBeNull();
+      expect(result.current.lastRunTokensPerSecond).toBeNull();
+
+      await act(async () => {
+        openedStreams[0].finish();
+        await sent;
+      });
+      expect(result.current.liveTokensPerSecond).toBeNull();
+      expect(result.current.lastRunTokensPerSecond).toBeNull();
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it('refetchesTheTimelineBeforeClearingTheLiveBlocksTest', async () => {

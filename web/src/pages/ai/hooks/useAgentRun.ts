@@ -427,6 +427,10 @@ export function useAgentRun(
     setStopRequested(false);
     setError('');
     setPendingUserMessage(null);
+    // These measurements belong to the departed conversation, just like its transcript.
+    speedTrackerRef.current = createStreamSpeedTracker();
+    setLiveTokensPerSecond(null);
+    setLastRunTokensPerSecond(null);
     bump();
   }, [cancelFrame]);
 
