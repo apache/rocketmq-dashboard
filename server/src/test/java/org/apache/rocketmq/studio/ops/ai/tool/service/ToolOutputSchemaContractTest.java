@@ -52,6 +52,7 @@ import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageRedelivery
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageSendOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageTraceOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.nameserver.NameserverConfigItem;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.nameserver.NameserverConfigOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.ops.AuditItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.proxy.ProxyConfigItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.topic.TopicDetailOutput;
@@ -161,7 +162,7 @@ class ToolOutputSchemaContractTest {
         samples.put("rmq.litetopic.session", List.of(new LiteTopicSessionOutput(
                 "sess-1", "client-1", "10.0.0.1:5678", "chat", "cg-chat",
                 1789092000000L, 1789092600000L, 3600L, 1800L, "ACTIVE",
-                10L, 4L, 6L, 40, 1,
+                10L, 4L, false, 6L, 1,
                 List.of(new LiteTopicSessionOutput.Entry("chat/sess-1/0", "ACTIVE", 1800L)))));
         samples.put("rmq.litetopic.quota", List.of(new LiteTopicQuotaOutput(
                 120, 1000, 30, 100, 5, 50, 0.12, 0.3, 3600L, 86400L, 880, 2.5)));
@@ -226,8 +227,10 @@ class ToolOutputSchemaContractTest {
                 new NameserverListToolHandler.Item(
                         "127.0.0.1:9876", "127.0.0.1:9876", "127.0.0.1:9876",
                         null, null, "UNKNOWN", null)))));
-        samples.put("rmq.nameserver.config", List.of(new ListOutput<>(List.of(
-                new NameserverConfigItem("127.0.0.1:9876", Map.of("orderMessageEnable", "false"))))));
+        samples.put("rmq.nameserver.config", List.of(new NameserverConfigOutput(
+                List.of(new NameserverConfigItem("127.0.0.1:9876", Map.of("orderMessageEnable", "false"))),
+                true,
+                List.of("127.0.0.1:9877"))));
 
         samples.put("rmq.proxy.list", List.of(new ListOutput<>(List.of(ProxyVO.builder()
                 .addr("127.0.0.1:8081")
@@ -285,7 +288,7 @@ class ToolOutputSchemaContractTest {
                 new GroupDetailOutput.Health("HEALTHY", List.of()),
                 List.of(groupItem),
                 new GroupDetailOutput.Progress(100L, List.of(
-                        new GroupDetailOutput.QueueProgress("broker-a", 0, 120L, 90L, 30L))),
+                        new GroupDetailOutput.QueueProgress("orders", "broker-a", 0, 120L, 90L, 30L))),
                 new GroupDetailOutput.Clients(1, List.of(
                         new GroupDetailOutput.Client(
                                 "client-1", "gRPC", "127.0.0.1:50000", "JAVA", "5.0.7",
@@ -300,7 +303,8 @@ class ToolOutputSchemaContractTest {
                         new GroupDetailOutput.Health(
                                 "UNKNOWN", List.of("Consumer connection information is unavailable.")),
                         List.of(unknownConnectionsItem),
-                        null,
+                        new GroupDetailOutput.Progress(-1L, List.of(
+                                new GroupDetailOutput.QueueProgress(null, "total", 0, -1L, -1L, -1L))),
                         null)));
         samples.put("rmq.group.update", List.of(planned(), executed(groupItem)));
         samples.put("rmq.group.delete", List.of(planned(), executedVoid()));

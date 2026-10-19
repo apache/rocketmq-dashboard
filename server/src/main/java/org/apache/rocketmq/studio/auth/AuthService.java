@@ -382,8 +382,16 @@ public class AuthService {
 
     private LoginVO loginDatabaseUser(LoginDTO request) {
         ensureBootstrapUsers();
-        RmqStudioUser user = findUserByUsername(request.getUsername())
-                .orElseThrow(() -> new BusinessException(401, "Invalid username or password"));
+        Optional<RmqStudioUser> found = findUserByUsername(request.getUsername());
+        if (found.isEmpty()) {
+            // Burn one dummy derivation so the response timing matches the wrong-password path
+            // on an existing account. Without this, an attacker could distinguish "user not
+            // found" (fast) from "user found but wrong password" (slow PBKDF2) and enumerate
+            // valid usernames by measuring response time.
+            passwordHasher.matches(request.getPassword(), DUMMY_PASSWORD_HASH);
+            throw new BusinessException(401, "Invalid username or password");
+        }
+        RmqStudioUser user = found.get();
         if (!Boolean.TRUE.equals(user.getEnabled())) {
             // Answer exactly like a wrong password on an enabled account: burn one dummy
             // derivation so the response timing matches, and never touch this account's

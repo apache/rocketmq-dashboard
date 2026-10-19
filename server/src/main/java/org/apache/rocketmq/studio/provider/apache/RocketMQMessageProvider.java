@@ -22,6 +22,8 @@ import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
 import org.apache.rocketmq.client.trace.TraceConstants;
 import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.message.MessageClientExt;
+import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
@@ -417,6 +419,12 @@ public class RocketMQMessageProvider implements MessageProvider {
                                     queue, topic, offset);
                             continue;
                         }
+                        if (pullResult.getPullStatus() == PullStatus.NO_MATCHED_MSG) {
+                            // The broker can skip removed messages even for a wildcard pull.
+                            // An advancing empty batch is not the end of the queue.
+                            consecutiveIllegalOffsets = 0;
+                            continue;
+                        }
                         if (pullResult.getPullStatus() != PullStatus.FOUND
                                 || pullResult.getMsgFoundList() == null) {
                             break;
@@ -567,7 +575,15 @@ public class RocketMQMessageProvider implements MessageProvider {
                     if (message == null || !topic.equals(message.getTopic())) {
                         throw new BusinessException(409, "Message's actual topic does not match the authorized resource");
                     }
-                    requireDirectMessageTarget(target, message.getMsgId(), true);
+                    // The broker locates a message by its offset id (broker address + commitlog offset).
+                    // viewMessage hands back a MessageClientExt, whose getMsgId() prefers the client-side
+                    // UNIQ_KEY — its "port" segment is a process id, so decoding it as a physical location
+                    // fails. Both the ownership guard and the broker call therefore use the offset id, and
+                    // fall back to getMsgId() only for a plain MessageExt, where that is the offset id.
+                    String offsetMessageId = message instanceof MessageClientExt clientMessage
+                            ? clientMessage.getOffsetMsgId()
+                            : message.getMsgId();
+                    requireDirectMessageTarget(target, offsetMessageId, true);
                     if (!(message.getStoreHost() instanceof java.net.InetSocketAddress host)
                             || host.getAddress() == null
                             || !target.masters().contains(host.getAddress().getHostAddress() + ":" + host.getPort())) {
@@ -576,7 +592,7 @@ public class RocketMQMessageProvider implements MessageProvider {
                     org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult result;
                     try {
                         result = ((DefaultMQAdminExt) admin).consumeMessageDirectly(group, client,
-                                topic, message.getMsgId());
+                                topic, offsetMessageId);
                     } catch (Exception exception) {
                         String rootMessage = rootMessage(exception);
                         // The broker answers SYSTEM_ERROR with "The Consumer <group> <client> not online"
@@ -630,7 +646,13 @@ public class RocketMQMessageProvider implements MessageProvider {
         long now = System.currentTimeMillis();
         long begin;
         long end;
-        long messageStoreTimestamp = resolveMessageStoreTimestamp(adminExt, msgId, topic);
+        MessageExt original = resolveTraceMessage(adminExt, msgId, topic);
+        long messageStoreTimestamp = original == null ? 0L : original.getStoreTimestamp();
+        // SDK traces are indexed by the producer's logical ID, not the physical offset ID.
+        // Reuse the already located message for both the trace index and context filtering.
+        String uniqueId = original == null ? null
+                : original.getProperty(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX);
+        String traceMsgId = StringUtils.hasText(uniqueId) ? uniqueId : msgId;
         if (messageStoreTimestamp > 0) {
             // Derive the trace query window from the message's own store timestamp
             // instead of a hardcoded 1-hour lookback. This ensures traces for messages
@@ -651,10 +673,10 @@ public class RocketMQMessageProvider implements MessageProvider {
 
         try {
             QueryResult traceResult =
-                    adminExt.queryMessage(effectiveTraceTopic(traceTopic), msgId, TRACE_QUERY_MAX, begin, end);
+                    adminExt.queryMessage(effectiveTraceTopic(traceTopic), traceMsgId, TRACE_QUERY_MAX, begin, end);
             if (traceResult != null && traceResult.getMessageList() != null) {
                 for (MessageExt traceMessage : traceResult.getMessageList()) {
-                    parseTraceBody(traceMessage.getBody(), msgId, nodes, consumerStatus, true);
+                    parseTraceBody(traceMessage.getBody(), traceMsgId, null, nodes, consumerStatus, true);
                 }
             }
         } catch (BusinessException e) {
@@ -679,10 +701,12 @@ public class RocketMQMessageProvider implements MessageProvider {
     }
 
     /**
-     * Trace lookup by business key. The key query already scopes the returned trace messages to
-     * the requested message, so the body parser does not filter on a message id. The original
-     * message topic is not required to query the global trace topic but is kept in the signature
-     * for API symmetry and logged for diagnostics.
+     * Trace lookup by business key. RocketMQ appends every trace context for one source topic
+     * into the same trace message and indexes each business key on that message, so the query
+     * result can contain contexts for other keys. Contexts are kept only when their keys column
+     * contains {@code key} as a whole token. The original message topic is not required to query
+     * the global trace topic but is kept in the signature for API symmetry and logged for
+     * diagnostics.
      */
     private TraceRecordVO getMessageTraceByKey(String instanceId, DefaultMQAdminExt adminExt, String key,
                                                String topic, String traceTopic) {
@@ -701,7 +725,7 @@ public class RocketMQMessageProvider implements MessageProvider {
                     adminExt.queryMessage(effectiveTraceTopic(traceTopic), key, TRACE_QUERY_MAX, begin, end);
             if (traceResult != null && traceResult.getMessageList() != null) {
                 for (MessageExt traceMessage : traceResult.getMessageList()) {
-                    parseTraceBody(traceMessage.getBody(), null, nodes, consumerStatus, false);
+                    parseTraceBody(traceMessage.getBody(), null, key, nodes, consumerStatus, false);
                 }
             }
         } catch (BusinessException e) {
@@ -726,11 +750,11 @@ public class RocketMQMessageProvider implements MessageProvider {
     }
 
     /**
-     * Attempts to resolve the store timestamp of the original message so the trace
-     * query window can be derived from the message's own timeline rather than the
-     * current time. Returns 0 if the message cannot be located.
+     * Locates the original message for its trace identity and store timestamp. Physical offset
+     * IDs are accepted by message lookup, but SDK trace records use the UNIQ_KEY property.
+     * Returns null when the original cannot be located, retaining the supplied trace ID and window.
      */
-    private long resolveMessageStoreTimestamp(DefaultMQAdminExt adminExt, String msgId, String topic) {
+    private MessageExt resolveTraceMessage(DefaultMQAdminExt adminExt, String msgId, String topic) {
         if (StringUtils.hasText(topic)) {
             try {
                 MessageExt messageExt = null;
@@ -738,7 +762,7 @@ public class RocketMQMessageProvider implements MessageProvider {
                     messageExt = adminExt.viewMessage(topic, msgId);
                 }
                 if (messageExt != null) {
-                    return messageExt.getStoreTimestamp();
+                    return messageExt;
                 }
             } catch (Exception e) {
                 log.debug("Could not view message {} in topic {} for trace timestamp: {}",
@@ -748,22 +772,23 @@ public class RocketMQMessageProvider implements MessageProvider {
         try {
             MessageExt messageExt = viewMessageByOffsetId(adminExt, topic, msgId);
             if (messageExt != null) {
-                return messageExt.getStoreTimestamp();
+                return messageExt;
             }
         } catch (Exception e) {
             log.debug("Could not view message {} for trace timestamp: {}", msgId, e.getMessage());
         }
-        return 0L;
+        return null;
     }
 
     /**
      * Parse a trace message body. Trace contexts are separated by STX ({@code \u0002}) and the
      * fields in each context are separated by SOH ({@code \u0001}); the first field is the trace
      * type. When {@code filterByMsgId} is true only contexts whose message id matches
-     * {@code targetMsgId} are kept; otherwise every context is parsed (used by key lookups where
-     * the query already scoped the trace messages to the requested key).
+     * {@code targetMsgId} are kept. When {@code targetKey} is non-null, only contexts whose keys
+     * column contains that key as a whole token are kept. Message-id lookups pass a null key and
+     * are not filtered by key.
      */
-    private void parseTraceBody(byte[] body, String targetMsgId, List<TraceNodeVO> nodes,
+    private void parseTraceBody(byte[] body, String targetMsgId, String targetKey, List<TraceNodeVO> nodes,
                                 List<ConsumerStatusVO> consumerStatus, boolean filterByMsgId) {
         if (body == null || body.length == 0) {
             return;
@@ -782,6 +807,9 @@ public class RocketMQMessageProvider implements MessageProvider {
             // index 5, while SubAfter places it at index 2 in RocketMQ 5.5.0.
             int msgIdIndex = "SubAfter".equals(traceType) ? 2 : 5;
             if (filterByMsgId && !targetMsgId.equals(field(fields, msgIdIndex))) {
+                continue;
+            }
+            if (targetKey != null && !traceKeysContain(traceType, fields, targetKey)) {
                 continue;
             }
             try {
@@ -809,14 +837,59 @@ public class RocketMQMessageProvider implements MessageProvider {
         }
     }
 
+    /**
+     * Keys column of a RocketMQ 5.5.0 trace context. Recall has no keys column, so a key lookup
+     * cannot attribute it and the context is omitted. Pub, EndTransaction, and SubBefore store
+     * keys at index 7; SubAfter stores them at index 5.
+     */
+    private static int traceKeysIndex(String traceType) {
+        return switch (traceType) {
+            case "Pub", "EndTransaction", "SubBefore" -> 7;
+            case "SubAfter" -> 5;
+            default -> -1;
+        };
+    }
+
+    /**
+     * Same token split {@code TraceDataEncoder} uses when it indexes a trace message:
+     * {@code keys.split(MessageConst.KEY_SEPARATOR)} (a single space). {@code order-A} matches
+     * {@code extra order-A} and does not match {@code order-A-suffix}.
+     */
+    private static boolean traceKeysContain(String traceType, String[] fields, String queryKey) {
+        if (!StringUtils.hasText(queryKey)) {
+            return false;
+        }
+        int keysIndex = traceKeysIndex(traceType);
+        if (keysIndex < 0) {
+            return false;
+        }
+        String keys = field(fields, keysIndex);
+        if (!StringUtils.hasText(keys)) {
+            return false;
+        }
+        for (String token : keys.split(MessageConst.KEY_SEPARATOR)) {
+            if (queryKey.equals(token)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Pub layout (RocketMQ 5.5.0 TraceDataEncoder):
     //             type, time, region, group, topic, msgId,
     //             tags, keys, storeHost, bodyLength, costTime, msgType, offsetMsgId, isSuccess
+    // Legacy 13-field records omit offsetMsgId; newer records may append clientHost.
     private TraceNodeVO buildProduceNode(String[] f) {
+        // Match the SDK's split behavior when selecting the layout: trailing empty columns do not count.
+        int fieldCount = f.length;
+        while (fieldCount > 0 && f[fieldCount - 1].isEmpty()) {
+            fieldCount--;
+        }
+        int successIndex = fieldCount == 13 ? 12 : 13;
         return TraceNodeVO.builder()
                 .title("produce")
                 .timestamp(parseLong(field(f, 1)))
-                .status(parseBoolean(field(f, 13)) ? "finish" : "failed")
+                .status(parseBoolean(field(f, successIndex)) ? "finish" : "failed")
                 .costTime(parseLong(field(f, 10)))
                 .description("producer=" + field(f, 3) + ", storeHost=" + field(f, 8))
                 .build();

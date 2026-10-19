@@ -19,6 +19,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -79,6 +80,14 @@ func TestMCPConfigMatchesStudioGeneratedSnippet(t *testing.T) {
 	if err := json.Unmarshal([]byte(studioJavaMcpSnippet), &expected); err != nil {
 		t.Fatalf("decode the Studio snippet: %v", err)
 	}
+	// The server fixture uses a Unix path. On Windows that path is rooted on
+	// the current drive; the CLI makes the drive explicit for a later launch.
+	configPath, err := filepath.Abs("/tmp/c.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedServer := expected.(map[string]any)["mcpServers"].(map[string]any)["rocketmq-studio"].(map[string]any)
+	expectedServer["args"].([]any)[3] = configPath
 	if !reflect.DeepEqual(emitted, expected) {
 		t.Fatalf("mcp config drifted from the Studio-generated snippet:\n got:  %s\n want: %s",
 			stdout, studioJavaMcpSnippet)
@@ -103,7 +112,7 @@ func TestMCPConfigMatchesStudioGeneratedSnippet(t *testing.T) {
 	if _, found := entry["env"]; found {
 		t.Fatalf("the snippet must not carry an env block: %s", stdout)
 	}
-	wantArgs := []any{"mcp", "stdio", "--config", "/tmp/c.yaml", "--instance-id", "x", "--timeout", "1m0s"}
+	wantArgs := []any{"mcp", "stdio", "--config", configPath, "--instance-id", "x", "--timeout", "1m0s"}
 	if !reflect.DeepEqual(entry["args"], wantArgs) {
 		t.Fatalf("args = %v, want %v (argv order is the contract)", entry["args"], wantArgs)
 	}
@@ -140,7 +149,11 @@ func TestMCPConfigOmitsDefaultTimeout(t *testing.T) {
 			t.Fatalf("the default timeout must be omitted, got %v", args)
 		}
 	}
-	wantArgs := []any{"mcp", "stdio", "--config", "/tmp/c.yaml", "--instance-id", "x"}
+	configPath, err := filepath.Abs("/tmp/c.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantArgs := []any{"mcp", "stdio", "--config", configPath, "--instance-id", "x"}
 	if !reflect.DeepEqual(args, wantArgs) {
 		t.Fatalf("args = %v, want %v", args, wantArgs)
 	}

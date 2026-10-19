@@ -30,6 +30,7 @@ import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -40,6 +41,10 @@ public class MessageService {
     private static final long MAX_TOPIC_QUERY_WINDOW_MILLIS = 7L * 24 * 60 * 60 * 1000;
     private static final int MAX_PAGE_SIZE = 200;
     private static final int TOPIC_QUERY_RESULT_LIMIT = 200;
+    private static final Comparator<MessageRecordVO> PAGE_ORDER = Comparator
+            .comparingLong(MessageRecordVO::getStoreTime)
+            .thenComparing(MessageRecordVO::getMsgId, Comparator.nullsFirst(String::compareTo))
+            .reversed();
 
     private final MessageProvider messageProvider;
     private final InstanceProviderRegistry providerRegistry;
@@ -97,7 +102,8 @@ public class MessageService {
         // tell the user when deeper pages may be empty.
         MessageQueryResult queryResult = queryMessagesDetailed(
                 instanceId, topic, msgId, tag, key, startTime, endTime, page == 1);
-        List<MessageRecordVO> result = queryResult.messages();
+        // Each page re-queries the provider; broker response order must not move rows across page boundaries.
+        List<MessageRecordVO> result = queryResult.messages().stream().sorted(PAGE_ORDER).toList();
         long offset = (long) (page - 1) * pageSize;
         int from = (int) Math.min(offset, result.size());
         int to = Math.min(from + pageSize, result.size());
@@ -143,10 +149,16 @@ public class MessageService {
         if (offset < 0) {
             throw new BusinessException(400, "offset must not be negative");
         }
-        return providerRegistry.byInstanceId(instanceId)
-                .map(provider -> provider.pullMessageAtOffset(instanceId, topic, brokerName, queueId, offset))
-                .orElseGet(() -> messageProvider.pullMessageAtOffset(
-                        instanceId, topic, brokerName, queueId, offset));
+        // The registered provider's null is a legitimate "no message at this
+        // offset" answer; Optional.map would turn it into an empty Optional
+        // and the fallback below would issue a second, identical pull whose
+        // failure would surface as an error on a query that already succeeded
+        // once. The fallback is only for instances without a provider.
+        InstanceProvider provider = providerRegistry.byInstanceId(instanceId).orElse(null);
+        if (provider != null) {
+            return provider.pullMessageAtOffset(instanceId, topic, brokerName, queueId, offset);
+        }
+        return messageProvider.pullMessageAtOffset(instanceId, topic, brokerName, queueId, offset);
     }
 
     public DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {

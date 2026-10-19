@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.instance.dlq;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServletRequest;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -102,7 +103,15 @@ public class DLQController {
                                                  @RequestParam(required = false) Long endTime,
                                                  @Size(max = MAX_SELECTED_MESSAGES,
                                                          message = "At most 100 msgIds are allowed per export")
-                                                 @RequestParam(required = false) List<String> msgIds) {
+                                                 @RequestParam(required = false) List<String> msgIds,
+                                                 HttpServletRequest request) {
+        if (request.getParameterMap().keySet().stream()
+                .anyMatch(name -> name.startsWith("msgIds[") || name.startsWith("msgIds."))) {
+            throw new BusinessException(400, "Use repeated msgIds parameters without indexes");
+        }
+        if (request.getParameterMap().containsKey("msgIds") && (msgIds == null || msgIds.isEmpty())) {
+            throw new BusinessException(400, "msgIds must not be empty when provided");
+        }
         DLQExcelExportResultVO result = dlqService.exportExcel(instanceId, groupName, startTime, endTime, msgIds);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,

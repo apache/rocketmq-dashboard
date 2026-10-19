@@ -144,3 +144,33 @@ export async function createAndUpdatePlainAccessConfig(data: Partial<PlainAccess
   const res = await client.post<{ data: PlainAccessConfig }>('/acl/plain-access-config', data);
   return res.data.data;
 }
+
+export interface PushAclBrokerOutcome {
+  broker: string;
+  success: boolean;
+  error?: string | null;
+}
+
+export interface PushAclAccountOutcome {
+  username: string;
+  subject: string;
+  policyCount: number;
+  skipped: string[];
+  brokers: PushAclBrokerOutcome[];
+}
+
+export interface PushAclToBrokerResult {
+  instanceId: string;
+  brokers: string[];
+  pushed: number;
+  failed: number;
+  accounts: PushAclAccountOutcome[];
+}
+
+/** Writes every stored ACL account of the instance to its master brokers (additive upsert). */
+export async function pushAclToBroker(instanceId: string) {
+  const res = await client.post<{ data: PushAclToBrokerResult }>('/acl/push-to-broker', {
+    instanceId,
+  });
+  return res.data.data;
+}

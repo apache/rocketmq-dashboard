@@ -25,6 +25,8 @@ import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 import java.util.Optional;
@@ -379,6 +381,51 @@ class MessageServiceTest {
         assertThat(page.isResultMayBeTruncated()).isTrue();
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void pageQueryKeepsStableOrderAcrossChangingProviderResultsTest(boolean registeredProvider) {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class), ownershipGuard());
+        MessageRecordVO newest = MessageRecordVO.builder().msgId("newest").storeTime(3000L).build();
+        MessageRecordVO sameTimeA = MessageRecordVO.builder().msgId("a").storeTime(2000L).build();
+        MessageRecordVO sameTimeB = MessageRecordVO.builder().msgId("b").storeTime(2000L).build();
+        MessageRecordVO missingId = MessageRecordVO.builder().storeTime(2000L).build();
+        MessageRecordVO oldest = MessageRecordVO.builder().msgId("oldest").storeTime(1000L).build();
+        MessageQueryResult firstResult = MessageQueryResult.truncated(
+                List.of(oldest, sameTimeA, missingId, newest, sameTimeB));
+        MessageQueryResult secondResult = MessageQueryResult.truncated(
+                List.of(sameTimeB, newest, oldest, missingId, sameTimeA));
+        when(registry.byInstanceId("instance-a")).thenReturn(
+                registeredProvider ? Optional.of(provider) : Optional.empty());
+        if (registeredProvider) {
+            when(provider.queryMessagesDetailed("instance-a", "TopicA", null, null, "key-1", null, null))
+                    .thenReturn(firstResult, secondResult, firstResult);
+        } else {
+            when(fallback.queryMessagesDetailed("instance-a", "TopicA", null, null, "key-1", null, null))
+                    .thenReturn(firstResult, secondResult, firstResult);
+        }
+
+        MessageQueryPageVO firstPage = service.queryMessagesPage(
+                "instance-a", "TopicA", null, null, "key-1", null, null, 1, 2);
+        MessageQueryPageVO secondPage = service.queryMessagesPage(
+                "instance-a", "TopicA", null, null, "key-1", null, null, 2, 2);
+        MessageQueryPageVO thirdPage = service.queryMessagesPage(
+                "instance-a", "TopicA", null, null, "key-1", null, null, 3, 2);
+
+        assertThat(firstPage.getItems()).containsExactly(newest, sameTimeB);
+        assertThat(secondPage.getItems()).containsExactly(sameTimeA, missingId);
+        assertThat(thirdPage.getItems()).containsExactly(oldest);
+        assertThat(List.of(firstPage, secondPage, thirdPage)).allSatisfy(page -> {
+            assertThat(page.getTotal()).isEqualTo(5);
+            assertThat(page.isResultMayBeTruncated()).isTrue();
+        });
+        assertThat(firstResult.messages()).containsExactly(oldest, sameTimeA, missingId, newest, sameTimeB);
+        assertThat(secondResult.messages()).containsExactly(sameTimeB, newest, oldest, missingId, sameTimeA);
+    }
+
     @Test
     void pageQueryPropagatesProviderTruncationBelowTheGenericTopicThreshold() {
         MessageProvider provider = mock(MessageProvider.class);
@@ -649,5 +696,42 @@ class MessageServiceTest {
                 .isSameAs(record);
 
         verifyNoInteractions(fallback);
+    }
+
+    @Test
+    void pullMessageAtOffsetKeepsTheRegisteredProviderNullResultTest() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class), ownershipGuard());
+        when(registry.byInstanceId("cloud-instance")).thenReturn(Optional.of(provider));
+        when(provider.pullMessageAtOffset("cloud-instance", "TopicA", "broker-a", 0, 7L))
+                .thenReturn(null);
+
+        // A registered provider's null is the documented "no message at this
+        // offset" answer: it must not trigger the fallback (a second,
+        // identical pull whose failure would surface as an error here).
+        assertThat(service.pullMessageAtOffset("cloud-instance", "TopicA", "broker-a", 0, 7L))
+                .isNull();
+
+        verify(provider, org.mockito.Mockito.times(1))
+                .pullMessageAtOffset("cloud-instance", "TopicA", "broker-a", 0, 7L);
+        verifyNoInteractions(fallback);
+    }
+
+    @Test
+    void pullMessageAtOffsetStillFallsBackWithoutAProviderTest() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        MessageRecordVO record = MessageRecordVO.builder().msgId("msg-1").build();
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class), ownershipGuard());
+        when(registry.byInstanceId("apache-instance")).thenReturn(Optional.empty());
+        when(fallback.pullMessageAtOffset("apache-instance", "TopicA", "broker-a", 0, 7L))
+                .thenReturn(record);
+
+        assertThat(service.pullMessageAtOffset("apache-instance", "TopicA", "broker-a", 0, 7L))
+                .isSameAs(record);
     }
 }

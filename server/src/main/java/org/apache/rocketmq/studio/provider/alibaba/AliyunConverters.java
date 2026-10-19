@@ -164,6 +164,11 @@ final class AliyunConverters {
                 .group(data.getConsumerGroupId())
                 .consumeType(toConsumeType(data.getMessageModel()))
                 .messageModel(data.getMessageModel())
+                // ListTopicSubscriptions carries no lag or TPS field, so the VO defaults (0/0)
+                // would render as measured "0 backlog / 0 TPS" in the console and in the AI tool
+                // output. Flag them unavailable, the same way the Apache provider does when
+                // consume stats cannot be read.
+                .metricsAvailable(false)
                 .build();
     }
 
@@ -176,6 +181,9 @@ final class AliyunConverters {
         // consumer groups are push consumers. Read paths (web detail, AI rmq.group.list) require
         // a non-null subscriptionMode, mirroring the Apache provider invariant.
         vo.setSubscriptionMode(SubscriptionMode.Push);
+        if (data.getTopicName() != null && !data.getTopicName().isBlank()) {
+            vo.setSubscribedTopics(List.of(data.getTopicName()));
+        }
         vo.setGmtCreate(parseDateTime(data.getCreateTime()));
         vo.setGmtModified(parseDateTime(data.getUpdateTime()));
         return vo;
@@ -186,6 +194,16 @@ final class AliyunConverters {
             return ConsumeType.BROADCASTING;
         }
         return ConsumeType.CLUSTERING;
+    }
+
+    /**
+     * The inverse of {@link #toConsumeType}: the OpenAPI's own spelling for a requested consume model
+     * ({@code Broadcasting} / {@code Clustering} — the values the read paths recognise). Null for an
+     * unspecified or clustering model, so a request that does not ask for broadcast keeps the field
+     * out of the payload and the vendor default in charge.
+     */
+    static String toMessageModel(ConsumeType consumeType) {
+        return consumeType == ConsumeType.BROADCASTING ? "Broadcasting" : null;
     }
 
     static List<QueueProgressVO> toQueueProgressRows(GetConsumerGroupLagResponseBody.Data data) {

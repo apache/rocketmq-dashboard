@@ -19,6 +19,7 @@ export interface MessageRecord {
   storeHost: string;
   reconsumeTimes?: number;
   properties: Record<string, string>;
+  propertiesTruncated?: boolean;
   size: number;
 }
 
@@ -40,6 +41,8 @@ export interface ConsumerStatus {
 export interface TraceRecord {
   nodes: TraceNode[];
   consumerStatus: ConsumerStatus[];
+  /** Lookup context attached by the web API adapter, rather than the server payload. */
+  queryType?: 'MSG_ID' | 'KEY';
 }
 
 export interface MessageQuery {
@@ -184,6 +187,7 @@ export async function getMessageTrace(
   const trace = res.data.data;
   return {
     ...trace,
+    queryType: 'MSG_ID' as const,
     nodes: (trace.nodes ?? []).map((node) => ({
       ...node,
       status: mapTraceNodeStatus(node.status),
@@ -216,6 +220,7 @@ export async function getMessageTraceByKey(
   }
   return {
     ...trace,
+    queryType: 'KEY',
     nodes: (trace.nodes ?? []).map((node) => ({
       ...node,
       status: mapTraceNodeStatus(node.status),

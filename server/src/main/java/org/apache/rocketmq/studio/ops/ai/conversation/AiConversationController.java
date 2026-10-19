@@ -132,6 +132,7 @@ public class AiConversationController {
 
     /** Fallback for a constraint that carries no message; the wording {@code GlobalExceptionHandler} uses. */
     private static final String INVALID_REQUEST_MESSAGE = "Invalid request";
+    private static final String MESSAGE_REQUIRED_MESSAGE = "message is required";
 
     private final AiConversationService conversationService;
     private final AiRunService runService;
@@ -236,12 +237,16 @@ public class AiConversationController {
      */
     @PostMapping(value = "/conversations/{id}/messages", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter sendMessage(@PathVariable("id") Long conversationId,
-                                  @Valid @RequestBody AiMessageDTO request,
+                                  @Valid @RequestBody(required = false) AiMessageDTO request,
                                   BindingResult bindingResult,
                                   HttpServletResponse response) {
         // Both outcomes of this endpoint are event streams — an admitted run and a refusal alike — so the
         // headers go on first. A refusal is converted rather than thrown: see refusalStream.
         streamingHeaders(response);
+        if (request == null) {
+            return runService.refusalStream(HttpStatus.BAD_REQUEST.value(), AiRunService.REFUSED_INVALID_CODE,
+                    MESSAGE_REQUIRED_MESSAGE, null);
+        }
         if (bindingResult.hasErrors()) {
             // A BindingResult directly after the @Valid body makes Spring hand the violations here
             // instead of throwing MethodArgumentNotValidException. That is the only way to answer them

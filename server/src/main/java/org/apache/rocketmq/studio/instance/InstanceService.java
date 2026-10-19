@@ -103,8 +103,15 @@ public class InstanceService {
         countRunner.close();
     }
 
-    public List<InstanceVO> listInstances(InstanceType type, String search) {
-        log.debug("Listing instances, type={}, search={}", type, search);
+    /**
+     * Lists instances, resolving resource counts only when {@code withCounts} is set. Cloud vendors
+     * answer counts through remote OpenAPIs — two calls per instance — so a list of a dozen
+     * instances costs seconds, which every caller that only needs names (the instance selector on
+     * each instance-scoped page) must not pay. Without counts the rows are marked unavailable rather
+     * than left at the VO default, so a zero can never be mistaken for a measured count.
+     */
+    public List<InstanceVO> listInstances(InstanceType type, String search, boolean withCounts) {
+        log.debug("Listing instances, type={}, search={}, withCounts={}", type, search, withCounts);
         String normalizedSearch = search == null || search.isBlank() ? null : search.trim();
 
         List<InstanceVO> instances;
@@ -117,7 +124,11 @@ public class InstanceService {
         } else {
             instances = instanceRepository.findAll();
         }
-        fillCountsInParallel(instances);
+        if (withCounts) {
+            fillCountsInParallel(instances);
+        } else {
+            instances.forEach(InstanceService::clearCounts);
+        }
         instances.forEach(instance -> instance.setRegionName(regionNames.resolve(instance.getRegionId())));
         List<InstanceVO> sorted = new ArrayList<>(instances);
         sorted.sort(Comparator
@@ -240,7 +251,7 @@ public class InstanceService {
             throw exception;
         }
         recordAudit("CREATE_INSTANCE", "INSTANCE", String.valueOf(saved.getId()), null,
-                instanceAuditDetail(saved));
+                instanceAuditDetail(saved), "SUCCESS");
         return saved;
     }
 
@@ -363,8 +374,21 @@ public class InstanceService {
                 vendor, credentialId, result.discovered, result.imported, result.skipped, result.failedCount);
         recordAudit("IMPORT_CLOUD_INSTANCES", "INSTANCE", String.valueOf(credentialId), null,
                 "vendor=" + vendor + ", imported=" + result.imported + ", skipped=" + result.skipped
-                        + ", failed=" + result.failedCount);
+                        + ", failed=" + result.failedCount,
+                cloudImportAuditResult(result.imported, result.failedCount));
         return result.toValue();
+    }
+
+    /**
+     * Grade the import outcome with the shared audit vocabulary: a clean import is SUCCESS,
+     * a fully failed one is FAILED, and anything in between (some instances imported, some
+     * regions or rows failed) is PARTIAL — matching the DLQ resend classification.
+     */
+    private static String cloudImportAuditResult(int imported, int failedCount) {
+        if (failedCount <= 0) {
+            return "SUCCESS";
+        }
+        return imported > 0 ? "PARTIAL" : "FAILED";
     }
 
     private String normalizeCloudImportValue(String value) {
@@ -657,7 +681,7 @@ public class InstanceService {
             releaseApacheClientIfChanged(existing, saved);
         }
         recordAudit("UPDATE_INSTANCE", "INSTANCE", String.valueOf(saved.getId()), null,
-                instanceAuditDetail(saved));
+                instanceAuditDetail(saved), "SUCCESS");
         return saved;
     }
 
@@ -692,7 +716,7 @@ public class InstanceService {
         }
         removeDataSourceBindings(existing.getName());
         recordAudit("DELETE_INSTANCE", "INSTANCE", String.valueOf(id), null,
-                instanceAuditDetail(existing));
+                instanceAuditDetail(existing), "SUCCESS");
         completeInstanceDeletionAfterCommit(existing);
     }
 
@@ -884,9 +908,9 @@ public class InstanceService {
     }
 
     private void recordAudit(String operation, String resourceType, String resourceName,
-                             String clusterId, String detail) {
+                             String clusterId, String detail, String result) {
         try {
-            operationAuditService.record(operation, resourceType, resourceName, clusterId, detail, "SUCCESS", null);
+            operationAuditService.record(operation, resourceType, resourceName, clusterId, detail, result, null);
         } catch (Exception auditFailure) {
             log.warn("Failed to record audit operation={} resource={}: {}", operation, resourceName,
                     auditFailure.getMessage());

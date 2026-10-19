@@ -21,7 +21,7 @@ package catalog
 var defaultDocument = Document{
 	Version:              "2.0.0",
 	MinimumClientVersion: "2.0.0",
-	Digest:               "378a711779f7ea73703c07cfc8fa757300c8fe0c77d967970564ef409834a85d",
+	Digest:               "66ac58f23fbec620f3a0127e901a89f4bcad6c7ee08dd54cbd8f304730ed2199",
 	Tools: []Tool{
 		{
 			Name:                 "rmq.acl.list",
@@ -58,7 +58,7 @@ var defaultDocument = Document{
 			InputSchema: InputSchema{
 				Fields: []Field{
 					{Name: "instanceId", Flag: "instance-id", Description: "Studio Instance identifier.", Kind: StringField, Required: true, MinLength: 1},
-					{Name: "id", Flag: "id", Kind: StringField, Required: true, MinLength: 1},
+					{Name: "id", Flag: "id", Description: "Numeric ACL rule id, or the rule's principal on a provider whose rules have no numeric id (Tencent Cloud roles); rmq.acl.list reports no id for those rules.", Kind: StringField, Required: true, MinLength: 1},
 				},
 			},
 			ViewHint: "object",
@@ -96,7 +96,7 @@ var defaultDocument = Document{
 			InputSchema: InputSchema{
 				Fields: []Field{
 					{Name: "instanceId", Flag: "instance-id", Description: "Studio Instance identifier.", Kind: StringField, Required: true, MinLength: 1},
-					{Name: "id", Flag: "id", Kind: StringField, Required: true, MinLength: 1},
+					{Name: "id", Flag: "id", Description: "Numeric ACL rule id, or the rule's principal on a provider whose rules have no numeric id (Tencent Cloud roles); rmq.acl.list reports no id for those rules.", Kind: StringField, Required: true, MinLength: 1},
 					{Name: "principal", Flag: "principal", Kind: StringField},
 					{Name: "resource", Flag: "resource", Kind: StringField},
 					{Name: "resourceType", Flag: "resource-type", Kind: StringField},
@@ -120,7 +120,7 @@ var defaultDocument = Document{
 			InputSchema: InputSchema{
 				Fields: []Field{
 					{Name: "instanceId", Flag: "instance-id", Description: "Studio Instance identifier.", Kind: StringField, Required: true, MinLength: 1},
-					{Name: "id", Flag: "id", Kind: StringField, Required: true, MinLength: 1},
+					{Name: "id", Flag: "id", Description: "Numeric ACL rule id, or the rule's principal on a provider whose rules have no numeric id (Tencent Cloud roles); rmq.acl.list reports no id for those rules.", Kind: StringField, Required: true, MinLength: 1},
 					{Name: "dry_run", Flag: "dry-run", Description: "When true, preview the mutation without executing it; omit to apply with a confirm_token.", Kind: BooleanField},
 					{Name: "confirm_token", Flag: "confirm-token", Kind: StringField, MinLength: 1},
 					{Name: "break_glass", Flag: "break-glass", Kind: BooleanField},

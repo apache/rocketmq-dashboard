@@ -155,7 +155,7 @@ class InstanceServiceTest {
         when(instanceRepository.findAll()).thenReturn(instances);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
-        List<InstanceVO> result = instanceService.listInstances(null, null);
+        List<InstanceVO> result = instanceService.listInstances(null, null, true);
 
         assertThat(result).hasSize(2);
         verify(instanceRepository).findAll();
@@ -173,7 +173,7 @@ class InstanceServiceTest {
         when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(instanceProvider);
         when(regionNames.resolve("cn-hangzhou")).thenReturn("Hangzhou (CN)");
 
-        List<InstanceVO> result = instanceService.listInstances(null, null);
+        List<InstanceVO> result = instanceService.listInstances(null, null, true);
 
         assertThat(result.get(0).getRegionName()).isEqualTo("Hangzhou (CN)");
     }
@@ -191,7 +191,7 @@ class InstanceServiceTest {
         when(instanceRepository.findAll()).thenReturn(instances);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
-        List<InstanceVO> result = instanceService.listInstances(null, null);
+        List<InstanceVO> result = instanceService.listInstances(null, null, true);
 
         assertThat(result).extracting(InstanceVO::getName)
                 .containsExactly("a-apache", "b-apache",
@@ -207,7 +207,7 @@ class InstanceServiceTest {
         when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(provider);
         when(provider.countTopics("aliyun-fail")).thenThrow(new IllegalStateException("access denied"));
 
-        InstanceVO result = instanceService.listInstances(null, null).get(0);
+        InstanceVO result = instanceService.listInstances(null, null, true).get(0);
 
         assertThat(result.isResourceCountsAvailable()).isFalse();
     }
@@ -222,11 +222,27 @@ class InstanceServiceTest {
         when(provider.countTopics("aliyun-empty")).thenReturn(0);
         when(provider.countGroups("aliyun-empty")).thenReturn(0);
 
-        InstanceVO result = instanceService.listInstances(null, null).get(0);
+        InstanceVO result = instanceService.listInstances(null, null, true).get(0);
 
         assertThat(result.isResourceCountsAvailable()).isTrue();
         assertThat(result.getTopicCount()).isZero();
         assertThat(result.getConsumerGroupCount()).isZero();
+    }
+
+    @Test
+    void listInstancesWithoutCountsSkipsProviderLookupsTest() {
+        InstanceVO instance = InstanceVO.builder().name("aliyun-1").vendor(InstanceVendor.ALIYUN).build();
+        instance.setId(3L);
+        instance.setTopicCount(7);
+        instance.setConsumerGroupCount(9);
+        when(instanceRepository.findAll()).thenReturn(List.of(instance));
+
+        InstanceVO result = instanceService.listInstances(null, null, false).get(0);
+
+        assertThat(result.isResourceCountsAvailable()).isFalse();
+        assertThat(result.getTopicCount()).isZero();
+        assertThat(result.getConsumerGroupCount()).isZero();
+        verifyNoInteractions(providerRegistry);
     }
 
     @Test
@@ -237,7 +253,7 @@ class InstanceServiceTest {
         when(instanceRepository.findByType(InstanceType.CLOUD)).thenReturn(instances);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
-        List<InstanceVO> result = instanceService.listInstances(InstanceType.CLOUD, null);
+        List<InstanceVO> result = instanceService.listInstances(InstanceType.CLOUD, null, true);
 
         assertThat(result).hasSize(1);
         verify(instanceRepository).findByType(InstanceType.CLOUD);
@@ -251,7 +267,7 @@ class InstanceServiceTest {
         when(instanceRepository.search("prod")).thenReturn(instances);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
-        List<InstanceVO> result = instanceService.listInstances(null, "prod");
+        List<InstanceVO> result = instanceService.listInstances(null, "prod", true);
 
         assertThat(result).hasSize(1);
         verify(instanceRepository).search("prod");
@@ -265,7 +281,7 @@ class InstanceServiceTest {
         when(instanceRepository.search("prod")).thenReturn(instances);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
-        List<InstanceVO> result = instanceService.listInstances(null, " prod ");
+        List<InstanceVO> result = instanceService.listInstances(null, " prod ", true);
 
         assertThat(result).hasSize(1);
         verify(instanceRepository).search("prod");
@@ -279,7 +295,7 @@ class InstanceServiceTest {
         when(instanceRepository.findByTypeAndSearch(InstanceType.CLOUD, "prod")).thenReturn(instances);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
-        List<InstanceVO> result = instanceService.listInstances(InstanceType.CLOUD, "prod");
+        List<InstanceVO> result = instanceService.listInstances(InstanceType.CLOUD, "prod", true);
 
         assertThat(result).hasSize(1);
         verify(instanceRepository).findByTypeAndSearch(InstanceType.CLOUD, "prod");
@@ -293,7 +309,7 @@ class InstanceServiceTest {
         when(instanceRepository.findByTypeAndSearch(InstanceType.CLOUD, "prod")).thenReturn(instances);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
-        List<InstanceVO> result = instanceService.listInstances(InstanceType.CLOUD, " prod ");
+        List<InstanceVO> result = instanceService.listInstances(InstanceType.CLOUD, " prod ", true);
 
         assertThat(result).hasSize(1);
         verify(instanceRepository).findByTypeAndSearch(InstanceType.CLOUD, "prod");
@@ -305,7 +321,7 @@ class InstanceServiceTest {
         when(instanceRepository.findAll()).thenReturn(instances);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
-        List<InstanceVO> result = instanceService.listInstances(null, "   ");
+        List<InstanceVO> result = instanceService.listInstances(null, "   ", true);
 
         assertThat(result).hasSize(1);
         verify(instanceRepository).findAll();
@@ -326,7 +342,7 @@ class InstanceServiceTest {
         when(aliyunProvider.countTopics("aliyun")).thenReturn(5);
         when(aliyunProvider.countGroups("aliyun")).thenReturn(4);
 
-        List<InstanceVO> result = instanceService.listInstances(null, null);
+        List<InstanceVO> result = instanceService.listInstances(null, null, true);
 
         assertThat(result.get(0).getTopicCount()).isEqualTo(3);
         assertThat(result.get(0).getConsumerGroupCount()).isEqualTo(2);
@@ -343,7 +359,7 @@ class InstanceServiceTest {
         when(instanceProvider.countTopics("broken"))
                 .thenThrow(new IllegalStateException("admin unavailable"));
 
-        List<InstanceVO> result = instanceService.listInstances(null, null);
+        List<InstanceVO> result = instanceService.listInstances(null, null, true);
 
         assertThat(result.get(0).getTopicCount()).isZero();
         assertThat(result.get(0).getConsumerGroupCount()).isZero();
@@ -361,7 +377,7 @@ class InstanceServiceTest {
         when(instanceProvider.countTopics("stale-counts"))
                 .thenThrow(new IllegalStateException("provider unavailable"));
 
-        InstanceVO result = instanceService.listInstances(null, null).get(0);
+        InstanceVO result = instanceService.listInstances(null, null, true).get(0);
 
         assertThat(result.isResourceCountsAvailable()).isFalse();
         assertThat(result.getTopicCount()).isZero();
@@ -386,7 +402,7 @@ class InstanceServiceTest {
         });
 
         long start = System.nanoTime();
-        List<InstanceVO> result = instanceService.listInstances(null, null);
+        List<InstanceVO> result = instanceService.listInstances(null, null, true);
         long elapsedMillis = (System.nanoTime() - start) / 1_000_000;
 
         assertThat(elapsedMillis)
@@ -429,7 +445,7 @@ class InstanceServiceTest {
         });
 
         try {
-            List<InstanceVO> result = instanceService.listInstances(null, null);
+            List<InstanceVO> result = instanceService.listInstances(null, null, true);
 
             assertThat(topicCountStarted.await(1, TimeUnit.SECONDS)).isTrue();
             assertThat(result).singleElement().satisfies(instance -> {
@@ -1196,7 +1212,7 @@ class InstanceServiceTest {
         when(instanceProvider.countTopics("42")).thenReturn(3);
         when(instanceProvider.countGroups("42")).thenReturn(2);
 
-        List<InstanceVO> result = instanceService.listInstances(null, null);
+        List<InstanceVO> result = instanceService.listInstances(null, null, true);
 
         assertThat(result.get(0).getTopicCount()).isEqualTo(3);
         assertThat(result.get(0).getConsumerGroupCount()).isEqualTo(2);
@@ -1639,11 +1655,28 @@ class InstanceServiceTest {
         assertThat(result.getFailedCount()).isEqualTo(1);
         assertThat(result.isFailureDetailsTruncated()).isFalse();
         assertThat(result.getFailed()).containsExactly("cn-broken: regional outage");
+        verify(catalog).listCloudInstances(1L, "cn-broken", null);
         verify(catalog).listCloudInstances(1L, "cn-working", null);
         verify(catalog).getCloudInstance(1L, "cn-working", "rmq-working");
         verify(operationAuditService).record(eq("IMPORT_CLOUD_INSTANCES"), eq("INSTANCE"), eq("1"), eq(null),
                 argThat(detail -> detail.contains("imported=1") && detail.contains("failed=1")),
-                eq("SUCCESS"), eq(null));
+                eq("PARTIAL"), eq(null));
+    }
+
+    @Test
+    void importCloudInstancesShouldAuditAFullyFailedImportAsFailedTest() {
+        CloudCatalogProvider catalog = prepareAliyunCatalog();
+        when(catalog.listRegions(1L)).thenThrow(new BusinessException(502, "invalid credential"));
+
+        CloudImportResultVO result = instanceService.importCloudInstances(InstanceVendor.ALIYUN, 1L);
+
+        assertThat(result.getImported()).isZero();
+        assertThat(result.getFailedCount()).isEqualTo(1);
+        assertThat(result.getFailed()).containsExactly("regions: invalid credential");
+
+        verify(operationAuditService).record(eq("IMPORT_CLOUD_INSTANCES"), eq("INSTANCE"), eq("1"), eq(null),
+                argThat(detail -> detail.contains("imported=0") && detail.contains("failed=1")),
+                eq("FAILED"), eq(null));
     }
 
     @Test

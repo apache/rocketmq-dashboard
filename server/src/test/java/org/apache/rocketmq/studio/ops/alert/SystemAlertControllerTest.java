@@ -120,15 +120,20 @@ class SystemAlertControllerTest extends WebMvcAuthTestSupport {
 
     @Test
     void listDeliveriesPageShouldForwardFiltersAndPagingTest() throws Exception {
+        LocalDateTime from = LocalDateTime.of(2026, 8, 23, 14, 0);
+        LocalDateTime to = from.plusHours(1);
         NotificationDeliveryPageVO delivery = NotificationDeliveryPageVO.builder().id(8L).alertId(9L)
                 .channel("dingtalk").status(NotificationOutboxStatus.DELIVERED).attemptCount(0)
                 .alertTitle("Disk usage high").instanceId("local")
                 .messageContent("[info] Disk usage high").build();
-        when(notificationOutboxService.listDeliveries("dingtalk", "DELIVERED", "local", 2, 10))
+        when(notificationOutboxService.listDeliveries("dingtalk", "DELIVERED", "local",
+                "disk", from, to, 2, 10))
                 .thenReturn(PageResult.of(List.of(delivery), 11, 2, 10));
 
         mockMvc.perform(get("/api/system-alerts/deliveries/page").param("channel", "dingtalk")
                         .param("status", "DELIVERED").param("instanceId", "local")
+                        .param("search", "disk").param("from", "2026-08-23T14:00")
+                        .param("to", "2026-08-23T15:00")
                         .param("page", "2").param("pageSize", "10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(11))
@@ -136,7 +141,22 @@ class SystemAlertControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data.items[0].alertTitle").value("Disk usage high"))
                 .andExpect(jsonPath("$.data.items[0].messageContent").value("[info] Disk usage high"));
 
-        verify(notificationOutboxService).listDeliveries("dingtalk", "DELIVERED", "local", 2, 10);
+        verify(notificationOutboxService).listDeliveries("dingtalk", "DELIVERED", "local",
+                "disk", from, to, 2, 10);
+    }
+
+    @Test
+    void listDeliveriesPageShouldReportInvertedTimeRangeAsBadRequestTest() throws Exception {
+        LocalDateTime from = LocalDateTime.of(2026, 8, 23, 15, 0);
+        LocalDateTime to = from.minusHours(1);
+        when(notificationOutboxService.listDeliveries(null, null, null, null, from, to, 1, 20))
+                .thenThrow(new org.apache.rocketmq.studio.common.exception.BusinessException(400,
+                        "Delivery start time must not be after end time"));
+
+        mockMvc.perform(get("/api/system-alerts/deliveries/page")
+                        .param("from", "2026-08-23T15:00").param("to", "2026-08-23T14:00"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Delivery start time must not be after end time"));
     }
 
     @Test
