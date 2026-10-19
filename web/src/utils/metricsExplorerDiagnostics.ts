@@ -52,8 +52,11 @@ export interface MetricResultSummary {
 export interface MetricCsvContext {
   profileName: string;
   sourceName: string;
+  /** Epoch seconds of the query window start. */
   queryStart?: number;
+  /** Epoch seconds of the query window end. */
   queryEnd?: number;
+  /** Wall-clock `Date.now()` of the query, in epoch milliseconds. */
   queriedAt?: number;
 }
 
@@ -74,8 +77,11 @@ export interface MetricCsvRow {
   value: number;
   histogramCount?: number;
   histogramSum?: number;
+  /** Epoch seconds, like every other epoch column in the row. */
   queryStart?: number;
+  /** Epoch seconds, like every other epoch column in the row. */
   queryEnd?: number;
+  /** Epoch seconds, like every other epoch column in the row. */
   queriedAt?: number;
 }
 
@@ -179,7 +185,7 @@ const toScalarSamples = (series: MetricSeries): NumericMetricSample[] =>
   sortMetricSamples(
     series.values.map((sample, index) => ({
       timestamp: sample.timestamp,
-      value: Number(sample.value),
+      value: finiteNumber(sample.value) ?? Number.NaN,
       kind: 'scalar',
       index,
     })),
@@ -258,6 +264,11 @@ export const buildMetricCsvRows = (
     const { samples } = toMetricSeriesSamples(series);
     const seriesLabel = metricSeriesLabel(series, metric.name);
     const labels = stableLabelsText(series.labels);
+    // Timestamp / Query Start / Query End are epoch seconds; `queriedAt` is a wall-clock
+    // `Date.now()` in milliseconds. One CSV file must not mix the two units, so the query
+    // instant is emitted in the same seconds unit as the rest of the epoch columns.
+    const queriedAtSeconds =
+      context.queriedAt === undefined ? undefined : Math.floor(context.queriedAt / 1000);
     return samples.map((sample) => ({
       profileName: context.profileName,
       sourceName: context.sourceName,
@@ -277,7 +288,7 @@ export const buildMetricCsvRows = (
       histogramSum: sample.histogramSum,
       queryStart: context.queryStart,
       queryEnd: context.queryEnd,
-      queriedAt: context.queriedAt,
+      queriedAt: queriedAtSeconds,
     }));
   });
 
@@ -340,7 +351,9 @@ export const buildMetricSeriesDetailRows = (
       seriesLabel: metricSeriesLabel(series, metric.name),
       labels: stableLabelsText(series.labels),
       sampleType: fromHistogram
-        ? samples.some((sample) => sample.kind === 'scalar') ? 'mixed' : 'histogram'
+        ? samples.some((sample) => sample.kind === 'scalar')
+          ? 'mixed'
+          : 'histogram'
         : 'scalar',
       sampleCount: samples.length,
       latestTimestamp: latest?.timestamp,
@@ -455,14 +468,14 @@ export const createMetricsQueryHistoryEntry = ({
   instanceId,
   summary,
 }: MetricsQueryHistoryInput): MetricsQueryHistoryEntry => ({
-  id: [
+  id: JSON.stringify([
     profileId,
     metric.semanticMetric,
     rangeId,
-    dataSourceKey || 'default',
-    instanceId || 'global',
+    dataSourceKey,
+    instanceId ?? null,
     queriedAt,
-  ].join(':'),
+  ]),
   profileId,
   profileName,
   metricId: metric.semanticMetric,
@@ -482,23 +495,30 @@ export const createMetricsQueryHistoryEntry = ({
 });
 
 const historyIdentity = (entry: MetricsQueryHistoryEntry) =>
-  [
+  JSON.stringify([
     entry.profileId,
     entry.metricId,
     entry.rangeId,
-    entry.dataSourceKey || 'default',
-    entry.instanceId || 'global',
+    entry.dataSourceKey,
+    entry.instanceId ?? null,
     entry.promql,
-  ].join('\n');
+  ]);
 
 export const mergeMetricsQueryHistory = (
   entries: MetricsQueryHistoryEntry[],
   entry: MetricsQueryHistoryEntry,
   limit = METRICS_QUERY_HISTORY_LIMIT,
 ) => {
-  const duplicateKey = historyIdentity(entry);
-  return [entry, ...entries.filter((item) => historyIdentity(item) !== duplicateKey)].slice(
-    0,
-    limit,
-  );
+  // Responses can finish out of order. Keep the newest query for each identity before
+  // applying the cap; a late older response must not displace more recent history.
+  const identities = new Set<string>();
+  return [entry, ...entries]
+    .sort((left, right) => right.queriedAt - left.queriedAt)
+    .filter((item) => {
+      const identity = historyIdentity(item);
+      if (identities.has(identity)) return false;
+      identities.add(identity);
+      return true;
+    })
+    .slice(0, limit);
 };

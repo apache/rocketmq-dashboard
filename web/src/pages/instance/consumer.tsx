@@ -45,6 +45,7 @@ import {
   Progress,
   Switch,
   message,
+  theme,
 } from 'antd';
 import {
   Plus,
@@ -105,7 +106,7 @@ import {
 } from '../../utils/resourceCsvImport';
 import { downloadCsv } from '../../utils/download';
 import { formatLag, isLagAvailable, lagSortValue } from '../../utils/consumerLag';
-import { formatOnlineInstances, onlineInstancesSortValue } from '../../utils/consumerConnections';
+import { formatOnlineInstances, onlineInstancesCount } from '../../utils/consumerConnections';
 import { tableScrollX } from '../../utils/table';
 import {
   analyzeConsumerGroupHealth,
@@ -197,6 +198,18 @@ const healthStatusTagColor = (status: ConsumerGroupHealthStatus) => {
   return 'green';
 };
 
+const healthStatusColor = (status: ConsumerGroupHealthStatus) => {
+  if (status === 'critical') return '#ff4d4f';
+  if (status === 'warning') return '#faad14';
+  return '#52c41a';
+};
+
+const healthProgressStatus = (status: ConsumerGroupHealthStatus) => {
+  if (status === 'critical') return 'exception' as const;
+  if (status === 'warning') return 'active' as const;
+  return 'success' as const;
+};
+
 const issueSeverityTagColor = (severity: ConsumerGroupHealthIssue['severity']) => {
   if (severity === 'critical') return 'red';
   if (severity === 'warning') return 'orange';
@@ -253,6 +266,7 @@ const ConsumerPageContent = ({
   reloadInstances,
 }: ConsumerPageContentProps) => {
   const { t, lang } = useLang();
+  const { token } = theme.useToken();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const hasSelectedInstance = Boolean(selectedInstanceId);
@@ -308,6 +322,13 @@ const ConsumerPageContent = ({
   const [stackError, setStackError] = useState<string | null>(null);
   const [selectedStackClient, setSelectedStackClient] = useState<ConsumerInstance | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const importReadIdRef = useRef(0);
+  useEffect(
+    () => () => {
+      importReadIdRef.current += 1;
+    },
+    [],
+  );
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importFilename, setImportFilename] = useState('');
   const [importRows, setImportRows] = useState<ResourceImportRow<Partial<ConsumerGroup>>[]>([]);
@@ -380,6 +401,17 @@ const ConsumerPageContent = ({
     await loadConsumerGroupPage(page, pageSize);
   }, [loadConsumerGroupPage, page, pageSize]);
 
+  // While no instance is selected the table has nothing to fetch, so its spinner simply mirrors the
+  // instance list. Kept in its own effect: putting instancesLoading in the deps of the load below
+  // would re-run it when the list lands and fetch the same page a second time.
+  useEffect(() => {
+    if (selectedInstanceId) return undefined;
+    const spinnerTimer = window.setTimeout(() => setLoading(instancesLoading), 0);
+    return () => {
+      window.clearTimeout(spinnerTimer);
+    };
+  }, [selectedInstanceId, instancesLoading]);
+
   useEffect(() => {
     if (!selectedInstanceId) {
       groupRequestIdRef.current += 1;
@@ -387,7 +419,6 @@ const ConsumerPageContent = ({
         setGroups([]);
         setTotalGroups(0);
         setSelectedRowKeys([]);
-        setLoading(instancesLoading);
       }, 0);
       return () => {
         window.clearTimeout(resetTimer);
@@ -401,7 +432,7 @@ const ConsumerPageContent = ({
     return () => {
       window.clearTimeout(timer);
     };
-  }, [selectedInstanceId, page, pageSize, instancesLoading, refreshKey, loadConsumerGroupPage]);
+  }, [selectedInstanceId, page, pageSize, refreshKey, loadConsumerGroupPage]);
 
   useEffect(() => {
     if (!autoRefresh || !selectedInstanceId) {
@@ -577,7 +608,9 @@ const ConsumerPageContent = ({
 
   const saveSettings = async () => {
     if (!settingsGroup || !selectedInstanceId) return;
+    const requestId = settingsRequestIdRef.current;
     const values = await settingsForm.validateFields();
+    if (requestId !== settingsRequestIdRef.current) return;
     const original = originalSettingsRef.current;
     const risks: string[] = [];
     if (original && values.consumeEnable === false && original.consumeEnable !== false) {
@@ -602,7 +635,7 @@ const ConsumerPageContent = ({
           onCancel: () => resolve(false),
         });
       });
-      if (!confirmed) return;
+      if (!confirmed || requestId !== settingsRequestIdRef.current) return;
     }
     setSettingsSubmitting(true);
     try {
@@ -611,6 +644,13 @@ const ConsumerPageContent = ({
         name: settingsGroup.name,
         ...values,
       });
+      if (requestId !== settingsRequestIdRef.current) return;
+      // Subsequent edits must be compared with the settings the broker just accepted,
+      // not the snapshot from when this modal was first opened.
+      originalSettingsRef.current = {
+        consumeEnable: values.consumeEnable,
+        consumeMessageOrderly: values.consumeMessageOrderly,
+      };
       setGroups((current) =>
         current.map((group) =>
           group.name === settingsGroup.name
@@ -625,9 +665,11 @@ const ConsumerPageContent = ({
       );
       message.success('消费组配置已保存');
     } catch {
-      message.error('保存消费组配置失败，请稍后重试');
+      if (requestId === settingsRequestIdRef.current) {
+        message.error('保存消费组配置失败，请稍后重试');
+      }
     } finally {
-      setSettingsSubmitting(false);
+      if (requestId === settingsRequestIdRef.current) setSettingsSubmitting(false);
     }
   };
 
@@ -804,19 +846,25 @@ const ConsumerPageContent = ({
       message.error('请先选择实例');
       return;
     }
+    const readId = ++importReadIdRef.current;
+    // Clear the previous preview before the file read yields: those rows must not be imported
+    // under this file's name while its contents are still loading.
+    setImportRows([]);
+    setImportErrors([]);
+    if (importInputRef.current) importInputRef.current.value = '';
     setImportFilename(file.name);
     setImporting(false);
     setImportModalOpen(true);
     try {
       const records = parseCsvTable(await file.text());
+      if (readId !== importReadIdRef.current) return;
       const validation = validateConsumerGroupCsvImport(records, selectedInstanceId || undefined);
       setImportRows(validation.rows);
       setImportErrors(validation.errors);
     } catch (error) {
+      if (readId !== importReadIdRef.current) return;
       setImportRows([]);
       setImportErrors([error instanceof Error ? error.message : 'CSV 解析失败']);
-    } finally {
-      if (importInputRef.current) importInputRef.current.value = '';
     }
   };
 
@@ -966,6 +1014,7 @@ const ConsumerPageContent = ({
       dataIndex: 'subscriptionDataType',
       key: 'subscriptionDataType',
       width: 100,
+      align: 'center',
       sorter: (a, b) => (a.subscriptionDataType ?? '').localeCompare(b.subscriptionDataType ?? ''),
       render: (type: string) => {
         const config = TOPIC_TYPE_MAP[type] || { labelKey: type, color: 'default' };
@@ -977,6 +1026,7 @@ const ConsumerPageContent = ({
       dataIndex: 'subscriptionMode',
       key: 'subscriptionMode',
       width: 84,
+      align: 'center',
       sorter: (a, b) => (a.subscriptionMode ?? '').localeCompare(b.subscriptionMode ?? ''),
       render: (mode: string) => <Tag color={mode === 'Push' ? 'blue' : 'green'}>{mode}</Tag>,
     },
@@ -987,8 +1037,8 @@ const ConsumerPageContent = ({
       width: 100,
       align: 'center',
       sorter: (a, b) =>
-        onlineInstancesSortValue(a.onlineInstances) - onlineInstancesSortValue(b.onlineInstances),
-      render: (value: number) => formatOnlineInstances(value, UNAVAILABLE_LAG_LABEL),
+        onlineInstancesCount(a.onlineInstances) - onlineInstancesCount(b.onlineInstances),
+      render: (value: number) => onlineInstancesCount(value).toLocaleString(),
     },
     {
       title: '总堆积量',
@@ -1205,7 +1255,13 @@ const ConsumerPageContent = ({
       dataIndex: 'protocol',
       key: 'protocol',
       width: 80,
-      render: (protocol: string) => {
+      render: (protocol?: string) => {
+        // The Apache provider cannot tell the protocol from a broker connection set,
+        // so the field is legitimately absent — render a placeholder, not an empty tag.
+        // Plain '-' matches the other optional columns of this page.
+        if (!protocol) {
+          return '-';
+        }
         const config = PROTOCOL_MAP[protocol] || { labelKey: protocol, color: 'default' };
         return <Tag color={config.color}>{t(config.labelKey)}</Tag>;
       },
@@ -1678,9 +1734,11 @@ const ConsumerPageContent = ({
           setShowOnlyInconsistent(false);
           setSettingsGroup(null);
           setSettingsLoading(false);
+          setSettingsSubmitting(false);
+          originalSettingsRef.current = null;
           settingsForm.resetFields();
         }}
-        width={detailTab === 'progress' || detailTab === 'health' ? 1080 : 800}
+        width={detailTab === 'progress' ? 1080 : 800}
         destroyOnHidden
         footer={null}
       >
@@ -1972,85 +2030,85 @@ const ConsumerPageContent = ({
                       />
                     )}
 
-                    <Row gutter={16}>
-                      <Col span={6}>
-                        <Card size="small" style={{ borderRadius: 8 }}>
-                          <Statistic
-                            title="健康分"
-                            value={selectedGroupHealth.summary.healthScore}
-                            suffix="/ 100"
-                            valueStyle={{
-                              color:
-                                selectedGroupHealth.status === 'critical'
-                                  ? '#ff4d4f'
-                                  : selectedGroupHealth.status === 'warning'
-                                    ? '#faad14'
-                                    : '#52c41a',
-                            }}
-                          />
-                          <Progress
-                            percent={selectedGroupHealth.summary.healthScore}
-                            showInfo={false}
-                            status={
-                              selectedGroupHealth.status === 'critical'
-                                ? 'exception'
-                                : selectedGroupHealth.status === 'warning'
-                                  ? 'active'
-                                  : 'success'
-                            }
-                          />
-                        </Card>
-                      </Col>
-                      <Col span={6}>
-                        <Card size="small" style={{ borderRadius: 8 }}>
-                          <Statistic
-                            title="已知堆积"
-                            value={selectedGroupHealth.summary.totalKnownLag}
-                            valueStyle={{
-                              color: lagColor(selectedGroupHealth.summary.totalKnownLag),
-                            }}
-                          />
-                          <Text type="secondary">
-                            报告堆积：
+                    <Card
+                      size="small"
+                      style={{
+                        // Theme fill instead of a fixed light grey, which left this summary
+                        // card unreadable in dark mode.
+                        background: token.colorFillQuaternary,
+                        borderRadius: 8,
+                      }}
+                      styles={{ body: { padding: '8px 16px' } }}
+                    >
+                      <Space size={24} wrap>
+                        <Space size={4}>
+                          <Text type="secondary">健康分:</Text>
+                          <Text
+                            strong
+                            style={{ color: healthStatusColor(selectedGroupHealth.status) }}
+                          >
+                            {selectedGroupHealth.summary.healthScore} / 100
+                          </Text>
+                        </Space>
+                        <Space size={4}>
+                          <Text type="secondary">已知堆积:</Text>
+                          <Text
+                            strong
+                            style={{ color: lagColor(selectedGroupHealth.summary.totalKnownLag) }}
+                          >
+                            {selectedGroupHealth.summary.totalKnownLag.toLocaleString()}
+                          </Text>
+                        </Space>
+                        <Space size={4}>
+                          <Text type="secondary">报告堆积:</Text>
+                          <Text strong>
                             {selectedGroupHealth.summary.reportedLag === null
                               ? UNAVAILABLE_LAG_LABEL
                               : selectedGroupHealth.summary.reportedLag.toLocaleString()}
                           </Text>
-                        </Card>
-                      </Col>
-                      <Col span={6}>
-                        <Card size="small" style={{ borderRadius: 8 }}>
-                          <Statistic
-                            title="Queue 覆盖"
-                            value={selectedGroupHealth.summary.queueCount}
-                            suffix={`/${selectedGroupHealth.summary.subscribedTopicCount} Topic`}
-                          />
-                          <Text type="secondary">
+                        </Space>
+                        <Space size={4}>
+                          <Text type="secondary">Queue 覆盖:</Text>
+                          <Text strong>
+                            {selectedGroupHealth.summary.queueCount} /{' '}
+                            {selectedGroupHealth.summary.subscribedTopicCount} Topic
+                          </Text>
+                        </Space>
+                        <Space size={4}>
+                          <Text type="secondary">Queue 堆积:</Text>
+                          <Text strong>
                             {selectedGroupHealth.summary.unknownQueueCount > 0
-                              ? `${selectedGroupHealth.summary.unknownQueueCount} 个 Queue 堆积不可用`
-                              : 'Queue 堆积均可计算'}
+                              ? `${selectedGroupHealth.summary.unknownQueueCount} 个不可用`
+                              : '均可计算'}
                           </Text>
-                        </Card>
-                      </Col>
-                      <Col span={6}>
-                        <Card size="small" style={{ borderRadius: 8 }}>
-                          <Statistic
-                            title="客户端"
-                            value={selectedGroupHealth.summary.onlineInstances}
-                            formatter={(value) =>
-                              formatOnlineInstances(Number(value), UNAVAILABLE_LAG_LABEL)
-                            }
-                          />
-                          <Text type="secondary">
+                        </Space>
+                        <Space size={4}>
+                          <Text type="secondary">客户端:</Text>
+                          <Text strong>
+                            {formatOnlineInstances(
+                              selectedGroupHealth.summary.onlineInstances,
+                              UNAVAILABLE_LAG_LABEL,
+                            )}
+                          </Text>
+                        </Space>
+                        <Space size={4}>
+                          <Text type="secondary">心跳:</Text>
+                          <Text strong>
                             {selectedGroupHealth.summary.onlineInstances < 0
-                              ? '客户端连接信息不可用'
+                              ? '连接信息不可用'
                               : selectedGroupHealth.summary.staleClientCount > 0
-                                ? `${selectedGroupHealth.summary.staleClientCount} 个心跳过期`
-                                : '心跳状态正常'}
+                                ? `${selectedGroupHealth.summary.staleClientCount} 个过期`
+                                : '正常'}
                           </Text>
-                        </Card>
-                      </Col>
-                    </Row>
+                        </Space>
+                      </Space>
+                      <Progress
+                        percent={selectedGroupHealth.summary.healthScore}
+                        showInfo={false}
+                        style={{ marginTop: 8, marginBottom: 0 }}
+                        status={healthProgressStatus(selectedGroupHealth.status)}
+                      />
+                    </Card>
 
                     {selectedGroupHealth.issues.length > 0 ? (
                       <Table
@@ -2128,7 +2186,9 @@ const ConsumerPageContent = ({
                       size="small"
                       style={{
                         marginBottom: 16,
-                        background: '#fafafa',
+                        // Theme fill instead of a fixed light grey, which left this summary
+                        // card unreadable in dark mode.
+                        background: token.colorFillQuaternary,
                         borderRadius: 8,
                       }}
                       styles={{ body: { padding: '8px 16px' } }}
@@ -2192,41 +2252,57 @@ const ConsumerPageContent = ({
                 disabled: isCloudInstance,
                 children: (
                   <Spin spinning={settingsLoading}>
-                    <Form form={settingsForm} layout="vertical" style={{ maxWidth: 480 }}>
-                      <Form.Item label="Group 名称">
-                        <Text strong>{selectedGroup.name}</Text>
-                      </Form.Item>
-                      <Form.Item
-                        label="重试队列数"
-                        name="retryQueueNums"
-                        rules={[{ required: true, message: '请输入重试队列数' }]}
-                      >
-                        <InputNumber min={1} max={128} style={{ width: '100%' }} />
-                      </Form.Item>
-                      <Form.Item
-                        label="最大重试次数"
-                        name="retryMaxTimes"
-                        rules={[{ required: true, message: '请输入最大重试次数' }]}
-                      >
-                        <InputNumber min={1} max={128} style={{ width: '100%' }} />
-                      </Form.Item>
-                      <Form.Item label="启用消费" name="consumeEnable" valuePropName="checked">
-                        <Switch />
-                      </Form.Item>
-                      <Form.Item
-                        label="顺序消费"
-                        name="consumeMessageOrderly"
-                        valuePropName="checked"
-                      >
-                        <Switch />
-                      </Form.Item>
-                      <Form.Item
-                        label="广播消费"
-                        name="consumeBroadcastEnable"
-                        valuePropName="checked"
-                      >
-                        <Switch />
-                      </Form.Item>
+                    <Form form={settingsForm} layout="vertical">
+                      <Row gutter={16}>
+                        <Col span={8}>
+                          <Form.Item label="Group 名称">
+                            <Text strong>{selectedGroup.name}</Text>
+                          </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                          <Form.Item
+                            label="重试队列数"
+                            name="retryQueueNums"
+                            rules={[{ required: true, message: '请输入重试队列数' }]}
+                          >
+                            <InputNumber min={1} max={128} style={{ width: '100%' }} />
+                          </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                          <Form.Item
+                            label="最大重试次数"
+                            name="retryMaxTimes"
+                            rules={[{ required: true, message: '请输入最大重试次数' }]}
+                          >
+                            <InputNumber min={1} max={128} style={{ width: '100%' }} />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                      <Row gutter={16}>
+                        <Col span={8}>
+                          <Form.Item label="启用消费" name="consumeEnable" valuePropName="checked">
+                            <Switch />
+                          </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                          <Form.Item
+                            label="顺序消费"
+                            name="consumeMessageOrderly"
+                            valuePropName="checked"
+                          >
+                            <Switch />
+                          </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                          <Form.Item
+                            label="广播消费"
+                            name="consumeBroadcastEnable"
+                            valuePropName="checked"
+                          >
+                            <Switch />
+                          </Form.Item>
+                        </Col>
+                      </Row>
                       <Form.Item style={{ marginBottom: 0 }}>
                         <Button
                           type="primary"
@@ -2499,7 +2575,10 @@ const ConsumerPageContent = ({
         title={`导入 Group${importFilename ? `：${importFilename}` : ''}`}
         open={importModalOpen}
         onCancel={() => {
-          if (!importing) setImportModalOpen(false);
+          if (!importing) {
+            importReadIdRef.current += 1;
+            setImportModalOpen(false);
+          }
         }}
         onOk={() => void handleImportConsumerGroups()}
         okText={importRows.some((row) => row.status === 'failed') ? '重试失败项' : '开始导入'}

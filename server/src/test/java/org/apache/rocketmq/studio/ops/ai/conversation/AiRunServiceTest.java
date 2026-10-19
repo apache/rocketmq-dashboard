@@ -25,6 +25,8 @@ import org.apache.rocketmq.studio.ops.ai.LlmConfigVO;
 import org.apache.rocketmq.studio.ops.ai.OpenAiCompatibleLlmClient;
 import org.apache.rocketmq.studio.ops.ai.conversation.agent.PromptEnhancer;
 import org.apache.rocketmq.studio.ops.ai.conversation.agent.RmqctlWorkspace;
+import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEvent;
+import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEventProjector;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.LiveEvent;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.RunStatus;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.StopReason;
@@ -34,6 +36,8 @@ import org.apache.rocketmq.studio.persistence.entity.RmqAiRun;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.Clock;
@@ -49,6 +53,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -56,6 +61,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -168,8 +174,11 @@ class AiRunServiceTest {
         // The worker picked the run up: QUEUED is a real state, not a label the row keeps.
         assertThat(runUpdates.get(0).getStatus()).isEqualTo(RunStatus.RUNNING.name());
         assertThat(runUpdates.get(0).getStartedAt()).isNotNull();
-        // ...and the run really did go on to execute and finish on the queued engine.
-        assertThat(lastRun().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
+        // ...and the run really did go on to execute and reach a terminal on the queued engine —
+        // a terminal, not specifically a success: this stub streams no frames, so the turn ends
+        // with the no-result failure instead of a success nothing projected.
+        assertThat(lastRun().getStatus()).isEqualTo(RunStatus.FAILED.name());
+        assertThat(lastRun().getStopReason()).isEqualTo(StopReason.PROVIDER_ERROR.name());
         assertThat(emitters.get(0).timeoutMillis()).isEqualTo(AiRunExecutor.CLI_STREAM_TIMEOUT_MILLIS);
     }
 
@@ -216,6 +225,20 @@ class AiRunServiceTest {
     }
 
     @Test
+    void aDegradedConversationShouldTellTheLiveStreamTooTest() {
+        when(workspace.prepare(anyLong(), any())).thenReturn(Optional.empty());
+
+        service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("hello"));
+
+        // Live and replayed must render alike: the notice is persisted as the run's first event, so
+        // the observer that is still attached has to hear it as well - not only whoever reloads
+        // after the fact.
+        assertThat(AiRunTestSupport.typesOf(inserted)).startsWith("user", "notice");
+        assertThat(emitters.get(0).eventCount("\"type\":\"notice\"")).isEqualTo(1);
+        assertThat(emitters.get(0).eventText()).contains(RmqctlWorkspace.DEGRADED_NOTICE_MESSAGE);
+    }
+
+    @Test
     void aConversationWithNoInstanceShouldSayItIsUnboundRatherThanDegradedTest() {
         conversation.setInstanceId(null);
         when(workspace.prepare(anyLong(), any())).thenReturn(Optional.empty());
@@ -223,6 +246,29 @@ class AiRunServiceTest {
         service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("hello"));
 
         assertThat(inserted.get(1).getPayload()).contains(RmqctlWorkspace.UNBOUND_NOTICE_MESSAGE);
+    }
+
+    @Test
+    void anHttpTurnShouldNotPrepareAnAgentWorkspaceItCannotUseTest() {
+        when(llmClient.supports(any())).thenReturn(true);
+        doAnswer(invocation -> {
+            Consumer<String> tokens = invocation.getArgument(3);
+            tokens.accept("pong");
+            return null;
+        }).when(llmClient).stream(any(), any(), any(), any());
+        when(workspace.prepare(anyLong(), any()))
+                .thenThrow(new BusinessException(500, "the workspace directory is unusable"));
+
+        service.sendMessage(CONVERSATION_ID, new AiRunService.RunRequest(
+                "hello", null, LlmConfigVO.ENGINE_HTTP, null, false, null));
+
+        // A completion turn has no agent CLI, so it never reads the workspace: a broken tools
+        // configuration must not fail it, and an unbound conversation must not be warned about
+        // tools this engine never had.
+        verify(workspace, never()).prepare(anyLong(), any());
+        assertThat(AiRunTestSupport.typesOf(inserted)).containsExactly("user", "text", "run_status");
+        assertThat(runUpdates.get(runUpdates.size() - 1).getStatus())
+                .isEqualTo(RunStatus.COMPLETED.name());
     }
 
     @Test
@@ -287,9 +333,28 @@ class AiRunServiceTest {
         // 409 the stranded-QUEUED row produced for up to a day.
         org.mockito.Mockito.reset(workspace);
         when(workspace.prepare(anyLong(), any())).thenReturn(Optional.of(preparation()));
+        // Script a success frame so the recovered run completes: an unscripted stub stream now
+        // ends with the no-result failure, and this turn is meant to be a healthy one.
+        provider.emit(new AgentEvent.ResultMeta("session-2", 10L, 3, 4,
+                AgentEventProjector.SUCCESS_SUBTYPE));
         service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("second try"));
         assertThat(runInserts).hasSize(2);
         assertThat(lastRun().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
+    }
+
+    @Test
+    void aStreamThatEndsWithoutAResultFrameMustNotCompleteTheRunTest() {
+        // The stub streams no frames at all: the agent stream closes without a result frame, so
+        // nothing was projected and nothing errored with a frame of its own — the provider process
+        // simply went away mid-turn. Reporting COMPLETED would present a turn with no answer as a
+        // successful one. HTTP completion turns never carry a result frame and are deliberately
+        // excluded from this in decide().
+        service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("anybody home"));
+
+        assertThat(lastRun().getStatus()).isEqualTo(RunStatus.FAILED.name());
+        assertThat(lastRun().getStopReason()).isEqualTo(StopReason.PROVIDER_ERROR.name());
+        assertThat(lastRun().getErrorCode()).isEqualTo(AiRunExecutor.ERROR_CODE_NO_RESULT);
+        assertThat(registry.isLive(RUN_ID)).isFalse();
     }
 
     @Test
@@ -420,6 +485,26 @@ class AiRunServiceTest {
     }
 
     @Test
+    void aStopThatLosesTheFinalisationRaceMustNotWriteASecondTerminalTest() {
+        // The run row is read once at the top of stop(); the worker can finalise between that read
+        // and the registry lookup, whose empty result then looks like "nobody owns this run".
+        // Writing the terminal state on that stale read would duplicate the run_status event and
+        // flip a run the user watched complete to STOPPED, so the row is re-read first.
+        RmqAiRun running = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.RUNNING);
+        RmqAiRun finished = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.COMPLETED);
+        when(runRepository.findById(RUN_ID))
+                .thenReturn(Optional.of(running))
+                .thenReturn(Optional.of(finished));
+        when(runRepository.findActiveByConversationId(CONVERSATION_ID)).thenReturn(Optional.of(running));
+
+        RmqAiRun stopped = service.stop(RUN_ID);
+
+        assertThat(stopped.getStatus()).isEqualTo(RunStatus.COMPLETED.name());
+        assertThat(runUpdates).isEmpty();
+        assertThat(inserted).isEmpty();
+    }
+
+    @Test
     void stopOfARunNobodyOwnsAnyMoreShouldStillWriteTheTerminalStateTest() {
         // The row says active, but nothing in this process owns it: the worker is gone and will never
         // finalise. Writing the terminal state here is what keeps the stop button from spinning until the
@@ -490,8 +575,26 @@ class AiRunServiceTest {
         // reduce to the same transcript.
         assertThat(text).contains("\"type\":\"text_delta\"").contains("group A is 4000 behind");
         assertThat(text).contains("\"type\":\"run_finished\"").contains("event:done");
+        assertThat(text).doesNotContain("\"durationMs\"");
         // The user's own turn has no live counterpart: the client renders it from what it sent.
         assertThat(text).doesNotContain("what is lagging");
+        assertThat(emitters.get(0).completed()).isTrue();
+    }
+
+    @Test
+    void aFailingReplayReadMustCloseTheSessionItCreatedTest() {
+        // The emitter is only handed to a response when attach() returns; a failure in the replay
+        // read means it never gets there, so no transport callback can ever close the session. The
+        // service must close it itself, or the heartbeat it started keeps firing into a buffer
+        // nobody drains for the life of the process.
+        RmqAiRun active = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.RUNNING);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(active));
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 0, 200))
+                .thenThrow(new IllegalStateException("database unavailable"));
+
+        assertThatThrownBy(() -> service.attach(RUN_ID, 0))
+                .isInstanceOf(IllegalStateException.class);
+
         assertThat(emitters.get(0).completed()).isTrue();
     }
 
@@ -512,6 +615,28 @@ class AiRunServiceTest {
         verifyCursor(2);
         String text = emitters.get(0).eventText();
         assertThat(text).contains("tail").contains("\"type\":\"run_finished\"").contains("FAILED");
+        assertThat(text).contains("\"durationMs\":1234");
+        assertThat(emitters.get(0).completed()).isTrue();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"COMPLETED,8123", "STOPPED,0", "FAILED,1234"})
+    void attachShouldReplayTheRecordedRunDurationTest(RunStatus status, long durationMs) {
+        RmqAiRun finished = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, status);
+        finished.setDurationMs(durationMs);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(finished));
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 2, 200))
+                .thenReturn(List.of(event(3, "run_status",
+                        "{\"type\":\"run_status\",\"status\":\"" + status.name() + "\"}")));
+
+        service.attach(RUN_ID, 2);
+
+        verifyCursor(2);
+        String text = emitters.get(0).eventText();
+        assertThat(text).containsOnlyOnce("\"type\":\"run_finished\"")
+                .contains("\"runId\":" + RUN_ID)
+                .contains("\"status\":\"" + status.name() + "\"")
+                .contains("\"durationMs\":" + durationMs);
         assertThat(emitters.get(0).completed()).isTrue();
     }
 
@@ -531,6 +656,30 @@ class AiRunServiceTest {
         registry.publish(RUN_ID, 2L, new LiveEvent.TextDelta("and since"));
 
         assertThat(emitters.get(0).eventText()).contains("and since");
+    }
+
+    @Test
+    void attachShouldRegisterTheObserverBeforeTheReplayQueryTest() {
+        // The documented invariant of the reconnect path: the observer joins BEFORE the replay is
+        // queried, so a frame the run publishes while the replay is in flight is buffered by the
+        // session and drained after the replayed rows, not lost in the gap between the query and
+        // the registration. Losing it would leave a hole in the transcript that only another
+        // reload could fill.
+        RmqAiRun active = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.RUNNING);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(active));
+        registry.register(RUN_ID, new AgentRunHandle(RUN_ID, Duration.ofMillis(1)));
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 0, 200)).thenAnswer(invocation -> {
+            registry.publish(RUN_ID, 2L, new LiveEvent.TextDelta("written while the replay query ran"));
+            return List.of(event(1, "text", "{\"type\":\"text\",\"text\":\"so far\"}"));
+        });
+
+        service.attach(RUN_ID, 0);
+
+        assertThat(emitters.get(0).eventText())
+                .contains("so far")
+                .contains("written while the replay query ran")
+                .doesNotContain("event:done");
+        assertThat(emitters.get(0).completed()).isFalse();
     }
 
     // --- resolution ------------------------------------------------------------

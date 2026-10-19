@@ -22,6 +22,8 @@ import {
   deleteConsumerGroup,
   exportConsumerGroups,
   getConsumerGroup,
+  getConsumerGroupSettings,
+  updateConsumerGroupSettings,
   getConsumerProgress,
   getConsumerStack,
   getConsumerSubscriptions,
@@ -36,6 +38,8 @@ const { mode, metadataApi } = vi.hoisted(() => ({
   mode: { mock: true },
   metadataApi: {
     getConsumerGroup: vi.fn(),
+    getConsumerGroupSettings: vi.fn(),
+    updateConsumerGroupSettings: vi.fn(),
     listConsumerGroupPage: vi.fn(),
     listConsumerGroups: vi.fn(),
     previewConsumerOffsetReset: vi.fn(),
@@ -49,25 +53,180 @@ vi.mock('../config', () => ({
 vi.mock('../api/metadata', () => metadataApi);
 
 describe('consumer service mock data', () => {
+  it('roundTripsSettingsForTheSelectedMockGroupAndInstanceTest', async () => {
+    const name = 'settings-round-trip';
+    await createConsumerGroup({ name, instanceId: 'settings-a', retryMaxTimes: 3 });
+    await createConsumerGroup({ name, instanceId: 'settings-b', retryMaxTimes: 7 });
+    try {
+      expect(await getConsumerGroupSettings(name, 'settings-a')).toEqual({
+        groupName: name,
+        retryQueueNums: 1,
+        retryMaxTimes: 3,
+      });
+      const saved = await updateConsumerGroupSettings({
+        name,
+        instanceId: 'settings-a',
+        retryQueueNums: 4,
+        retryMaxTimes: 0,
+      });
+      expect(saved).toEqual({ groupName: name, retryQueueNums: 4, retryMaxTimes: 0 });
+      saved.retryMaxTimes = 99;
+      const read = await getConsumerGroupSettings(name, 'settings-a');
+      expect(read).toEqual({ groupName: name, retryQueueNums: 4, retryMaxTimes: 0 });
+      read.retryQueueNums = 99;
+      expect((await getConsumerGroupSettings(name, 'settings-a')).retryQueueNums).toBe(4);
+      expect((await getConsumerGroupSettings(name, 'settings-b')).retryMaxTimes).toBe(7);
+      expect((await getConsumerGroup(name, 'settings-a')).retryMaxTimes).toBe(0);
+    } finally {
+      await deleteConsumerGroup(name, 'settings-a');
+      await deleteConsumerGroup(name, 'settings-b');
+    }
+  });
+
+  it('roundTripsMockConsumptionTogglesPerGroupAndInstanceTest', async () => {
+    const name = 'settings-toggles';
+    await createConsumerGroup({ name, instanceId: 'toggles-a' });
+    await createConsumerGroup({ name, instanceId: 'toggles-b' });
+    try {
+      const expectedA = {
+        groupName: name,
+        retryQueueNums: 2,
+        retryMaxTimes: 5,
+        consumeEnable: false,
+        consumeMessageOrderly: true,
+        consumeBroadcastEnable: true,
+      };
+      expect(
+        await updateConsumerGroupSettings({
+          name,
+          instanceId: 'toggles-a',
+          retryQueueNums: 2,
+          retryMaxTimes: 5,
+          consumeEnable: false,
+          consumeMessageOrderly: true,
+          consumeBroadcastEnable: true,
+        }),
+      ).toEqual(expectedA);
+      // Re-opening the dialog must show what was saved, including the explicit `false`.
+      expect(await getConsumerGroupSettings(name, 'toggles-a')).toEqual(expectedA);
+
+      const expectedB = {
+        groupName: name,
+        retryQueueNums: 1,
+        retryMaxTimes: 16,
+        consumeEnable: true,
+        consumeMessageOrderly: false,
+        consumeBroadcastEnable: false,
+      };
+      expect(
+        await updateConsumerGroupSettings({
+          name,
+          instanceId: 'toggles-b',
+          retryQueueNums: 1,
+          retryMaxTimes: 16,
+          consumeEnable: true,
+          consumeMessageOrderly: false,
+          consumeBroadcastEnable: false,
+        }),
+      ).toEqual(expectedB);
+      expect(await getConsumerGroupSettings(name, 'toggles-b')).toEqual(expectedB);
+      // A same-named group under another instance keeps its own toggles.
+      expect((await getConsumerGroupSettings(name, 'toggles-a')).consumeEnable).toBe(false);
+      expect((await getConsumerGroupSettings(name, 'toggles-b')).consumeEnable).toBe(true);
+      expect((await getConsumerGroupSettings(name, 'toggles-a')).consumeMessageOrderly).toBe(true);
+      expect((await getConsumerGroupSettings(name, 'toggles-b')).consumeMessageOrderly).toBe(false);
+    } finally {
+      await deleteConsumerGroup(name, 'toggles-a');
+      await deleteConsumerGroup(name, 'toggles-b');
+    }
+  });
+
+  it('doesNotResurrectSettingsAfterDeletingAndRecreatingAMockGroupTest', async () => {
+    const name = 'settings-recreated';
+    const instanceId = 'settings-instance';
+    await createConsumerGroup({ name, instanceId });
+    try {
+      await updateConsumerGroupSettings({ name, instanceId, retryQueueNums: 4, retryMaxTimes: 2 });
+      expect((await getConsumerGroupSettings(name, instanceId)).retryQueueNums).toBe(4);
+      await deleteConsumerGroup(name, instanceId);
+      await createConsumerGroup({ name, instanceId });
+      expect(await getConsumerGroupSettings(name, instanceId)).toEqual({
+        groupName: name,
+        retryQueueNums: 1,
+        retryMaxTimes: 16,
+      });
+    } finally {
+      await deleteConsumerGroup(name, instanceId);
+    }
+  });
+
+  it('rejectsMockSettingsForAMissingGroupOrWrongInstanceTest', async () => {
+    const name = 'settings-owned';
+    await createConsumerGroup({ name, instanceId: 'owner', retryMaxTimes: 8 });
+    try {
+      await expect(getConsumerGroupSettings(name, 'other')).rejects.toThrow(
+        'Consumer group not found',
+      );
+      await expect(
+        updateConsumerGroupSettings({
+          name,
+          instanceId: 'other',
+          retryQueueNums: 4,
+          retryMaxTimes: 2,
+        }),
+      ).rejects.toThrow('Consumer group not found');
+      await expect(getConsumerGroupSettings('missing-settings-group', 'owner')).rejects.toThrow(
+        'Consumer group not found',
+      );
+      expect((await getConsumerGroup(name, 'owner')).retryMaxTimes).toBe(8);
+    } finally {
+      await deleteConsumerGroup(name, 'owner');
+    }
+  });
+
+  it('delegatesRealSettingsCallsWithoutUsingMockStateTest', async () => {
+    mode.mock = false;
+    const settings = { groupName: 'real', retryQueueNums: 2, retryMaxTimes: 5 };
+    const request = {
+      name: 'real',
+      instanceId: 'real-instance',
+      retryQueueNums: 2,
+      retryMaxTimes: 5,
+    };
+    metadataApi.getConsumerGroupSettings.mockResolvedValueOnce(settings);
+    metadataApi.updateConsumerGroupSettings.mockResolvedValueOnce(settings);
+    try {
+      expect(await getConsumerGroupSettings('real', 'real-instance')).toBe(settings);
+      expect(await updateConsumerGroupSettings(request)).toBe(settings);
+      expect(metadataApi.getConsumerGroupSettings).toHaveBeenLastCalledWith(
+        'real',
+        'real-instance',
+      );
+      expect(metadataApi.updateConsumerGroupSettings).toHaveBeenLastCalledWith(request);
+    } finally {
+      mode.mock = true;
+    }
+  });
+
   it('returns copied consumer group rows', async () => {
     const first = await listConsumerGroups({ search: 'cg-order-notify' });
     expect(first[0].name).toBe('cg-order-notify');
 
     first[0].name = 'mutated-group';
     first[0].subscribedTopics.push('mutated-topic');
-    first[0].instances[0].topicLag['order-create'] = 999999;
+    first[0].instances[0].topicLag!['order-create'] = 999999;
 
     const second = await listConsumerGroups({ search: 'cg-order-notify' });
     expect(second[0].name).toBe('cg-order-notify');
     expect(second[0].subscribedTopics).not.toContain('mutated-topic');
-    expect(second[0].instances[0].topicLag['order-create']).toBe(180);
+    expect(second[0].instances[0].topicLag!['order-create']).toBe(180);
     expect(second[0]).not.toBe(first[0]);
     expect(second[0].instances[0]).not.toBe(first[0].instances[0]);
   });
 
   it('returns copied consumer group details', async () => {
     const first = await getConsumerGroup('cg-order-notify');
-    first.instances[0].subscribedTopics.push('mutated-topic');
+    first.instances[0].subscribedTopics!.push('mutated-topic');
 
     const second = await getConsumerGroup('cg-order-notify');
     expect(second.instances[0].subscribedTopics).not.toContain('mutated-topic');
@@ -177,6 +336,25 @@ describe('consumer service mock data', () => {
       });
     } finally {
       mode.mock = true;
+    }
+  });
+  it('rejects an empty API page while the reported group total is still unseen', async () => {
+    mode.mock = false;
+    metadataApi.listConsumerGroupPage.mockReset();
+    metadataApi.listConsumerGroupPage
+      .mockResolvedValueOnce({
+        items: [{ name: 'cg-a', subscribedTopics: [], instances: [] }],
+        total: 2,
+        page: 1,
+        size: 100,
+      })
+      .mockResolvedValueOnce({ items: [], total: 2, page: 2, size: 100 });
+    try {
+      await expect(listAllConsumerGroups()).rejects.toThrow('Incomplete consumer group list');
+      expect(metadataApi.listConsumerGroupPage).toHaveBeenCalledTimes(2);
+    } finally {
+      mode.mock = true;
+      metadataApi.listConsumerGroupPage.mockReset();
     }
   });
   it('returns copied progress and subscription rows', async () => {
@@ -379,6 +557,29 @@ describe('consumer group CSV export', () => {
     } finally {
       mockConsumerGroups.pop();
       mockConsumerGroups.pop();
+    }
+  });
+
+  it('exports an unavailable total lag as unknown while preserving measured values', async () => {
+    const unavailable = {
+      ...mockConsumerGroups[0],
+      name: 'cg-lag-unavailable',
+      totalLag: -1,
+    };
+    const confirmedZero = { ...unavailable, name: 'cg-lag-zero', totalLag: 0 };
+    const measured = { ...unavailable, name: 'cg-lag-measured', totalLag: 1234 };
+    mockConsumerGroups.push(unavailable, confirmedZero, measured);
+    try {
+      const csv = await exportConsumerGroups({
+        names: ['cg-lag-unavailable', 'cg-lag-zero', 'cg-lag-measured'],
+      });
+
+      expect(csv).toMatch(/"cg-lag-unavailable",(?:"[^"]*",){5}"unknown",/);
+      expect(csv).toMatch(/"cg-lag-zero",(?:"[^"]*",){5}"0",/);
+      expect(csv).toMatch(/"cg-lag-measured",(?:"[^"]*",){5}"1234",/);
+      expect(csv).not.toContain(`"'-1"`);
+    } finally {
+      mockConsumerGroups.splice(-3);
     }
   });
 

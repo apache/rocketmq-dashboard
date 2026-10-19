@@ -18,9 +18,15 @@ import type {
 } from '../api/metadata';
 import { mockConsumerGroups, mockQueueProgress, mockSubscriptions } from '../mock/consumers';
 import { formatOnlineInstances } from '../utils/consumerConnections';
+import { isLagAvailable } from '../utils/consumerLag';
 import { buildCsv, type CsvColumn } from '../utils/download';
 
-const consumerGroupsState = mockConsumerGroups as unknown as ConsumerGroup[];
+const consumerGroupsState = mockConsumerGroups as unknown as (ConsumerGroup & {
+  retryQueueNums?: number;
+  consumeEnable?: boolean;
+  consumeMessageOrderly?: boolean;
+  consumeBroadcastEnable?: boolean;
+})[];
 const EXPORT_PAGE_SIZE = 100;
 const MAX_EXPORT_PAGES = 100;
 const GROUP_EXPORT_COLUMNS: CsvColumn<ConsumerGroup>[] = [
@@ -33,7 +39,10 @@ const GROUP_EXPORT_COLUMNS: CsvColumn<ConsumerGroup>[] = [
     header: 'Online Instances',
     value: (group) => formatOnlineInstances(group.onlineInstances, 'unknown'),
   },
-  { header: 'Total Lag', value: (group) => group.totalLag },
+  {
+    header: 'Total Lag',
+    value: (group) => (isLagAvailable(group.totalLag) ? group.totalLag : 'unknown'),
+  },
   {
     header: 'Delay Seconds',
     // The same placeholder zero as behind the table column: an unmeasured delay must not be
@@ -54,8 +63,8 @@ function copyConsumerInstance(
 ): ConsumerGroup['instances'][number] {
   return {
     ...instance,
-    subscribedTopics: [...instance.subscribedTopics],
-    topicLag: { ...instance.topicLag },
+    ...(instance.subscribedTopics ? { subscribedTopics: [...instance.subscribedTopics] } : {}),
+    ...(instance.topicLag ? { topicLag: { ...instance.topicLag } } : {}),
   };
 }
 
@@ -162,8 +171,11 @@ export async function listAllConsumerGroups(
     });
     groups.push(...result.items);
     const total = result.total ?? groups.length;
-    if (result.items.length === 0 || groups.length >= total) {
+    if (groups.length >= total) {
       return groups.map(normalizeConsumerGroup);
+    }
+    if (result.items.length === 0) {
+      throw new Error(`Incomplete consumer group list: received ${groups.length} of ${total}`);
     }
     page += 1;
   }
@@ -199,19 +211,46 @@ export async function getConsumerGroupSettings(
   name: string,
   instanceId: string,
 ): Promise<ConsumerGroupSettings> {
-  if (isMockMode()) return { groupName: name, retryQueueNums: 1, retryMaxTimes: 16 };
+  if (isMockMode()) {
+    const group = consumerGroupsState.find(
+      (item) => item.name === name && item.instanceId === instanceId,
+    );
+    if (!group) throw new Error(`Consumer group not found: ${name}`);
+    return {
+      groupName: name,
+      retryQueueNums: group.retryQueueNums ?? 1,
+      retryMaxTimes: group.retryMaxTimes ?? 16,
+      consumeEnable: group.consumeEnable,
+      consumeMessageOrderly: group.consumeMessageOrderly,
+      consumeBroadcastEnable: group.consumeBroadcastEnable,
+    };
+  }
   return metadataApi.getConsumerGroupSettings(name, instanceId);
 }
 
 export async function updateConsumerGroupSettings(
   data: Omit<ConsumerGroupSettings, 'groupName'> & { instanceId: string; name: string },
 ) {
-  if (isMockMode())
+  if (isMockMode()) {
+    const group = consumerGroupsState.find(
+      (item) => item.name === data.name && item.instanceId === data.instanceId,
+    );
+    if (!group) throw new Error(`Consumer group not found: ${data.name}`);
+    group.retryQueueNums = data.retryQueueNums;
+    group.retryMaxTimes = data.retryMaxTimes;
+    group.consumeEnable = data.consumeEnable;
+    group.consumeMessageOrderly = data.consumeMessageOrderly;
+    group.consumeBroadcastEnable = data.consumeBroadcastEnable;
+    group.gmtModified = new Date().toISOString();
     return {
       groupName: data.name,
       retryQueueNums: data.retryQueueNums,
       retryMaxTimes: data.retryMaxTimes,
+      consumeEnable: data.consumeEnable,
+      consumeMessageOrderly: data.consumeMessageOrderly,
+      consumeBroadcastEnable: data.consumeBroadcastEnable,
     };
+  }
   return metadataApi.updateConsumerGroupSettings(data);
 }
 
