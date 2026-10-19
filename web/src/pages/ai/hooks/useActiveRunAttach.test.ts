@@ -16,10 +16,14 @@
  */
 
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AiTimelineVO } from '../../../api/aiEvents';
 import { useActiveRunAttach } from './useActiveRunAttach';
 import { useConversationTimeline } from './useConversationTimeline';
+import { useAgentRun } from './useAgentRun';
+import { attachRunStream } from '../../../api/ai';
+
+vi.mock('../../../api/ai', () => ({ attachRunStream: vi.fn(), openRunStream: vi.fn() }));
 
 vi.mock('../../../api/aiConversations', () => ({
   getConversationTimeline: vi.fn(),
@@ -41,6 +45,85 @@ function page(activeRun: AiTimelineVO['activeRun']): AiTimelineVO {
 }
 
 describe('useActiveRunAttach', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('discoversRunningAfterTheQueuedAttachAlreadyClosedTest', async () => {
+    vi.useFakeTimers();
+    timelineMock
+      .mockReset()
+      .mockResolvedValueOnce(page({ id: 41, status: 'QUEUED' }))
+      .mockResolvedValueOnce(page({ id: 41, status: 'QUEUED' }))
+      .mockResolvedValue(page({ id: 41, status: 'RUNNING' }));
+    vi.mocked(attachRunStream)
+      .mockResolvedValueOnce(undefined)
+      .mockImplementation(() => new Promise<void>(() => {}));
+    const { result, unmount } = renderHook(() => {
+      const timeline = useConversationTimeline(7);
+      const run = useAgentRun(7, { refetchTimeline: timeline.refetch });
+      useActiveRunAttach(7, timeline, run);
+      return { timeline, run };
+    });
+    await act(async () => {});
+    expect(attachRunStream).toHaveBeenCalledTimes(1);
+    expect(result.current.run.isStreaming).toBe(false);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(result.current.timeline.activeRun?.status).toBe('RUNNING');
+    expect(attachRunStream).toHaveBeenCalledTimes(2);
+    expect(result.current.run.isStreaming).toBe(true);
+    const reads = timelineMock.mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(timelineMock).toHaveBeenCalledTimes(reads);
+    unmount();
+  });
+
+  it.each(['unmount', 'navigation', 'failure', 'budget'] as const)(
+    'stopsQueuedDiscoveryTest (%s)',
+    async (ending) => {
+      vi.useFakeTimers();
+      timelineMock.mockReset().mockResolvedValue(page({ id: 41, status: 'QUEUED' }));
+      const attach = vi.fn().mockResolvedValue(undefined);
+      const view = renderHook(
+        ({ id }) => {
+          const timeline = useConversationTimeline(id);
+          useActiveRunAttach(id, timeline, { isStreaming: false, attach });
+        },
+        { initialProps: { id: 7 as number | null } },
+      );
+      await act(async () => {});
+      if (ending === 'unmount') view.unmount();
+      else if (ending === 'navigation') {
+        view.rerender({ id: null });
+        await act(async () => {});
+      } else if (ending === 'failure') {
+        timelineMock.mockRejectedValue(new Error('offline'));
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1000);
+        });
+        expect(timelineMock).toHaveBeenCalledTimes(2);
+      } else {
+        for (let i = 0; i < 30; i++) {
+          await act(async () => {
+            await vi.advanceTimersByTimeAsync(1000);
+          });
+        }
+        expect(timelineMock).toHaveBeenCalledTimes(31);
+      }
+      const reads = timelineMock.mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(timelineMock).toHaveBeenCalledTimes(reads);
+      expect(attach).toHaveBeenCalledTimes(1);
+      view.unmount();
+    },
+  );
   it('attachesOnlyTheRunOfTheConversationOnScreenTest', async () => {
     let resolveSecond: (value: AiTimelineVO) => void = () => {};
     timelineMock.mockImplementation((id) =>
@@ -81,7 +164,7 @@ describe('useActiveRunAttach', () => {
       ({ status }: { status: 'QUEUED' | 'RUNNING' }) =>
         useActiveRunAttach(
           7,
-          { activeRun: { id: 42, status }, lastSeq: 0 },
+          { activeRun: { id: 42, status }, lastSeq: 0, refetch: vi.fn() },
           { isStreaming: false, attach },
         ),
       { initialProps: { status: 'QUEUED' as 'QUEUED' | 'RUNNING' } },
