@@ -485,7 +485,7 @@ class AiTimelineRepositoryTest {
      */
     @Test
     void forgettingTheRuntimeSessionShouldNullTheColumnByNameTest() {
-        conversations.clearRuntimeSessionId(CONVERSATION_ID);
+        conversations.clearRuntimeSessionId(CONVERSATION_ID, LocalDateTime.parse("2026-09-18T10:00:00"));
 
         UpdateWrapper<RmqAiConversation> update = capturedConversationUpdate();
         assertThat(update.getSqlSet()).contains("runtime_session_id");
@@ -496,8 +496,22 @@ class AiTimelineRepositoryTest {
     }
 
     @Test
+    void forgettingTheRuntimeSessionShouldStampGmtModifiedFromTheCallerClockTest() {
+        LocalDateTime now = LocalDateTime.parse("2026-09-18T10:00:00");
+
+        conversations.clearRuntimeSessionId(CONVERSATION_ID, now);
+
+        UpdateWrapper<RmqAiConversation> update = capturedConversationUpdate();
+        // gmt_modified is ON UPDATE CURRENT_TIMESTAMP: leaving it out of the SET clause does not
+        // leave it alone, it hands the write to the database session's timezone — and the list
+        // this table feeds orders by the column as if it carried one clock.
+        assertThat(update.getSqlSet()).contains("gmt_modified");
+        assertThat(update.getParamNameValuePairs()).containsValue(now);
+    }
+
+    @Test
     void forgettingTheRuntimeSessionShouldNeedAnIdTest() {
-        conversations.clearRuntimeSessionId(null);
+        conversations.clearRuntimeSessionId(null, LocalDateTime.parse("2026-09-18T10:00:00"));
 
         verify(conversationMapper, never()).update(any(), any());
     }

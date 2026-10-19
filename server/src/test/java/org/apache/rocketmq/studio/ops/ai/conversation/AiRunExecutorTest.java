@@ -42,6 +42,7 @@ import org.mockito.quality.Strictness;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -349,7 +350,7 @@ class AiRunExecutorTest {
         assertThat(provider.calls).isEqualTo(2);
         assertThat(resumedSessions).containsExactly("gone-session", null);
         assertThat(provider.lastPrompt).isEqualTo("hello");
-        verify(conversationRepository).clearRuntimeSessionId(CONVERSATION_ID);
+        verify(conversationRepository).clearRuntimeSessionId(eq(CONVERSATION_ID), any(LocalDateTime.class));
         // The retry's session replaces the dead one, and the user is told the context is gone.
         assertThat(runRow().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
         assertThat(runRow().getRuntimeSessionId()).isEqualTo("new-session");
@@ -379,7 +380,7 @@ class AiRunExecutorTest {
         // A retry that fails must not put the dead id back: every turn after it would otherwise resume a
         // session that is still gone. Null is the honest state, and the next turn starts fresh.
         assertThat(provider.calls).isEqualTo(2);
-        verify(conversationRepository).clearRuntimeSessionId(CONVERSATION_ID);
+        verify(conversationRepository).clearRuntimeSessionId(eq(CONVERSATION_ID), any(LocalDateTime.class));
         assertThat(runRow().getStatus()).isEqualTo(RunStatus.FAILED.name());
         assertThat(runRow().getRuntimeSessionId()).isNull();
         assertThat(conversation.getRuntimeSessionId()).isNull();
