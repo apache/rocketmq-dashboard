@@ -22,6 +22,7 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.LikePatterns;
 import org.apache.rocketmq.studio.persistence.entity.RmqGroup;
 import org.apache.rocketmq.studio.persistence.entity.RmqInstance;
 import org.apache.rocketmq.studio.persistence.entity.RmqTopic;
@@ -63,11 +64,14 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
 
     @Override
     public List<InstanceVO> search(String keyword) {
+        // An instance name or endpoint contains _ and -: match the typed text literally instead of
+        // letting it act as a LIKE pattern.
+        String searchPattern = LikePatterns.escape(keyword);
         return instanceMapper.selectList(
                 new QueryWrapper<RmqInstance>()
-                        .and(w -> w.like("name", keyword)
-                                .or().like("endpoint", keyword)
-                                .or().like("remark", keyword))
+                        .and(w -> w.like("name", searchPattern)
+                                .or().like("endpoint", searchPattern)
+                                .or().like("remark", searchPattern))
                         .orderByAsc("id")).stream()
                 .map(this::toVO)
                 .toList();
@@ -75,12 +79,13 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
 
     @Override
     public List<InstanceVO> findByTypeAndSearch(InstanceType type, String keyword) {
+        String searchPattern = LikePatterns.escape(keyword);
         return instanceMapper.selectList(
                 new QueryWrapper<RmqInstance>()
                         .eq("type", type.name())
-                        .and(w -> w.like("name", keyword)
-                                .or().like("endpoint", keyword)
-                                .or().like("remark", keyword))
+                        .and(w -> w.like("name", searchPattern)
+                                .or().like("endpoint", searchPattern)
+                                .or().like("remark", searchPattern))
                         .orderByAsc("id")).stream()
                 .map(this::toVO)
                 .toList();

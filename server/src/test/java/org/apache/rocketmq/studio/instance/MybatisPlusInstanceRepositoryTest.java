@@ -112,6 +112,35 @@ class MybatisPlusInstanceRepositoryTest {
     }
 
     @Test
+    void searchShouldMatchTheKeywordLiterallyTest() {
+        when(instanceMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
+
+        assertThat(repository.search("instance_1")).isEmpty();
+
+        ArgumentCaptor<QueryWrapper<RmqInstance>> query = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(instanceMapper).selectList(query.capture());
+        assertThat(query.getValue().getSqlSegment())
+                .contains("name LIKE", "endpoint LIKE", "remark LIKE");
+        // The keyword names an instance, not a pattern: unescaped, "_" would match any character.
+        assertThat(query.getValue().getParamNameValuePairs().values())
+                .containsOnly("%instance\\_1%");
+    }
+
+    @Test
+    void findByTypeAndSearchShouldMatchTheKeywordLiterallyTest() {
+        when(instanceMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
+
+        assertThat(repository.findByTypeAndSearch(InstanceType.DIRECT, "instance_1")).isEmpty();
+
+        ArgumentCaptor<QueryWrapper<RmqInstance>> query = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(instanceMapper).selectList(query.capture());
+        assertThat(query.getValue().getSqlSegment())
+                .contains("type =", "name LIKE", "endpoint LIKE", "remark LIKE");
+        assertThat(query.getValue().getParamNameValuePairs().values())
+                .containsOnly(InstanceType.DIRECT.name(), "%instance\\_1%");
+    }
+
+    @Test
     void constructorShouldNotSeedDemoInstances() {
         when(instanceMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
 

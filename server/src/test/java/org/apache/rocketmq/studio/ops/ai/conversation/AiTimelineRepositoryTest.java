@@ -354,11 +354,11 @@ class AiTimelineRepositoryTest {
     }
 
     /**
-     * {@code escapeLike} is a private copy of {@code QueryHistoryService.escapeLike} — the project has no
-     * shared SqlLikeUtils — so the escaping is asserted rather than trusted. The backslash is replaced
-     * first: escaping {@code %} and {@code _} first would double-escape the backslashes this method
-     * inserts itself, and an unescaped term would let a user turn a title search into a full scan by
-     * typing a single {@code %}.
+     * The term is escaped by the shared {@code LikePatterns.escape}, but the repository still has to
+     * hand that escaped value to the wrapper, so the escaping is asserted rather than trusted. The
+     * backslash is replaced first: escaping {@code %} and {@code _} first would double-escape the
+     * backslashes the helper inserts itself, and an unescaped term would let a user turn a title
+     * search into a full scan by typing a single {@code %}.
      */
     @Test
     void theListShouldEscapeEveryLikeWildcardTest() {

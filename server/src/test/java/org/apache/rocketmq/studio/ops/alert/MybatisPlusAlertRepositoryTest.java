@@ -190,6 +190,23 @@ class MybatisPlusAlertRepositoryTest {
     }
 
     @Test
+    void findRulePageShouldMatchTheSearchTextLiterallyTest() {
+        when(ruleMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqAlertRule>(1, 20));
+
+        assertThat(repository.findRulePage("topic_a_lag", null, 1, 20).getItems()).isEmpty();
+
+        ArgumentCaptor<Wrapper<RmqAlertRule>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(ruleMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        QueryWrapper<RmqAlertRule> query = (QueryWrapper<RmqAlertRule>) queryCaptor.getValue();
+        query.getCustomSqlSegment();
+        assertThat(query.getSqlSegment()).contains("name LIKE");
+        // A rule name is a name, not a pattern: unescaped, "topic_a_lag" would also match
+        // "topicXaXlag".
+        assertThat(query.getParamNameValuePairs().values()).containsOnly("%topic\\_a\\_lag%");
+    }
+
+    @Test
     void findRuleByIdShouldUsePrimaryKeyLookupWithoutFullListRead() {
         RmqAlertRule entity = new RmqAlertRule();
         entity.setId(9L);
@@ -271,6 +288,24 @@ class MybatisPlusAlertRepositoryTest {
         assertThat(result.getItems()).extracting(AlertRuleVO::getId).containsExactly(1L);
         assertThat(result.getTotal()).isEqualTo(11);
         verify(ruleMapper).selectPage(any(Page.class), argThat(MybatisPlusAlertRepositoryTest::hasBusinessRulePageFilters));
+    }
+
+    @Test
+    void findRulesPageShouldMatchTheSearchTextLiterallyTest() {
+        when(ruleMapper.selectPage(any(Page.class), any())).thenReturn(new Page<RmqAlertRule>(1, 10));
+
+        assertThat(repository.findRulesPage(
+                new AlertRuleQuery(AlertDomain.BUSINESS, "topic_a_lag", null, 1, 10)).getItems()).isEmpty();
+
+        ArgumentCaptor<Wrapper<RmqAlertRule>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(ruleMapper).selectPage(any(Page.class), queryCaptor.capture());
+        QueryWrapper<RmqAlertRule> query = (QueryWrapper<RmqAlertRule>) queryCaptor.getValue();
+        query.getCustomSqlSegment();
+        assertThat(query.getSqlSegment()).contains("name LIKE", "metric LIKE");
+        // The name and the metric are matched literally, so the escaped term replaces the leading
+        // and trailing wildcard of the wrapper's own pattern rather than the user's characters.
+        assertThat(query.getParamNameValuePairs().values())
+                .containsOnly("%topic\\_a\\_lag%", AlertDomain.BUSINESS.name());
     }
 
     @Test

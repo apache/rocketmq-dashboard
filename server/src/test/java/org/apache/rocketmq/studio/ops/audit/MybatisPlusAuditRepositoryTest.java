@@ -117,6 +117,22 @@ class MybatisPlusAuditRepositoryTest {
     }
 
     @Test
+    void findPageMatchesTheSearchTermLiterallyTest() {
+        when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findPage("topic_a", null, null, null, null, false, null, null, null, 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        QueryWrapper<RmqOperationAudit> wrapper = (QueryWrapper<RmqOperationAudit>) queryCaptor.getValue();
+        assertThat(wrapper.getSqlSegment()).contains("operator LIKE");
+        // _ and % are LIKE metacharacters: unescaped, "topic_a" would also match "topicXa" and a
+        // lone "%" would return every record instead of none.
+        assertThat(wrapper.getParamNameValuePairs().values()).containsOnly("%topic\\_a%");
+    }
+
+    @Test
     void findPageMissingClusterScopeOverridesClusterIdTest() {
         when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
                 .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));

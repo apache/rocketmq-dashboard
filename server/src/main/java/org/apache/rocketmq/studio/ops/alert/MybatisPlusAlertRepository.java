@@ -23,6 +23,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
+import org.apache.rocketmq.studio.common.util.LikePatterns;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertRule;
 import org.apache.rocketmq.studio.persistence.entity.RmqSystemAlert;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAlertRuleMapper;
@@ -81,20 +82,23 @@ public class MybatisPlusAlertRepository implements AlertRepository {
     }
 
     private QueryWrapper<RmqAlertRule> ruleQuery(String search, Boolean enabled) {
+        // A rule name contains _ (topic_a_lag): match the typed text literally instead of letting
+        // it act as a LIKE pattern.
         return new QueryWrapper<RmqAlertRule>()
-                .like(StringUtils.hasText(search), "name", search)
+                .like(StringUtils.hasText(search), "name", LikePatterns.escape(search))
                 .eq(enabled != null, "enabled", enabled)
                 .orderByAsc("name", "id");
     }
 
     @Override
     public PageResult<AlertRuleVO> findRulesPage(AlertRuleQuery query) {
+        String searchPattern = LikePatterns.escape(query.search() == null ? null : query.search().trim());
         QueryWrapper<RmqAlertRule> conditions = new QueryWrapper<RmqAlertRule>()
                 .eq(query.enabled() != null, "enabled", query.enabled())
                 .and(StringUtils.hasText(query.search()), wrapper -> wrapper
-                        .like("name", query.search().trim())
+                        .like("name", searchPattern)
                         .or()
-                        .like("metric", query.search().trim()))
+                        .like("metric", searchPattern))
                 .orderByAsc("name")
                 .orderByAsc("id");
         if (query.domain() == AlertDomain.BUSINESS) {
