@@ -39,6 +39,39 @@ describe('cloudCredential API', () => {
     vi.unstubAllGlobals();
   });
 
+  it('lists credentials with the default pagination when no filters are given', async () => {
+    mock.onGet('/cloud-credentials').reply((config) => {
+      expect(config.params).toEqual({ page: 1, pageSize: 20 });
+      return [200, { code: 200, data: { items: [], total: 0, page: 1, size: 20 } }];
+    });
+
+    await expect(listCloudCredentials()).resolves.toEqual({
+      items: [],
+      total: 0,
+      page: 1,
+      size: 20,
+    });
+  });
+
+  it('forwards the vendor and search filters with explicit pagination', async () => {
+    mock.onGet('/cloud-credentials').reply((config) => {
+      expect(config.params).toStrictEqual({
+        vendor: 'TENCENT',
+        search: 'prod',
+        page: 3,
+        pageSize: 50,
+      });
+      return [200, { code: 200, data: { items: [], total: 0, page: 3, size: 50 } }];
+    });
+
+    await expect(listCloudCredentials('TENCENT', 'prod', 3, 50)).resolves.toEqual({
+      items: [],
+      total: 0,
+      page: 3,
+      size: 50,
+    });
+  });
+
   it('returns masked credentials from the backend', async () => {
     mock.onGet('/cloud-credentials').reply(200, {
       code: 200,
