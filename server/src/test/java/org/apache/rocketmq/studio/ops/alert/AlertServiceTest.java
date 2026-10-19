@@ -29,6 +29,7 @@ import org.apache.rocketmq.studio.cluster.metrics.MetricProfileVO;
 import org.apache.rocketmq.studio.cluster.metrics.PrometheusProperties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -48,6 +49,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -1581,6 +1583,20 @@ class AlertServiceTest {
         verify(alertRepository).deleteAcknowledgedAlerts();
         verify(operationAuditService).record(eq("CLEAR_ACKNOWLEDGED_SYSTEM_ALERTS"), eq("SYSTEM_ALERT"),
                 eq(null), eq(null), eq("deleted=3"), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void clearAcknowledgedShouldDropTheStatesBehindTheClearedEventsTest() {
+        when(alertRepository.deleteAcknowledgedAlerts()).thenReturn(2);
+
+        alertService.clearAcknowledged();
+
+        // The acknowledged events are the only rows reconciliation can read an incident's instance
+        // and labels from, so the episode state has to go with them - and before the deletion,
+        // while the events still name it.
+        InOrder order = inOrder(alertStateRepository, alertRepository);
+        order.verify(alertStateRepository).deleteForAcknowledgedAlerts();
+        order.verify(alertRepository).deleteAcknowledgedAlerts();
     }
 
     @Test

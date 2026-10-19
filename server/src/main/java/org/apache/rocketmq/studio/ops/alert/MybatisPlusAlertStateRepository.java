@@ -89,6 +89,22 @@ public class MybatisPlusAlertStateRepository implements AlertStateRepository {
     }
 
     @Override
+    public int deleteForAcknowledgedAlerts() {
+        List<RmqSystemAlert> acknowledged = alertMapper.selectList(new QueryWrapper<RmqSystemAlert>()
+                .select("rule_id", "fingerprint")
+                .eq("acknowledged", true)
+                .isNotNull("rule_id")
+                .isNotNull("fingerprint"));
+        int deleted = 0;
+        for (RmqSystemAlert alert : acknowledged) {
+            deleted += mapper.delete(new QueryWrapper<RmqAlertState>()
+                    .eq("rule_id", alert.getRuleId())
+                    .eq("fingerprint", alert.getFingerprint()));
+        }
+        return deleted;
+    }
+
+    @Override
     public void deleteByRuleId(Long ruleId) {
         if (ruleId != null) {
             mapper.delete(new QueryWrapper<RmqAlertState>().eq("rule_id", ruleId));
