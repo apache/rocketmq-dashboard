@@ -83,6 +83,18 @@ const NotificationDeliveriesPage = () => {
     try {
       await retryAlertDelivery(record.id);
       message.success(t('deliveries.retryQueued'));
+      // The dialog reads `items` first and the snapshot only as a fallback, so the optimistic patch
+      // has to cover both: without the row patch, the stale FAILED row still on the page wins until
+      // the reload lands; without the snapshot patch, a row the reload drops off the page (a FAILED
+      // filter stops matching it once the retry is queued) falls back to FAILED and offers a retry
+      // the backend refuses.
+      setItems((rows) =>
+        rows.map((row) =>
+          row.id === record.id
+            ? { ...row, status: 'PENDING', attemptCount: 0, lastError: null }
+            : row,
+        ),
+      );
       setSelectedDelivery((current) =>
         current?.id === record.id
           ? { ...current, status: 'PENDING', attemptCount: 0, lastError: null }
