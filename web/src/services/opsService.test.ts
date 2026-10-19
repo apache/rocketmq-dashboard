@@ -152,6 +152,54 @@ describe('ops service mock data', () => {
     await deleteAlertRule(businessRule.id, 'BUSINESS');
   });
 
+  it('assigns unique ids to rules created or imported in the same millisecond', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_750_000_000_000);
+    try {
+      const first = await createAlertRule({ name: 'same-tick-first', channels: ['email'] });
+      const second = await createAlertRule({ name: 'same-tick-second', channels: ['email'] });
+      const imported = await importAlertRulesTransfer(
+        {
+          version: 1,
+          domain: 'CLUSTER',
+          rules: [
+            {
+              name: 'same-tick-import-1',
+              metric: 'consumer.lag.total',
+              operator: '>',
+              threshold: 100,
+              duration: '5m',
+              channels: ['email'],
+              enabled: true,
+              description: 'same-tick import',
+            },
+            {
+              name: 'same-tick-import-2',
+              metric: 'consumer.lag.total',
+              operator: '>',
+              threshold: 200,
+              duration: '5m',
+              channels: ['email'],
+              enabled: true,
+              description: 'same-tick import',
+            },
+          ],
+        },
+        'CLUSTER',
+      );
+      const afterImport = await createAlertRule({ name: 'same-tick-third', channels: ['email'] });
+
+      const ids = [first.id, second.id, afterImport.id, ...imported.map((rule) => rule.id)];
+      expect(new Set(ids).size).toBe(ids.length);
+      expect(afterImport.id).toBeGreaterThan(Math.max(first.id, second.id));
+
+      for (const id of ids) await deleteAlertRule(id, 'CLUSTER');
+      const remaining = await listAlertRules('CLUSTER');
+      expect(remaining.map((rule) => rule.id)).not.toContain(first.id);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
   it('imports and exports alert rules within the selected domain only', async () => {
     const imported = await importAlertRulesTransfer(
       {
