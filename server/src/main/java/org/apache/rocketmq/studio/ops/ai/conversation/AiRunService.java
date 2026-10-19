@@ -308,6 +308,11 @@ public class AiRunService {
         // in between — already persisted, so their live frames are gone, and beyond the client's own
         // cursor, so it would never fetch them either.
         int cursor = Math.max(0, afterSeq);
+        // The cursor is conversation-wide, but this endpoint replays one run. Earlier turns must
+        // not consume its bounded replay budget. A missing legacy startSeq has no safe shortcut.
+        if (run.getStartSeq() != null && run.getStartSeq() > 0) {
+            cursor = Math.max(cursor, run.getStartSeq() - 1);
+        }
         boolean terminalReplayed = false;
         int replayedRows = 0;
         try {
@@ -315,8 +320,13 @@ public class AiRunService {
                 List<RmqAiEvent> rows = eventRepository.findByConversationIdAfterSeq(run.getConversationId(),
                         cursor, AiConversationService.DEFAULT_TIMELINE_LIMIT);
                 for (RmqAiEvent row : rows) {
-                    session.noteWatermark(row.getSeq());
                     cursor = row.getSeq();
+                    if (!Objects.equals(run.getId(), row.getRunId())) {
+                        continue;
+                    }
+                    // Only this run's replay advances its live-frame deduplication watermark.
+                    // Do not cap by endSeq: a reaped run can retain its admission-time value.
+                    session.noteWatermark(row.getSeq());
                     Optional<TimelineEvent> event = AiEventCodec.read(objectMapper, row);
                     if (event.isEmpty()) {
                         continue;

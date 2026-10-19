@@ -59,7 +59,9 @@ import java.util.function.Consumer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -583,6 +585,186 @@ class AiRunServiceTest {
     }
 
     @Test
+    void attachShouldReplayOnlyTheRequestedFinishedRunTest() {
+        RmqAiRun finished = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 2, RunStatus.COMPLETED);
+        finished.setStartSeq(3);
+        finished.setEndSeq(4);
+        finished.setDurationMs(8123L);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(finished));
+        stubReplayRows(List.of(
+                eventForRun(10L, 1, 1, "text", "{\"type\":\"text\",\"text\":\"earlier answer\"}"),
+                eventForRun(10L, 1, 2, "run_status", "{\"type\":\"run_status\",\"status\":\"STOPPED\"}"),
+                eventForRun(RUN_ID, 2, 3, "text", "{\"type\":\"text\",\"text\":\"requested answer\"}"),
+                eventForRun(RUN_ID, 2, 4, "run_status", "{\"type\":\"run_status\",\"status\":\"COMPLETED\"}"),
+                eventForRun(12L, 3, 5, "text", "{\"type\":\"text\",\"text\":\"later answer\"}"),
+                eventForRun(12L, 3, 6, "run_status", "{\"type\":\"run_status\",\"status\":\"FAILED\"}")));
+
+        service.attach(RUN_ID, 0);
+
+        assertThat(emitters.get(0).eventText())
+                .containsOnlyOnce("\"type\":\"run_finished\"")
+                .contains("requested answer", "\"runId\":" + RUN_ID,
+                        "\"status\":\"COMPLETED\"", "\"durationMs\":8123")
+                .doesNotContain("earlier answer", "later answer", "STOPPED", "FAILED");
+        assertThat(emitters.get(0).completed()).isTrue();
+    }
+
+    @Test
+    void anotherRunsTerminalMustNotSuppressTheReapedRunsTerminalTest() {
+        RmqAiRun reaped = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 2, RunStatus.FAILED);
+        reaped.setStartSeq(3);
+        reaped.setEndSeq(2);
+        reaped.setStopReason(StopReason.SERVER_RESTART.name());
+        reaped.setDurationMs(1234L);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(reaped));
+        stubReplayRows(List.of(
+                eventForRun(10L, 1, 1, "text", "{\"type\":\"text\",\"text\":\"earlier answer\"}"),
+                eventForRun(10L, 1, 2, "run_status", "{\"type\":\"run_status\",\"status\":\"COMPLETED\"}"),
+                eventForRun(RUN_ID, 2, 3, "text", "{\"type\":\"text\",\"text\":\"unfinished answer\"}")));
+
+        service.attach(RUN_ID, 0);
+
+        // A reaped run has no persisted terminal. Another run's terminal must not replace the
+        // synthetic FAILED frame with a COMPLETED frame mislabeled as the requested run.
+        assertThat(emitters.get(0).eventText())
+                .contains("\"status\":\"FAILED\"")
+                .containsOnlyOnce("\"type\":\"run_finished\"")
+                .contains("unfinished answer", "\"runId\":" + RUN_ID, "\"durationMs\":1234")
+                .doesNotContain("earlier answer", "COMPLETED");
+        assertThat(emitters.get(0).completed()).isTrue();
+    }
+
+    @Test
+    void attachToALiveRunMustNotReplayAnEarlierRunsTerminalTest() {
+        RmqAiRun active = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 2, RunStatus.RUNNING);
+        active.setStartSeq(3);
+        active.setEndSeq(2);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(active));
+        stubReplayRows(List.of(
+                eventForRun(10L, 1, 1, "text", "{\"type\":\"text\",\"text\":\"earlier answer\"}"),
+                eventForRun(10L, 1, 2, "run_status", "{\"type\":\"run_status\",\"status\":\"COMPLETED\"}"),
+                eventForRun(RUN_ID, 2, 3, "text", "{\"type\":\"text\",\"text\":\"current prefix\"}")));
+        registry.register(RUN_ID, new AgentRunHandle(RUN_ID, Duration.ofMillis(1)));
+
+        service.attach(RUN_ID, 0);
+        registry.publish(RUN_ID, 4L, new LiveEvent.TextDelta("current live suffix"));
+
+        assertThat(emitters.get(0).eventText())
+                .doesNotContain("\"type\":\"run_finished\"", "earlier answer", "event:done")
+                .contains("current prefix", "current live suffix");
+        assertThat(emitters.get(0).completed()).isFalse();
+    }
+
+    @Test
+    void earlierRunsMustNotConsumeTheRequestedRunsReplayBudgetTest() {
+        RmqAiRun finished = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 2, RunStatus.COMPLETED);
+        finished.setStartSeq(5001);
+        finished.setEndSeq(5002);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(finished));
+        List<RmqAiEvent> rows = new ArrayList<>();
+        for (int seq = 1; seq <= 5000; seq++) {
+            rows.add(eventForRun(10L, 1, seq, "text", "{\"type\":\"text\",\"text\":\"old row\"}"));
+        }
+        rows.add(eventForRun(RUN_ID, 2, 5001, "text",
+                "{\"type\":\"text\",\"text\":\"requested answer beyond old history\"}"));
+        rows.add(eventForRun(RUN_ID, 2, 5002, "run_status",
+                "{\"type\":\"run_status\",\"status\":\"COMPLETED\"}"));
+        stubReplayRows(rows);
+
+        service.attach(RUN_ID, 0);
+
+        assertThat(emitters.get(0).eventText())
+                .contains("requested answer beyond old history")
+                .containsOnlyOnce("\"type\":\"run_finished\"")
+                .doesNotContain("old row");
+        assertThat(emitters.get(0).completed()).isTrue();
+    }
+
+    @ParameterizedTest
+    @CsvSource(value = {"0", "NULL"}, nullValues = "NULL")
+    void attachShouldFilterRunOwnershipWithoutAStoredStartSeqTest(Integer startSeq) {
+        RmqAiRun finished = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 2, RunStatus.COMPLETED);
+        finished.setStartSeq(startSeq);
+        finished.setEndSeq(4);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(finished));
+        stubReplayRows(List.of(
+                eventForRun(10L, 1, 1, "text", "{\"type\":\"text\",\"text\":\"earlier answer\"}"),
+                eventForRun(10L, 1, 2, "run_status", "{\"type\":\"run_status\",\"status\":\"FAILED\"}"),
+                eventForRun(RUN_ID, 2, 3, "text", "{\"type\":\"text\",\"text\":\"requested answer\"}"),
+                eventForRun(RUN_ID, 2, 4, "run_status", "{\"type\":\"run_status\",\"status\":\"COMPLETED\"}")));
+
+        service.attach(RUN_ID, 0);
+
+        assertThat(emitters.get(0).eventText())
+                .contains("requested answer", "\"status\":\"COMPLETED\"")
+                .containsOnlyOnce("\"type\":\"run_finished\"")
+                .doesNotContain("earlier answer", "FAILED");
+        assertThat(emitters.get(0).completed()).isTrue();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"4", "8"})
+    void attachShouldNotRewindACursorAtOrBeyondTheRequestedRunEndTest(int after) {
+        RmqAiRun finished = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 2, RunStatus.COMPLETED);
+        finished.setStartSeq(3);
+        finished.setEndSeq(4);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(finished));
+        stubReplayRows(List.of(
+                eventForRun(RUN_ID, 2, 3, "text", "{\"type\":\"text\",\"text\":\"requested answer\"}"),
+                eventForRun(RUN_ID, 2, 4, "run_status", "{\"type\":\"run_status\",\"status\":\"COMPLETED\"}"),
+                eventForRun(12L, 3, 5, "text", "{\"type\":\"text\",\"text\":\"later answer\"}"),
+                eventForRun(12L, 3, 6, "run_status", "{\"type\":\"run_status\",\"status\":\"FAILED\"}")));
+
+        service.attach(RUN_ID, after);
+
+        verifyCursor(after);
+        assertThat(emitters.get(0).eventText())
+                .containsOnlyOnce("\"type\":\"run_finished\"")
+                .contains("\"status\":\"COMPLETED\"")
+                .doesNotContain("requested answer", "later answer", "FAILED");
+        assertThat(emitters.get(0).completed()).isTrue();
+    }
+
+    @Test
+    void attachShouldKeepUnreplayedLiveFramesWhenANewerRunAppearsBetweenPagesTest() {
+        // The loaded run snapshot is still RUNNING with the admission endSeq. A terminal row
+        // can fail to persist while its live frame is still published (AiEventSink's failure
+        // discipline). A later run may then reuse that unpersisted seq. Replaying its higher seqs
+        // must not mark the requested run's missing terminal as already seen.
+        RmqAiRun active = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 2, RunStatus.RUNNING);
+        active.setStartSeq(101);
+        active.setEndSeq(100);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(active));
+        registry.register(RUN_ID, new AgentRunHandle(RUN_ID, Duration.ofMillis(1)));
+        List<RmqAiEvent> firstPage = new ArrayList<>();
+        for (int seq = 101; seq <= 300; seq++) {
+            firstPage.add(eventForRun(RUN_ID, 2, seq, "text",
+                    "{\"type\":\"text\",\"text\":\"requested page\"}"));
+        }
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 100, 200))
+                .thenReturn(firstPage);
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 300, 200))
+                .thenAnswer(invocation -> {
+                    registry.publish(RUN_ID, 301L,
+                            new LiveEvent.RunFinished(RUN_ID, RunStatus.COMPLETED, 1234L));
+                    return List.of(
+                            eventForRun(12L, 3, 301, "user",
+                                    "{\"type\":\"user\",\"text\":\"later question\"}"),
+                            eventForRun(12L, 3, 302, "text",
+                                    "{\"type\":\"text\",\"text\":\"later answer\"}"),
+                            eventForRun(12L, 3, 303, "run_status",
+                                    "{\"type\":\"run_status\",\"status\":\"FAILED\"}"));
+                });
+
+        service.attach(RUN_ID, 100);
+
+        assertThat(emitters.get(0).eventText())
+                .contains("requested page", "\"status\":\"COMPLETED\"", "\"durationMs\":1234")
+                .containsOnlyOnce("\"type\":\"run_finished\"")
+                .doesNotContain("later answer", "FAILED");
+    }
+
+    @Test
     void aFailingReplayReadMustCloseTheSessionItCreatedTest() {
         // The emitter is only handed to a response when attach() returns; a failure in the replay
         // read means it never gets there, so no transport callback can ever close the session. The
@@ -777,6 +959,22 @@ class AiRunServiceTest {
         row.setType(type);
         row.setPayload(payload);
         return row;
+    }
+
+    private static RmqAiEvent eventForRun(long runId, int turn, int seq, String type, String payload) {
+        RmqAiEvent row = event(seq, type, payload);
+        row.setRunId(runId);
+        row.setTurn(turn);
+        return row;
+    }
+
+    private void stubReplayRows(List<RmqAiEvent> rows) {
+        when(eventRepository.findByConversationIdAfterSeq(eq(CONVERSATION_ID), anyInt(), anyInt()))
+                .thenAnswer(invocation -> {
+                    int after = invocation.getArgument(1);
+                    int limit = invocation.getArgument(2);
+                    return rows.stream().filter(row -> row.getSeq() > after).limit(limit).toList();
+                });
     }
 
     /** The titles carried by conversation updates, i.e. the renames this service actually wrote. */
