@@ -22,6 +22,8 @@ import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.client.RestClient;
 
@@ -162,6 +164,23 @@ class PrometheusMetricsSourceTest {
         assertThat(series.getValues().get(0).getValue()).isEqualTo("1.25");
         assertThat(series.getHistograms()).hasSize(1);
         assertThat(series.getHistograms().get(0).getHistogram().path("count").asText()).isEqualTo("2");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "?tenant=a%2Fb+%26", "?route=/", "?tenant=a%2Fb#settings"})
+    void queryShouldAppendEndpointToPathAndPreserveRawQueryTest(String suffix) {
+        AtomicReference<String> requestUri = new AtomicReference<>();
+        server.createContext("/", exchange -> {
+            requestUri.set(exchange.getRequestURI().toString());
+            respond(exchange, 200, successResponse());
+        });
+        PrometheusProperties properties = properties(Duration.ofSeconds(2));
+        properties.setBaseUrl(baseUrl + "/tenant%20one/" + suffix);
+
+        source(properties).query(query());
+
+        String transmittedSuffix = suffix.split("#", 2)[0];
+        assertThat(requestUri.get()).isEqualTo("/tenant%20one/api/v1/query_range" + transmittedSuffix);
     }
 
     @Test
