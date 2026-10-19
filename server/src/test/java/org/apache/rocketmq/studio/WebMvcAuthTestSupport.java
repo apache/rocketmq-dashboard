@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio;
 
 import org.apache.rocketmq.studio.auth.AuthProperties;
 import org.apache.rocketmq.studio.auth.AuthService;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.ops.ai.tool.catalog.ToolCatalog;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
@@ -33,6 +34,9 @@ public abstract class WebMvcAuthTestSupport {
 
     @MockitoBean
     protected AuthService authService;
+
+    @MockitoBean
+    protected OperationAuditService operationAuditService;
 
     @MockitoBean
     protected SettingsRepository settingsRepository;
