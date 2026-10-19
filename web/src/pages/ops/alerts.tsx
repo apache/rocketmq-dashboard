@@ -208,6 +208,13 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   const metricRequestVersion = useRef(0);
   const importInputRef = useRef<HTMLInputElement>(null);
   const notificationTemplateRef = useRef<TextAreaRef>(null);
+  // `submitting`/`testing` only flip after React re-renders, so a second click during the
+  // validateFields await would otherwise start a duplicate save/test request. The refs lock
+  // entry synchronously, before any await. The row and bulk actions share the same exposure:
+  // their `isActionRunning` check reads rendered state, so two clicks in one tick both pass.
+  const submitInFlightRef = useRef(false);
+  const testInFlightRef = useRef(false);
+  const actionInFlightRef = useRef(false);
   const supportsUnavailableCondition = supportsUnavailableOperator(selectedMetric);
   const selectedMetricIsRatio = selectedMetric != null && nativeRatioMetrics.has(selectedMetric);
   const selectedMetricUsesPercentage =
@@ -535,7 +542,8 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   };
 
   const handleToggle = async (rule: AlertRule, enabled: boolean) => {
-    if (isActionRunning) return;
+    if (actionInFlightRef.current) return;
+    actionInFlightRef.current = true;
     setActionId(`toggle-${rule.id}`);
     try {
       const updated = await (domain === 'CLUSTER'
@@ -545,12 +553,14 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     } catch {
       message.error(t('alerts.ruleUpdateFailed'));
     } finally {
+      actionInFlightRef.current = false;
       setActionId(null);
     }
   };
 
   const handleDelete = async (rule: AlertRule) => {
-    if (isActionRunning) return;
+    if (actionInFlightRef.current) return;
+    actionInFlightRef.current = true;
     setActionId(`delete-${rule.id}`);
     try {
       await (domain === 'CLUSTER' ? deleteAlertRule(rule.id) : deleteAlertRule(rule.id, domain));
@@ -561,14 +571,16 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     } catch {
       message.error(t('alerts.ruleDeleteFailed'));
     } finally {
+      actionInFlightRef.current = false;
       setActionId(null);
     }
   };
 
   const handleBulkToggle = async (enabled: boolean) => {
     const targetIds = selectedRuleIds.map(Number);
-    if (targetIds.length === 0 || isActionRunning) return;
+    if (targetIds.length === 0 || actionInFlightRef.current) return;
 
+    actionInFlightRef.current = true;
     setBulkAction(enabled ? 'enable' : 'disable');
     try {
       const result = await (domain === 'CLUSTER'
@@ -610,17 +622,23 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
         }),
       );
     } finally {
+      actionInFlightRef.current = false;
       setBulkAction(null);
     }
   };
 
   const handleBulkDelete = () => {
     const targetIds = selectedRuleIds.map(Number);
-    if (targetIds.length === 0 || isActionRunning) return;
+    if (targetIds.length === 0 || actionInFlightRef.current) return;
     Modal.confirm({
       title: t('alerts.bulkDeleteConfirm', { count: targetIds.length }),
       okButtonProps: { danger: true },
       onOk: async () => {
+        // The outer guard ran before this confirm opened, so a row action may have claimed
+        // the shared lock while the dialog was up. Re-check at acquisition time instead of
+        // running the bulk delete alongside whatever is still on the wire.
+        if (actionInFlightRef.current) return;
+        actionInFlightRef.current = true;
         setBulkAction('delete');
         try {
           const result = await (domain === 'CLUSTER'
@@ -644,6 +662,7 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
               }),
             );
         } finally {
+          actionInFlightRef.current = false;
           setBulkAction(null);
         }
       },
@@ -809,13 +828,15 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   ];
 
   const handleSubmit = async () => {
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
+    setSubmitting(true);
     try {
       const values = await form.validateFields();
       const payload = {
         ...attachThresholdUnit(values),
         ...(nativeRatioMetrics.has(normalizeMetric(values.metric)) ? { thresholdUnit: '%' } : {}),
       } as Partial<AlertRule>;
-      setSubmitting(true);
       if (editingRule) {
         const updated = await (domain === 'CLUSTER'
           ? updateAlertRule({ ...editingRule, ...payload })
@@ -844,18 +865,21 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       }
       message.error(t('alerts.ruleSaveFailed'));
     } finally {
+      submitInFlightRef.current = false;
       setSubmitting(false);
     }
   };
 
   const handleTest = async () => {
+    if (testInFlightRef.current) return;
+    testInFlightRef.current = true;
+    setTesting(true);
     try {
       const values = await form.validateFields();
       const payload = {
         ...attachThresholdUnit(values),
         ...(nativeRatioMetrics.has(normalizeMetric(values.metric)) ? { thresholdUnit: '%' } : {}),
       } as Partial<AlertRule>;
-      setTesting(true);
       const result = await (domain === 'CLUSTER'
         ? testAlertRule(payload)
         : testAlertRule(payload, domain));
@@ -899,6 +923,7 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       if (error && typeof error === 'object' && 'errorFields' in error) return;
       message.error(t('alerts.testRunFailed'));
     } finally {
+      testInFlightRef.current = false;
       setTesting(false);
     }
   };
