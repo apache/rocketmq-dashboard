@@ -206,7 +206,9 @@ const hasDefaultAllow = (account: PlainAccessConfig): boolean =>
   PERMISSION_ALLOW_RANK[normalizePermission(account.defaultGroupPerm)] > 0;
 
 const wildcardEntries = (entries: ParsedPermissionEntry[]): ParsedPermissionEntry[] =>
-  entries.filter((entry) => isWildcardResource(entry.resource) && entry.permission !== 'DENY');
+  entries.filter(
+    (entry) => isWildcardResource(entry.resource) && PERMISSION_ALLOW_RANK[entry.permission] > 0,
+  );
 
 const hasWildcardPermission = (account: PlainAccessConfig): boolean =>
   wildcardEntries(parsePermissionEntries(account.topicPerms)).length > 0 ||

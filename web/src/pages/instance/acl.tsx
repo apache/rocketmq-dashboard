@@ -65,6 +65,7 @@ import {
   getAclUserCredentials,
   examineBrokerClusterAclConfig,
   listAclRules,
+  listAclUsers,
   pageAclUsers,
   pushAclToBroker,
   updateAclRule,
@@ -171,6 +172,11 @@ const AclPageContent = ({
   const [activeTab, setActiveTab] = useState('users');
   const [ruleRefreshKey, setRuleRefreshKey] = useState(0);
   const [userRefreshKey, setUserRefreshKey] = useState(0);
+  const [directoryState, setDirectoryState] = useState<{
+    instanceId?: string;
+    refreshKey: number;
+    users: NormalizedAclUser[];
+  }>({ instanceId: selectedInstanceId, refreshKey: userRefreshKey, users: [] });
   const [ruleTotal, setRuleTotal] = useState(0);
   const [rulePage, setRulePage] = useState(1);
   const [rulePageSize, setRulePageSize] = useState(20);
@@ -237,7 +243,11 @@ const AclPageContent = ({
         }
       })
       .catch(() => {
-        if (mounted) message.error(t('common.fetchDataFailed'));
+        if (mounted) {
+          setRules([]);
+          setRuleTotal(0);
+          message.error(t('common.fetchDataFailed'));
+        }
       })
       .finally(() => {
         if (mounted) setRulesLoading(false);
@@ -259,7 +269,11 @@ const AclPageContent = ({
         }
       })
       .catch(() => {
-        if (mounted) message.error(t('common.fetchDataFailed'));
+        if (mounted) {
+          setUsers([]);
+          setUserTotal(0);
+          message.error(t('common.fetchDataFailed'));
+        }
       })
       .finally(() => {
         if (mounted) setUsersLoading(false);
@@ -285,9 +299,38 @@ const AclPageContent = ({
     userRefreshKey,
   ]);
 
+  useEffect(() => {
+    let mounted = true;
+    void listAclUsers({ instanceId: selectedInstanceId })
+      .then((allUsers) => {
+        if (mounted) {
+          setDirectoryState({
+            instanceId: selectedInstanceId,
+            refreshKey: userRefreshKey,
+            users: allUsers.map(normalizeUser),
+          });
+        }
+      })
+      .catch(() => {
+        if (mounted) message.error(t('common.fetchDataFailed'));
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [selectedInstanceId, userRefreshKey, t]);
+
   /* ─── Rule helpers ─── */
+  const principalDirectory =
+    directoryState.instanceId === selectedInstanceId &&
+    directoryState.refreshKey === userRefreshKey
+      ? directoryState.users
+      : [];
+  const principalUsers = [
+    ...principalDirectory,
+    ...users.filter((user) => !principalDirectory.some((entry) => entry.username === user.username)),
+  ];
   const isAdmin = (principal: string) =>
-    users.find((u) => u.username === principal)?.admin ?? false;
+    principalUsers.find((u) => u.username === principal)?.admin ?? false;
 
   const actionTagColor: Record<string, string> = {
     PUB: 'blue',
@@ -447,6 +490,7 @@ const AclPageContent = ({
         });
         const normalized = normalizeUser(updated);
         setUsers((prev) => prev.map((u) => (u.id === editingUser.id ? normalized : u)));
+        setUserRefreshKey((prev) => prev + 1);
         message.success(t('acl.userUpdated'));
       } else {
         await createAclUser({
@@ -496,6 +540,7 @@ const AclPageContent = ({
       });
       const normalized = normalizeUser(updated);
       setUsers((prev) => prev.map((u) => (u.id === user.id ? normalized : u)));
+      setUserRefreshKey((prev) => prev + 1);
       message.success(checked ? t('acl.adminSet') : t('acl.adminRemoved'));
     } catch {
       message.error(t('common.operationFailed'));
@@ -518,6 +563,7 @@ const AclPageContent = ({
     }
     const requestGeneration = examineRequestGenerationRef.current + 1;
     examineRequestGenerationRef.current = requestGeneration;
+    setClusterConfig(null);
     try {
       setConfigLoading(true);
       const config = await examineBrokerClusterAclConfig(clusterId);
@@ -705,7 +751,6 @@ const AclPageContent = ({
       key: 'principal',
       // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
       minWidth: 200,
-      sorter: (a, b) => a.principal.localeCompare(b.principal),
       render: (text: string) => (
         <Space size={6}>
           <User size={14} color="#8c8c8c" weight="fill" />
@@ -723,7 +768,6 @@ const AclPageContent = ({
       title: t('acl.resource'),
       key: 'resource',
       minWidth: 240,
-      sorter: (a, b) => a.resource.localeCompare(b.resource),
       render: (_: unknown, record: AclRule) => (
         <Space size={6}>
           <span style={{ fontFamily: 'monospace', fontWeight: 500 }}>{record.resource}</span>
@@ -757,7 +801,6 @@ const AclPageContent = ({
       dataIndex: 'decision',
       key: 'decision',
       width: 80,
-      sorter: (a, b) => a.decision.localeCompare(b.decision),
       render: (decision: string) => (
         <Tag color={decision === 'ALLOW' ? 'green' : 'red'} style={{ fontWeight: 600 }}>
           {decision === 'ALLOW' ? t('acl.allow') : t('acl.deny')}
@@ -769,7 +812,6 @@ const AclPageContent = ({
       dataIndex: 'aclVersion',
       key: 'aclVersion',
       width: 100,
-      sorter: (a, b) => String(a.aclVersion).localeCompare(String(b.aclVersion)),
       render: (version: AclRule['aclVersion']) => (
         <Tag color={String(version) === '2.0' ? 'geekblue' : 'default'}>{version}</Tag>
       ),
@@ -779,7 +821,6 @@ const AclPageContent = ({
       dataIndex: 'scope',
       key: 'scope',
       width: 100,
-      sorter: (a, b) => a.scope.localeCompare(b.scope),
       render: (scope: string) => (
         <span style={{ fontSize: 14 }}>
           {scope === 'cluster' ? t('acl.cluster') : t('acl.namespace')}
@@ -791,7 +832,6 @@ const AclPageContent = ({
       dataIndex: 'gmtCreate',
       key: 'gmtCreate',
       width: 160,
-      sorter: (a, b) => (a.gmtCreate ?? '').localeCompare(b.gmtCreate ?? ''),
       render: (iso?: string | null) => (
         <span style={{ fontSize: 14, color: '#8c8c8c' }}>{formatDate(iso)}</span>
       ),
@@ -841,7 +881,6 @@ const AclPageContent = ({
       key: 'username',
       // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
       minWidth: 200,
-      sorter: (a, b) => a.username.localeCompare(b.username),
       render: (text: string, record: NormalizedAclUser) => (
         <Space size={6}>
           <User size={14} color="#8c8c8c" weight="fill" />
@@ -860,7 +899,6 @@ const AclPageContent = ({
       dataIndex: 'accessKey',
       key: 'accessKey',
       width: 220,
-      sorter: (a, b) => a.accessKey.localeCompare(b.accessKey),
       render: (text: string, record: NormalizedAclUser) => {
         const revealed = revealedKeys.has(record.id);
         const fullAccessKey = credentialsByUser[String(record.id)]?.accessKey ?? text;
@@ -908,7 +946,6 @@ const AclPageContent = ({
       dataIndex: 'admin',
       key: 'admin',
       width: 100,
-      sorter: (a, b) => Number(a.admin) - Number(b.admin),
       render: (val: boolean, record: AclUser) => (
         <Switch
           checked={val}
@@ -924,7 +961,6 @@ const AclPageContent = ({
       dataIndex: 'clusters',
       key: 'clusters',
       width: 280,
-      sorter: (a, b) => a.clusters.length - b.clusters.length,
       render: (clusters: string[]) => (
         <TagList
           items={clusters.map((c) => ({ key: c, label: c, color: 'processing' }))}
@@ -938,7 +974,6 @@ const AclPageContent = ({
       dataIndex: 'gmtCreate',
       key: 'gmtCreate',
       width: 160,
-      sorter: (a, b) => (a.gmtCreate ?? '').localeCompare(b.gmtCreate ?? ''),
       render: (iso?: string | null) => (
         <span style={{ fontSize: 14, color: '#8c8c8c' }}>{formatDate(iso)}</span>
       ),
@@ -1440,6 +1475,9 @@ const AclPageContent = ({
 
                   {clusterConfig && (
                     <div style={{ paddingBottom: 16 }}>
+                      <div style={{ marginBottom: 12, color: '#8c8c8c', fontSize: 14 }}>
+                        {t('acl.examineCluster')}: {clusterConfig.clusterId}
+                      </div>
                       {/* Summary cards */}
                       <div
                         style={{
@@ -1595,10 +1633,12 @@ const AclPageContent = ({
               disabled={tencentRoleMode && !!editingRule}
               showSearch
               optionFilterProp="label"
-              options={users.map((u) => ({
-                value: u.username,
-                label: u.username,
-              }))}
+              options={[
+                ...principalUsers.map((u) => ({ value: u.username, label: u.username })),
+                ...(editingRule && !principalUsers.some((u) => u.username === editingRule.principal)
+                  ? [{ value: editingRule.principal, label: editingRule.principal }]
+                  : []),
+              ]}
             />
           </Form.Item>
 
