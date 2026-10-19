@@ -142,7 +142,7 @@ const heartbeatAgeSeconds = (lastHeartbeat: string | undefined, now: number): nu
 const knownLag = (progress: QueueProgress[]): number =>
   progress.reduce((sum, queue) => sum + (isLagAvailable(queue.diffTotal) ? queue.diffTotal : 0), 0);
 
-const reportedLag = (group: ConsumerGroup, fallback: number): number | null =>
+const reportedLag = (group: ConsumerGroup, fallback: number | null): number | null =>
   isLagAvailable(group.totalLag) ? group.totalLag : fallback;
 
 const topicCount = (group: ConsumerGroup, subscriptions: SubscriptionEntry[]): number => {
@@ -425,7 +425,8 @@ export const analyzeConsumerGroupHealth = (
     .map((queue) => queue.diffTotal)
     .filter((lag): lag is number => isLagAvailable(lag));
   const totalKnownLag = knownLag(progress);
-  const summaryReportedLag = reportedLag(group, totalKnownLag);
+  const allQueuesKnown = progress.length > 0 && knownQueueLags.length === progress.length;
+  const summaryReportedLag = reportedLag(group, allQueuesKnown ? totalKnownLag : null);
   const unknownQueueCount = progress.length - knownQueueLags.length;
   const heartbeatAges = (group.instances ?? [])
     .map((client) => heartbeatAgeSeconds(client.lastHeartbeat, now))
@@ -433,7 +434,7 @@ export const analyzeConsumerGroupHealth = (
   const issues = [
     ...subscriptionIssues(subscriptions),
     ...progressIssues(progress, knownQueueLags, unknownQueueCount, normalizedOptions),
-    ...runtimeIssues(group, summaryReportedLag, now, normalizedOptions),
+    ...runtimeIssues(group, summaryReportedLag ?? totalKnownLag, now, normalizedOptions),
   ];
   const status = maxStatus(issues);
 
