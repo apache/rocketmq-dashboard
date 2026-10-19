@@ -617,6 +617,12 @@ public class AlertService {
     @Transactional
     public int clearAcknowledged() {
         log.info("Clearing acknowledged system alerts");
+        // The runtime state cannot outlive its event: reconciliation reads the incident's instance
+        // and labels from the latest alert row, so an ACKED state left behind after this delete can
+        // neither be resolved - the read runs over the rules' active states - nor fire again, and a
+        // later breach on the same series would be swallowed. Clear the episode state first, while
+        // the events still name it; a series that is still breaching starts a fresh incident.
+        alertStateRepository.deleteForAcknowledgedAlerts();
         int deleted = alertRepository.deleteAcknowledgedAlerts();
         recordAudit("CLEAR_ACKNOWLEDGED_SYSTEM_ALERTS", "SYSTEM_ALERT", null, null,
                 "deleted=" + deleted);

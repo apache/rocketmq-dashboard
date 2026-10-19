@@ -11,6 +11,8 @@ import org.apache.rocketmq.studio.persistence.entity.RmqAlertState;
 import org.apache.rocketmq.studio.persistence.entity.RmqSystemAlert;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAlertStateMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqSystemAlertMapper;
+import org.mockito.ArgumentCaptor;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -228,5 +230,28 @@ class MybatisPlusAlertStateRepositoryTest {
         alert.setInstanceId(instanceId);
         alert.setLabelsJson(labelsJson);
         return alert;
+    }
+
+    @Test
+    void deletesTheStatesNamedByTheAcknowledgedEventsTest() {
+        RmqAlertStateMapper mapper = mock(RmqAlertStateMapper.class);
+        RmqSystemAlertMapper alertMapper = mock(RmqSystemAlertMapper.class);
+        RmqSystemAlert first = new RmqSystemAlert();
+        first.setRuleId(7L);
+        first.setFingerprint("fp-a");
+        RmqSystemAlert second = new RmqSystemAlert();
+        second.setRuleId(7L);
+        second.setFingerprint("fp-b");
+        when(alertMapper.selectList(any())).thenReturn(List.of(first, second));
+        when(mapper.delete(any())).thenReturn(1);
+        MybatisPlusAlertStateRepository repository = new MybatisPlusAlertStateRepository(mapper, alertMapper);
+
+        int deleted = repository.deleteForAcknowledgedAlerts();
+
+        assertThat(deleted).isEqualTo(2);
+        ArgumentCaptor<QueryWrapper<RmqAlertState>> captor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(mapper, times(2)).delete(captor.capture());
+        assertThat(captor.getAllValues().get(0).getSqlSegment())
+                .contains("rule_id", "fingerprint");
     }
 }

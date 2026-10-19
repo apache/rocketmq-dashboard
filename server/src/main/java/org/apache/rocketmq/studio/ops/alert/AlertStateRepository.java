@@ -39,6 +39,18 @@ public interface AlertStateRepository {
 
     void deleteByRuleId(Long ruleId);
 
+    /**
+     * Drops the runtime states whose incidents were acknowledged and whose events are being cleared.
+     *
+     * <p>A state row keeps only the rule and the fingerprint; the incident's instance and labels -
+     * which a RESOLVED event needs - live on its alert row. Once that row is gone the state can
+     * neither be resolved by reconciliation nor fire again, so the episodes behind the cleared
+     * events go with them and a still-breaching series starts a fresh incident.
+     */
+    default int deleteForAcknowledgedAlerts() {
+        return 0;
+    }
+
     default List<ActiveAlertState> findActive(MetricCollectionScope scope, List<AlertRuleVO> rules) {
         return List.of();
     }
