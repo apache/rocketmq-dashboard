@@ -1988,10 +1988,19 @@ describe('Consumer page', () => {
     await user.click(await screen.findByRole('button', { name: /详情/ }));
     const dialog = await screen.findByRole('dialog', { name: /remote-cg/ });
     const instanceRow = await within(dialog).findByText('client-no-proto');
-    const protocolCell = instanceRow.closest('tr')?.children[1];
-    expect(protocolCell).toBeDefined();
-    expect(within(protocolCell as HTMLElement).getByText('-')).toBeInTheDocument();
-    expect((protocolCell as HTMLElement).querySelector('.ant-tag')).toBeNull();
+    const row = instanceRow.closest('tr') as HTMLElement;
+
+    // Locate the protocol cell through its header instead of a hardcoded column index, so
+    // the assertion keeps working when the instance columns are reordered.
+    const headers = Array.from(row.closest('table')!.querySelectorAll('thead th')).map((th) =>
+      th.textContent?.trim(),
+    );
+    const protocolIndex = headers.indexOf('协议');
+    expect(protocolIndex).toBeGreaterThan(-1);
+
+    const cells = within(row).getAllByRole('cell');
+    expect(cells[protocolIndex].textContent?.trim()).toBe('-');
+    expect(cells[protocolIndex].querySelector('.ant-tag')).toBeNull();
   });
 
   it('edits retry settings from the detail modal settings tab', async () => {

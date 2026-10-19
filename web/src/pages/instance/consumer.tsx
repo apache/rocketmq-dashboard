@@ -1232,12 +1232,9 @@ const ConsumerPageContent = ({
       render: (protocol?: string) => {
         // The Apache provider cannot tell the protocol from a broker connection set,
         // so the field is legitimately absent — render a placeholder, not an empty tag.
+        // Plain '-' matches the other optional columns of this page.
         if (!protocol) {
-          return (
-            <Text type="secondary" style={{ fontSize: 14 }}>
-              -
-            </Text>
-          );
+          return '-';
         }
         const config = PROTOCOL_MAP[protocol] || { labelKey: protocol, color: 'default' };
         return <Tag color={config.color}>{t(config.labelKey)}</Tag>;
