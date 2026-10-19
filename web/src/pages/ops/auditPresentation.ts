@@ -88,6 +88,13 @@ const operationPresentation: Record<string, AuditOperationPresentation> = {
     color: 'purple',
     category: 'security',
   },
+  // Written by the ACL push introduced with #6693 (AclService.java:394), one row per
+  // account and broker pair.
+  PUSH_ACL_TO_BROKER: {
+    label: 'Push ACL to Broker',
+    color: 'purple',
+    category: 'security',
+  },
 
   UPDATE_SETTINGS: { label: 'Update Settings', color: 'purple', category: 'settings' },
   CREATE_DATA_SOURCE: { label: 'Create Data Source', color: 'blue', category: 'settings' },
@@ -128,6 +135,29 @@ const operationPresentation: Record<string, AuditOperationPresentation> = {
   CLEAR_ACKNOWLEDGED_SYSTEM_ALERTS: {
     label: 'Clear Acknowledged Alerts',
     color: 'volcano',
+    category: 'alerts',
+  },
+  // The notification outbox writes one of these per delivery attempt
+  // (NotificationOutboxService.java:265/400/580), so the audit page has to name them like
+  // every other alert operation instead of falling back to the title-cased code.
+  DELIVER_ALERT_NOTIFICATION: {
+    label: 'Deliver Alert Notification',
+    color: 'green',
+    category: 'alerts',
+  },
+  RETRY_ALERT_NOTIFICATION: {
+    label: 'Retry Alert Notification',
+    color: 'gold',
+    category: 'alerts',
+  },
+  FAIL_ALERT_NOTIFICATION: {
+    label: 'Alert Notification Failed',
+    color: 'volcano',
+    category: 'alerts',
+  },
+  RETRY_ALERT_NOTIFICATION_MANUALLY: {
+    label: 'Manually Retry Alert Notification',
+    color: 'gold',
     category: 'alerts',
   },
 
@@ -174,6 +204,9 @@ const resourcePresentation: Record<string, AuditPresentation> = {
   ALERT_RULE: { label: 'Alert Rule', color: 'gold' },
   ALERT_SILENCE: { label: 'Alert Silence', color: 'gold' },
   SYSTEM_ALERT: { label: 'System Alert', color: 'gold' },
+  // Resource type of the notification-outbox audit rows above; without it the audit page
+  // prints the title-cased code for its resource column and filter option.
+  ALERT_NOTIFICATION: { label: 'Alert Notification', color: 'gold' },
   K8S_CERTIFICATE: { label: 'K8s Certificate', color: 'lime' },
 };
 
