@@ -41,6 +41,7 @@ import org.apache.rocketmq.studio.provider.apache.MetadataProvider;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
+import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CsvUtil;
 import org.apache.rocketmq.studio.common.util.MessagePropertyDisplay;
@@ -58,6 +59,7 @@ import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.MessageService;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
+import org.apache.rocketmq.studio.provider.LiteTopicProvider;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -90,6 +92,7 @@ public class MetadataService {
     private final MessageService messageService;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final ResourceOwnershipGuard ownershipGuard;
+    private final LiteTopicProvider liteTopicProvider;
 
     /**
      * Canonicalizes registered instance names and legacy numeric IDs, while preserving physical
@@ -167,6 +170,7 @@ public class MetadataService {
         if (SystemTopicFilter.isSystem(topic.getName())) {
             throw new BusinessException(400, "System topics cannot be created: " + topic.getName());
         }
+        guardLiteCreate(topic);
         String target = requireWriteInstance(instanceId, new Resource(Kind.TOPIC, topic.getName()), false);
         topic.setInstanceId(target);
         InstanceProvider provider = resolve(target);
@@ -181,6 +185,10 @@ public class MetadataService {
 
     public TopicVO updateTopic(String instanceId, TopicVO topic) {
         requireTopic(topic);
+        if (topic.getLiteTtlMinutes() != null) {
+            throw new BusinessException(400,
+                    "liteTtlMinutes is create-only; use the LiteTopic TTL extension to change it");
+        }
         String target = requireWriteInstance(instanceId, new Resource(Kind.TOPIC, topic.getName()), false);
         topic.setInstanceId(target);
         guardImmutableType(target, topic);
@@ -199,6 +207,33 @@ public class MetadataService {
                 throw new BusinessException(400, "topic message type is immutable");
             }
         });
+    }
+
+    /**
+     * A Lite parent topic is created through the generic topic dialog. Its TTL is the create-time
+     * {@code lite.topic.expiration} attribute in minutes, the {@code '$'} name separator is
+     * reserved for the implicit {@code %LMQ%$parent$liteTopic} children, and the write needs a
+     * lite-capable cluster.
+     */
+    private void guardLiteCreate(TopicVO topic) {
+        if (topic.getLiteTtlMinutes() != null && topic.getType() != TopicType.LITE) {
+            throw new BusinessException(400, "liteTtlMinutes is only accepted when type is LITE");
+        }
+        if (topic.getLiteTtlMinutes() != null
+                && (topic.getLiteTtlMinutes() < 1
+                        || topic.getLiteTtlMinutes() > LiteTopicProvider.MAX_LITE_TTL_MINUTES)) {
+            throw new BusinessException(400, "liteTtlMinutes must be between 1 and 43200");
+        }
+        if (topic.getType() != TopicType.LITE) {
+            return;
+        }
+        if (topic.getName().contains("$")) {
+            throw new BusinessException(400,
+                    "Lite parent topic name must not contain '$': '$' separates the parent topic from its lite topics");
+        }
+        if (!liteTopicProvider.isSupported()) {
+            throw new BusinessException(LiteTopicProvider.NOT_IMPLEMENTED, LiteTopicProvider.UNSUPPORTED);
+        }
     }
 
     public void deleteTopic(String name) {

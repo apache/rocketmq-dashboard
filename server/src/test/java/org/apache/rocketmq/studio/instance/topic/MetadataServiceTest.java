@@ -111,6 +111,9 @@ class MetadataServiceTest {
     @Mock
     private ResourceOwnershipGuard ownershipGuard;
 
+    @Mock
+    private org.apache.rocketmq.studio.provider.LiteTopicProvider liteTopicProvider;
+
     @InjectMocks
     private MetadataService metadataService;
 
@@ -619,6 +622,109 @@ class MetadataServiceTest {
                 .hasMessageContaining("System topics cannot be created");
 
         verifyNoInteractions(apacheProvider, operationAuditService);
+    }
+
+    @Test
+    void createTopicShouldPassLiteTtlMinutesToProviderTest() {
+        lenient().when(liteTopicProvider.isSupported()).thenReturn(true);
+        TopicVO input = new TopicVO();
+        input.setName("chat");
+        input.setInstanceId("instance-a");
+        input.setType(TopicType.LITE);
+        input.setLiteTtlMinutes(1440);
+        when(apacheProvider.createTopic(any(), any(TopicVO.class))).thenReturn(input);
+
+        TopicVO result = metadataService.createTopic(input);
+
+        assertThat(result.getLiteTtlMinutes()).isEqualTo(1440);
+        verify(apacheProvider).createTopic("instance-a", input);
+    }
+
+    @Test
+    void createTopicRejectsLiteTtlMinutesForNonLiteTypesTest() {
+        TopicVO input = new TopicVO();
+        input.setName("orders");
+        input.setInstanceId("instance-a");
+        input.setType(TopicType.NORMAL);
+        input.setLiteTtlMinutes(1440);
+
+        assertThatThrownBy(() -> metadataService.createTopic(input))
+                .isInstanceOfSatisfying(BusinessException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(400);
+                    assertThat(error.getMessage()).contains("liteTtlMinutes is only accepted when type is LITE");
+                });
+
+        verifyNoInteractions(apacheProvider);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, -1, 43201})
+    void createTopicRejectsLiteTtlMinutesOutsideBoundsTest(int ttlMinutes) {
+        TopicVO input = new TopicVO();
+        input.setName("chat");
+        input.setInstanceId("instance-a");
+        input.setType(TopicType.LITE);
+        input.setLiteTtlMinutes(ttlMinutes);
+
+        assertThatThrownBy(() -> metadataService.createTopic(input))
+                .isInstanceOfSatisfying(BusinessException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(400);
+                    assertThat(error.getMessage()).contains("liteTtlMinutes must be between 1 and 43200");
+                });
+
+        verifyNoInteractions(apacheProvider);
+    }
+
+    @Test
+    void createTopicRejectsDollarInLiteParentNameTest() {
+        TopicVO input = new TopicVO();
+        input.setName("chat$room");
+        input.setInstanceId("instance-a");
+        input.setType(TopicType.LITE);
+        input.setLiteTtlMinutes(1440);
+
+        assertThatThrownBy(() -> metadataService.createTopic(input))
+                .isInstanceOfSatisfying(BusinessException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(400);
+                    assertThat(error.getMessage()).contains("must not contain '$'");
+                });
+
+        verifyNoInteractions(apacheProvider);
+    }
+
+    @Test
+    void createTopicRejectsLiteWhenLiteTopicIsUnsupportedTest() {
+        when(liteTopicProvider.isSupported()).thenReturn(false);
+        TopicVO input = new TopicVO();
+        input.setName("chat");
+        input.setInstanceId("instance-a");
+        input.setType(TopicType.LITE);
+        input.setLiteTtlMinutes(1440);
+
+        assertThatThrownBy(() -> metadataService.createTopic(input))
+                .isInstanceOfSatisfying(BusinessException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(501);
+                    assertThat(error.getMessage()).isEqualTo("LiteTopic is not supported by this provider");
+                });
+
+        verifyNoInteractions(apacheProvider);
+    }
+
+    @Test
+    void updateTopicRejectsLiteTtlMinutesTest() {
+        TopicVO input = new TopicVO();
+        input.setName("chat");
+        input.setInstanceId("instance-a");
+        input.setType(TopicType.LITE);
+        input.setLiteTtlMinutes(60);
+
+        assertThatThrownBy(() -> metadataService.updateTopic(input))
+                .isInstanceOfSatisfying(BusinessException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(400);
+                    assertThat(error.getMessage()).contains("create-only");
+                });
+
+        verifyNoInteractions(apacheProvider);
     }
 
     @Test

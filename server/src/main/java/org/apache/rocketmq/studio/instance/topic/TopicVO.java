@@ -37,4 +37,9 @@ public class TopicVO extends BaseEntity {
     private double tps;
     private int consumerGroupCount;
     private String remark;
+    /**
+     * Create-only TTL for Lite parent topics in minutes ({@code type=LITE}); never populated on
+     * read paths and never edited by the generic update path.
+     */
+    private Integer liteTtlMinutes;
 }

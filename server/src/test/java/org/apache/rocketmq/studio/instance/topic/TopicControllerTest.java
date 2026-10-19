@@ -272,6 +272,55 @@ class TopicControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void createTopicShouldPassLiteTtlMinutesTest() throws Exception {
+        TopicVO created = new TopicVO();
+        created.setName("chat");
+        created.setLiteTtlMinutes(1440);
+        when(metadataService.createTopic(any(TopicVO.class))).thenReturn(created);
+        when(instanceService.normalizeIdentifier("1")).thenReturn("open-source-local");
+
+        mockMvc.perform(post("/api/topics/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "instanceId": "1",
+                                  "name": "chat",
+                                  "type": "LITE",
+                                  "writeQueues": 8,
+                                  "readQueues": 8,
+                                  "liteTtlMinutes": 1440
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.liteTtlMinutes").value(1440));
+
+        ArgumentCaptor<TopicVO> captor = ArgumentCaptor.forClass(TopicVO.class);
+        verify(metadataService).createTopic(captor.capture());
+        assertThat(captor.getValue().getName()).isEqualTo("chat");
+        assertThat(captor.getValue().getLiteTtlMinutes()).isEqualTo(1440);
+    }
+
+    @Test
+    void createTopicShouldRejectLiteTtlMinutesOutsideBounds() throws Exception {
+        mockMvc.perform(post("/api/topics/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "chat",
+                                  "type": "LITE",
+                                  "writeQueues": 8,
+                                  "readQueues": 8,
+                                  "liteTtlMinutes": 43201
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("liteTtlMinutes must be between 1 and 43200"));
+
+        verifyNoInteractions(metadataService);
+    }
+
+    @Test
     void topicWriteEndpointsShouldRejectNullRequestBody() throws Exception {
         mockMvc.perform(post("/api/topics/create")
                         .contentType(MediaType.APPLICATION_JSON)
