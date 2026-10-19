@@ -574,6 +574,25 @@ class SettingsServiceTest {
                 .isEqualTo(400);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"", "?tenant=a%2Fb+%26", "?route=/", "?tenant=a%2Fb#settings"})
+    void connectionShouldPreserveEncodedBasePathAndQueryTest(String suffix) {
+        int fragmentIndex = suffix.indexOf('#');
+        String query = fragmentIndex < 0 ? suffix : suffix.substring(0, fragmentIndex);
+        String fragment = fragmentIndex < 0 ? "" : suffix.substring(fragmentIndex);
+        String expectedUrl = PROMETHEUS_BASE_URL + "/tenant%20one/api/v1/query"
+                + (query.isEmpty() ? "?" : query + "&") + "query=up" + fragment;
+        prometheusServer.expect(requestTo(expectedUrl))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(PROMETHEUS_SUCCESS_BODY, MediaType.APPLICATION_JSON));
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url(PROMETHEUS_BASE_URL + "/tenant%20one/" + suffix)
+                .type("Prometheus")
+                .build();
+
+        assertThat(settingsService.testDataSource(request).isSuccess()).isTrue();
+    }
+
     @Test
     void connectionShouldQueryPrometheusEndpointTest() {
         prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL))
