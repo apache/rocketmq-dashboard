@@ -115,6 +115,41 @@ describe('ops service mock data', () => {
     expect(after.find((rule) => rule.id === 999999)).toBeUndefined();
   });
 
+  it('rejects deleting missing or cross-domain alert rules', async () => {
+    const clusterBefore = await listAlertRules('CLUSTER');
+    const businessBefore = await listAlertRules('BUSINESS');
+    const missingId =
+      Math.max(...clusterBefore.map((rule) => rule.id), ...businessBefore.map((rule) => rule.id)) +
+      1;
+
+    await expect(deleteAlertRule(missingId, 'CLUSTER')).rejects.toThrow(
+      `Alert rule not found: ${missingId}`,
+    );
+
+    const created = await createAlertRule(
+      { name: 'cluster-only-delete-test', channels: [] },
+      'CLUSTER',
+    );
+    try {
+      await expect(deleteAlertRule(created.id, 'BUSINESS')).rejects.toThrow(
+        `Alert rule not found: ${created.id}`,
+      );
+      expect((await listAlertRules('CLUSTER')).map((rule) => rule.id)).toContain(created.id);
+      expect((await listAlertRules('BUSINESS')).map((rule) => rule.id)).toEqual(
+        businessBefore.map((rule) => rule.id),
+      );
+    } finally {
+      await deleteAlertRule(created.id, 'CLUSTER');
+    }
+
+    expect((await listAlertRules('CLUSTER')).map((rule) => rule.id)).toEqual(
+      clusterBefore.map((rule) => rule.id),
+    );
+    await expect(deleteAlertRule(created.id, 'CLUSTER')).rejects.toThrow(
+      `Alert rule not found: ${created.id}`,
+    );
+  });
+
   it('keeps alert rule CRUD isolated between cluster and business domains', async () => {
     const clusterRule = await createAlertRule(
       { name: 'cluster-domain-rule', channels: ['email'] },
