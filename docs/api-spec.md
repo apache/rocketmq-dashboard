@@ -979,6 +979,7 @@ GET /api/topics?clusterId={clusterId}&type={type}&search={keyword}
 | `tps` | `number` | 当前 TPS |
 | `consumerGroupCount` | `number` | 订阅消费组数 |
 | `remark` | `string` | 备注 |
+| `liteTtlMinutes` | `number` | Lite 父主题 TTL（分钟）。**仅出现在创建请求与创建响应中**：列表 / 分页 / 详情等读响应不返回该键（服务端从不回填，不把未读取的值当作已知值呈现）。已创建父主题的 TTL 用 5.9 `GET /api/liteTopic/list` 的 `averageTTL`（毫秒）读取，从未写入过 TTL 的父主题该值为 `null` |
 | `createdAt` | `string` | 创建时间 (ISO 8601) |
 | `updatedAt` | `string` | 更新时间 (ISO 8601) |
 
@@ -1027,6 +1028,19 @@ POST /api/topics/create
 | `readQueues` | `number` | 否 | 读队列数，须 ≥ 0；缺省或非正数时取 8 |
 | `perm` | `string` | 否 | 权限，默认 `RW` |
 | `remark` | `string` | 否 | 备注 |
+| `liteTtlMinutes` | `number` | 否 | Lite 父主题 TTL，**单位分钟**，仅 `type=LITE` 时接受，取值 1-43200（30 天）；缺省时服务端取 `1440`（1 天），与控制台弹窗预填值一致。与 `type` 一并作为创建时属性写入 broker（`+message.type=LITE` 与 `+lite.topic.expiration=<分钟>`），创建后既不能由本接口也不能由 5.4 修改 |
+
+**`type=LITE` 的额外校验**（全部在任何写入发生之前失败，不产生 broker 写入与审计记录）：
+
+| 场景 | `code` | `message` |
+|------|--------|-----------|
+| 非 `LITE` 类型携带 `liteTtlMinutes` | `400` | `liteTtlMinutes is only accepted when type is LITE` |
+| `liteTtlMinutes` 越界（< 1 或 > 43200） | `400` | `liteTtlMinutes must be between 1 and 43200` |
+| 父主题名含 `$`（保留给 `%LMQ%$parent$liteTopic` 子主题） | `400` | `Lite parent topic name must not contain '$': '$' separates the parent topic from its lite topics` |
+| 目标实例不是 Apache 厂商（云厂商 OpenAPI 没有 `lite.topic.expiration` 等价物，建出的父主题会停在 broker 的 `-1` 永不过期默认值上） | `501` | `Cloud resources are not registered for global ownership yet; resource writes are not allowed` |
+| 集群不支持 LiteTopic（能力探测与 5.13 同源，走 Studio 配置的默认接入点，非目标实例接入点） | `501` | `LiteTopic is not supported by this provider` |
+
+**单位口径**：本接口的 `liteTtlMinutes` 用**分钟**（broker 属性 `lite.topic.expiration` 的原生单位，写入无损）；同一资源上 5.11 `POST /api/liteTopic/extendTTL` 的 `newTTL` 用**毫秒**，换算边界为 `分钟 = clamp(round(毫秒 / 60000), 1, 43200)`（亚分钟精度四舍五入到分钟，并夹在 1 分钟与 30 天之间）。
 
 **Response `data`:** `Topic`
 
@@ -1049,6 +1063,9 @@ POST /api/topics/update
 | `readQueues` | `number` | 否 | 读队列数，须 ≥ 0；缺省或非正数时保留现值 |
 | `perm` | `string` | 否 | 权限。Apache：显式传值即更新权限；省略时各既有 Broker 保留自身运行时的权限掩码（含 Studio 不可编辑的位）、库内存值不变；新增 Broker 用库内存值兜底，取不到时用 `RW` |
 | `remark` | `string` | 否 | 备注 |
+| `liteTtlMinutes` | `number` | 否 | **恒定拒绝**：该字段是创建专用字段，更新请求携带它一律返回 `400`（见下）。DTO 仍然绑定它，为的是给出明确错误而不是把未知属性静默丢弃 |
+
+`liteTtlMinutes` 是创建专用字段：更新请求携带该字段返回 `400 liteTtlMinutes is create-only; use the LiteTopic TTL extension to change it`；更新路径也从不把 `lite.topic.expiration` 放进 broker 写增量（增量里只有 `+message.type`），已存在的 TTL 因此不被改写。调整 TTL 走 5.11，注意那边 `newTTL` 的单位是**毫秒**，与本接口创建时的**分钟**不同。
 
 **Response `data`:** `Topic`
 
@@ -1216,6 +1233,10 @@ POST /api/liteTopic/extendTTL
 | `instanceId` | `string` | 是 | 所属实例 ID |
 | `topicPattern` | `string` | 是 | LiteTopic 模式 |
 | `newTTL` | `number` | 是 | 新的 TTL（毫秒），必须为正数 |
+
+**单位口径**：`newTTL` 用**毫秒**，与 5.3 创建 Lite 父主题时的 `liteTtlMinutes`（**分钟**）不同——两者操作的是同一个 broker 属性 `lite.topic.expiration`。换算边界为 `分钟 = clamp(round(毫秒 / 60000), 1, 43200)`：亚分钟精度四舍五入到分钟，结果夹在 1 分钟与 30 天之间，因此 `newTTL` 小于 30000 毫秒一律落成 1 分钟、大于 2592000000 毫秒一律落成 43200 分钟。
+
+**实例门禁**：父主题只能属于 Apache 厂商实例（与 5.3 的 `type=LITE` 创建一致）；非 Apache 厂商返回 `501`，父主题未在 Studio 注册返回 `409`，父主题在目标集群上不存在返回 `404`。多 master 部分写入失败返回 `502`，`message` 中列出已改写的 master、失败的 master 与未尝试的 master；延长操作幂等，重跑即可收敛。
 
 **Response `data`:** `null`
 

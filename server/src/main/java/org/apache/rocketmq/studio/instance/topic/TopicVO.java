@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.instance.topic;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import org.apache.rocketmq.studio.common.domain.BaseEntity;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
@@ -37,4 +38,16 @@ public class TopicVO extends BaseEntity {
     private double tps;
     private int consumerGroupCount;
     private String remark;
+    /**
+     * Create-only TTL for Lite parent topics in minutes ({@code type=LITE}); never populated on
+     * read paths and never edited by the generic update path. Kept out of the JSON when unset so a
+     * list or detail response does not advertise a TTL the server never read back.
+     *
+     * <p>Unit note: this create-time field is in <em>minutes</em>, the unit of the broker's
+     * {@code lite.topic.expiration} attribute, while {@code POST /api/liteTopic/extendTTL} takes
+     * {@code newTTL} in <em>milliseconds</em> and the provider rounds it with
+     * {@code clamp(round(millis / 60000), 1, 43200)}.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Integer liteTtlMinutes;
 }

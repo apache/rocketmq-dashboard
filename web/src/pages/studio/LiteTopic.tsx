@@ -46,7 +46,9 @@ import {
   Gauge,
   Info,
   DownloadSimple,
+  Plus,
 } from '@phosphor-icons/react';
+import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import { useLang } from '../../i18n/LangContext';
@@ -140,6 +142,7 @@ const collectNamespaces = (items: LiteTopicItem[]): string[] => {
 const LiteTopicPage: React.FC = () => {
   const { t } = useLang();
   const { message } = App.useApp();
+  const navigate = useNavigate();
   const messageRef = useRef(message);
   const translationRef = useRef(t);
 
@@ -876,6 +879,14 @@ const LiteTopicPage: React.FC = () => {
         title={t('liteTopic.title')}
         extra={
           <Space>
+            <Button
+              type="primary"
+              icon={<Plus size={14} />}
+              size="small"
+              onClick={() => navigate('/instance/topic', { state: { createType: 'LITE' } })}
+            >
+              {t('liteTopic.createParent')}
+            </Button>
             <Button
               icon={<DownloadSimple size={14} />}
               size="small"

@@ -3099,6 +3099,18 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '每个 Broker 节点写 {write} / 读 {read} 个队列；读写队列数一般情况下需保持一致',
     en: '{write} write / {read} read queues per Broker node; keep them equal in general',
   },
+  'topic.liteTtl': { zh: 'TTL（分钟）', en: 'TTL (minutes)' },
+  'topic.liteTtlUnit': { zh: '分钟', en: 'min' },
+  'topic.liteTtlRequired': { zh: '请输入 TTL', en: 'Please enter the TTL' },
+  'topic.liteTtlExtra': {
+    zh:
+      '子 LiteTopic 超过 TTL 未发送新消息即自动过期回收；范围 1-43200（30 天）。创建后在 LiteTopic ' +
+      '页「延长 TTL」调整，那里以毫秒为单位（60000 毫秒 = 1 分钟）',
+    en:
+      'Lite topics under this parent expire and are reclaimed after this many minutes without new ' +
+      'messages; range 1-43200 (30 days). Adjust it later from the LiteTopic page, where Extend TTL ' +
+      'takes milliseconds (60000 ms = 1 minute)',
+  },
   'topic.remarkPlaceholder': {
     zh: '可选，描述 Topic 用途',
     en: 'Optional, describe the topic purpose',
@@ -3970,6 +3982,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'liteTopic.status': { zh: '状态', en: 'Status' },
   'liteTopic.actions': { zh: '操作', en: 'Actions' },
   'liteTopic.extendTtl': { zh: '延长 TTL', en: 'Extend TTL' },
+  'liteTopic.createParent': { zh: '创建 Lite 父主题', en: 'Create Lite parent' },
   'liteTopic.viewSessions': { zh: '查看会话', en: 'View Sessions' },
   'liteTopic.sessionDetail': { zh: '会话详情', en: 'Session Detail' },
   'liteTopic.sessionId': { zh: '会话 ID', en: 'Session ID' },
