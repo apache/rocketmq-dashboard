@@ -28,6 +28,7 @@ import { listInstances } from '../../../services/instanceService';
 import {
   bulkDeleteAlertRules,
   bulkToggleAlertRules,
+  createAlertRule,
   listAlertRulesPage,
   listAlertRuleRuntime,
   listNativeAlertMetrics,
@@ -357,6 +358,20 @@ describe('AlertsPage', () => {
     expect(screen.getByText('21')).toBeInTheDocument();
   });
 
+  it('renders the pagination total with the rule count', async () => {
+    vi.mocked(listAlertRulesPage).mockClear();
+    vi.mocked(listAlertRulesPage).mockResolvedValue({
+      items: [cloneRule(alertRules[0])],
+      total: 21,
+      page: 1,
+      size: 20,
+    });
+    renderPage();
+
+    await screen.findByText('Broker disk usage');
+    expect(await screen.findByText('共 21 条规则')).toBeInTheDocument();
+  });
+
   it('resets page, search and status filters when the domain switches', async () => {
     vi.mocked(listAlertRulesPage).mockClear();
     vi.mocked(listAlertRulesPage).mockResolvedValue({
@@ -436,6 +451,47 @@ describe('AlertsPage', () => {
 
     expect(await screen.findByText('消费积压总量')).toBeInTheDocument();
     expect(screen.queryByText('Broker 磁盘使用率')).not.toBeInTheDocument();
+  });
+
+  it('creates the rule enabled because the dialog has no enable control', async () => {
+    // The request DTO models `enabled` as a primitive boolean, so a create payload that omits it
+    // stores a disabled rule: the dialog never offers the switch and the success toast says
+    // nothing, so the rule silently never evaluates.
+    vi.mocked(listNativeAlertMetrics).mockResolvedValue([
+      {
+        key: 'consumer.lag.total',
+        label: 'Consumer lag total',
+        thresholdUnit: 'messages',
+        supportsConsumerGroup: true,
+      },
+    ]);
+    vi.mocked(createAlertRule).mockResolvedValue(cloneRule(alertRules[0]));
+
+    const user = userEvent.setup();
+    renderPage('BUSINESS');
+
+    await user.click(await screen.findByRole('button', { name: '新建规则' }));
+    await user.type(screen.getByRole('textbox', { name: '规则名称' }), 'Lag guard');
+    await user.click(screen.getByRole('combobox', { name: 'RocketMQ 实例' }));
+    await screen.findByRole('option', { name: 'local' });
+    await user.click(getSelectOption('local'));
+    await user.click(screen.getByRole('combobox', { name: '监控指标' }));
+    await user.click(getSelectOption('消费积压总量'));
+    await user.click(screen.getByRole('combobox', { name: '运算符' }));
+    await user.click(getSelectOption('>'));
+    await user.type(screen.getByPlaceholderText('阈值'), '1000');
+    await user.click(screen.getByRole('combobox', { name: '持续时间' }));
+    await user.click(getSelectOption('5m'));
+    await user.click(screen.getByRole('checkbox', { name: 'Email' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /新\s*建/ }));
+
+    await waitFor(() =>
+      expect(createAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Lag guard', enabled: true }),
+        'BUSINESS',
+      ),
+    );
   });
 
   it('refreshes metric options from the selected instance capabilities', async () => {

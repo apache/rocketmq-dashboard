@@ -62,6 +62,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -737,6 +740,149 @@ class RocketMQMetadataProviderTest {
         assertThat(groups.get(0).getInstances())
                 .extracting(org.apache.rocketmq.studio.instance.group.ConsumerInstanceVO::getClientId)
                 .containsExactlyInAnyOrder("client-a", "client-b");
+    }
+
+    @Test
+    void listConsumerGroupsShouldBoundEnrichmentToABatchDeadlineTest() throws Exception {
+        java.util.List<RmqGroup> entities = new java.util.ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            RmqGroup entity = new RmqGroup();
+            entity.setName("cg-slow-" + i);
+            entity.setInstanceId("instance-a");
+            entities.add(entity);
+        }
+        when(groupMapper.selectList(any())).thenReturn(entities);
+
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.examineConsumerConnectionInfo(anyString())).thenAnswer(invocation -> {
+            Thread.sleep(10_000);
+            return new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
+        });
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+
+        long startedNanos = System.nanoTime();
+        provider.listConsumerGroups("instance-a", null, null);
+        long elapsedMillis = (System.nanoTime() - startedNanos) / 1_000_000L;
+
+        // The enrichment budget is one deadline for the whole batch (the
+        // InstanceResourceCountRunner precedent), not a per-group timeout that
+        // multiplies by the number of groups when a broker hangs.
+        assertThat(elapsedMillis).isLessThan(6_000L);
+    }
+
+    @Test
+    void timedOutGroupEnrichmentMustNotMutateReturnedGroupTest() throws Exception {
+        RmqGroup entity = new RmqGroup();
+        entity.setName("cg-late");
+        entity.setInstanceId("instance-a");
+        when(groupMapper.selectList(any())).thenReturn(List.of(entity));
+
+        CountDownLatch connectionStarted = new CountDownLatch(1);
+        CountDownLatch releaseConnection = new CountDownLatch(1);
+        CountDownLatch statsRead = new CountDownLatch(1);
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        org.apache.rocketmq.remoting.protocol.body.ConsumerConnection connection =
+                new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
+        org.apache.rocketmq.remoting.protocol.body.Connection client =
+                new org.apache.rocketmq.remoting.protocol.body.Connection();
+        client.setClientId("late-client");
+        connection.setConnectionSet(new HashSet<>(List.of(client)));
+        when(admin.examineConsumerConnectionInfo("cg-late")).thenAnswer(invocation -> {
+            connectionStarted.countDown();
+            while (releaseConnection.getCount() > 0) {
+                try {
+                    releaseConnection.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException ignored) {
+                    // Simulate a broker call that ignores cancellation and returns later.
+                }
+            }
+            return connection;
+        });
+        when(admin.examineConsumeStats("cg-late")).thenAnswer(invocation -> {
+            statsRead.countDown();
+            return null;
+        });
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+
+        try {
+            ConsumerGroupVO returned = provider.listConsumerGroups("instance-a", null, null).get(0);
+            assertThat(connectionStarted.getCount()).isZero();
+            assertThat(returned.getOnlineInstances()).isZero();
+
+            releaseConnection.countDown();
+            assertThat(statsRead.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(returned.getOnlineInstances()).isZero();
+            assertThat(returned.getInstances()).isEmpty();
+        } finally {
+            releaseConnection.countDown();
+            provider.shutdownOnlineEnrichmentExecutor();
+        }
+    }
+
+    @Test
+    void timedOutConsumeStatsKeepsCompletedConnectionInfoTest() throws Exception {
+        RmqGroup entity = new RmqGroup();
+        entity.setName("cg-partial");
+        entity.setInstanceId("instance-a");
+        when(groupMapper.selectList(any())).thenReturn(List.of(entity));
+
+        CountDownLatch statsStarted = new CountDownLatch(1);
+        CountDownLatch releaseStats = new CountDownLatch(1);
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        org.apache.rocketmq.remoting.protocol.body.ConsumerConnection connection =
+                new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
+        org.apache.rocketmq.remoting.protocol.body.Connection client =
+                new org.apache.rocketmq.remoting.protocol.body.Connection();
+        client.setClientId("online-client");
+        connection.setConnectionSet(new HashSet<>(List.of(client)));
+        when(admin.examineConsumerConnectionInfo("cg-partial")).thenReturn(connection);
+        ConsumeStats stats = new ConsumeStats();
+        OffsetWrapper wrapper = new OffsetWrapper();
+        wrapper.setBrokerOffset(100L);
+        wrapper.setConsumerOffset(60L);
+        stats.getOffsetTable().put(new MessageQueue("orders", "broker-a", 0), wrapper);
+        when(admin.examineConsumeStats("cg-partial")).thenAnswer(invocation -> {
+            statsStarted.countDown();
+            while (releaseStats.getCount() > 0) {
+                try {
+                    releaseStats.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException ignored) {
+                    // Simulate a broker call that does not stop immediately on cancellation.
+                }
+            }
+            return stats;
+        });
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+        ExecutorService executor = (ExecutorService) org.springframework.test.util.ReflectionTestUtils.getField(
+                provider, "onlineEnrichmentExecutor");
+
+        try {
+            ConsumerGroupVO returned = provider.listConsumerGroups("instance-a", null, null).get(0);
+            assertThat(statsStarted.getCount()).isZero();
+            assertThat(returned.getOnlineInstances()).isEqualTo(1);
+            assertThat(returned.getInstances())
+                    .extracting(org.apache.rocketmq.studio.instance.group.ConsumerInstanceVO::getClientId)
+                    .containsExactly("online-client");
+            assertThat(returned.isConsumeStatsAvailable()).isFalse();
+            releaseStats.countDown();
+            provider.shutdownOnlineEnrichmentExecutor();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(returned.isConsumeStatsAvailable()).isFalse();
+            assertThat(returned.getTotalLag()).isZero();
+        } finally {
+            releaseStats.countDown();
+            provider.shutdownOnlineEnrichmentExecutor();
+        }
     }
 
     @Test

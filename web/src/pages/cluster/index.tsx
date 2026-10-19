@@ -285,9 +285,14 @@ const ClusterPage = () => {
   const [nsCreateModalOpen, setNsCreateModalOpen] = useState(false);
   const [nsModalMode, setNsModalMode] = useState<'create' | 'edit'>('create');
   const [nsEditId, setNsEditId] = useState<number | null>(null);
+  const [nsSubmitting, setNsSubmitting] = useState(false);
+  const nsSubmittingRef = useRef(false);
   const [nsCreateForm] = Form.useForm();
 
   const handleNsSubmit = useCallback(async () => {
+    // The dialog stays open until the request resolves, so without an in-flight guard a second
+    // confirm click while the request is on the wire would POST the same registry entry again.
+    if (nsSubmittingRef.current) return;
     let values: Record<string, string>;
     try {
       values = await nsCreateForm.validateFields();
@@ -301,6 +306,8 @@ const ClusterPage = () => {
       k8sId: values.k8sId || undefined,
       description: values.description || undefined,
     };
+    nsSubmittingRef.current = true;
+    setNsSubmitting(true);
     try {
       if (nsModalMode === 'edit' && nsEditId !== null) {
         await updateNameserverRegistry({ id: nsEditId, ...payload });
@@ -314,6 +321,9 @@ const ClusterPage = () => {
       await loadNsRegistry();
     } catch {
       message.error(t('cluster.nsOperationFailed'));
+    } finally {
+      nsSubmittingRef.current = false;
+      setNsSubmitting(false);
     }
   }, [loadNsRegistry, nsCreateForm, nsEditId, nsModalMode, t]);
 
@@ -702,6 +712,8 @@ const ClusterPage = () => {
       readQueueNums: cfg.readQueueNums ?? 8,
       brokerPermission: cfg.brokerPermission ?? 6,
     });
+    // setFieldsValue marks fields touched; only a user edit should replace the original bytes.
+    configForm.setFields([{ name: 'maxMessageSizeMB', touched: false }]);
     setConfigModalOpen(true);
   };
 
@@ -715,7 +727,9 @@ const ClusterPage = () => {
       instanceId: selectedInstanceIdRef.current,
       ...(selectedCluster.config ?? {}),
       ...configValues,
-      maxMessageSize: maxMessageSizeMB * 1048576,
+      maxMessageSize: configForm.isFieldTouched('maxMessageSizeMB')
+        ? maxMessageSizeMB * 1048576
+        : (selectedCluster.config?.maxMessageSize ?? 4194304),
     };
   };
 
@@ -749,6 +763,11 @@ const ClusterPage = () => {
   };
 
   const handleConfigSubmit = async () => {
+    // A write can change only some Brokers. Any preview from before the write,
+    // including one still in flight, no longer describes the cluster afterward.
+    configPreviewRequest.invalidate();
+    setConfigPreview(null);
+    setConfigPreviewLoading(false);
     let values: ClusterConfigFormValues;
     try {
       values = await configForm.validateFields();
@@ -1903,6 +1922,7 @@ const ClusterPage = () => {
         open={nsCreateModalOpen}
         onCancel={() => setNsCreateModalOpen(false)}
         onOk={() => void handleNsSubmit()}
+        confirmLoading={nsSubmitting}
         okText={t('common.confirm')}
         cancelText={t('common.cancel')}
         destroyOnHidden
