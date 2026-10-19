@@ -186,9 +186,11 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
                 .like(StringUtils.hasText(search), RmqTopic::getName, search)
                 .notIn(RmqTopic::getName, TopicValidator.getSystemTopicSet())
-                .notLikeRight(RmqTopic::getName, "rmq_sys_")
-                .notLikeRight(RmqTopic::getName, "%RETRY%")
-                .notLikeRight(RmqTopic::getName, "%DLQ%")
+                // notLikeRight appends the final % itself. Escape the literal prefix characters
+                // so a user topic containing RETRY/DLQ elsewhere is not filtered out.
+                .notLikeRight(RmqTopic::getName, "rmq\\_sys\\_")
+                .notLikeRight(RmqTopic::getName, "\\%RETRY\\%")
+                .notLikeRight(RmqTopic::getName, "\\%DLQ\\%")
                 .orderByAsc(RmqTopic::getName, RmqTopic::getId);
         Page<RmqTopic> result = topicMapper.selectPage(new Page<>(page, pageSize), query);
         return PageResult.of(result.getRecords().stream().map(this::toTopicVO).toList(),
