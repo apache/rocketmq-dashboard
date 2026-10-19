@@ -139,9 +139,15 @@ export async function listAlertRulesPage(
 ): Promise<PageResult<AlertRule>> {
   if (!isMockMode()) return opsApi.listAlertRulesPage(domain, query);
 
+  // Match the backend contract (AlertService.listRules): page < 1 or pageSize
+  // outside 1..100 is a 400 "Invalid page or pageSize", not something to clamp —
+  // the mock must not answer requests the real API refuses.
+  if ((query.page ?? 1) < 1 || (query.pageSize ?? 20) < 1 || (query.pageSize ?? 20) > 100) {
+    throw new Error('Invalid page or pageSize');
+  }
   const search = query.search?.trim().toLowerCase();
-  const page = Math.max(1, query.page ?? 1);
-  const pageSize = Math.min(100, Math.max(1, query.pageSize ?? 20));
+  const page = query.page ?? 1;
+  const pageSize = query.pageSize ?? 20;
   const filtered = alertRulesState[domain]
     .filter((rule) => query.enabled == null || rule.enabled === query.enabled)
     .filter(
