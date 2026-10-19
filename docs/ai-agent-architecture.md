@@ -98,6 +98,10 @@ stdio 桥最多转发 64 个在途调用；满载时暂停读取后续输入，�
 | **mcp.json 不需要 `env` 块** | 在 claude 进程环境里导出的变量被 rmqctl 子进程继承（MCP stdio server 继承 agent 环境） | 少写一处配置；但 yaml 里的 `env:NAME` 引用名必须与实际导出的变量名一致 |
 | **`--strict-mcp-config` 必需** | — | 否则 claude 还会加载 `~/.claude.json` 与 user scope 的 MCP server，在容器里是不可控暴露面 |
 
+Unix 配置权限：配置文件权限不得宽于 `0600`；其直接父目录不得允许组或其他用户写入。新目录以 `0700` 创建，已有 `0750` / `0755` 目录可用于读取和写入，CLI 不修改已有目录权限。Windows 保留用户配置目录继承的 ACL 策略。
+
+Unix config permissions: files must be no wider than `0600`; the immediate parent directory must not be group- or other-writable. New directories are created as `0700`. Existing `0750` / `0755` directories support both reads and writes without having their modes changed. Windows retains its inherited user-profile ACL policy.
+
 delta 实测分布（run1 + run2）：`thinking_delta` 67、`text_delta` 80、`input_json_delta` 10、
 `signature_delta` 4。`signature_delta` 是密码学签名，**永不渲染、永不落库**。`thinking_delta` 的存在
 就是「思维链」需求能真实满足的依据——它来自模型，不是 prompt 改写。
