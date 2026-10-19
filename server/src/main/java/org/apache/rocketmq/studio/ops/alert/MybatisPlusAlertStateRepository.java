@@ -35,7 +35,6 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -157,21 +156,10 @@ public class MybatisPlusAlertStateRepository implements AlertStateRepository {
         if (activeStates.isEmpty()) {
             return Map.of();
         }
-        Set<Long> ruleIds = activeStates.stream().map(RmqAlertState::getRuleId).collect(Collectors.toSet());
-        Set<String> fingerprints = activeStates.stream().map(RmqAlertState::getFingerprint).collect(Collectors.toSet());
-        Set<AlertStateKey> activeKeys = activeStates.stream()
-                .map(state -> new AlertStateKey(state.getRuleId(), state.getFingerprint()))
-                .collect(Collectors.toCollection(HashSet::new));
-        return alertMapper.selectList(new QueryWrapper<RmqSystemAlert>()
-                        .in("rule_id", ruleIds)
-                        .in("fingerprint", fingerprints)
-                        .eq("domain", scope.domain().name())
-                        .eq("instance_id", scope.instanceId())
-                        .orderByDesc("time", "id"))
+        return alertMapper.selectLatestMetadata(scope.domain().name(), scope.instanceId(), activeStates)
                 .stream()
-                .filter(alert -> activeKeys.contains(new AlertStateKey(alert.getRuleId(), alert.getFingerprint())))
                 .collect(Collectors.toMap(alert -> new AlertStateKey(alert.getRuleId(), alert.getFingerprint()),
-                        alert -> alert, (latest, ignored) -> latest));
+                        alert -> alert));
     }
 
     private Optional<ActiveAlertState> toActiveState(RmqAlertState state, RmqSystemAlert alert) {
