@@ -38,6 +38,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.Clock;
@@ -52,12 +54,15 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
@@ -210,6 +215,63 @@ class AiRunServiceTest {
                 });
         assertThat(inserted).isEmpty();
         assertThat(runUpdates).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"activeLookup", "timelineSeed"})
+    void racingAdmissionMustKeepTheTurnClaimFromBeforeTheIdleCheckTest(String interleaving) {
+        ExecutorService deferred = mock(ExecutorService.class);
+        when(deferred.submit(any(Runnable.class)))
+                .thenAnswer(invocation -> new FutureTask<>(invocation.getArgument(0), null));
+        service = serviceWith(deferred);
+        when(runRepository.maxTurn(CONVERSATION_ID)).thenAnswer(invocation ->
+                runInserts.stream().mapToInt(RmqAiRun::getTurn).max().orElse(0));
+        AtomicBoolean firstQuery = new AtomicBoolean(true);
+        Runnable admitOtherRequest = () -> {
+            if (firstQuery.compareAndSet(true, false)) {
+                service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("winning request"));
+            }
+        };
+        when(eventRepository.maxSeq(CONVERSATION_ID)).thenAnswer(invocation -> {
+            if ("timelineSeed".equals(interleaving)) {
+                // Both requests already chose the same turn: the unique key is the backstop.
+                admitOtherRequest.run();
+            }
+            return inserted.stream().mapToInt(RmqAiEvent::getSeq).max().orElse(0);
+        });
+        when(runRepository.insert(any(RmqAiRun.class))).thenAnswer(invocation -> {
+            RmqAiRun run = invocation.getArgument(0);
+            // Model the existing database uniqueness constraint, not a stronger active-run lock.
+            if (runInserts.stream().anyMatch(existing -> existing.getTurn().equals(run.getTurn()))) {
+                throw new DuplicateKeyException("uk_ai_run_conversation_turn");
+            }
+            run.setId(RUN_ID + run.getTurn() - 1L);
+            runInserts.add(AiRunTestSupport.copyOf(run));
+            return run;
+        });
+        when(runRepository.findActiveByConversationId(CONVERSATION_ID)).thenAnswer(invocation -> {
+            Optional<RmqAiRun> snapshot = runInserts.stream().findFirst();
+            if ("activeLookup".equals(interleaving)) {
+                // Another request is admitted after this query saw no active run, before the
+                // delayed caller receives that result. Its worker stays queued throughout.
+                admitOtherRequest.run();
+            }
+            return snapshot;
+        });
+
+        Throwable refusal = catchThrowable(() -> service.sendMessage(CONVERSATION_ID,
+                AiRunService.RunRequest.of("delayed request")));
+
+        assertThat(runInserts).as("one active run despite both callers observing idle")
+                .hasSize(1);
+        assertThat(refusal).isInstanceOfSatisfying(BusinessException.class,
+                exception -> assertThat(exception.getCode()).isEqualTo(409));
+        assertThat(registry.liveRunIds()).containsExactly(RUN_ID);
+        assertThat(inserted).filteredOn(row -> "user".equals(row.getType()))
+                .hasSize(1)
+                .extracting(RmqAiEvent::getPayload)
+                .allSatisfy(payload -> assertThat(payload).contains("winning request"));
+        verify(deferred).submit(any(Runnable.class));
     }
 
     @Test
