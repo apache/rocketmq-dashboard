@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App, Modal, message } from 'antd';
+import { App, ConfigProvider, Modal, message, theme } from 'antd';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
@@ -124,6 +124,14 @@ const renderWithProviders = (ui: React.ReactElement, initialEntry = '/instance/c
       </LangProvider>
     </App>,
   );
+
+// Comparing raw CSS text would depend on how each side spells a colour, so both the element's
+// value and the expected token go through the same parser before they are compared.
+const normalizeBackground = (value: string): string => {
+  const probe = document.createElement('span');
+  probe.style.background = value;
+  return probe.style.background;
+};
 
 beforeAll(installBrowserMocks);
 
@@ -886,6 +894,36 @@ describe('Consumer page', () => {
     expect(within(panel).getByText('Queue 堆积分布严重倾斜')).toBeInTheDocument();
     expect(within(panel).getAllByText('客户端心跳过期').length).toBeGreaterThan(0);
     expect(within(panel).getByText('处理建议')).toBeInTheDocument();
+  });
+
+  it('renders the health summary card on the theme fill token so dark mode stays readable', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <ConfigProvider theme={{ algorithm: theme.darkAlgorithm }}>
+        <App>
+          <LangProvider>
+            <MemoryRouter initialEntries={['/instance/consumer']}>
+              <ConsumerPage />
+            </MemoryRouter>
+          </LangProvider>
+        </App>
+      </ConfigProvider>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    await user.click(await screen.findByRole('tab', { name: /健康诊断/ }));
+    const panel = await screen.findByRole('tabpanel', { name: /健康诊断/ });
+    const summaryCard = (await within(panel).findByText('健康分:')).closest('.ant-card');
+
+    // A fixed light grey leaves the dark theme's light text unreadable on it, so the summary
+    // card has to follow the theme's fill token instead.
+    const darkFill = theme.getDesignToken({ algorithm: theme.darkAlgorithm }).colorFillQuaternary;
+    expect(normalizeBackground((summaryCard as HTMLElement).style.background)).toBe(
+      normalizeBackground(darkFill),
+    );
+    expect(normalizeBackground((summaryCard as HTMLElement).style.background)).not.toBe(
+      normalizeBackground('#fafafa'),
+    );
   });
 
   it('filters queue progress to the topic of the clicked distribution button', async () => {
@@ -1971,6 +2009,38 @@ describe('Consumer page', () => {
     expect(await within(row).findByText('42')).toBeInTheDocument();
   });
 
+  it('renders a placeholder for an online instance whose protocol is unknown', async () => {
+    // The Apache provider derives online instances from a broker connection set, which
+    // carries no protocol marker — the API legitimately returns the field absent.
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([
+        {
+          ...group,
+          instances: [{ clientId: 'client-no-proto', address: '10.0.0.9:1234' }],
+        },
+      ]),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    const dialog = await screen.findByRole('dialog', { name: /remote-cg/ });
+    const instanceRow = await within(dialog).findByText('client-no-proto');
+    const row = instanceRow.closest('tr') as HTMLElement;
+
+    // Locate the protocol cell through its header instead of a hardcoded column index, so
+    // the assertion keeps working when the instance columns are reordered.
+    const headers = Array.from(row.closest('table')!.querySelectorAll('thead th')).map((th) =>
+      th.textContent?.trim(),
+    );
+    const protocolIndex = headers.indexOf('协议');
+    expect(protocolIndex).toBeGreaterThan(-1);
+
+    const cells = within(row).getAllByRole('cell');
+    expect(cells[protocolIndex].textContent?.trim()).toBe('-');
+    expect(cells[protocolIndex].querySelector('.ant-tag')).toBeNull();
+  });
+
   it('doesNotSubmitConsumerSettingsAfterTheInitialReadFailsTest', async () => {
     vi.mocked(consumerService.getConsumerGroupSettings).mockRejectedValueOnce(
       new Error('read failed'),
@@ -2366,6 +2436,23 @@ describe('Consumer page', () => {
     expect(consumerService.updateConsumerGroupSettings).toHaveBeenCalledTimes(1);
   });
 
+  it('centers the sub type, sub mode and online client columns', async () => {
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(groupPage([group]));
+    renderWithProviders(<ConsumerPage />);
+    const row = await screen.findByRole('row', { name: /remote-cg/ });
+
+    // 用户约定 2026-10-16：这三列的表头与单元格都居中，不要改回 antd 默认的左对齐。
+    const headers = Array.from(row.closest('table')!.querySelectorAll('thead th')).map((th) =>
+      th.textContent?.trim(),
+    );
+    const cells = within(row).getAllByRole('cell');
+    for (const title of ['订阅组类型', '订阅模式', '在线客户端']) {
+      const index = headers.indexOf(title);
+      expect(index).toBeGreaterThan(-1);
+      expect(cells[index].style.textAlign).toBe('center');
+    }
+  });
+
   it('renders an unknown (-1) lag as unavailable in the table and the lag detail', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
@@ -2415,7 +2502,7 @@ describe('Consumer page', () => {
     });
   });
 
-  it('sorts groups with unavailable connections after known client counts', async () => {
+  it('renders an unavailable connection inventory as zero and sorts it as zero', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
       groupPage([
@@ -2424,12 +2511,14 @@ describe('Consumer page', () => {
       ]),
     );
     renderWithProviders(<ConsumerPage />);
-    await screen.findByRole('row', { name: /unknown-conn-cg/ });
+    const unknownRow = await screen.findByRole('row', { name: /unknown-conn-cg/ });
 
-    // The sentinel must never reach the cell as a bare -1 ...
-    expect(screen.getByRole('row', { name: /unknown-conn-cg/ }).textContent).toContain('不可用');
+    // 用户约定 2026-10-16：Group 列表的「在线客户端」不出现「不可用」，查不到连接信息一律按 0 呈现。
+    // 显示与排序必须同口径，否则会出现「显示 0 却排在 12 后面」的自相矛盾。
+    expect(unknownRow.textContent).not.toContain('不可用');
+    expect(unknownRow.textContent).not.toContain('-1');
+    expect(within(unknownRow).getByRole('cell', { name: '0' })).toBeInTheDocument();
 
-    // ... and must not sort as "fewer clients than zero".
     const [clientsHeader] = screen.getAllByText('在线客户端');
     await user.click(clientsHeader);
     await waitFor(() => {
@@ -2444,7 +2533,7 @@ describe('Consumer page', () => {
               : '',
         )
         .filter(Boolean);
-      expect(order).toEqual(['known', 'unknown']);
+      expect(order).toEqual(['unknown', 'known']);
     });
   });
 

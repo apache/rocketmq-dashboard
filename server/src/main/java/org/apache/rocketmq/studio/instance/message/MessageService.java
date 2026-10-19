@@ -213,9 +213,19 @@ public class MessageService {
         return provider.consumeMessageDirectly(request);
     }
 
-    /** consumeResult mirrors the broker-side CMResult enum, where only CR_SUCCESS means consumed. */
+    /**
+     * Grade a direct consume with the shared audit vocabulary (SUCCESS / FAILED / PARTIAL, see
+     * docs/api-spec.md). consumeResult mirrors the broker-side CMResult enum, where only
+     * CR_SUCCESS means consumed. The cloud providers answer in their own vocabulary: Tencent
+     * returns REQUEST_ACCEPTED for a request the cloud accepted but whose consumption outcome it
+     * never reports, which is neither a confirmed success nor a failure — PARTIAL, matching the
+     * DLQ resend and cloud import classification. Every other answer failed.
+     */
     private static String auditResult(String consumeResult) {
-        return "CR_SUCCESS".equals(consumeResult) ? "SUCCESS" : "FAILED";
+        if ("CR_SUCCESS".equals(consumeResult)) {
+            return "SUCCESS";
+        }
+        return "REQUEST_ACCEPTED".equals(consumeResult) ? "PARTIAL" : "FAILED";
     }
 
     private void recordDirectConsumeAudit(DirectConsumeMessageDTO request, String detail,
