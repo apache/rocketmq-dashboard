@@ -30,6 +30,7 @@ import org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
+import org.apache.rocketmq.studio.common.util.LikePatterns;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -144,7 +145,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     public List<TopicVO> listTopics(String instanceId, String clusterId, String type, String search) {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
-        String literalSearch = escapeLike(search);
+        String literalSearch = LikePatterns.escape(search);
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
                 .and(instanceId != null, scope -> {
                     scope.eq(RmqTopic::getInstanceId, normalizeMetadataScope(instanceId));
@@ -174,7 +175,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             String search, int page, int pageSize) {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
-        String literalSearch = escapeLike(search);
+        String literalSearch = LikePatterns.escape(search);
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
                 .and(instanceId != null, scope -> {
                     scope.eq(RmqTopic::getInstanceId, normalizeMetadataScope(instanceId));
@@ -245,7 +246,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     public List<ConsumerGroupVO> listConsumerGroups(String instanceId, String clusterId, String search) {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
-        String literalSearch = escapeLike(search);
+        String literalSearch = LikePatterns.escape(search);
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
                 .and(instanceId != null, scope -> {
                     scope.eq(RmqGroup::getInstanceId, normalizeMetadataScope(instanceId));
@@ -278,7 +279,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             String search, String subscriptionMode, int page, int pageSize) {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
-        String literalSearch = escapeLike(search);
+        String literalSearch = LikePatterns.escape(search);
         // message_model stores the subscription mode ("Push"/"Pop"); blank and "ALL" mean no
         // restriction, so the count and the page both describe the filtered result set.
         boolean modeRestricted = StringUtils.hasText(subscriptionMode)
@@ -306,7 +307,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                         scope.isNull(RmqGroup::getMessageModel)
                                 .or().ne(RmqGroup::getMessageModel, SubscriptionMode.Pop.name());
                     }
-                })>>>>>>> 076958a9b (fix(metadata): match literal resource search text)
+                })
                 .orderByAsc(RmqGroup::getName, RmqGroup::getId);
         Page<RmqGroup> result = groupMapper.selectPage(new Page<>(page, pageSize), query);
         List<ConsumerGroupVO> groups = result.getRecords().stream()
@@ -314,11 +315,6 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 .toList();
         enrichLiveStats(instanceId, groups);
         return PageResult.of(groups, result.getTotal(), page, pageSize);
-    }
-
-    private static String escapeLike(String search) {
-        return search == null ? null : search.replace("\\", "\\\\")
-                .replace("%", "\\%").replace("_", "\\_");
     }
 
     private static final int ONLINE_ENRICHMENT_THREADS = 8;

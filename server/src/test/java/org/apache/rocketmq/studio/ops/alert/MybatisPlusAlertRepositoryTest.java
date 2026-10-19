@@ -190,6 +190,42 @@ class MybatisPlusAlertRepositoryTest {
     }
 
     @Test
+    void findRulePageShouldMatchLiteralSearchTextTest() {
+        Page<RmqAlertRule> mapperPage = new Page<RmqAlertRule>(1, 20)
+                .setRecords(List.of()).setTotal(0);
+        when(ruleMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
+
+        assertThat(repository.findRulePage("broker_%\\east", true, 1, 20).getItems()).isEmpty();
+
+        ArgumentCaptor<Wrapper<RmqAlertRule>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(ruleMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        QueryWrapper<RmqAlertRule> query = (QueryWrapper<RmqAlertRule>) queryCaptor.getValue();
+        assertThat(query.getSqlSegment()).contains("name LIKE", "enabled =");
+        assertThat(query.getParamNameValuePairs().values())
+                .contains("%broker\\_\\%\\\\east%", true);
+    }
+
+    @Test
+    void findRulesPageShouldMatchLiteralNameAndMetricTextTest() {
+        Page<RmqAlertRule> mapperPage = new Page<RmqAlertRule>(1, 20)
+                .setRecords(List.of()).setTotal(0);
+        when(ruleMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
+
+        assertThat(repository.findRulesPage(
+                new AlertRuleQuery(AlertDomain.BUSINESS, " metric_50% ", true, 1, 20))
+                .getItems()).isEmpty();
+
+        ArgumentCaptor<Wrapper<RmqAlertRule>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(ruleMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        QueryWrapper<RmqAlertRule> query = (QueryWrapper<RmqAlertRule>) queryCaptor.getValue();
+        assertThat(query.getSqlSegment()).contains("name LIKE", "metric LIKE", "enabled =");
+        assertThat(query.getParamNameValuePairs().values())
+                .contains("%metric\\_50\\%%", true);
+        assertThat(query.getParamNameValuePairs().values().stream()
+                .filter("%metric\\_50\\%%"::equals)).hasSize(2);
+    }
+
+    @Test
     void findRuleByIdShouldUsePrimaryKeyLookupWithoutFullListRead() {
         RmqAlertRule entity = new RmqAlertRule();
         entity.setId(9L);
