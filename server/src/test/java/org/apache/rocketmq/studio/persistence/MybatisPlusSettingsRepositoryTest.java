@@ -170,7 +170,7 @@ class MybatisPlusSettingsRepositoryTest {
     }
 
     @Test
-    void shouldTreatDataSourceSearchAndTypeAsLiteralText() {
+    void shouldTreatDataSourceSearchAndTypeAsLiteralTextTest() {
         Page<RmqDataSource> databasePage = new Page<RmqDataSource>(1, 20)
                 .setRecords(List.of())
                 .setTotal(0);
