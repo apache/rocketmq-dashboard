@@ -38,6 +38,7 @@ vi.mock('../../../services/aclService', () => ({
   listAclRules: vi.fn(),
   listAclUsers: vi.fn(),
   pageAclUsers: vi.fn(),
+  pushAclToBroker: vi.fn(),
   updateAclRule: vi.fn(),
   updateAclUser: vi.fn(),
 }));
@@ -69,6 +70,10 @@ const renderWithProviders = (ui: React.ReactElement, initialEntry = '/') =>
       </LangProvider>
     </App>,
   );
+
+const openRulesTab = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.click(screen.getByText('ACL 规则'));
+};
 
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
@@ -120,6 +125,49 @@ describe('ACL page', () => {
       page: 1,
       size: 20,
     });
+    vi.mocked(aclService.pushAclToBroker).mockResolvedValue({
+      instanceId: 'instance-a',
+      brokers: [],
+      pushed: 0,
+      failed: 0,
+      accounts: [],
+    });
+  });
+
+  it('pushes stored accounts to the broker and summarizes every outcome', async () => {
+    vi.mocked(aclService.pushAclToBroker).mockResolvedValue({
+      instanceId: 'instance-a',
+      brokers: ['10.0.0.1:10911'],
+      pushed: 1,
+      failed: 1,
+      accounts: [
+        {
+          username: 'remote-admin',
+          subject: 'User:remote-admin',
+          policyCount: 1,
+          skipped: [],
+          brokers: [{ broker: '10.0.0.1:10911', success: true, error: null }],
+        },
+        {
+          username: 'broken',
+          subject: 'User:broken',
+          policyCount: 0,
+          skipped: ['topic-: PREFIXED pattern has no broker ACL equivalent'],
+          brokers: [{ broker: '10.0.0.1:10911', success: false, error: 'acl disabled' }],
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<AclPage />, '/instance/instance-a/acl');
+    await user.click(await screen.findByText('用户管理'));
+
+    await user.click(screen.getByRole('button', { name: /下发到 Broker/ }));
+
+    await waitFor(() => expect(aclService.pushAclToBroker).toHaveBeenCalledTimes(1));
+    const dialog = await screen.findByRole('dialog', { name: '下发到 Broker 结果' });
+    expect(within(dialog).getByText(/成功 1 个、失败 1 个/)).toBeInTheDocument();
+    expect(within(dialog).getByText('User:broken')).toBeInTheDocument();
+    expect(within(dialog).getByText('acl disabled')).toBeInTheDocument();
   });
 
   it('loads ACL rules and users through the service layer', async () => {
@@ -165,6 +213,7 @@ describe('ACL page', () => {
         size: 20,
       });
     renderWithProviders(<AclPage />);
+    await openRulesTab(user);
 
     const row = await screen.findByRole('row', { name: /remote-topic/ });
     await user.click(within(row).getByRole('button', { name: /删除/ }));
@@ -274,6 +323,7 @@ describe('ACL page', () => {
     renderWithProviders(<AclPage />, '/instance/1/acl');
 
     expect(await screen.findByText('remote-user')).toBeInTheDocument();
+    await user.click(screen.getByText('ACL 规则'));
     await user.click(screen.getByRole('button', { name: /添加规则/ }));
     const dialog = await screen.findByRole('dialog');
 
@@ -304,8 +354,40 @@ describe('ACL page', () => {
     expect(screen.getByText('cluster-a')).toBeInTheDocument();
   });
 
-  it('explains that ACL records are Studio-local metadata', async () => {
+  it('opens on the user tab and lists it before the rule tab', async () => {
     renderWithProviders(<AclPage />);
+
+    const tabs = await screen.findAllByRole('tab');
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['用户管理', 'ACL 规则', '集群 ACL 配置']);
+    expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
+    // 默认面板就是用户管理，不需要再点一次
+    expect(await screen.findByText('remote-admin')).toBeInTheDocument();
+  });
+
+  it('points Apache instances at the broker push instead of claiming store-only metadata', async () => {
+    renderWithProviders(<AclPage />);
+
+    expect(await screen.findByTestId('acl-local-metadata-notice')).toHaveTextContent(
+      '当前 ACL 规则和用户保存在 Studio，点「下发到 Broker」后写入选中实例',
+    );
+  });
+
+  it('keeps the store-only wording for cloud vendors without a push channel', async () => {
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      {
+        id: 21,
+        name: 'aliyun-rmq',
+        remark: '',
+        type: 'CLOUD',
+        endpoint: 'rmq-cn-x.aliyuncs.com:8080',
+        vendor: 'ALIYUN',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    renderWithProviders(<AclPage />, '/instance/aliyun-rmq/acl');
 
     expect(await screen.findByTestId('acl-local-metadata-notice')).toHaveTextContent(
       '当前 ACL 规则和用户仅保存为 Studio 本地元数据',
@@ -385,6 +467,7 @@ describe('ACL page', () => {
     });
 
     renderWithProviders(<AclPage />, '/instance/tencent-rmq/acl');
+    await openRulesTab(user);
 
     await waitFor(() =>
       expect(screen.getByTestId('acl-local-metadata-notice')).toHaveTextContent(
@@ -481,6 +564,7 @@ describe('ACL page', () => {
       actions: ['PUB'],
     });
     renderWithProviders(<AclPage />, '/instance/tencent-rmq/acl');
+    await openRulesTab(user);
     await waitFor(() =>
       expect(screen.getByTestId('acl-local-metadata-notice')).toHaveTextContent(
         'Tencent Cloud Role',
@@ -490,6 +574,7 @@ describe('ACL page', () => {
       const readerRow = await screen.findByRole('row', { name: /reader-role/ });
       await user.click(within(readerRow).getByRole('button', { name: /编辑/ }));
     } else {
+      await user.click(screen.getByText('ACL 规则'));
       await user.click(screen.getByRole('button', { name: /添加规则/ }));
     }
     const dialog = await screen.findByRole('dialog');
@@ -549,6 +634,7 @@ describe('ACL page', () => {
       aclVersion: 2,
     });
     renderWithProviders(<AclPage />);
+    await openRulesTab(user);
     const row = await screen.findByRole('row', { name: /remote-user/ });
     await user.click(within(row).getByRole('button', { name: /编辑/ }));
     const dialog = await screen.findByRole('dialog');
@@ -620,8 +706,11 @@ describe('ACL page', () => {
     });
     renderWithProviders(<AclPage />);
 
-    expect(await screen.findByText('no-time-rule')).toBeInTheDocument();
-    expect(screen.getByText('-')).toBeInTheDocument();
+    // The rules pane is mounted but hidden until its tab is active, and hidden nodes are not
+    // role-queryable, so activate the tab before asserting on the placeholder dash.
+    await openRulesTab(user);
+    const ruleRow = await screen.findByRole('row', { name: /no-time-rule/ });
+    expect(within(ruleRow).getAllByText('-').length).toBeGreaterThan(0);
 
     await user.click(screen.getByText('用户管理'));
     const userPanel = screen.getByRole('tabpanel', { name: '用户管理' });
@@ -723,8 +812,7 @@ describe('ACL page', () => {
     renderWithProviders(<AclPage />);
 
     await user.click(await screen.findByText('用户管理'));
-    const userPanel = screen.getByRole('tabpanel', { name: '用户管理' });
-    await user.click(within(userPanel).getByRole('button', { name: /添加用户/ }));
+    await user.click(screen.getByRole('button', { name: /添加用户/ }));
     const dialog = await screen.findByRole('dialog');
 
     await user.type(
@@ -758,8 +846,7 @@ describe('ACL page', () => {
     renderWithProviders(<AclPage />);
 
     await user.click(await screen.findByText('用户管理'));
-    const userPanel = screen.getByRole('tabpanel', { name: '用户管理' });
-    await user.click(within(userPanel).getByRole('button', { name: /添加用户/ }));
+    await user.click(screen.getByRole('button', { name: /添加用户/ }));
     const dialog = await screen.findByRole('dialog');
 
     await user.type(

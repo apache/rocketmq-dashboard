@@ -53,6 +53,43 @@ const record = (overrides: Partial<AuditRecord> = {}): AuditRecord => ({
 });
 
 describe('audit risk insights', () => {
+  it('keeps unscoped failures distinct from a real global cluster Test', () => {
+    const insights = buildAuditRiskInsights(null, [
+      record({ id: 1, result: 'FAILED', clusterId: null }),
+      record({ id: 2, result: 'FAILED', clusterId: 'global' }),
+    ]);
+    expect(insights.hotTargets).toEqual([]);
+    expect(insights.issues.some((issue) => issue.code === 'REPEATED_TARGET_FAILURES')).toBe(false);
+  });
+
+  it('preserves true repeated failures in each nullable scope Test', () => {
+    const rows = [
+      record({ id: 1, result: 'FAILED', clusterId: null }),
+      record({ id: 2, result: 'PARTIAL', clusterId: null }),
+      record({ id: 3, result: 'FAILED', clusterId: 'global' }),
+      record({ id: 4, result: 'FAILED', clusterId: 'global' }),
+    ];
+    for (const records of [rows, [...rows].reverse()]) {
+      const insights = buildAuditRiskInsights(null, records);
+      expect(insights.hotTargets).toHaveLength(2);
+      expect(insights.hotTargets).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ clusterId: '-', failed: 1, partial: 1, total: 2 }),
+          expect.objectContaining({ clusterId: 'global', failed: 2, partial: 0, total: 2 }),
+        ]),
+      );
+      expect(new Set(insights.hotTargets.map((target) => target.key)).size).toBe(2);
+    }
+  });
+
+  it('does not confuse a literal placeholder target with an unknown target Test', () => {
+    const insights = buildAuditRiskInsights(null, [
+      record({ id: 1, result: 'FAILED', target: null }),
+      record({ id: 2, result: 'FAILED', target: '-' }),
+    ]);
+    expect(insights.hotTargets).toEqual([]);
+  });
+
   it('normalizes backend result aliases before classifying failures', () => {
     expect(normalizeAuditResult(' failure ')).toBe('FAILED');
     expect(isFailedAuditResult('FAILURE')).toBe(true);
@@ -149,6 +186,28 @@ describe('audit risk insights', () => {
         expect.objectContaining({ code: 'OPERATOR_CONCENTRATION', level: 'notice' }),
       ]),
     );
+  });
+
+  it('keeps a missing operator distinct from one literally named system Test', () => {
+    const insights = buildAuditRiskInsights(null, [
+      record({ id: 1, operator: undefined, target: 'orders' }),
+      record({ id: 2, operator: '  ', target: 'payments' }),
+      record({ id: 3, operator: undefined, target: 'refunds' }),
+      record({ id: 4, operator: 'system', target: 'invoices' }),
+      record({ id: 5, operator: 'system', target: 'shipments' }),
+      record({ id: 6, operator: 'ops-a', target: 'ledger' }),
+    ]);
+
+    // 缺失 operator 的 3 条自成一组（展示名兜底为 system），不与字面 'system' 的 2 条合并成 5 条。
+    expect(insights.topOperator).toEqual(
+      expect.objectContaining({
+        name: 'system',
+        count: 3,
+        percent: 50,
+        level: 'healthy',
+      }),
+    );
+    expect(insights.issues.some((issue) => issue.code === 'OPERATOR_CONCENTRATION')).toBe(false);
   });
 
   it('falls back to current-page records when server summary is unavailable', () => {

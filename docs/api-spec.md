@@ -321,7 +321,7 @@ GET /api/dashboard
 ### 3.1 获取实例列表
 
 ```
-GET /api/instances?type={type}&search={keyword}
+GET /api/instances?type={type}&search={keyword}&withCounts={withCounts}
 ```
 
 **Query Parameters:**
@@ -330,6 +330,7 @@ GET /api/instances?type={type}&search={keyword}
 |------|------|------|------|
 | `type` | `string` | 否 | 按类型过滤: `CLOUD` / `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT` |
 | `search` | `string` | 否 | 按名称或地址搜索 |
+| `withCounts` | `boolean` | 否 | 默认 `false`。为 `true` 时逐实例解析 Topic / 消费组数量；云厂商走远程 OpenAPI（每实例两次调用），十几实例量级耗时秒级，只需要实例名的调用方（如实例选择器）不要开启 |
 
 **Response `data`:** `Instance[]`
 
@@ -340,8 +341,9 @@ GET /api/instances?type={type}&search={keyword}
 | `remark` | `string` | 备注 |
 | `type` | `string` | 接入类型: `CLOUD` / `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT` |
 | `endpoint` | `string` | 接入地址 |
-| `topicCount` | `number` | Topic 数量 |
-| `consumerGroupCount` | `number` | 消费组数量 |
+| `topicCount` | `number` | Topic 数量；未请求 `withCounts` 或解析失败时为 `0` |
+| `consumerGroupCount` | `number` | 消费组数量；未请求 `withCounts` 或解析失败时为 `0` |
+| `resourceCountsAvailable` | `boolean` | 上面两个计数是否可信；`false` 表示未请求或解析失败，此时不应把 `0` 当成真实数量 |
 | `gmtCreate` | `string` | 创建时间 |
 | `gmtModified` | `string` | 更新时间 |
 
@@ -575,7 +577,7 @@ POST /api/nameservers/update
 |------|------|------|------|
 | `clusterId` | `string` | 是 | 所属集群 ID |
 | `addr` | `string` | 是 | 原地址 |
-| `newAddr` | `string` | 否 | 新地址（不传则不修改） |
+| `version` | `string` | 否 | NameServer 版本（不传则不修改） |
 
 **Response `data`:** `NameServerInfo`
 
@@ -1754,6 +1756,12 @@ POST /api/dlq/resend
 Topic，未指定 `targetTopic` 时即原 Topic）、`reason`（`string`，归一化后的简短失败原因，最长 256 字符）。
 §9.4「重发选中的死信消息」返回同一结构，两条重投路径共用该 VO。
 
+> **跨集群拒绝（`409`）**：显式传入 `targetTopic` 时，若它解析出的集群不是死信 Topic（`%DLQ%{groupName}`）
+> 所属集群的子集，返回 `409 targetTopic resolves to a different cluster than %DLQ%{groupName}; resend rejected: {targetTopic}`
+> （`RocketMQDLQProvider.requireSameClusterAsDlqTopic`）。**省略 `targetTopic` 时同样校验**：服务端先按每条死信
+> 推断目的地（即其原 Topic），对推断出的每一个目的地跑同一次校验，任一跨集群即整批 `409` 拒绝，
+> 不会出现「重投了一半」。§9.4 的按 `msgIds` 重投走同一套校验。
+
 ### 9.3 分页获取死信消息明细
 
 ```
@@ -2269,6 +2277,9 @@ POST /api/settings/general/save
 | `clearApiKey` | `boolean` | 否 | 传 `true` 时显式清除现有密钥，优先级高于 `apiKey` |
 | `model` | `string` | 是 | 模型名称 |
 | `baseUrl` | `string` | 是 | Base URL |
+| `preserveLlmConfig` | `boolean` | 否 | 默认 `false`；通用设置表单传 `true`，保留服务端当前 AI 配置 |
+
+`preserveLlmConfig=true` 时，请求中的 AI 字段（包括 API Key 及其清空标记）不会覆盖当前值；原有必填字段校验不变。省略该标记或传 `false` 时维持原完整更新契约。控制台通用表单使用该标记，AI 表单只修改 AI 配置，两条路径的读、合并和保存在单个服务进程内串行执行。这不提供跨进程的版本冲突检测；旧调用方的完整更新仍可能覆盖其他写入。标记不存入设置 JSON，也不出现在读取响应中。
 
 **Response `data`:** `null`
 

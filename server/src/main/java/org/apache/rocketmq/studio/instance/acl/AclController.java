@@ -144,6 +144,16 @@ public class AclController {
         return Result.ok(aclService.createAndUpdatePlainAccessConfig(request.toPlainAccessConfigVO()));
     }
 
+    /**
+     * Writes every stored ACL account of the instance to its master brokers (ACL 2.0 admin API).
+     * Additive by design: broker accounts the dashboard does not know about are left untouched.
+     */
+    @PostMapping("/push-to-broker")
+    public Result<PushAclToBrokerResultVO> pushAclToBroker(
+            @Valid @RequestBody PushAclToBrokerDTO request) {
+        return Result.ok(aclService.pushAclToBroker(request.getInstanceId()));
+    }
+
     private <T> T requireRequest(T request, String message) {
         if (request == null) {
             throw new BusinessException(400, message);

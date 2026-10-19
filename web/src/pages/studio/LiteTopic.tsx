@@ -16,6 +16,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { formatUtcDateTime } from '../../utils/format';
 import {
   Table,
   Button,
@@ -23,7 +24,6 @@ import {
   Select,
   Tag,
   Modal,
-  Drawer,
   Card,
   Row,
   Col,
@@ -48,6 +48,7 @@ import {
   DownloadSimple,
 } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
+import InfoBanner from '../../components/InfoBanner';
 import { useLang } from '../../i18n/LangContext';
 import {
   queryLiteTopicList,
@@ -70,11 +71,26 @@ const formatDuration = (ms: number | undefined | null): string => {
   return `${(ms / 3600000).toFixed(1)}h`;
 };
 
+/* LiteTopic instants (create / last-active) are epoch millis. Render them through the shared
+ * formatter like the other timestamp surfaces: a stable `YYYY-MM-DD HH:mm:ss` in the viewer's
+ * zone, instead of Date.toLocaleString's locale-dependent browser-local string. */
 export const formatTime = (timestamp: number | undefined | null): string => {
   if (timestamp == null || !Number.isFinite(timestamp)) return '-';
   const date = new Date(timestamp);
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? '-' : formatUtcDateTime(date);
 };
+
+/**
+ * Sort key for a column value the provider can leave unset. The cells render `-` in that case
+ * (`formatDuration` / `formatTime`), and neither an absent TTL nor an absent last-active instant
+ * may sort as a measured zero: ascending, that would place the pattern before every measurable one
+ * as if it had expired first or been idle longest. Ant Design negates the comparator for a
+ * descending column, so the unset value has to stay last in both directions.
+ */
+const unmeasuredSortKey = (
+  value: number | undefined,
+  sortOrder?: 'ascend' | 'descend' | null,
+): number => value ?? (sortOrder === 'descend' ? Number.MIN_SAFE_INTEGER : Number.MAX_SAFE_INTEGER);
 
 const getProgressStatus = (percent: number): 'exception' | 'active' | 'normal' => {
   if (percent >= 90) return 'exception';
@@ -131,6 +147,9 @@ const LiteTopicPage: React.FC = () => {
   const [topicList, setTopicList] = useState<LiteTopicItem[]>([]);
   const [quota, setQuota] = useState<LiteTopicQuota | null>(null);
   const [capabilitySupported, setCapabilitySupported] = useState(true);
+  const [capabilityFailed, setCapabilityFailed] = useState(false);
+  const [capabilityRetrying, setCapabilityRetrying] = useState(false);
+  const [capabilityRetryVersion, setCapabilityRetryVersion] = useState(0);
   const [patternFilter, setPatternFilter] = useState('');
   const [namespaceFilter, setNamespaceFilter] = useState('');
   const [ttlStatusFilter, setTTLStatusFilter] = useState('');
@@ -139,7 +158,7 @@ const LiteTopicPage: React.FC = () => {
   const [pageSize, setPageSize] = useState(10);
 
   // Session drawer
-  const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
+  const [sessionModalOpen, setSessionModalOpen] = useState(false);
   const [sessionData, setSessionData] = useState<LiteTopicSession | null>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [availableSessionIds, setAvailableSessionIds] = useState<string[]>([]);
@@ -161,6 +180,7 @@ const LiteTopicPage: React.FC = () => {
   const mountedRef = useRef(false);
   const bootstrapRequestId = useRef(0);
   const displayRequestId = useRef(0);
+  const displayQueryRef = useRef<{ pattern?: string; namespace?: string }>({});
   const sessionRequestId = useRef(0);
 
   useEffect(() => {
@@ -175,6 +195,7 @@ const LiteTopicPage: React.FC = () => {
       options: { clear?: boolean; collectNamespaceOptions?: boolean } = {},
     ) => {
       const requestId = ++displayRequestId.current;
+      displayQueryRef.current = { pattern, namespace };
 
       if (options.clear) {
         setTopicList([]);
@@ -225,6 +246,16 @@ const LiteTopicPage: React.FC = () => {
     const bootstrapIsActive = () =>
       mountedState.current && bootstrapId === bootstrapCounter.current;
 
+    const loadNamespaceOptions = async () => {
+      if (!bootstrapIsActive()) return;
+      try {
+        const list = await queryLiteTopicList();
+        if (bootstrapIsActive()) setNamespaceOptions(collectNamespaces(list));
+      } catch {
+        // The active display request owns user-visible error handling.
+      }
+    };
+
     const initialize = async () => {
       try {
         const capability = await queryLiteTopicCapability();
@@ -232,6 +263,7 @@ const LiteTopicPage: React.FC = () => {
         if (capability && capability.supported === false) {
           ++displayCounter.current;
           setCapabilitySupported(false);
+          setCapabilityFailed(false);
           setTopicList([]);
           setQuota(null);
           setLoading(false);
@@ -241,34 +273,35 @@ const LiteTopicPage: React.FC = () => {
         if (!bootstrapIsActive()) return;
         ++displayCounter.current;
         setCapabilitySupported(false);
+        setCapabilityFailed(true);
         setTopicList([]);
         setQuota(null);
         setLoading(false);
         return;
       }
 
+      setCapabilitySupported(true);
+      setCapabilityFailed(false);
       if (displayCounter.current === initialDisplayRequestId) {
-        await fetchData(undefined, undefined, { collectNamespaceOptions: true });
+        const query = displayQueryRef.current;
+        const unfiltered = !query.pattern && !query.namespace;
+        await fetchData(query.pattern, query.namespace, { collectNamespaceOptions: unfiltered });
+        if (!unfiltered) await loadNamespaceOptions();
       } else {
-        try {
-          const list = await queryLiteTopicList();
-          if (bootstrapIsActive()) {
-            setNamespaceOptions(collectNamespaces(list));
-          }
-        } catch {
-          // The active display request owns user-visible error handling.
-        }
+        await loadNamespaceOptions();
       }
     };
 
-    void initialize();
+    void initialize().finally(() => {
+      if (bootstrapIsActive()) setCapabilityRetrying(false);
+    });
 
     return () => {
       mountedState.current = false;
       ++bootstrapCounter.current;
       ++displayCounter.current;
     };
-  }, [fetchData]);
+  }, [capabilityRetryVersion, fetchData]);
 
   const handleSearch = () => {
     setCurrentPage(1);
@@ -290,7 +323,7 @@ const LiteTopicPage: React.FC = () => {
     const requestId = ++sessionRequestId.current;
     if (sessionIds) setAvailableSessionIds(sessionIds);
     setSelectedSessionId(sessionId);
-    setSessionDrawerOpen(true);
+    setSessionModalOpen(true);
     setSessionLoading(true);
     setSessionData(null);
     try {
@@ -449,7 +482,8 @@ const LiteTopicPage: React.FC = () => {
       dataIndex: 'averageTTL',
       key: 'averageTTL',
       render: (val: number) => formatDuration(val),
-      sorter: (a, b) => (a.averageTTL || 0) - (b.averageTTL || 0),
+      sorter: (a, b, sortOrder?: 'ascend' | 'descend' | null) =>
+        unmeasuredSortKey(a.averageTTL, sortOrder) - unmeasuredSortKey(b.averageTTL, sortOrder),
     },
     {
       title: t('liteTopic.status'),
@@ -462,7 +496,9 @@ const LiteTopicPage: React.FC = () => {
       dataIndex: 'lastActiveTime',
       key: 'lastActiveTime',
       render: (val: number) => formatTime(val),
-      sorter: (a, b) => (a.lastActiveTime || 0) - (b.lastActiveTime || 0),
+      sorter: (a, b, sortOrder?: 'ascend' | 'descend' | null) =>
+        unmeasuredSortKey(a.lastActiveTime, sortOrder) -
+        unmeasuredSortKey(b.lastActiveTime, sortOrder),
     },
     {
       title: t('liteTopic.actions'),
@@ -614,7 +650,7 @@ const LiteTopicPage: React.FC = () => {
     );
   };
 
-  // ─── Session Drawer Content ──────────────────────────────────
+  // ─── Session Modal Content ───────────────────────────────────
 
   const renderSessionContent = () => {
     if (sessionLoading) {
@@ -628,6 +664,9 @@ const LiteTopicPage: React.FC = () => {
       sessionData.totalMessages != null && sessionData.totalMessages > 0
         ? Math.round(((sessionData.consumedMessages ?? 0) / sessionData.totalMessages) * 100)
         : 0;
+    // The consumed-offset scan is capped, so on a session with more lite topics than one scan
+    // covers the consumed and total counts are lower bounds: prefix them and drop the ratio.
+    const consumedTruncated = sessionData.consumedScanTruncated === true;
 
     return (
       <div>
@@ -689,7 +728,11 @@ const LiteTopicPage: React.FC = () => {
               <div style={{ fontSize: 14, color: '#8c8c8c', marginBottom: 4 }}>
                 {t('liteTopic.totalMessages')}
               </div>
-              <div style={{ fontSize: 24, fontWeight: 700 }}>{sessionData.totalMessages ?? 0}</div>
+              <div style={{ fontSize: 24, fontWeight: 700 }}>
+                {consumedTruncated
+                  ? `≥ ${sessionData.totalMessages ?? 0}`
+                  : (sessionData.totalMessages ?? 0)}
+              </div>
             </Card>
           </Col>
           <Col span={8}>
@@ -701,7 +744,9 @@ const LiteTopicPage: React.FC = () => {
                 {t('liteTopic.consumedMessages')}
               </div>
               <div style={{ fontSize: 24, fontWeight: 700 }}>
-                {sessionData.consumedMessages ?? 0}
+                {consumedTruncated
+                  ? `≥ ${sessionData.consumedMessages ?? 0}`
+                  : (sessionData.consumedMessages ?? 0)}
               </div>
             </Card>
           </Col>
@@ -722,23 +767,20 @@ const LiteTopicPage: React.FC = () => {
 
         <div style={{ marginTop: 16 }}>
           <div style={{ marginBottom: 8, fontWeight: 500 }}>{t('liteTopic.consumptionRate')}</div>
-          <Progress
-            percent={consumptionPercent}
-            status={consumptionPercent >= 100 ? 'success' : 'active'}
-            strokeColor={consumptionPercent >= 100 ? '#52c41a' : '#1677ff'}
-          />
-        </div>
-
-        {sessionData.popProgress != null && (
-          <div style={{ marginTop: 16 }}>
-            <div style={{ marginBottom: 8, fontWeight: 500 }}>{t('liteTopic.popProgress')}</div>
-            <Progress
-              percent={Math.round(sessionData.popProgress)}
-              status="active"
-              strokeColor="#722ed1"
+          {consumedTruncated ? (
+            <InfoBanner
+              data-testid="lite-topic-consumed-truncated"
+              title={t('liteTopic.consumedTruncated.title')}
+              description={t('liteTopic.consumedTruncated.description')}
             />
-          </div>
-        )}
+          ) : (
+            <Progress
+              percent={consumptionPercent}
+              status={consumptionPercent >= 100 ? 'success' : 'active'}
+              strokeColor={consumptionPercent >= 100 ? '#52c41a' : '#1677ff'}
+            />
+          )}
+        </div>
 
         {sessionData.liteTopics && sessionData.liteTopics.length > 0 && (
           <>
@@ -788,8 +830,24 @@ const LiteTopicPage: React.FC = () => {
       <div style={{ padding: 0 }}>
         <PageHeader title={t('liteTopic.title')} />
         <Alert
-          message={t('liteTopic.notSupported')}
-          type="info"
+          message={t(
+            capabilityFailed ? 'liteTopic.capabilityCheckFailed' : 'liteTopic.notSupported',
+          )}
+          type={capabilityFailed ? 'error' : 'info'}
+          action={
+            capabilityFailed ? (
+              <Button
+                loading={capabilityRetrying}
+                disabled={capabilityRetrying}
+                onClick={() => {
+                  setCapabilityRetrying(true);
+                  setCapabilityRetryVersion((version) => version + 1);
+                }}
+              >
+                {t('common.retry')}
+              </Button>
+            ) : undefined
+          }
           showIcon
           icon={<Info size={16} />}
           style={{ marginTop: 16 }}
@@ -894,26 +952,29 @@ const LiteTopicPage: React.FC = () => {
         />
       </Card>
 
-      {/* Session Detail Drawer */}
-      <Drawer
+      {/* Session Detail Modal */}
+      <Modal
         title={
           <span>
             <ClockCounterClockwise size={16} style={{ marginRight: 8, color: '#1677ff' }} />
             {t('liteTopic.sessionDetail')}
           </span>
         }
-        placement="right"
-        width={680}
-        open={sessionDrawerOpen}
-        onClose={() => {
+        width="min(680px, calc(100vw - 32px))"
+        open={sessionModalOpen}
+        onCancel={() => {
           sessionRequestId.current += 1;
-          setSessionDrawerOpen(false);
+          setSessionModalOpen(false);
           setSessionLoading(false);
           setSessionData(null);
           setAvailableSessionIds([]);
           setSelectedSessionId(undefined);
         }}
+        footer={null}
         destroyOnHidden
+        styles={{
+          body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden' },
+        }}
       >
         {availableSessionIds.length > 1 && (
           <Select
@@ -930,7 +991,7 @@ const LiteTopicPage: React.FC = () => {
           />
         )}
         {renderSessionContent()}
-      </Drawer>
+      </Modal>
 
       {/* Extend TTL Modal */}
       <Modal
