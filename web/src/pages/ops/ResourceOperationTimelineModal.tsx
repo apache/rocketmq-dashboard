@@ -78,6 +78,7 @@ const ResourceOperationTimelineModal = ({
   const { t } = useLang();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [reloadKey, setReloadKey] = useState(0);
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [response, setResponse] = useState<{
     queryKey: string;
@@ -88,7 +89,7 @@ const ResourceOperationTimelineModal = ({
   const [exporting, setExporting] = useState(false);
   const requestVersion = useRef(0);
   const filter = useMemo(() => buildTimelineFilter(resource, dateRange), [dateRange, resource]);
-  const queryKey = JSON.stringify({ page, pageSize, filter });
+  const queryKey = JSON.stringify({ page, pageSize, filter, reloadKey });
   const currentResponse = response?.queryKey === queryKey ? response : null;
   const loading = open && currentResponse === null;
 
@@ -186,7 +187,16 @@ const ResourceOperationTimelineModal = ({
             <Spin />
           </Flex>
         ) : currentResponse?.error ? (
-          <Alert type="error" showIcon message={t('audit.timelineLoadFailed')} />
+          <Alert
+            type="error"
+            showIcon
+            message={t('audit.timelineLoadFailed')}
+            action={
+              <Button size="small" onClick={() => setReloadKey((current) => current + 1)}>
+                {t('common.retry')}
+              </Button>
+            }
+          />
         ) : currentResponse && currentResponse.records.length > 0 ? (
           <>
             <Timeline
