@@ -100,6 +100,46 @@ describe('ops service mock data', () => {
     expect(afterUpdate?.channels).toEqual(['webhook']);
   });
 
+  it('allocates distinct mock IDs for rapid creates and imports', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+    const createdIds: number[] = [];
+    try {
+      for (const name of ['rapid-create-a', 'rapid-create-b']) {
+        const rule = await createAlertRule({ name, channels: [] });
+        createdIds.push(rule.id);
+      }
+
+      const importRule = (name: string) => ({
+        name,
+        metric: 'broker.tps',
+        operator: '>',
+        threshold: 1,
+        duration: '1m',
+        channels: [],
+        enabled: true,
+        description: '',
+      });
+      const firstImport = await importAlertRulesTransfer({
+        version: 1,
+        domain: 'CLUSTER',
+        rules: [importRule('rapid-import-a'), importRule('rapid-import-b')],
+      });
+      createdIds.push(...firstImport.map((rule) => rule.id));
+      const secondImport = await importAlertRulesTransfer({
+        version: 1,
+        domain: 'CLUSTER',
+        rules: [importRule('rapid-import-c')],
+      });
+      createdIds.push(...secondImport.map((rule) => rule.id));
+
+      expect(new Set(createdIds).size).toBe(createdIds.length);
+      expect(createdIds).toEqual([...createdIds].sort((a, b) => a - b));
+    } finally {
+      now.mockRestore();
+      for (const id of createdIds) await deleteAlertRule(id);
+    }
+  });
+
   it('rejects updates for unknown alert rule IDs', async () => {
     const before = await listAlertRules();
     const missingRule = {

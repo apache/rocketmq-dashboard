@@ -46,6 +46,13 @@ const alertRulesState: Record<AlertRuleDomain, AlertRule[]> = {
 };
 let alertSilencesState: AlertSilence[] = [];
 
+function nextAlertRuleId(): number {
+  const highestId = Object.values(alertRulesState)
+    .flat()
+    .reduce((maxId, rule) => Math.max(maxId, rule.id), 0);
+  return Math.max(Date.now(), highestId + 1);
+}
+
 function copyAlertRule(rule: AlertRule): AlertRule {
   return {
     ...rule,
@@ -177,7 +184,7 @@ export async function importAlertRulesTransfer(
   domain: AlertRuleDomain = 'CLUSTER',
 ): Promise<AlertRule[]> {
   if (!isMockMode()) return opsApi.importAlertRulesTransfer(data, domain);
-  const startId = Date.now();
+  const startId = nextAlertRuleId();
   const imported = data.rules.map((rule, index) => ({
     ...copyAlertRule(rule as AlertRule),
     id: startId + index,
@@ -242,7 +249,6 @@ export async function createAlertRule(
 ): Promise<AlertRule> {
   if (isMockMode()) {
     const rule: AlertRule = {
-      id: Date.now(),
       name: '',
       metric: '',
       operator: '>',
@@ -254,6 +260,7 @@ export async function createAlertRule(
       description: '',
       ...data,
       channels: [...(data.channels ?? [])],
+      id: nextAlertRuleId(),
     };
     alertRulesState[domain].push(rule);
     return copyAlertRule(rule);
