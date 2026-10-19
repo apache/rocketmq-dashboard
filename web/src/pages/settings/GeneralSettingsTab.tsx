@@ -152,6 +152,12 @@ export const GeneralSettingsTab = () => {
       await saveGeneralSettings(buildPayload({ ...base, ...patch }));
       const statePatch = { ...patch };
       delete statePatch.clearDingtalkSigningSecret;
+      // The save endpoint echoes nothing back and the fresh read predates the write, so a
+      // secret stored by this request has to mark itself configured here. The clear path
+      // already carries `dingtalkSigningSecretConfigured: false` in its own patch.
+      if (patch.dingtalkSigningSecret?.trim()) {
+        statePatch.dingtalkSigningSecretConfigured = true;
+      }
       setSettings({ ...base, ...statePatch });
       return true;
     } catch {
