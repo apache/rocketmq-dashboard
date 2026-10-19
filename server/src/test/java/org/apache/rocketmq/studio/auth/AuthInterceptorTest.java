@@ -524,6 +524,12 @@ class AuthInterceptorTest {
         assertThat(allowed).isFalse();
         assertThat(response.getStatus()).isEqualTo(403);
         assertThat(response.getContentAsString()).contains("Admin permission required");
+        // A rejected request must leave no principal behind on the pooled thread: pin all three
+        // ThreadLocals, not just the username, so dropping any one of them fails here.
+        assertThat(AuthenticatedUserContext.currentUsernameOrSystem())
+                .isEqualTo(AuthenticatedUserContext.SYSTEM_ACTOR);
+        assertThat(AuthenticatedUserContext.currentUserId()).isNull();
+        assertThat(AuthenticatedUserContext.currentUserIsAdmin()).isFalse();
     }
 
     @Test

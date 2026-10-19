@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestTemplate;
 
@@ -39,6 +40,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -224,6 +226,18 @@ class ProxyAddressServiceTest {
     }
 
     @Test
+    void reloadConfigShouldAuditNonSuccessfulResponseAsFailure() {
+        doNothing().when(clusterService).requireProxy("cluster-1", "10.0.0.11:8081");
+        when(restTemplate.postForEntity(eq("http://10.0.0.11:8081/admin/reloadConfig"), isNull(), eq(String.class)))
+                .thenReturn(ResponseEntity.status(HttpStatus.FOUND).body("redirect"));
+
+        assertThatThrownBy(() -> proxyAddressService.reloadConfig("cluster-1", "10.0.0.11:8081"))
+                .isInstanceOfSatisfying(BusinessException.class, error -> assertThat(error.getCode()).isEqualTo(502));
+        verify(operationAuditService).record("RELOAD_PROXY_CONFIG", "PROXY", "10.0.0.11:8081",
+                "cluster-1", null, "FAILED", "Proxy returned 302 FOUND");
+    }
+
+    @Test
     void buildTopologyShouldReportUpPartialAndDownStatus() {
         proxyAddressService.addProxyAddr("10.0.0.2:8081");
         proxyAddressService.addProxyAddr("10.0.0.3:8081");
@@ -277,6 +291,27 @@ class ProxyAddressServiceTest {
         assertThat(custom.getStatus()).isEqualTo("UP");
         assertThat(custom.getRemotingPort()).isNull();
         assertThat(custom.isRemotingReachable()).isFalse();
+    }
+
+    @Test
+    void buildTopologyShouldProbeBracketedIpv6HostWithoutBrackets() {
+        proxyAddressService.addProxyAddr("[::1]:8081");
+
+        when(healthProbe.probe(eq("::1"), anyInt(), anyInt()))
+                .thenReturn(ProxyHealthProbe.ProbeResult.reachable(1L));
+
+        List<ProxyTopologyVO> topology = proxyAddressService.buildTopology();
+
+        ProxyTopologyVO ipv6 = topology.stream()
+                .filter(node -> node.getProxyAddr().equals("[::1]:8081"))
+                .findFirst()
+                .orElseThrow();
+        // A socket connect cannot resolve a bracketed IPv6 literal, so the brackets must be
+        // stripped before the host reaches the probe; the reported address keeps them.
+        assertThat(ipv6.getStatus()).isEqualTo("UP");
+        verify(healthProbe).probe(eq("::1"), eq(8081), anyInt());
+        verify(healthProbe).probe(eq("::1"), eq(8080), anyInt());
+        verify(healthProbe, never()).probe(eq("[::1]"), anyInt(), anyInt());
     }
 
     @Test

@@ -53,11 +53,22 @@ Agent 只是它的第一个客户。环路里最后一跳又回到了 Studio 自
 4. **进程级爆炸半径。** 工具访问由一个独立进程中介，该进程有自己的凭据作用域与实例绑定
    （`--instance-id` 烘进 argv，Agent 改不了），而不是 JVM 内部调用——后者可能被诱导越权。
 
+stdio 桥最多转发 64 个在途调用；满载时暂停读取后续输入，仍处理服务器通知、
+调用结果和取消。释放容量后继续转发排队请求，正常 EOF 会排空已有结果。
+
 ### 它没有买到什么
 
 - **延迟**：每次工具调用多一个进程 + 一次容器内 HTTP 跳。
 - **独立性**：Studio 挂了 `rmqctl` 就无用。
 - **隔离**：工具最终仍在拉起 Agent 的同一个 JVM 与同一个容器里执行，没有租户或网络隔离。
+
+### MCP 请求取消与会话重连
+
+`rmqctl` 的单次消息超时包含等待发送和重连的时间。普通请求可以并发发送；重连在已有发送完成后
+独占会话，完成 `initialize` 和 `notifications/initialized` 才允许后续请求进入新会话。
+等待队列按到达顺序放行，连续的普通请求可一起进入，后来的请求不能越过已排队的重连。
+等待中的请求取消或超时后会退出队列，不会迟到发送；关闭会话也会唤醒等待者。
+取消一条等待中的请求不会取消另一条正常调用或正在执行的重连，也不改变既有的重试次数和代际检查。
 
 ### 已否决的替代方案
 
@@ -134,9 +145,9 @@ Agent 循环 ⊃ 一条时间线条目。不带多租户 `tenant_id`、`shareSco
 
 **一个解析器，两种输出**：`AgentEventProjector` 对每个 `AgentEvent` 产出「一个可空的 `LiveEvent` +
 一个可空的 `TimelineEvent` 列表」。同一条上游消息可能只产 live、只产落库、两者都产或都不产，而且
-两侧内容**故意不同**：delta 只走 live（落库侧由缓冲写在合并边界产出一条完整 `text`）；工具输出在
-落库侧截到 32 KiB 并保留 `outputBytes`/`truncated`。它对 sealed 类型做穷尽 switch 且不写 `default`，
-新增子类型即编译错误。
+两侧内容**故意不同**：delta 只走 live（落库侧由缓冲写在合并边界产出一条完整 `text`）。工具输出则
+在 live 与落库**两侧都**截到 32 KiB 并保留 `outputBytes`/`truncated`，这一点两侧一致。它对 sealed
+类型做穷尽 switch 且不写 `default`，新增子类型即编译错误。
 
 `ThinkingSource = {MODEL, ENHANCE}` 这一个字段修掉了一个真实的错标 bug：改造前 UI 把 **prompt 增强
 改写**渲染在标题为「思维链」的折叠块里。两种来源的 thinking **只在 source 相同时才合并**，否则就是
@@ -182,6 +193,9 @@ drain 写 `SHUTDOWN` 而不是把一次重新部署误标成用户取消。停�
   `NODE_EXTRA_CA_CERTS`/代理变量都已在白名单里。不加 `RMQCTL_CONFIG`——我们显式传 `--config`。
 - 内置工具（`Bash`/`Read`/`Write`/`Edit`/`Glob`/`Grep`/`Task`/`WebFetch`/`WebSearch`/`TodoWrite`/
   `NotebookEdit`）**继续全部禁用**。放行的只有 MCP 工具。Agent 不该在服务端容器里跑 shell 或读文件系统。
+- 独立 CLI 的 L2/L3 交互确认必须成功写出警告和目标提示，才能读取确认答案；
+  stderr 写入失败会在发送任何预览或执行请求之前以非零状态退出。显式 `--yes`
+  和 `--dry-run` 保持原有的免提示行为。
 - L2/L3 变更走工具协议自身的两步：dry-run 返回 `confirm_token`，apply 消费它。服务端由
   `ToolMutationFilter` + `ToolTokenService` + `studio.ai.allow-l3-tools`（默认 false）强制。
   **因此托管 Agent 默认无法执行 L3 工具**，除非部署方显式打开开关；系统提示词已交代它必须先预览、
@@ -245,7 +259,8 @@ MCP 那条路没有角色校验是**设计如此**：它靠实例 AK/SK 鉴权�
 **会话仍然能当纯聊天用**——这是硬要求，降级是可发现的，不是神秘的。
 
 两条提示的可读中文原文放在 `server/src/test/resources/ai/agent-notices.txt`，生产代码里用 `\uXXXX`
-转义写（`style/rmq_checkstyle.xml` 拒绝 Java 源文件里的非 ASCII 字符），`RmqctlWorkspaceTest` 读这个文件
+转义写（`style/rmq_checkstyle.xml` 拒绝 Java 源文件里的中文字符——CJK 区段与全角标点，拉丁扩展
+不在其列），`RmqctlWorkspaceTest` 读这个文件
 断言「转义确实解码成这句话」——测试里重复一遍转义等于什么都没断言。该文件用 `.txt` 而不是 `.properties`
 是为了避开 checkstyle 的 `resourceIncludes (**/*.properties)`，不要重命名。
 

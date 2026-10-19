@@ -21,6 +21,7 @@ import client from './client';
 import {
   consumeMessageDirectly,
   getMessageTrace,
+  getMessageTraceByKey,
   queryMessagePage,
   queryMessages,
 } from './message';
@@ -117,7 +118,7 @@ describe('message API', () => {
       consumerStatus: [
         {
           group: 'cg-orders',
-          deliveryStatus: 'SUCCESS',
+          deliveryStatus: 'success',
           consumeTime: 1784246401000,
           retryCount: 0,
         },
@@ -127,7 +128,10 @@ describe('message API', () => {
       .onGet('/messages/msg-1/trace', { params: { instanceId: 'instance-1', topic: 'orders' } })
       .reply(200, { code: 200, data: trace });
 
-    await expect(getMessageTrace('msg-1', 'instance-1', 'orders')).resolves.toEqual(trace);
+    await expect(getMessageTrace('msg-1', 'instance-1', 'orders')).resolves.toEqual({
+      ...trace,
+      queryType: 'MSG_ID',
+    });
   });
 
   it('maps backend trace node statuses to Ant Design step statuses', async () => {
@@ -173,6 +177,60 @@ describe('message API', () => {
     expect(mapped.consumerStatus).toEqual([]);
   });
 
+  it('maps backend trace node statuses on the key lookup too', async () => {
+    const trace = {
+      nodes: [
+        {
+          title: 'Produce',
+          timestamp: 1784246400000,
+          status: 'failed',
+          costTime: 1,
+          description: 'x',
+        },
+        {
+          title: 'Consume',
+          timestamp: 1784246400000,
+          status: 'finish',
+          costTime: 1,
+          description: 'x',
+        },
+        {
+          title: 'Unknown',
+          timestamp: 1784246400000,
+          status: 'something-else',
+          costTime: 1,
+          description: 'x',
+        },
+      ],
+      consumerStatus: [],
+    };
+    mock
+      .onGet('/messages/trace-by-key', { params: { key: 'order-1', instanceId: 'instance-1' } })
+      .reply(200, { code: 200, data: trace });
+
+    const mapped = await getMessageTraceByKey('order-1', 'instance-1');
+    expect(mapped?.queryType).toBe('KEY');
+    expect(mapped?.nodes.map((node) => node.status)).toEqual(['error', 'finish', 'wait']);
+  });
+
+  it('keeps the key lookup null and node-default contracts', async () => {
+    mock
+      .onGet('/messages/trace-by-key', { params: { key: 'missing', instanceId: 'instance-1' } })
+      .reply(200, { code: 200, data: null });
+
+    await expect(getMessageTraceByKey('missing', 'instance-1')).resolves.toBeNull();
+
+    mock
+      .onGet('/messages/trace-by-key', { params: { key: 'no-nodes', instanceId: 'instance-1' } })
+      .reply(200, { code: 200, data: { consumerStatus: [] } });
+
+    await expect(getMessageTraceByKey('no-nodes', 'instance-1')).resolves.toEqual({
+      consumerStatus: [],
+      nodes: [],
+      queryType: 'KEY',
+    });
+  });
+
   it('encodes message IDs before requesting trace records', async () => {
     const trace = {
       nodes: [],
@@ -184,9 +242,10 @@ describe('message API', () => {
       })
       .reply(200, { code: 200, data: trace });
 
-    await expect(getMessageTrace('AC1E0A64/0000 2A9F:1', 'instance-1', 'orders')).resolves.toEqual(
-      trace,
-    );
+    await expect(getMessageTrace('AC1E0A64/0000 2A9F:1', 'instance-1', 'orders')).resolves.toEqual({
+      ...trace,
+      queryType: 'MSG_ID',
+    });
   });
 
   it('posts direct consumption to the message API', async () => {

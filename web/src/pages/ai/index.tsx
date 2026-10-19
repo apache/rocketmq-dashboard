@@ -15,9 +15,9 @@
  * limitations under the License.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Flex, message, theme } from 'antd';
+import { Alert, Button, Flex, message, theme } from 'antd';
 import { useLang } from '../../i18n/LangContext';
 import type { McpTool } from '../../api/ai';
 import useAuthStore from '../../stores/authStore';
@@ -67,7 +67,7 @@ const AiPage = () => {
   const admin = useAuthStore((state) => state.admin);
   const engine = useEngineStore((state) => state.engine);
   const setEngine = useEngineStore((state) => state.setEngine);
-  const [inputValue, setInputValue] = useComposerDraft();
+  const [inputValue, setInputValue, captureDraftRestore] = useComposerDraft();
   const [selectedMode, setSelectedMode] = useState<ChatMode>('chat');
   const [enhance, setEnhance] = useState(false);
   const [overlay, setOverlay] = useState<Overlay>(null);
@@ -116,26 +116,43 @@ const AiPage = () => {
         message.warning(t('ai.providerRequired'));
         return;
       }
+      const restoreDraft = captureDraftRestore(text);
       void startRun({
         createBody: { mode: selectedMode },
         request: buildMessageRequest(text, llm.selectedModel, engine, selectedMode, enhance),
       }).then((target) => {
-        if (target === null) setInputValue(text);
+        if (target === null) restoreDraft();
       });
     },
-    [engine, enhance, llm.llmReady, llm.selectedModel, selectedMode, setInputValue, startRun, t],
+    [
+      captureDraftRestore,
+      engine,
+      enhance,
+      llm.llmReady,
+      llm.selectedModel,
+      selectedMode,
+      setInputValue,
+      startRun,
+      t,
+    ],
   );
 
   // Estimated context footprint of this conversation — persisted text plus whatever the run in
-  // flight has produced so far — drawn as the composer's context-usage bar. Recomputed on every
-  // render on purpose: the run's renderTick bumps re-render this page as blocks stream in.
-  let contextTokens = 0;
-  for (const item of timeline.items) {
-    const event = item.event;
-    if (event.type === 'text' || event.type === 'user') {
-      contextTokens += estimateTokens(event.text);
+  // flight has produced so far — drawn as the composer's context-usage bar. The persisted half is
+  // memoised on the timeline rows: a streaming tick re-renders this page at display rate, and
+  // re-scanning EVERY persisted answer with the token estimator each frame is pure waste; only
+  // the live blocks of the run in flight are recomputed per render.
+  const persistedTokens = useMemo(() => {
+    let tokens = 0;
+    for (const item of timeline.items) {
+      const event = item.event;
+      if (event.type === 'text' || event.type === 'user') {
+        tokens += estimateTokens(event.text);
+      }
     }
-  }
+    return tokens;
+  }, [timeline.items]);
+  let contextTokens = persistedTokens;
   for (const block of run.blocksRef.current) {
     if (block.kind === 'text') contextTokens += estimateTokens(block.text);
   }
@@ -146,6 +163,7 @@ const AiPage = () => {
         bubbles={timeline.bubbles}
         liveBlocks={run.blocksRef.current}
         streaming={run.isStreaming}
+        pendingUserText={run.pendingUserMessage}
         toolCatalog={tools}
         liveTokensPerSecond={run.liveTokensPerSecond}
         lastRunTokensPerSecond={run.lastRunTokensPerSecond}
@@ -153,7 +171,7 @@ const AiPage = () => {
         empty={
           // Suppressed while the transcript is loading: a welcome panel that flashes for one
           // instant before the persisted bubbles arrive is the other half of the refresh jitter.
-          timeline.loading ? null : (
+          timeline.loading || timeline.error !== null ? null : (
             <WelcomeStarters
               onPick={(prompt, mode) => {
                 setInputValue(prompt);
@@ -168,6 +186,23 @@ const AiPage = () => {
         resetKey={conversationId}
         footer={
           <>
+            {timeline.error !== null && (
+              <Alert
+                type="error"
+                showIcon
+                message={t('ai.timeline.loadFailed')}
+                description={timeline.error || undefined}
+                action={
+                  <Button
+                    size="small"
+                    loading={timeline.loading}
+                    onClick={() => void timeline.refetch().catch(() => undefined)}
+                  >
+                    {t('common.retry')}
+                  </Button>
+                }
+              />
+            )}
             <RuntimeNotices mock={useMock} rmqctlAvailable={rmqctlAvailable} runError={run.error} />
             <Composer
               value={inputValue}

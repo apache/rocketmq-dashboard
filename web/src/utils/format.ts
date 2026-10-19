@@ -32,24 +32,35 @@ export function formatDateTime(date: string | Date | null | undefined): string {
   );
 }
 
-export interface FormatUtcDateTimeOptions {
-  /**
-   * Append the viewer's short zone name (`GMT+8`). Defaults to true; pass false where the zone is
-   * column noise rather than information — a compact list whose every row would repeat the viewer's
-   * own zone, and whose width that suffix would otherwise dictate.
-   */
-  zone?: boolean;
+/**
+ * Format an epoch-millisecond value or a timestamp string as 'YYYY-MM-DD HH:mm:ss.SSS'.
+ *
+ * Message store times and trace node timestamps arrive either as epoch milliseconds (Apache
+ * brokers) or as formatted strings (cloud providers), so both are accepted. Zero is a real
+ * timestamp rather than a missing one, and only an unusable value yields the placeholder - a
+ * malformed timestamp has to read as absent instead of rendering as NaN-NaN-NaN.
+ */
+export function formatTimeMs(value: number | string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '-';
+  const timestamp = typeof value === 'string' ? Date.parse(value) : value;
+  if (!Number.isFinite(timestamp)) return '-';
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '-';
+  return `${formatDateTime(date)}.${pad(date.getMilliseconds(), 3)}`;
 }
 
 /**
  * Format a UTC timestamp for alert events in the viewer's timezone. Alert APIs
  * serialize UTC LocalDateTime values without an offset, so normal Date parsing
  * would incorrectly treat them as browser-local timestamps.
+ *
+ * The zone name is deliberately not appended: every timestamp on a page renders in the viewer's own
+ * zone, so a `GMT+8` suffix repeats the reader's own setting on every row and forces every time
+ * column wider.
  */
 export function formatUtcDateTime(
   date: string | Date | null | undefined,
   timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
-  options: FormatUtcDateTimeOptions = {},
 ): string {
   if (date === null || date === undefined || (typeof date === 'string' && !date.trim())) return '-';
   const utcDate =
@@ -67,7 +78,6 @@ export function formatUtcDateTime(
     minute: '2-digit',
     second: '2-digit',
     hourCycle: 'h23',
-    timeZoneName: 'short',
   }).formatToParts(utcDate);
   const value = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((part) => part.type === type)?.value;
@@ -77,9 +87,8 @@ export function formatUtcDateTime(
   const hour = value('hour');
   const minute = value('minute');
   const second = value('second');
-  const zone = options.zone === false ? '' : value('timeZoneName');
   return year && month && day && hour && minute && second
-    ? `${year}-${month}-${day} ${hour}:${minute}:${second}${zone ? ` ${zone}` : ''}`
+    ? `${year}-${month}-${day} ${hour}:${minute}:${second}`
     : '-';
 }
 
@@ -105,6 +114,9 @@ export function formatRelativeTime(
   now = Date.now(),
 ): string {
   if (!Number.isFinite(timestamp) || !Number.isFinite(now)) return '-';
+  const updatedAt = new Date(timestamp);
+  const current = new Date(now);
+  if (Number.isNaN(updatedAt.getTime()) || Number.isNaN(current.getTime())) return '-';
   if (!timestamp) return t('ai.history.justNow');
 
   const elapsed = Math.max(0, now - timestamp);
@@ -112,8 +124,6 @@ export function formatRelativeTime(
   if (minutes < 1) return t('ai.history.justNow');
   if (minutes < 60) return t('ai.history.minutesAgo', { count: minutes });
 
-  const updatedAt = new Date(timestamp);
-  const current = new Date(now);
   const locale = lang === 'zh' ? 'zh-CN' : 'en-US';
   if (updatedAt.toDateString() === current.toDateString()) {
     return new Intl.DateTimeFormat(locale, {
@@ -153,13 +163,15 @@ export function formatBytes(bytes: number, decimals = 1): string {
     value /= k;
     i += 1;
   }
-  // The unit is chosen from the unrounded value, so a value just below a boundary used to render
-  // as 1024.0 KB - a mantissa of 1024 that the loop above exists to avoid.
-  while (i < units.length - 1 && Number(value.toFixed(digits)) >= k) {
+  // A byte count has no meaningful fraction, so the base unit renders whole; every scaled unit keeps
+  // the requested precision. The promotion loop has to use the same width it renders with, or a
+  // value just below a boundary would round up to 1024 B instead of being promoted to 1.0 KB.
+  const precision = () => (i === 0 ? 0 : digits);
+  while (i < units.length - 1 && Number(value.toFixed(precision())) >= k) {
     value /= k;
     i += 1;
   }
-  return `${value.toFixed(digits)} ${units[i]}`;
+  return `${value.toFixed(precision())} ${units[i]}`;
 }
 
 /**
@@ -209,4 +221,44 @@ export function formatDelay(totalSeconds: number, lang: 'zh' | 'en' = 'zh'): str
 export function formatPercent(value: number, decimals = 1): string {
   if (!Number.isFinite(value)) return '-';
   return `${value.toFixed(safeDecimals(decimals))}%`;
+}
+
+/**
+ * Round a percentage to the one decimal the UI shows.
+ *
+ * Ratios scaled to percentage points carry binary floating point noise — a broker reporting
+ * `commitLogDiskRatio=0.29` becomes `28.999999999999996` — and an antd `Progress` reserves room
+ * for its label inside the bar, so a label that long squeezes the bar down to zero width.
+ */
+export function roundPercent(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+/**
+ * Convert a stored ratio to its percentage number the way the alert backend renders it.
+ *
+ * `AlertNotificationTemplate` scales ratio metrics with `BigDecimal.movePointRight(2)`, which
+ * moves the decimal point without changing the digits, so 0.29 renders as `29` and 0.1234 as
+ * `12.34`. Multiplying by 100 in binary floating point instead renders 0.29 as
+ * 28.999999999999996 — eight of the ninety-nine whole percents do not round-trip — and the alert
+ * pages used to print, and write back, that residue.
+ */
+export function ratioToPercent(value: number): number {
+  if (!Number.isFinite(value)) return value;
+  // `toString()` yields the shortest decimal that round-trips, which is the same representation
+  // `BigDecimal.valueOf(double)` starts from. Exponential notation only shows up outside the
+  // range a stored ratio can take, and `toLocaleString` falls back to the plain form there.
+  const text = /[eE]/.test(value.toString())
+    ? value.toLocaleString('en-US', { useGrouping: false, maximumFractionDigits: 20 })
+    : value.toString();
+  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(text);
+  if (!match) return value * 100;
+  const [, sign = '', integer = '', fraction = ''] = match;
+  const digits = integer + fraction;
+  const pointIndex = integer.length + 2;
+  const scaled =
+    pointIndex < digits.length
+      ? `${digits.slice(0, pointIndex)}.${digits.slice(pointIndex)}`
+      : `${digits}${'0'.repeat(pointIndex - digits.length)}`;
+  return Number(`${sign}${scaled}`);
 }

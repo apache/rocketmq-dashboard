@@ -10,11 +10,16 @@ export interface MessageRecord {
   queueId: number | null;
   queueOffset: number | null;
   body: string;
+  /** 'UTF-8' for a text body, 'BASE64' when the server could not decode the bytes as text. */
+  bodyEncoding?: string | null;
+  /** True when the server cut the body short for display (64 KiB text / 48 KiB base64). */
+  bodyTruncated?: boolean;
   storeTime: number | string;
   bornHost: string;
   storeHost: string;
   reconsumeTimes?: number;
   properties: Record<string, string>;
+  propertiesTruncated?: boolean;
   size: number;
 }
 
@@ -36,6 +41,8 @@ export interface ConsumerStatus {
 export interface TraceRecord {
   nodes: TraceNode[];
   consumerStatus: ConsumerStatus[];
+  /** Lookup context attached by the web API adapter, rather than the server payload. */
+  queryType?: 'MSG_ID' | 'KEY';
 }
 
 export interface MessageQuery {
@@ -107,6 +114,14 @@ export interface DLQResendResult {
   outcome: 'SUCCESS' | 'PARTIAL' | 'FAILED' | 'NO_MESSAGES';
   scanIncomplete?: boolean;
   failedQueueCount?: number;
+  failures?: DLQResendFailure[];
+  failuresTruncated?: boolean;
+}
+
+export interface DLQResendFailure {
+  msgId: string;
+  targetTopic?: string | null;
+  reason: string;
 }
 
 export interface DLQMessage {
@@ -172,6 +187,7 @@ export async function getMessageTrace(
   const trace = res.data.data;
   return {
     ...trace,
+    queryType: 'MSG_ID' as const,
     nodes: (trace.nodes ?? []).map((node) => ({
       ...node,
       status: mapTraceNodeStatus(node.status),
@@ -197,8 +213,19 @@ export async function getMessageTraceByKey(
   if (instanceId !== undefined) params.instanceId = instanceId;
   if (topic !== undefined) params.topic = topic;
   if (traceTopic !== undefined && traceTopic.trim()) params.traceTopic = traceTopic.trim();
-  const res = await client.get<{ data: TraceRecord }>('/messages/trace-by-key', { params });
-  return res.data.data;
+  const res = await client.get<{ data: TraceRecord | null }>('/messages/trace-by-key', { params });
+  const trace = res.data.data;
+  if (!trace) {
+    return null;
+  }
+  return {
+    ...trace,
+    queryType: 'KEY',
+    nodes: (trace.nodes ?? []).map((node) => ({
+      ...node,
+      status: mapTraceNodeStatus(node.status),
+    })),
+  };
 }
 
 // ─── DLQ ────────────────────────────────────────────────────────

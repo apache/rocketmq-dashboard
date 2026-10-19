@@ -104,6 +104,9 @@ class ClaudeCodeStreamParserTest {
     private static final List<String> LINES = loadLines(CAPTURE);
     private static final List<String> MCP_FAILED = loadLines(MCP_FAILED_CAPTURE);
 
+    /** One code point, two UTF-16 chars: the case the abbreviation caps have to survive. */
+    private static final String EMOJI = "\uD83D\uDE00";
+
     // Synthetic frames: shapes the capture does not contain.
     private static final String TOOL_RESULT_ARRAY_FRAME = """
             {"type":"user","session_id":"s-1","message":{"role":"user","content":[\
@@ -413,6 +416,87 @@ class ClaudeCodeStreamParserTest {
     }
 
     /** The content of every event of one type, concatenated in arrival order. */
+    @Test
+    void aggregateTextSurvivesAcrossMessagesTest() {
+        // Message one streams its text; message two only aggregates. The old
+        // run-level flag treated every later aggregate as a duplicate of the
+        // earlier stream and dropped it.
+        ClaudeCodeStreamParser parser = new ClaudeCodeStreamParser();
+        List<AgentEvent> events = new ArrayList<>();
+        for (String frame : new String[] {
+            """
+            {"type":"stream_event","session_id":"s-1","event":{"type":"message_start","message":{"id":"msg_1"}}}""",
+            """
+            {"type":"stream_event","session_id":"s-1","event":{"type":"content_block_delta","index":0,\
+            "delta":{"type":"text_delta","text":"first"}}}""",
+            """
+            {"type":"assistant","session_id":"s-1","message":{"id":"msg_1","role":"assistant",\
+            "content":[{"type":"text","text":"first"}]}}""",
+            """
+            {"type":"stream_event","session_id":"s-1","event":{"type":"message_start","message":{"id":"msg_2"}}}""",
+            """
+            {"type":"assistant","session_id":"s-1","message":{"id":"msg_2","role":"assistant",\
+            "content":[{"type":"text","text":"second"}]}}"""}) {
+            events.addAll(parser.parseLine(frame));
+        }
+        assertThat(joined(events, AgentEvent.TextDelta.class)).isEqualTo("firstsecond");
+    }
+
+    @Test
+    void anEmptyDeltaDoesNotSuppressTheAggregateTest() {
+        ClaudeCodeStreamParser parser = new ClaudeCodeStreamParser();
+        List<AgentEvent> events = new ArrayList<>();
+        for (String frame : new String[] {
+            """
+            {"type":"stream_event","session_id":"s-1","event":{"type":"message_start","message":{"id":"msg_1"}}}""",
+            """
+            {"type":"stream_event","session_id":"s-1","event":{"type":"content_block_delta","index":0,\
+            "delta":{"type":"text_delta","text":""}}}""",
+            """
+            {"type":"assistant","session_id":"s-1","message":{"id":"msg_1","role":"assistant",\
+            "content":[{"type":"text","text":"real aggregate"}]}}"""}) {
+            events.addAll(parser.parseLine(frame));
+        }
+        assertThat(joined(events, AgentEvent.TextDelta.class)).isEqualTo("real aggregate");
+    }
+
+    @Test
+    void sameMessageAggregateIsStillDeduplicatedTest() {
+        ClaudeCodeStreamParser parser = new ClaudeCodeStreamParser();
+        List<AgentEvent> events = new ArrayList<>();
+        for (String frame : new String[] {
+            """
+            {"type":"stream_event","session_id":"s-1","event":{"type":"message_start","message":{"id":"msg_1"}}}""",
+            """
+            {"type":"stream_event","session_id":"s-1","event":{"type":"content_block_delta","index":0,\
+            "delta":{"type":"text_delta","text":"first"}}}""",
+            """
+            {"type":"assistant","session_id":"s-1","message":{"id":"msg_1","role":"assistant",\
+            "content":[{"type":"text","text":"first"}]}}"""}) {
+            events.addAll(parser.parseLine(frame));
+        }
+        assertThat(joined(events, AgentEvent.TextDelta.class)).isEqualTo("first");
+    }
+
+    @Test
+    void idlessCapturesKeepTheRunLevelFallbackTest() {
+        // Captures without message ids cannot discriminate per message: the
+        // aggregate of the streamed text stays suppressed run-wide, exactly
+        // as before.
+        ClaudeCodeStreamParser parser = new ClaudeCodeStreamParser();
+        List<AgentEvent> events = new ArrayList<>();
+        for (String frame : new String[] {
+            """
+            {"type":"stream_event","session_id":"s-1","event":{"type":"content_block_delta","index":0,\
+            "delta":{"type":"text_delta","text":"first"}}}""",
+            """
+            {"type":"assistant","session_id":"s-1","message":{"role":"assistant",\
+            "content":[{"type":"text","text":"first"}]}}"""}) {
+            events.addAll(parser.parseLine(frame));
+        }
+        assertThat(joined(events, AgentEvent.TextDelta.class)).isEqualTo("first");
+    }
+
     private static String joined(List<AgentEvent> events, Class<?> type) {
         StringBuilder joined = new StringBuilder();
         for (AgentEvent event : events) {
@@ -475,6 +559,26 @@ class ClaudeCodeStreamParserTest {
         });
         assertThat(events.get(1)).isEqualTo(
                 new AgentEvent.ResultMeta(SESSION, 0L, 0, 0, "error_during_execution"));
+    }
+
+    @Test
+    void aLongFailedToolResultShouldBeAbbreviatedOnCodePointBoundariesTest() {
+        // A tool result quotes a message body, which is end-user text, so an emoji can sit on the
+        // 512th char of the reason the user is shown. 511 chars put U+1F600's high surrogate exactly
+        // on that cut, and the tail is what the cap has to drop whole.
+        String payload = "x".repeat(511) + EMOJI + "tail";
+        String frame = "{\"type\":\"user\",\"session_id\":\"s-1\",\"message\":{\"role\":\"user\","
+                + "\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_long\","
+                + "\"is_error\":true,\"content\":\"" + payload + "\"}]}}";
+
+        List<AgentEvent> events = parse(List.of(frame));
+
+        assertThat(events).singleElement().isInstanceOfSatisfying(AgentEvent.ToolDone.class, done -> {
+            assertThat(done.success()).isFalse();
+            // A char-based cut would keep the high surrogate on its own and turn it into a
+            // replacement character once the event reaches the timeline.
+            assertThat(done.error()).isEqualTo("x".repeat(511) + EMOJI + "...");
+        });
     }
 
     @Test

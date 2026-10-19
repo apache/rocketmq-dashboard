@@ -97,7 +97,10 @@ export const listAllTopics = async (params: TopicQuery = {}): Promise<Topic[]> =
     const result = await listTopicsPage({ ...params, page, pageSize: EXPORT_PAGE_SIZE });
     topics.push(...result.items);
     const total = result.total ?? topics.length;
-    if (result.items.length === 0 || topics.length >= total) return topics;
+    if (topics.length >= total) return topics;
+    if (result.items.length === 0) {
+      throw new Error(`Incomplete topic list: received ${topics.length} of ${total}`);
+    }
     page += 1;
   }
 
@@ -238,7 +241,7 @@ export async function sendTopicMessage(
     await new Promise((r) => setTimeout(r, 400));
     return {
       msgId: `7F${Math.random().toString(16).slice(2, 18).toUpperCase()}`,
-      sendTime: new Date().toISOString(),
+      sendTime: Date.now(),
       offsetMsgId: `7F${Math.random().toString(16).slice(2, 18).toUpperCase()}-0:0:0:0`,
     };
   }

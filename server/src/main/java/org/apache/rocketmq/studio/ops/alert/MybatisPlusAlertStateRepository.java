@@ -29,6 +29,8 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Repository;
 import org.springframework.util.StringUtils;
 
+import java.time.DateTimeException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -132,8 +134,19 @@ public class MybatisPlusAlertStateRepository implements AlertStateRepository {
     }
 
     private static AlertRuleRuntimeVO toRuntime(RmqAlertState entity, AlertRuleVO rule) {
-        LocalDateTime next = entity.getLastNotifiedAt() == null || rule == null ? null
-                : entity.getLastNotifiedAt().plus(AlertRuleDuration.parse(rule.getReminderInterval()));
+        // The state machine only emits REMINDER while FIRING with a positive interval; ACKED and
+        // RESOLVED states keep lastNotifiedAt without ever reminding again. Report nextReminderAt
+        // only for those states, instead of fabricating one for every state that ever notified.
+        LocalDateTime next = null;
+        if (rule != null && entity.getLastNotifiedAt() != null
+                && AlertStateStatus.FIRING.name().equals(entity.getStatus())) {
+            Duration interval = AlertRuleDuration.parse(rule.getReminderInterval());
+            if (!interval.isZero() && !interval.isNegative()) {
+                // A valid Duration can exceed LocalDateTime's range. The state machine never reaches its
+                // elapsed-time comparison for such an interval either, so project no reminder at all.
+                next = plusWithinRange(entity.getLastNotifiedAt(), interval);
+            }
+        }
         return AlertRuleRuntimeVO.builder().ruleId(entity.getRuleId()).fingerprint(entity.getFingerprint())
                 .status(AlertStateStatus.valueOf(entity.getStatus())).consecutiveHits(entity.getConsecutiveHits() == null ? 0 : entity.getConsecutiveHits())
                 .currentValue(entity.getCurrentValue()).lastNotifiedAt(entity.getLastNotifiedAt()).nextReminderAt(next).build();
@@ -197,6 +210,15 @@ public class MybatisPlusAlertStateRepository implements AlertStateRepository {
 
     private static Instant toInstant(LocalDateTime value) {
         return value == null ? null : value.toInstant(ZoneOffset.UTC);
+    }
+
+    /** Adds an interval that may exceed the representable range, yielding {@code null} instead of throwing. */
+    private static LocalDateTime plusWithinRange(LocalDateTime from, Duration interval) {
+        try {
+            return from.plus(interval);
+        } catch (DateTimeException overflow) {
+            return null;
+        }
     }
 
     private static Map<String, String> readLabels(String labelsJson) {

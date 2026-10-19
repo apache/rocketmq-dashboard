@@ -58,6 +58,8 @@ public class GeneralSettingsUpdateDTO {
     private String deploymentName;
     private String apiVersion;
     private String awsRegion;
+    /** Preserve all AI fields when saving the console's non-AI settings form. */
+    private boolean preserveLlmConfig;
     private String dingtalkWebhook;
     @ToString.Exclude
     private String dingtalkSigningSecret;

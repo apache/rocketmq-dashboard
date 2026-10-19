@@ -8,9 +8,11 @@ import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import client from './client';
 import {
+  getMessageQueryResults,
   getQueryHistorySummary,
   listMessageQueryHistory,
   listTraceQueryHistory,
+  type MessageResultSnapshot,
 } from './messageHistory';
 
 const mock = new MockAdapter(client);
@@ -18,6 +20,34 @@ const mock = new MockAdapter(client);
 describe('message query history API', () => {
   beforeEach(() => mock.reset());
   afterEach(() => mock.reset());
+
+  it('preserves unknown and zero queue positions in saved message results', async () => {
+    const unknown: MessageResultSnapshot = {
+      msgId: 'cloud-message',
+      topic: 'orders',
+      tag: '',
+      key: '',
+      brokerName: '',
+      queueId: null,
+      queueOffset: null,
+      storeTime: 1,
+      bornHost: '',
+      storeHost: '',
+      size: 1,
+    };
+    const firstMessage: MessageResultSnapshot = {
+      ...unknown,
+      msgId: 'first-message',
+      queueId: 0,
+      queueOffset: 0,
+    };
+    mock.onGet('/query-history/messages/9/results').reply(200, {
+      code: 200,
+      data: [unknown, firstMessage],
+    });
+
+    await expect(getMessageQueryResults(9)).resolves.toEqual([unknown, firstMessage]);
+  });
 
   it('forwards filters and pagination for message history', async () => {
     mock.onGet('/query-history/messages').reply((config) => {

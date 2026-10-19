@@ -41,7 +41,6 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -413,19 +412,36 @@ class ConsumerGroupControllerTest extends WebMvcAuthTestSupport {
     void deleteConsumerGroupShouldReturnSuccess() throws Exception {
         mockMvc.perform(post("/api/groups/delete")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("name", "cg-orders"))))
+                        .content(objectMapper.writeValueAsString(Map.of("instanceId", "instance-a", "name", "cg-orders"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("success"));
 
-        verify(metadataService).deleteConsumerGroup(isNull(), eq("cg-orders"));
+        verify(metadataService).deleteConsumerGroup(eq("instance-a"), eq("cg-orders"));
+    }
+
+    @Test
+    void deleteGroupRequiresInstanceTest() throws Exception {
+        mockMvc.perform(post("/api/groups/delete").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"orders\"}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(400));
+        verifyNoInteractions(metadataService);
+    }
+
+    @Test
+    void deleteGroupReportsOwnershipConflictTest() throws Exception {
+        org.mockito.Mockito.doThrow(new org.apache.rocketmq.studio.common.exception.BusinessException(409, "Ownership conflict"))
+                .when(metadataService).deleteConsumerGroup("instance-a", "orders");
+        mockMvc.perform(post("/api/groups/delete").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"instanceId\":\"instance-a\",\"name\":\"orders\"}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value(409));
     }
 
     @Test
     void deleteConsumerGroupShouldRejectMissingName() throws Exception {
         mockMvc.perform(post("/api/groups/delete")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+                        .content("{\"instanceId\":\"instance-a\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value("name is required"));
@@ -437,7 +453,7 @@ class ConsumerGroupControllerTest extends WebMvcAuthTestSupport {
     void deleteConsumerGroupShouldRejectBlankName() throws Exception {
         mockMvc.perform(post("/api/groups/delete")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("name", " "))))
+                        .content(objectMapper.writeValueAsString(Map.of("instanceId", "instance-a", "name", " "))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value("name is required"));

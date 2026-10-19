@@ -17,19 +17,16 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import lombok.RequiredArgsConstructor;
-import org.apache.rocketmq.studio.cluster.metrics.MetricAvailability;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSnapshotRepository;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
@@ -52,7 +49,7 @@ public class NativeAlertEvaluationService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void evaluate(AlertRuleVO rule, MetricSample sample) {
-        MetricSample evaluatedSample = aggregate(rule, sample);
+        MetricSample evaluatedSample = NativeAlertSampleAggregator.aggregate(rule, sample, snapshotRepository);
         AlertEvaluationResult evaluation = evaluator.evaluate(rule, evaluatedSample);
         if (!evaluation.matches()) {
             return;
@@ -68,6 +65,11 @@ public class NativeAlertEvaluationService {
         }
 
         LocalDateTime eventTime = LocalDateTime.ofInstant(sample.collectedAt(), ZoneOffset.UTC);
+        Map<String, String> eventLabels = new TreeMap<>(sample.labels());
+        // Preserve incident fingerprints while carrying the authoritative cluster into correlation.
+        if (StringUtils.hasText(sample.clusterId())) {
+            eventLabels.put("clusterId", sample.clusterId().trim());
+        }
         SystemAlertVO event = SystemAlertVO.builder()
                 .level(level(rule.getSeverity()))
                 .title(rule.getName())
@@ -80,7 +82,7 @@ public class NativeAlertEvaluationService {
                 .transition(update.transition().name())
                 .instanceId(sample.instanceId())
                 .currentValue(update.state().currentValue())
-                .labels(Map.copyOf(new TreeMap<>(sample.labels())))
+                .labels(Map.copyOf(eventLabels))
                 .build();
         applyNotificationSuppression(event, sample.domain(), update.transition());
 
@@ -92,29 +94,8 @@ public class NativeAlertEvaluationService {
             alertRepository.markRuleTriggered(rule.getId(), eventTime.toString());
         }
         if (!event.isNotificationSuppressed()) {
-            notificationOutboxService.enqueue(event, rule, sample.labels());
+            notificationOutboxService.enqueue(event, rule, event.getLabels());
         }
-    }
-
-    /** Reads the optional snapshot window inside this evaluation's independent transaction. */
-    private MetricSample aggregate(AlertRuleVO rule, MetricSample sample) {
-        if (sample.availability() != MetricAvailability.AVAILABLE || rule.getWindowSeconds() <= 0) {
-            return sample;
-        }
-        List<MetricSample> window = snapshotRepository.findRecent(sample,
-                sample.collectedAt().minus(Duration.ofSeconds(rule.getWindowSeconds())));
-        if (window.isEmpty()) {
-            return sample;
-        }
-        double value = switch (rule.getAggregation() == null ? "LAST" : rule.getAggregation().toUpperCase(Locale.ROOT)) {
-            case "MAX" -> window.stream().mapToDouble(item -> item.value()).max().orElse(sample.value());
-            case "MIN" -> window.stream().mapToDouble(item -> item.value()).min().orElse(sample.value());
-            case "AVG" -> window.stream().mapToDouble(item -> item.value()).average().orElse(sample.value());
-            case "SUM" -> window.stream().mapToDouble(item -> item.value()).sum();
-            default -> window.get(window.size() - 1).value();
-        };
-        return new MetricSample(sample.metricKey(), sample.domain(), sample.instanceId(), sample.clusterId(),
-                sample.labels(), value, MetricAvailability.AVAILABLE, sample.collectedAt());
     }
 
     private void applyNotificationSuppression(SystemAlertVO event, AlertDomain domain,

@@ -28,6 +28,10 @@ import com.aliyun.sdk.service.rocketmq20220801.models.GetTraceResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupsRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupsResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupsResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupSubscriptionsResponse;
+import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupSubscriptionsResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicSubscriptionsResponse;
+import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicSubscriptionsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListMessagesRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListMessagesResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListMessagesResponseBody;
@@ -37,9 +41,14 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.UpdateTopicRequest;
+import com.aliyun.sdk.service.rocketmq20220801.models.UpdateTopicResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.VerifySendMessageRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.VerifySendMessageResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.VerifySendMessageResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.VerifyConsumeMessageRequest;
+import com.aliyun.sdk.service.rocketmq20220801.models.VerifyConsumeMessageResponse;
+import com.aliyun.sdk.service.rocketmq20220801.models.VerifyConsumeMessageResponseBody;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
@@ -53,6 +62,8 @@ import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
@@ -81,6 +92,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -114,6 +126,7 @@ class AliyunInstanceProviderTest {
                 .contains(InstanceCapability.TOPIC_MANAGEMENT,
                         InstanceCapability.MESSAGE_QUERY,
                         InstanceCapability.MESSAGE_SEND,
+                        InstanceCapability.DIRECT_MESSAGE_CONSUME,
                         InstanceCapability.ACL_MANAGEMENT)
                 .doesNotContain(InstanceCapability.DLQ_MANAGEMENT);
     }
@@ -161,6 +174,100 @@ class AliyunInstanceProviderTest {
         assertThatThrownBy(() -> provider.sendMessage(request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("send denied");
+    }
+
+    @Test
+    void topicReadsShouldTolerateOmittedSuccessFlagTest() {
+        stubInstance();
+        stubCallThrough();
+        ListTopicsResponse fixture = topicsResponse(topicRow("orders", "NORMAL"));
+        ListTopicsResponse response = ListTopicsResponse.create().toBuilder()
+                .body(ListTopicsResponseBody.builder().data(fixture.getBody().getData()).build()).build();
+        when(asyncClient.listTopics(any())).thenReturn(CompletableFuture.completedFuture(response));
+        assertThat(provider.listTopics(STUDIO_INSTANCE_ID, null, null)).singleElement()
+                .extracting(TopicVO::getName).isEqualTo("orders");
+        assertThat(provider.countTopics(STUDIO_INSTANCE_ID)).isEqualTo(1);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void topicReadsShouldRejectMissingResponseBodyTest(boolean nullResponse) {
+        stubInstance();
+        stubCallThrough();
+        ListTopicsResponse response = nullResponse ? null : ListTopicsResponse.create().toBuilder().build();
+        when(asyncClient.listTopics(any())).thenReturn(CompletableFuture.completedFuture(response));
+        assertThatThrownBy(() -> provider.countTopics(STUDIO_INSTANCE_ID))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(502);
+    }
+
+    @Test
+    void consumeMessageDirectlyShouldCallAliyunVerifyApiTest() {
+        stubInstance();
+        stubCallThrough();
+        VerifyConsumeMessageResponse response = VerifyConsumeMessageResponse.create().toBuilder()
+                .statusCode(200)
+                .body(VerifyConsumeMessageResponseBody.builder()
+                        .success(true)
+                        .data(true)
+                        .message("accepted")
+                        .requestId("aliyun-request-1")
+                        .build())
+                .build();
+        when(asyncClient.verifyConsumeMessage(any()))
+                .thenReturn(CompletableFuture.completedFuture(response));
+
+        DirectConsumeMessageResultVO result = provider.consumeMessageDirectly(directConsumeRequest());
+
+        ArgumentCaptor<VerifyConsumeMessageRequest> captor =
+                ArgumentCaptor.forClass(VerifyConsumeMessageRequest.class);
+        verify(asyncClient).verifyConsumeMessage(captor.capture());
+        VerifyConsumeMessageRequest request = captor.getValue();
+        assertThat(request.getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
+        assertThat(request.getTopicName()).isEqualTo("orders");
+        assertThat(request.getMessageId()).isEqualTo("msg-1");
+        assertThat(request.getConsumerGroupId()).isEqualTo("billing");
+        assertThat(request.getClientId()).isEqualTo("client-a");
+        assertThat(result.getConsumeResult()).isEqualTo("CR_SUCCESS");
+        assertThat(result.getRemark()).contains("accepted", "aliyun-request-1");
+        assertThat(result.getSpentTimeMillis()).isNotNegative();
+        assertThat(result.isOrder()).isFalse();
+        assertThat(result.isAutoCommit()).isFalse();
+    }
+
+    @Test
+    void consumeMessageDirectlyShouldPreserveAliyunBusinessFailureTest() {
+        stubInstance();
+        stubCallThrough();
+        VerifyConsumeMessageResponse response = VerifyConsumeMessageResponse.create().toBuilder()
+                .statusCode(200)
+                .body(VerifyConsumeMessageResponseBody.builder()
+                        .success(true)
+                        .data(false)
+                        .message("client offline")
+                        .requestId("aliyun-request-2")
+                        .build())
+                .build();
+        when(asyncClient.verifyConsumeMessage(any()))
+                .thenReturn(CompletableFuture.completedFuture(response));
+
+        DirectConsumeMessageResultVO result = provider.consumeMessageDirectly(directConsumeRequest());
+
+        assertThat(result.getConsumeResult()).isEqualTo("CR_FAILED");
+        assertThat(result.getRemark()).contains("client offline", "aliyun-request-2");
+    }
+
+    @Test
+    void consumeMessageDirectlyShouldRejectEmptyAliyunResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.verifyConsumeMessage(any()))
+                .thenReturn(CompletableFuture.completedFuture(null));
+
+        assertThatThrownBy(() -> provider.consumeMessageDirectly(directConsumeRequest()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Aliyun direct consume returned an empty response")
+                .extracting("code")
+                .isEqualTo(502);
     }
 
     @Test
@@ -272,7 +379,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         ListConsumerGroupsResponse response = ListConsumerGroupsResponse.create().toBuilder()
                 .statusCode(200)
-                .body(ListConsumerGroupsResponseBody.builder()
+                .body(ListConsumerGroupsResponseBody.builder().success(true)
                         .data(ListConsumerGroupsResponseBody.Data.builder()
                                 .list(java.util.Arrays.asList(null,
                                         ListConsumerGroupsResponseBody.List.builder()
@@ -297,6 +404,38 @@ class AliyunInstanceProviderTest {
         assertThat(groups.get(0).getInstanceId()).isEqualTo(STUDIO_INSTANCE_PK);
         assertThat(groups.get(0).getConsumeType()).isEqualTo(ConsumeType.CLUSTERING);
         assertThat(groups.get(0).getSubscriptionMode()).isEqualTo(SubscriptionMode.Push);
+        assertThat(groups.get(0).getSubscribedTopics()).isEmpty();
+    }
+
+    @Test
+    void listConsumerGroupsShouldPreserveLiteConsumerTopicTest() {
+        stubInstance();
+        stubCallThrough();
+        ListConsumerGroupsResponse response = ListConsumerGroupsResponse.create().toBuilder()
+                .statusCode(200)
+                .body(ListConsumerGroupsResponseBody.builder()
+                        .data(ListConsumerGroupsResponseBody.Data.builder()
+                                .list(java.util.List.of(ListConsumerGroupsResponseBody.List.builder()
+                                        .consumerGroupId("GID_lite")
+                                        .messageModel("LITE_SELECTIVE")
+                                        .topicName("lite-session-a")
+                                        .status("RUNNING")
+                                        .build()))
+                                .pageNumber(1L)
+                                .pageSize(100L)
+                                .totalCount(1L)
+                                .build())
+                        .build())
+                .build();
+        when(asyncClient.listConsumerGroups(any()))
+                .thenReturn(CompletableFuture.completedFuture(response));
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups(STUDIO_INSTANCE_ID, null);
+
+        assertThat(groups).singleElement().satisfies(group -> {
+            assertThat(group.getName()).isEqualTo("GID_lite");
+            assertThat(group.getSubscribedTopics()).containsExactly("lite-session-a");
+        });
     }
 
     @Test
@@ -305,7 +444,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         ListConsumerGroupsResponse response = ListConsumerGroupsResponse.create().toBuilder()
                 .statusCode(200)
-                .body(ListConsumerGroupsResponseBody.builder()
+                .body(ListConsumerGroupsResponseBody.builder().success(true)
                         .data(ListConsumerGroupsResponseBody.Data.builder()
                                 .list(java.util.Arrays.asList(ListConsumerGroupsResponseBody.List.builder()
                                         .consumerGroupId("GID_plain")
@@ -402,7 +541,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         GetConsumerGroupLagResponse response = GetConsumerGroupLagResponse.create().toBuilder()
                 .statusCode(200)
-                .body(GetConsumerGroupLagResponseBody.builder()
+                .body(GetConsumerGroupLagResponseBody.builder().success(true)
                         .data(GetConsumerGroupLagResponseBody.Data.builder()
                                 .consumerGroupId("GID_test")
                                 .topicLagMap(Map.of("topic-a",
@@ -435,7 +574,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         GetConsumerGroupLagResponse response = GetConsumerGroupLagResponse.create().toBuilder()
                 .statusCode(200)
-                .body(GetConsumerGroupLagResponseBody.builder()
+                .body(GetConsumerGroupLagResponseBody.builder().success(true)
                         .data(GetConsumerGroupLagResponseBody.Data.builder()
                                 .consumerGroupId("GID_test")
                                 .totalLag(GetConsumerGroupLagResponseBody.TotalLag.builder()
@@ -461,7 +600,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         GetConsumerGroupLagResponse response = GetConsumerGroupLagResponse.create().toBuilder()
                 .statusCode(200)
-                .body(GetConsumerGroupLagResponseBody.builder()
+                .body(GetConsumerGroupLagResponseBody.builder().success(true)
                         .data(GetConsumerGroupLagResponseBody.Data.builder()
                                 .consumerGroupId("GID_test")
                                 .topicLagMap(Map.of("topic-a",
@@ -493,7 +632,7 @@ class AliyunInstanceProviderTest {
         String encodedBody = Base64.getEncoder().encodeToString("hello".getBytes(StandardCharsets.UTF_8));
         ListMessagesResponse response = ListMessagesResponse.create().toBuilder()
                 .statusCode(200)
-                .body(ListMessagesResponseBody.builder()
+                .body(ListMessagesResponseBody.builder().success(true)
                         .data(ListMessagesResponseBody.Data.builder()
                                 .list(java.util.Arrays.asList(
                                         null,
@@ -540,8 +679,10 @@ class AliyunInstanceProviderTest {
         assertThat(first.getBornHost()).isEqualTo("10.0.0.1");
         assertThat(first.getProperties()).containsEntry("a", "b");
         MessageRecordVO second = records.get(1);
+        // "{}" is not Base64, so the API handed back literal text; the shared contract has no
+        // "TEXT" label and UTF-8 is the one that describes a plain string body.
         assertThat(second.getBody()).isEqualTo("{}");
-        assertThat(second.getBodyEncoding()).isEqualTo("TEXT");
+        assertThat(second.getBodyEncoding()).isEqualTo("UTF-8");
 
         List<MessageRecordVO> filtered = provider.queryMessages(STUDIO_INSTANCE_ID, "topic-a", null,
                 "tagB", null, null, null);
@@ -647,6 +788,86 @@ class AliyunInstanceProviderTest {
     }
 
     @Test
+    void createConsumerGroupShouldKeepPartitionOrderedGroupsOrderlyTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.createConsumerGroup(any()))
+                .thenReturn(CompletableFuture.completedFuture(CreateConsumerGroupResponse.create()
+                        .toBuilder()
+                        .statusCode(200)
+                        .body(CreateConsumerGroupResponseBody.builder().data(true).build())
+                        .build()));
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("GID_ordered");
+        // exactly what the console form submits when the subscription data type is FIFO
+        group.setDeliveryOrderType("PARTITON_ORDER");
+        group.setRetryMaxTimes(5);
+
+        ConsumerGroupVO created = provider.createConsumerGroup(STUDIO_INSTANCE_ID, group);
+
+        ArgumentCaptor<CreateConsumerGroupRequest> captor =
+                ArgumentCaptor.forClass(CreateConsumerGroupRequest.class);
+        verify(asyncClient).createConsumerGroup(captor.capture());
+        CreateConsumerGroupRequest request = captor.getValue();
+        assertThat(request.getDeliveryOrderType()).isEqualTo("Orderly");
+        // ordered groups reject DefaultRetryPolicy, so the retry policy has to travel with the type
+        assertThat(request.getConsumeRetryPolicy().getRetryPolicy()).isEqualTo("FixedRetryPolicy");
+        assertThat(request.getConsumeRetryPolicy().getFixedIntervalRetryTime()).isEqualTo(10);
+        assertThat(request.getConsumeRetryPolicy().getMaxRetryTimes()).isEqualTo(5);
+        assertThat(created.getDeliveryOrderType()).isEqualTo("Orderly");
+    }
+
+    @Test
+    void createConsumerGroupShouldApplyTheRequestedBroadcastingModelTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.createConsumerGroup(any()))
+                .thenReturn(CompletableFuture.completedFuture(CreateConsumerGroupResponse.create()
+                        .toBuilder()
+                        .statusCode(200)
+                        .body(CreateConsumerGroupResponseBody.builder().data(true).build())
+                        .build()));
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("GID_broadcast");
+        // what the AI tool's group-create input and any API caller can send
+        group.setConsumeType(ConsumeType.BROADCASTING);
+        group.setRetryMaxTimes(5);
+
+        ConsumerGroupVO created = provider.createConsumerGroup(STUDIO_INSTANCE_ID, group);
+
+        ArgumentCaptor<CreateConsumerGroupRequest> captor =
+                ArgumentCaptor.forClass(CreateConsumerGroupRequest.class);
+        verify(asyncClient).createConsumerGroup(captor.capture());
+        // The vendor's spelling, the one the group page reads back through
+        // AliyunConverters.toConsumeType(data.getMessageModel()).
+        assertThat(captor.getValue().getMessageModel()).isEqualTo("Broadcasting");
+        assertThat(created.getConsumeType()).isEqualTo(ConsumeType.BROADCASTING);
+    }
+
+    @Test
+    void createConsumerGroupShouldLeaveTheConsumeModelToTheVendorWhenClusteringTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.createConsumerGroup(any()))
+                .thenReturn(CompletableFuture.completedFuture(CreateConsumerGroupResponse.create()
+                        .toBuilder()
+                        .statusCode(200)
+                        .body(CreateConsumerGroupResponseBody.builder().data(true).build())
+                        .build()));
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("GID_clustered");
+        group.setConsumeType(ConsumeType.CLUSTERING);
+
+        provider.createConsumerGroup(STUDIO_INSTANCE_ID, group);
+
+        ArgumentCaptor<CreateConsumerGroupRequest> captor =
+                ArgumentCaptor.forClass(CreateConsumerGroupRequest.class);
+        verify(asyncClient).createConsumerGroup(captor.capture());
+        // Only a requested broadcast is sent: the clustering default keeps the request byte-identical.
+        assertThat(captor.getValue().getMessageModel()).isNull();
+    }
+
+    @Test
     void resetOffsetShouldUseSpecifiedTimeTest() {
         stubInstance();
         stubCallThrough();
@@ -676,7 +897,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         GetTraceResponse response = GetTraceResponse.create().toBuilder()
                 .statusCode(200)
-                .body(GetTraceResponseBody.builder()
+                .body(GetTraceResponseBody.builder().success(true)
                         .data(GetTraceResponseBody.Data.builder()
                                 .producerInfo(GetTraceResponseBody.ProducerInfo.builder()
                                         .records(List.of(GetTraceResponseBody.ProducerInfoRecords.builder()
@@ -715,14 +936,17 @@ class AliyunInstanceProviderTest {
         assertThat(trace.getNodes()).hasSize(3);
         TraceNodeVO producer = trace.getNodes().get(0);
         assertThat(producer.getTitle()).isEqualTo("Producer");
-        assertThat(producer.getStatus()).isEqualTo("SEND_OK");
+        assertThat(producer.getStatus()).isEqualTo("finish");
         assertThat(producer.getCostTime()).isEqualTo(12L);
         assertThat(producer.getTimestamp())
                 .isEqualTo(AliyunConverters.parseTimeMillis("2023-03-22 12:17:08"));
         assertThat(trace.getNodes().get(1).getTitle()).isEqualTo("Broker store");
+        // GetTrace carries no status for broker operations; the node must still stay inside the
+        // wait / process / finish / error vocabulary instead of reporting null.
+        assertThat(trace.getNodes().get(1).getStatus()).isEqualTo("wait");
         TraceNodeVO consumer = trace.getNodes().get(2);
         assertThat(consumer.getTitle()).isEqualTo("Consumer GID_test");
-        assertThat(consumer.getStatus()).isEqualTo("CONSUME_OK");
+        assertThat(consumer.getStatus()).isEqualTo("finish");
         assertThat(trace.getConsumerStatus()).singleElement().satisfies(status -> {
             assertThat(status.getGroup()).isEqualTo("GID_test");
             assertThat(status.getDeliveryStatus().name()).isEqualTo("success");
@@ -737,7 +961,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         GetTraceResponse response = GetTraceResponse.create().toBuilder()
                 .statusCode(200)
-                .body(GetTraceResponseBody.builder()
+                .body(GetTraceResponseBody.builder().success(true)
                         .data(GetTraceResponseBody.Data.builder()
                                 .consumerInfos(List.of(GetTraceResponseBody.ConsumerInfos.builder()
                                         .consumerGroupId("GID_test")
@@ -772,7 +996,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         GetTraceResponse response = GetTraceResponse.create().toBuilder()
                 .statusCode(200)
-                .body(GetTraceResponseBody.builder().data(null).build())
+                .body(GetTraceResponseBody.builder().success(true).data(null).build())
                 .build();
         when(asyncClient.getTrace(any())).thenReturn(CompletableFuture.completedFuture(response));
 
@@ -783,7 +1007,7 @@ class AliyunInstanceProviderTest {
     }
 
     @Test
-    void getMessageTraceShouldReturnEmptyTraceWhenAliyunBodyIsNullTest() {
+    void getMessageTraceShouldRejectMissingAliyunBodyTest() {
         stubInstance();
         stubCallThrough();
         GetTraceResponse response = GetTraceResponse.create().toBuilder()
@@ -792,22 +1016,18 @@ class AliyunInstanceProviderTest {
                 .build();
         when(asyncClient.getTrace(any())).thenReturn(CompletableFuture.completedFuture(response));
 
-        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-without-body", "orders");
-
-        assertThat(trace.getNodes()).isEmpty();
-        assertThat(trace.getConsumerStatus()).isEmpty();
+        assertThatThrownBy(() -> provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-without-body", "orders"))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(502);
     }
 
     @Test
-    void getMessageTraceShouldReturnEmptyTraceWhenAliyunResponseIsNullTest() {
+    void getMessageTraceShouldRejectMissingAliyunResponseTest() {
         stubInstance();
         stubCallThrough();
         when(asyncClient.getTrace(any())).thenReturn(CompletableFuture.completedFuture(null));
 
-        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-without-response", "orders");
-
-        assertThat(trace.getNodes()).isEmpty();
-        assertThat(trace.getConsumerStatus()).isEmpty();
+        assertThatThrownBy(() -> provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-without-response", "orders"))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(502);
     }
 
     @Test
@@ -838,6 +1058,173 @@ class AliyunInstanceProviderTest {
                 .isEqualTo(400);
     }
 
+    @Test
+    void countTopicsShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listTopics(any())).thenReturn(CompletableFuture.completedFuture(
+                ListTopicsResponse.create().toBuilder().statusCode(200)
+                        .body(ListTopicsResponseBody.builder().success(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+
+        assertThatThrownBy(() -> provider.countTopics(STUDIO_INSTANCE_ID))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
+    }
+
+    @Test
+    void listTopicsShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listTopics(any())).thenReturn(CompletableFuture.completedFuture(
+                ListTopicsResponse.create().toBuilder().statusCode(200)
+                        .body(ListTopicsResponseBody.builder().success(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+
+        assertThatThrownBy(() -> provider.listTopics(STUDIO_INSTANCE_ID, null, null))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
+    }
+
+    @Test
+    void countGroupsShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listConsumerGroups(any())).thenReturn(CompletableFuture.completedFuture(
+                ListConsumerGroupsResponse.create().toBuilder().statusCode(200)
+                        .body(ListConsumerGroupsResponseBody.builder().success(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+
+        assertThatThrownBy(() -> provider.countGroups(STUDIO_INSTANCE_ID))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
+    }
+
+    @Test
+    void listConsumerGroupsShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listConsumerGroups(any())).thenReturn(CompletableFuture.completedFuture(
+                ListConsumerGroupsResponse.create().toBuilder().statusCode(200)
+                        .body(ListConsumerGroupsResponseBody.builder().success(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+
+        assertThatThrownBy(() -> provider.listConsumerGroups(STUDIO_INSTANCE_ID, null))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
+    }
+
+    @Test
+    void getTopicConsumersShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listTopicSubscriptions(any())).thenReturn(CompletableFuture.completedFuture(
+                ListTopicSubscriptionsResponse.create().toBuilder().statusCode(200)
+                        .body(ListTopicSubscriptionsResponseBody.builder().success(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+
+        assertThatThrownBy(() -> provider.getTopicConsumers(STUDIO_INSTANCE_ID, "orders"))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
+    }
+
+    @Test
+    void getGroupProgressShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.getConsumerGroupLag(any())).thenReturn(CompletableFuture.completedFuture(
+                GetConsumerGroupLagResponse.create().toBuilder().statusCode(200)
+                        .body(GetConsumerGroupLagResponseBody.builder().success(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+
+        assertThatThrownBy(() -> provider.getGroupProgress(STUDIO_INSTANCE_ID, "GID_orders"))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
+    }
+
+    @Test
+    void getGroupSubscriptionsShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listConsumerGroupSubscriptions(any())).thenReturn(CompletableFuture.completedFuture(
+                ListConsumerGroupSubscriptionsResponse.create().toBuilder().statusCode(200)
+                        .body(ListConsumerGroupSubscriptionsResponseBody.builder().success(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+
+        assertThatThrownBy(() -> provider.getGroupSubscriptions(STUDIO_INSTANCE_ID, "GID_orders"))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
+    }
+
+    @Test
+    void queryMessagesShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listMessages(any())).thenReturn(CompletableFuture.completedFuture(
+                ListMessagesResponse.create().toBuilder().statusCode(200)
+                        .body(ListMessagesResponseBody.builder().success(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+
+        assertThatThrownBy(() -> provider.queryMessages(STUDIO_INSTANCE_ID, "orders", null, null, null, null, null))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
+    }
+
+    @Test
+    void getMessageTraceShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.getTrace(any())).thenReturn(CompletableFuture.completedFuture(
+                GetTraceResponse.create().toBuilder().statusCode(200)
+                        .body(GetTraceResponseBody.builder().success(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+
+        assertThatThrownBy(() -> provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-1", "orders"))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
+    }
+
+    @Test
+    void updateTopicShouldRejectQueueCountsTheVendorCannotApplyTest() {
+        stubInstance();
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setWriteQueues(4);
+        topic.setReadQueues(4);
+
+        assertThatThrownBy(() -> provider.updateTopic(STUDIO_INSTANCE_ID, topic))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(400);
+                    assertThat(exception.getMessage()).contains("queue counts");
+                });
+        verifyNoInteractions(clientFactory);
+    }
+
+    @Test
+    void updateTopicShouldRejectAPermissionTheVendorCannotApplyTest() {
+        stubInstance();
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setPerm(TopicPerm.RO);
+
+        assertThatThrownBy(() -> provider.updateTopic(STUDIO_INSTANCE_ID, topic))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(400);
+                    assertThat(exception.getMessage()).contains("read-write");
+                });
+        verifyNoInteractions(clientFactory);
+    }
+
+    @Test
+    void updateTopicShouldStillSendARemarkOnlyUpdateTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.updateTopic(any(UpdateTopicRequest.class))).thenReturn(CompletableFuture.completedFuture(
+                UpdateTopicResponse.create().toBuilder().statusCode(200).build()));
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setRemark("updated remark");
+
+        TopicVO updated = provider.updateTopic(STUDIO_INSTANCE_ID, topic);
+
+        assertThat(updated.getRemark()).isEqualTo("updated remark");
+        ArgumentCaptor<UpdateTopicRequest> captor = ArgumentCaptor.forClass(UpdateTopicRequest.class);
+        verify(asyncClient).updateTopic(captor.capture());
+        assertThat(captor.getValue().getTopicName()).isEqualTo("orders");
+        assertThat(captor.getValue().getRemark()).isEqualTo("updated remark");
+    }
+
     private void stubInstance() {
         InstanceVO instance = InstanceVO.builder()
                 .name("aliyun-prod")
@@ -856,6 +1243,16 @@ class AliyunInstanceProviderTest {
         });
     }
 
+    private DirectConsumeMessageDTO directConsumeRequest() {
+        DirectConsumeMessageDTO request = new DirectConsumeMessageDTO();
+        request.setInstanceId(STUDIO_INSTANCE_ID);
+        request.setTopic("orders");
+        request.setMsgId("msg-1");
+        request.setConsumerGroup("billing");
+        request.setClientId("client-a");
+        return request;
+    }
+
     private static ListTopicsResponse topicsResponse(ListTopicsResponseBody.List... rows) {
         return topicsResponse((long) rows.length, 1L, 100L, rows);
     }
@@ -864,7 +1261,7 @@ class AliyunInstanceProviderTest {
             ListTopicsResponseBody.List... rows) {
         return ListTopicsResponse.create().toBuilder()
                 .statusCode(200)
-                .body(ListTopicsResponseBody.builder()
+                .body(ListTopicsResponseBody.builder().success(true)
                         .data(ListTopicsResponseBody.Data.builder()
                                 .list(java.util.Arrays.asList(rows))
                                 .pageNumber(pageNumber)
@@ -893,7 +1290,7 @@ class AliyunInstanceProviderTest {
                 .toList();
         return ListMessagesResponse.create().toBuilder()
                 .statusCode(200)
-                .body(ListMessagesResponseBody.builder()
+                .body(ListMessagesResponseBody.builder().success(true)
                         .data(ListMessagesResponseBody.Data.builder()
                                 .list(rows)
                                 .pageNumber((long) pageNumber)
@@ -910,7 +1307,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         ListTopicsResponse response = ListTopicsResponse.create().toBuilder()
                 .statusCode(200)
-                .body(ListTopicsResponseBody.builder()
+                .body(ListTopicsResponseBody.builder().success(true)
                         .data(ListTopicsResponseBody.Data.builder()
                                 .list(List.of(topicRow("topic-a", "NORMAL")))
                                 .pageNumber(1L)
@@ -935,7 +1332,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         ListConsumerGroupsResponse response = ListConsumerGroupsResponse.create().toBuilder()
                 .statusCode(200)
-                .body(ListConsumerGroupsResponseBody.builder()
+                .body(ListConsumerGroupsResponseBody.builder().success(true)
                         .data(ListConsumerGroupsResponseBody.Data.builder()
                                 .list(List.of(ListConsumerGroupsResponseBody.List.builder()
                                         .consumerGroupId("GID_one")
@@ -963,7 +1360,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         ListTopicsResponse missingTotal = ListTopicsResponse.create().toBuilder()
                 .statusCode(200)
-                .body(ListTopicsResponseBody.builder()
+                .body(ListTopicsResponseBody.builder().success(true)
                         .data(ListTopicsResponseBody.Data.builder()
                                 .list(List.of(topicRow("topic-a", "NORMAL")))
                                 .pageNumber(1L)
@@ -1005,7 +1402,7 @@ class AliyunInstanceProviderTest {
     private static ListConsumerGroupsResponse groupsResponse(Long totalCount, String... groupIds) {
         return ListConsumerGroupsResponse.create().toBuilder()
                 .statusCode(200)
-                .body(ListConsumerGroupsResponseBody.builder()
+                .body(ListConsumerGroupsResponseBody.builder().success(true)
                         .data(ListConsumerGroupsResponseBody.Data.builder()
                                 .list(java.util.Arrays.stream(groupIds)
                                         .map(groupId -> ListConsumerGroupsResponseBody.List.builder()
@@ -1038,6 +1435,27 @@ class AliyunInstanceProviderTest {
                 AliyunInstanceProvider.normalizeDeliveryOrderType("Concurrently"));
     }
 
+    /**
+     * The consumer group form never submits FIFO/ORDERLY. It submits the RocketMQ order-type
+     * spellings - PARTITON_ORDER for partition ordered and MESSAGES_ORDER for globally ordered -
+     * and the CSV importer additionally accepts PARTITION_ORDER. An unrecognised spelling used to
+     * fall through to Concurrently, so an ordered group created on an Aliyun instance came back
+     * concurrent with no error anywhere.
+     */
+    @Test
+    void normalizeDeliveryOrderTypeShouldMapConsoleOrderTypesToOrderlyTest() {
+        for (String value : List.of("PARTITON_ORDER", "MESSAGES_ORDER", "PARTITION_ORDER",
+                "partiton_order", " PARTITON_ORDER ")) {
+            assertThat(AliyunInstanceProvider.normalizeDeliveryOrderType(value))
+                    .as("value " + value)
+                    .isEqualTo("Orderly");
+        }
+        assertThat(AliyunInstanceProvider.normalizeDeliveryOrderType("Concurrently"))
+                .isEqualTo("Concurrently");
+        assertThat(AliyunInstanceProvider.normalizeDeliveryOrderType("   "))
+                .isEqualTo("Concurrently");
+    }
+
     @Test
     void timeConversionUsesAliyunUtc8Zone() {
         // "2024-01-01 00:00:00" is 2023-12-31T16:00:00Z in UTC+8 regardless of server zone.
@@ -1048,4 +1466,81 @@ class AliyunInstanceProviderTest {
         // Round-trip formatting must restore the same calendar time in UTC+8.
         assertThat(AliyunConverters.formatTimeMillis(expectedUtc8)).isEqualTo("2024-01-01 00:00:00");
     }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {0, 3})
+    void queryMessagesShouldFlagContradictoryShortPageTest(int rows) {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listMessages(any())).thenReturn(CompletableFuture.completedFuture(
+                messagesResponse(5L, 1, rows, "tagA")));
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "topic-a", null, null, null, null, null);
+        assertThat(result.messages()).hasSize(rows);
+        assertThat(result.mayBeTruncated()).isTrue();
+        verify(asyncClient).listMessages(any());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(longs = {3, 5})
+    void shortPageCompletenessUsesRowsBeforeLocalTagFilteringTest(long total) {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listMessages(any())).thenReturn(CompletableFuture.completedFuture(
+                messagesResponse(total, 1, 3, "other-tag")));
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "topic-a", null, "wanted-tag", null, null, null);
+        assertThat(result.messages()).isEmpty();
+        assertThat(result.mayBeTruncated()).isEqualTo(total > 3);
+        verify(asyncClient).listMessages(any());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {0, 3})
+    void queryMessagesShouldKeepEarlierRowsWhenLaterPageIsIncompleteTest(int laterRows) {
+        stubInstance();
+        stubCallThrough();
+        int firstRows = AliyunConverters.MESSAGE_PAGE_SIZE;
+        long total = firstRows + laterRows + 1L;
+        when(asyncClient.listMessages(any())).thenReturn(
+                CompletableFuture.completedFuture(messagesResponse(total, 1, firstRows, "tagA")),
+                CompletableFuture.completedFuture(messagesResponse(total, 2, laterRows, "tagA")));
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "topic-a", null, null, null, null, null);
+
+        assertThat(result.messages()).extracting(MessageRecordVO::getMsgId)
+                .containsExactlyElementsOf(IntStream.range(0, firstRows + laterRows)
+                        .mapToObj(index -> index < firstRows ? "msg-1-" + index : "msg-2-" + (index - firstRows))
+                        .toList());
+        assertThat(result.mayBeTruncated()).isTrue();
+        ArgumentCaptor<ListMessagesRequest> captor = ArgumentCaptor.forClass(ListMessagesRequest.class);
+        verify(asyncClient, times(2)).listMessages(captor.capture());
+        assertThat(captor.getAllValues()).extracting(ListMessagesRequest::getPageNumber)
+                .containsExactly(1, 2);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"0, 1", "3, 0", "3, 1"})
+    void laterPageCompletenessUsesCumulativeRowsBeforeLocalTagFilteringTest(int laterRows, int missingRows) {
+        stubInstance();
+        stubCallThrough();
+        int firstRows = AliyunConverters.MESSAGE_PAGE_SIZE;
+        long total = (long) firstRows + laterRows + missingRows;
+        when(asyncClient.listMessages(any())).thenReturn(
+                CompletableFuture.completedFuture(messagesResponse(total, 1, firstRows, "other-tag")),
+                CompletableFuture.completedFuture(messagesResponse(total, 2, laterRows, "wanted-tag")));
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "topic-a", null, "wanted-tag", null, null, null);
+
+        assertThat(result.messages()).extracting(MessageRecordVO::getMsgId)
+                .containsExactlyElementsOf(IntStream.range(0, laterRows)
+                        .mapToObj(index -> "msg-2-" + index).toList());
+        assertThat(result.mayBeTruncated()).isEqualTo(missingRows > 0);
+        ArgumentCaptor<ListMessagesRequest> captor = ArgumentCaptor.forClass(ListMessagesRequest.class);
+        verify(asyncClient, times(2)).listMessages(captor.capture());
+        assertThat(captor.getAllValues()).extracting(ListMessagesRequest::getPageNumber)
+                .containsExactly(1, 2);
+    }
+
 }

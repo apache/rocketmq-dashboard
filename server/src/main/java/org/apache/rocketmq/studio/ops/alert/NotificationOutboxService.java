@@ -17,6 +17,7 @@ import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.cluster.metrics.AlertingProperties;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.util.NoRedirectClientHttpRequestFactory;
+import org.apache.rocketmq.studio.common.util.TextBounds;
 import org.apache.rocketmq.studio.common.util.UrlHostGuard;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertNotificationOutbox;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAlertNotificationOutboxMapper;
@@ -49,6 +50,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -68,6 +70,12 @@ public class NotificationOutboxService {
     private static final int DEFAULT_HEARTBEAT_THREADS = 2;
     private static final int MAX_HEARTBEAT_THREADS = 4;
     private static final ObjectMapper JSON = new ObjectMapper();
+
+    /** The test message must name the channel it exercises, not always DingTalk. */
+    private static final Map<String, String> TEST_MESSAGE_DESCRIPTIONS = Map.of(
+            "dingtalk", "DingTalk notification configuration is working.",
+            "email", "Email notification configuration is working.",
+            "sms", "SMS notification configuration is working.");
 
     private final RmqAlertNotificationOutboxMapper mapper;
     private final SettingsRepository settingsRepository;
@@ -156,8 +164,8 @@ public class NotificationOutboxService {
         }
         GeneralSettingsVO settings = settingsRepository.loadGeneralSettings();
         SystemAlertVO alert = SystemAlertVO.builder().level(org.apache.rocketmq.studio.common.domain.enums.AlertLevel.info)
-                .title("RocketMQ Studio test notification").description("DingTalk notification configuration is working.")
-                .build();
+                .title("RocketMQ Studio test notification")
+                .description(TEST_MESSAGE_DESCRIPTIONS.get(channel)).build();
         try {
             String content = AlertNotificationTemplate.render(null, alert, null);
             if ("email".equals(channel)) sendEmail(settings, alert, content);
@@ -189,7 +197,12 @@ public class NotificationOutboxService {
             row.setStatus(NotificationOutboxStatus.PENDING.name());
             row.setAttemptCount(0);
             row.setMessageContent(AlertNotificationTemplate.render(rule.getNotificationTemplate(), alert, rule));
-            row.setNextAttemptAt(silenceEndsAt == null ? utcNow() : silenceEndsAt);
+            LocalDateTime now = utcNow();
+            row.setNextAttemptAt(silenceEndsAt == null ? now : silenceEndsAt);
+            // The retention cutoff is computed in UTC; leaving these to the database defaults would
+            // stamp them with the session clock (Asia/Shanghai in the compose deploy) instead.
+            row.setGmtCreate(now);
+            row.setGmtModified(now);
             mapper.insert(row);
         }
     }
@@ -208,18 +221,25 @@ public class NotificationOutboxService {
     }
 
     public PageResult<NotificationDeliveryPageVO> listDeliveries(String channel, String status, String instanceId,
-            int page, int pageSize) {
+            String search, LocalDateTime from, LocalDateTime to, int page, int pageSize) {
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
+                    "Delivery start time must not be after end time");
+        }
         int safePage = Math.max(1, page);
         int safePageSize = Math.min(100, Math.max(1, pageSize));
         String normalizedChannel = normalizeFilter(channel);
         String normalizedStatus = normalizeStatus(status);
         String normalizedInstanceId = normalizeTrim(instanceId);
-        long total = mapper.countPage(normalizedChannel, normalizedStatus, normalizedInstanceId);
+        String normalizedSearch = normalizeTrim(search);
+        long total = mapper.countPage(normalizedChannel, normalizedStatus, normalizedInstanceId,
+                normalizedSearch, from, to);
         if (total == 0) {
             return PageResult.empty(safePage, safePageSize);
         }
-        return PageResult.of(mapper.findPage(normalizedChannel, normalizedStatus, normalizedInstanceId, safePageSize,
-                (long) (safePage - 1) * safePageSize), total, safePage, safePageSize);
+        return PageResult.of(mapper.findPage(normalizedChannel, normalizedStatus, normalizedInstanceId,
+                normalizedSearch, from, to, safePageSize, (long) (safePage - 1) * safePageSize),
+                total, safePage, safePageSize);
     }
 
     public void retryFailedDelivery(Long deliveryId) {
@@ -236,7 +256,8 @@ public class NotificationOutboxService {
         int updated = mapper.update(null, new UpdateWrapper<RmqAlertNotificationOutbox>()
                 .set("status", NotificationOutboxStatus.PENDING.name()).set("attempt_count", 0)
                 .set("next_attempt_at", now).set("sending_started_at", null).set("claim_token", null)
-                .set("last_error", null).eq("id", deliveryId).eq("status", NotificationOutboxStatus.FAILED.name()));
+                .set("last_error", null).set("gmt_modified", now)
+                .eq("id", deliveryId).eq("status", NotificationOutboxStatus.FAILED.name()));
         if (updated != 1) {
             throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
                     "Only failed notification deliveries can be retried");
@@ -248,6 +269,10 @@ public class NotificationOutboxService {
         if (deliveryIds == null || deliveryIds.isEmpty() || deliveryIds.size() > 100) {
             throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
                     "Provide between 1 and 100 notification delivery IDs");
+        }
+        if (deliveryIds.stream().anyMatch(id -> id == null)) {
+            throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
+                    "Notification delivery IDs must not contain null");
         }
         List<Long> succeeded = new ArrayList<>();
         Map<Long, String> failures = new java.util.LinkedHashMap<>();
@@ -295,8 +320,9 @@ public class NotificationOutboxService {
             // each claim so a row cannot be born with an already-expired lease.
             LocalDateTime claimStartedAt = utcNow();
             LocalDateTime claimStaleBefore = claimStartedAt.minus(claimTimeout);
+            int attemptCount = row.getAttemptCount() == null ? 0 : row.getAttemptCount();
             if (mapper.claimForDispatch(row.getId(), claimStartedAt, claimStaleBefore, claimStartedAt,
-                    claimToken) != 1) {
+                    claimToken, attemptCount) != 1) {
                 continue;
             }
             send(row, claimToken);
@@ -403,7 +429,9 @@ public class NotificationOutboxService {
             throw new IllegalStateException("No configured " + channel + " webhook");
         }
         UrlHostGuard.check(webhook, false);
-        ResponseEntity<String> response = restTemplate.postForEntity(dingTalkWebhook(webhook, settings, channel),
+        // The URL already contains escaped query values, including the DingTalk signature.
+        // The String overload would treat it as a URI template and encode those escapes again.
+        ResponseEntity<String> response = restTemplate.postForEntity(URI.create(dingTalkWebhook(webhook, settings, channel)),
                 payload(alert, channel, content), String.class);
         if (!response.getStatusCode().is2xxSuccessful()) {
             throw new IllegalStateException("Webhook returned " + response.getStatusCode());
@@ -470,18 +498,47 @@ public class NotificationOutboxService {
 
     private static String[] parseRecipients(String raw) throws AddressException {
         List<String> recipients = new ArrayList<>();
-        for (String value : raw.split("[,;]")) {
-            String recipient = value.trim();
-            if (!recipient.isEmpty()) {
-                InternetAddress address = new InternetAddress(recipient, true);
-                address.validate();
-                recipients.add(address.getAddress());
+        // Split on the documented separators (comma, plus the legacy
+        // semicolon) only outside a quoted display name: a list like
+        // `"Doe, John" <john@example.com>, ops@example.com` is valid RFC 822
+        // input, but a plain [,;] split broke it into unbalanced fragments
+        // that failed validation and drove the notification into retry
+        // instead of sending.
+        StringBuilder current = new StringBuilder();
+        boolean quoted = false;
+        boolean escaped = false;
+        for (int i = 0; i < raw.length(); i++) {
+            char c = raw.charAt(i);
+            if (escaped) {
+                current.append(c);
+                escaped = false;
+            } else if (quoted && c == '\\') {
+                current.append(c);
+                escaped = true;
+            } else if (c == '"') {
+                current.append(c);
+                quoted = !quoted;
+            } else if (!quoted && (c == ',' || c == ';')) {
+                addRecipient(current, recipients);
+                current.setLength(0);
+            } else {
+                current.append(c);
             }
         }
+        addRecipient(current, recipients);
         if (recipients.isEmpty()) {
             throw new AddressException("No valid email recipients");
         }
         return recipients.toArray(String[]::new);
+    }
+
+    private static void addRecipient(CharSequence token, List<String> recipients) throws AddressException {
+        String recipient = token.toString().trim();
+        if (!recipient.isEmpty()) {
+            InternetAddress address = new InternetAddress(recipient, true);
+            address.validate();
+            recipients.add(address.getAddress());
+        }
     }
 
     private Map<String, Object> payload(SystemAlertVO alert, String channel, String content) {
@@ -516,10 +573,12 @@ public class NotificationOutboxService {
                 .set("last_error", abbreviate(error)).set("claim_token", null))) {
             return;
         }
-        // "FAILURE" is outside the shared audit result vocabulary (SUCCESS/FAILED/PARTIAL), so
-        // exhausted deliveries never landed in the audit summary's failed bucket.
+        // The audit result vocabulary is SUCCESS/FAILED/PARTIAL (docs/api-spec.md), and the summary
+        // buckets only those three: "RETRYING" rows were counted in its total but in no bucket.
+        // Both branches audit a failed attempt, and the operation name already tells a scheduled
+        // retry (RETRY_ALERT_NOTIFICATION) from an exhausted one (FAIL_ALERT_NOTIFICATION).
         recordDeliverySafely(row, exhausted ? "FAIL_ALERT_NOTIFICATION" : "RETRY_ALERT_NOTIFICATION",
-                exhausted ? "FAILED" : "RETRYING", abbreviate(error));
+                "FAILED", abbreviate(error));
         log.warn("Alert notification {} for event {}: {}", exhausted ? "failed" : "will retry", row.getAlertId(), error);
     }
 
@@ -539,11 +598,17 @@ public class NotificationOutboxService {
 
     private static String abbreviate(String value) {
         if (value == null) return "Delivery failed";
-        return value.length() > 1000 ? value.substring(0, 1000) : value;
+        // The text comes from outside the codebase - a webhook receiver's response body, an SMTP
+        // reply - and those quote the notification content back, so an emoji can sit at the cut.
+        return TextBounds.truncate(value, 1000);
     }
 
     private boolean updateClaimed(RmqAlertNotificationOutbox row, String claimToken,
             UpdateWrapper<RmqAlertNotificationOutbox> updates) {
+        // Every claimed state change stamps gmt_modified from the same UTC clock as the retention
+        // cutoff. Without this the ON UPDATE CURRENT_TIMESTAMP default rewrites it in the database
+        // session's timezone and the purge compares two clocks.
+        updates.set("gmt_modified", utcNow());
         return mapper.update(null, updates.eq("id", row.getId()).eq("status", NotificationOutboxStatus.SENDING.name())
                 .eq("claim_token", claimToken)) == 1;
     }

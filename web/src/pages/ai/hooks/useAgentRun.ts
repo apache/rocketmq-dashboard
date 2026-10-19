@@ -45,7 +45,7 @@ import { describeThrownMessage } from '../../../utils/apiError';
  * - `generationRef` identifies the (re)attach. Every callback compares against it, so frames from a
  *   conversation the user navigated away from are dropped instead of repainting another
  *   transcript.
- * - `streamRequestIdRef` identifies the request, the `MessageQueryHistoryDrawer` idiom: it is
+ * - `streamRequestIdRef` identifies the request, the `MessageQueryHistoryModal` idiom: it is
  *   re-read after every await, so a superseded stream can neither flip `isStreaming` nor clear the
  *   blocks that the current run owns.
  *
@@ -109,6 +109,12 @@ export interface UseAgentRunResult {
   /** Final speed of the most recent finished run; null when it produced no measurable text. */
   lastRunTokensPerSecond: number | null;
   /**
+   * The prompt the run in flight was admitted with, or null. The stream carries no user frame and
+   * the persisted transcript only gains the row at the end-of-run refetch, so the caller renders
+   * this as an optimistic user bubble while the run is alive.
+   */
+  pendingUserMessage: string | null;
+  /**
    * Send a message and stream the run it starts. Resolves once the terminal frames were processed
    * and the timeline refetch settled. A no-op while another run is in flight.
    */
@@ -150,6 +156,14 @@ export function useAgentRun(
   const [error, setError] = useState('');
   const [lastRunTokensPerSecond, setLastRunTokensPerSecond] = useState<number | null>(null);
   const [liveTokensPerSecond, setLiveTokensPerSecond] = useState<number | null>(null);
+  /**
+   * The prompt the admitted run was started with, or null. The live stream carries no `user`
+   * frame and the persisted transcript is only refetched when the run FINISHES, so without this
+   * optimistic copy the operator's own question stays invisible for the whole run — minutes on a
+   * long tool-heavy answer. Rendered as a user bubble ahead of the live assistant bubble; the
+   * final refetch replaces it with the persisted row in one commit.
+   */
+  const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null);
 
   const generationRef = useRef(0);
   const streamRequestIdRef = useRef(0);
@@ -237,12 +251,12 @@ export function useAgentRun(
   const finishStream = useCallback(
     async (requestId: number, controller: AbortController, streamFailure: unknown | null) => {
       if (abortControllerRef.current === controller) abortControllerRef.current = null;
+      // A newer stream (or a navigation) owns the guard and UI now.
+      if (requestId !== streamRequestIdRef.current) return;
       // Released before the refetch is awaited on purpose: a reload that hangs must not leave the
       // composer unable to send. A send that overtakes this finally block bumps the request id, and
       // the guard after the await below then keeps this run's cleanup off the newer one's state.
       chatInFlightRef.current = false;
-      // A newer stream (or a navigation) owns the UI now; touching state here would clobber it.
-      if (requestId !== streamRequestIdRef.current) return;
 
       setIsStreaming(false);
       // The stream is over, so there is nothing left to wait for whichever way it ended: clearing
@@ -254,6 +268,9 @@ export function useAgentRun(
       // instead of flashing an empty transcript. It is also what makes a run that died mid-stream
       // render correctly after a reload: whatever reached the database comes back.
       await persistRunSpeed();
+      // Reporting can outlive navigation or a newer send. Re-check before invoking the
+      // current page's callback, which may now belong to a different conversation.
+      if (requestId !== streamRequestIdRef.current) return;
       try {
         await optionsRef.current.refetchTimeline();
       } catch (refetchError) {
@@ -262,6 +279,7 @@ export function useAgentRun(
         // Keep the live blocks: with the refetch failed they are the only copy of this answer. When
         // the stream failed too, that message is the informative one — a dead connection explains
         // the truncated answer, a failed reload only explains why it did not move into history.
+        // The optimistic user bubble stays for the same reason: the transcript never got the row.
         if (streamFailure === null) setError(describeThrownMessage(refetchError));
         scheduleTick();
         return;
@@ -271,6 +289,9 @@ export function useAgentRun(
       // The speed of this run is final the moment the stream closes; persist it before the
       // refetch swaps the live bubble for its persisted twin, which is what displays it.
       setLastRunTokensPerSecond(speedTrackerRef.current.tokensPerSecond());
+      // The refetched transcript now renders the persisted user row; drop the optimistic twin in
+      // the same commit so it never paints twice.
+      setPendingUserMessage(null);
       blocksRef.current = [];
       scheduleTick();
     },
@@ -282,6 +303,7 @@ export function useAgentRun(
       targetConversationId: number,
       open: (handlers: RunStreamHandlers, signal: AbortSignal) => Promise<void>,
       knownRunId: number | null = null,
+      userMessage?: string,
     ): Promise<void> => {
       // Double-submit guard: Enter twice in one tick must not admit two runs (the server would
       // reject the second with 409 anyway, but the UI should not even try).
@@ -295,6 +317,8 @@ export function useAgentRun(
         return;
       }
       chatInFlightRef.current = true;
+      // Only `send` carries a prompt; a re-attach finds the user row already in the timeline.
+      if (userMessage !== undefined) setPendingUserMessage(userMessage);
 
       const requestId = ++streamRequestIdRef.current;
       const generation = ++generationRef.current;
@@ -344,8 +368,11 @@ export function useAgentRun(
 
   const send = useCallback(
     (targetConversationId: number, request: AiMessageRequest): Promise<void> =>
-      startStream(targetConversationId, (handlers, signal) =>
-        openRunStream(targetConversationId, request, handlers, signal),
+      startStream(
+        targetConversationId,
+        (handlers, signal) => openRunStream(targetConversationId, request, handlers, signal),
+        null,
+        request.message,
       ),
     [startStream],
   );
@@ -366,6 +393,8 @@ export function useAgentRun(
     // window with nothing to address. The button stays disabled until then (`canStop`).
     if (targetRunId === null) return;
 
+    const requestId = streamRequestIdRef.current;
+    const generation = generationRef.current;
     setStopRequested(true);
     try {
       // The response is the run row, which the stream reports authoritatively anyway; the point of
@@ -374,6 +403,9 @@ export function useAgentRun(
       // Deliberately NOT aborting the fetch: the open stream is what delivers the terminal
       // `run_status` frame and `done`, and aborting would leave the button in `stopping` forever.
     } catch (stopError) {
+      // Navigation or a newer stream invalidated this Stop request. Its failure belongs to the old
+      // run and must not paint an error onto the conversation that owns the hook now.
+      if (requestId !== streamRequestIdRef.current || generation !== generationRef.current) return;
       setStopRequested(false);
       setError(describeThrownMessage(stopError));
       optionsRef.current.onError?.(stopError);
@@ -394,6 +426,7 @@ export function useAgentRun(
     setIsStreaming(false);
     setStopRequested(false);
     setError('');
+    setPendingUserMessage(null);
     bump();
   }, [cancelFrame]);
 
@@ -436,6 +469,7 @@ export function useAgentRun(
     error,
     liveTokensPerSecond,
     lastRunTokensPerSecond,
+    pendingUserMessage,
     send,
     attach,
     stop,

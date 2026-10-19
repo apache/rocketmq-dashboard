@@ -42,6 +42,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -112,7 +113,12 @@ public class RocketMQClusterProvider implements ClusterProvider {
 
 
                 List<ClusterVO> clusters = new ArrayList<>();
-                for (Map.Entry<String, Set<String>> entry : clusterAddrTable.entrySet()) {
+                // A HashMap iterates deterministically for a given key set, but nothing agrees
+                // on that order across the providers; sort by cluster name so the discovered list
+                // matches the ordering RealClusterProvider already applies to its own table walk.
+                List<Map.Entry<String, Set<String>>> entries = new ArrayList<>(clusterAddrTable.entrySet());
+                entries.sort(Map.Entry.comparingByKey());
+                for (Map.Entry<String, Set<String>> entry : entries) {
                     String clusterName = entry.getKey();
                     Set<String> brokerNames = entry.getValue();
 
@@ -141,6 +147,12 @@ public class RocketMQClusterProvider implements ClusterProvider {
         String namesrvAddr = resolveNamesrvAddr(instanceId);
         if (!StringUtils.hasText(namesrvAddr)) {
             log.debug("NameServer address not configured, cannot refresh cluster detail");
+            return null;
+        }
+
+        String configuredCluster = StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
+        if (configuredCluster != null && !configuredCluster.equals(clusterId)) {
             return null;
         }
 
@@ -183,14 +195,27 @@ public class RocketMQClusterProvider implements ClusterProvider {
 
     @Override
     public List<BrokerVO> discoverBrokers(String instanceId, String brokerName) {
+        String configuredCluster = runtimeAdminClientResolver.configuredClusterName(instanceId);
         return runtimeAdminClientResolver.execute(instanceId, admin -> {
             ClusterInfo info = admin.examineBrokerClusterInfo();
             if (info == null || info.getBrokerAddrTable() == null)
                 throw new BusinessException(503, "Broker topology is unavailable");
             Map<String, BrokerData> table = info.getBrokerAddrTable();
-            if (brokerName != null && !table.containsKey(brokerName))
-                throw new BusinessException(404, "Broker not found in Instance: " + brokerName);
-            Set<String> names = brokerName == null ? new java.util.TreeSet<>(table.keySet()) : Set.of(brokerName);
+            Set<String> names = new TreeSet<>(table.keySet());
+            if (configuredCluster != null) {
+                Map<String, Set<String>> clusters = info.getClusterAddrTable();
+                if (clusters == null || clusters.containsKey(configuredCluster)
+                        && clusters.get(configuredCluster) == null) {
+                    throw new BusinessException(503, "Broker cluster membership is unavailable");
+                }
+                names.retainAll(clusters.getOrDefault(configuredCluster, Set.of()));
+            }
+            if (brokerName != null) {
+                if (!names.contains(brokerName)) {
+                    throw new BusinessException(404, "Broker not found in Instance: " + brokerName);
+                }
+                names = Set.of(brokerName);
+            }
             return buildBrokerList(admin, names, table);
         });
     }
@@ -223,7 +248,9 @@ public class RocketMQClusterProvider implements ClusterProvider {
             return brokers;
         }
 
-        for (String brokerName : brokerNames) {
+        // brokerNames is a deserialised HashSet, so its iteration order is hash order while
+        // RealClusterProvider lists a cluster's brokers by name; walk a sorted copy so the views agree.
+        for (String brokerName : new TreeSet<>(brokerNames)) {
             BrokerData brokerData = brokerAddrTable.get(brokerName);
             if (brokerData == null || brokerData.getBrokerAddrs() == null) {
                 continue;
@@ -301,7 +328,9 @@ public class RocketMQClusterProvider implements ClusterProvider {
                     if (Double.isFinite(parsedRatio) && parsedRatio >= 0) {
                         // RocketMQ exposes commitLogDiskRatio as a fraction in [0, 1],
                         // while BrokerVO and the web progress bars use percentage points.
-                        builder.diskUsage(parsedRatio * 100D);
+                        // Scaled in whole tenths: 0.29 * 100 is 28.999999999999996 in binary
+                        // floating point, and the web renders that number verbatim.
+                        builder.diskUsage(Math.round(parsedRatio * 1000D) / 10D);
                     }
                 } catch (NumberFormatException ignored) {
                     // keep default
@@ -407,9 +436,12 @@ public class RocketMQClusterProvider implements ClusterProvider {
         }
 
         String[] addrs = namesrvAddr.split("[;,]");
+        Set<String> seen = new LinkedHashSet<>();
         for (String addr : addrs) {
             String trimmed = addr.trim();
-            if (!trimmed.isEmpty()) {
+            if (!trimmed.isEmpty() && seen.add(trimmed)) {
+                // Deduplicate: the admin connection treats a repeated segment as one node, so
+                // the reported rows must not repeat it either.
                 nameServers.add(NameServerVO.builder()
                         .addr(trimmed)
                         .status(ClusterStatus.healthy)

@@ -15,13 +15,13 @@
  * limitations under the License.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { listInstances } from '../services/instanceService';
 import type { Instance } from '../api/instance';
 
-const INSTANCE_SCOPED_PATH = /^\/instance\/([^/]+)\/(topic|consumer|message|acl|dlq)$/;
-const STATIC_SECTION_PATH = /^\/instance\/(topic|consumer|message|acl|dlq)$/;
+const INSTANCE_SCOPED_PATH = /^\/instance\/([^/]+)\/(topic|consumer|message|acl|dlq)\/*$/;
+const STATIC_SECTION_PATH = /^\/instance\/(topic|consumer|message|acl|dlq)\/*$/;
 
 function decodeRouteSegment(segment: string | undefined) {
   if (segment === undefined) return undefined;
@@ -34,7 +34,14 @@ function decodeRouteSegment(segment: string | undefined) {
 
 /**
  * 实例维度页面的公共筛选逻辑：从 /instance/:instanceId/<section> 路由解析当前实例，
- * 无实例参数时重定向到第一个实例；实例列表加载失败时降级为不过滤。
+ * 无实例参数时重定向到第一个实例。
+ *
+ * 路由上已带实例名时，页面不必等实例列表返回就能发自己的数据请求（见下方 selectedInstanceId）；
+ * 只有「路由没带实例名」或「路由上的名字不在列表里」才需要列表来决定用哪个实例。
+ *
+ * 实例列表加载失败时没有可用的降级：服务端的实例维度接口都要求 instanceId，所以路由不带实例名的
+ * 页面只能停在“无实例”状态。失败因此必须暴露给页面（instancesFailed），否则一次失败的请求与
+ * “该实例下确实没有数据”在界面上无法区分，而页面会把后者当成空结果展示。
  */
 export function useInstanceFilter() {
   const navigate = useNavigate();
@@ -47,6 +54,8 @@ export function useInstanceFilter() {
 
   const [instances, setInstances] = useState<Instance[]>([]);
   const [instancesLoading, setInstancesLoading] = useState(true);
+  const [instancesFailed, setInstancesFailed] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
 
   // Keep the latest selected instance id in a ref so the instance *list* is only
   // fetched when needed (section / navigation changes) and not re-fetched every
@@ -62,6 +71,7 @@ export function useInstanceFilter() {
     void listInstances()
       .then((nextInstances) => {
         if (cancelled) return;
+        setInstancesFailed(false);
         setInstances(nextInstances);
         const selectedInstanceId = routeInstanceIdRef.current;
         const isKnownInstance = nextInstances.some(
@@ -74,7 +84,7 @@ export function useInstanceFilter() {
         }
       })
       .catch(() => {
-        // 实例列表加载失败时不做实例过滤，保持页面数据可用
+        if (!cancelled) setInstancesFailed(true);
       })
       .finally(() => {
         if (!cancelled) setInstancesLoading(false);
@@ -82,10 +92,16 @@ export function useInstanceFilter() {
     return () => {
       cancelled = true;
     };
-  }, [navigate, section]);
+  }, [navigate, section, reloadToken]);
 
+  // The route already names the instance, so trust it before the list lands: pages gate their own
+  // data request on selectedInstanceId, and making them wait would serialize the (slow, cloud
+  // instances are resolved remotely) list request ahead of every topic/group/message fetch. Once the
+  // list arrives an unknown route id still falls back to the first instance, and the effect above
+  // rewrites the route to match.
   const selectedInstanceId =
-    routeInstanceId !== undefined && instances.some((instance) => instance.name === routeInstanceId)
+    routeInstanceId !== undefined &&
+    (instances.length === 0 || instances.some((instance) => instance.name === routeInstanceId))
       ? routeInstanceId
       : instances[0]?.name;
   const selectedInstance = instances.find((instance) => instance.name === selectedInstanceId);
@@ -93,6 +109,8 @@ export function useInstanceFilter() {
   const selectInstance = (name: string) => {
     navigate(`/instance/${encodeURIComponent(name)}/${section}`);
   };
+
+  const reloadInstances = useCallback(() => setReloadToken((token) => token + 1), []);
 
   const instanceOptions = instances.map((instance) => ({
     value: instance.name,
@@ -102,9 +120,11 @@ export function useInstanceFilter() {
   return {
     instances,
     instancesLoading,
+    instancesFailed,
     selectedInstanceId,
     selectedInstance,
     selectInstance,
+    reloadInstances,
     instanceOptions,
   };
 }

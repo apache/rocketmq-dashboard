@@ -87,7 +87,8 @@ class ToolInstanceRoutingTest {
         AdminClient globalAdmin = mock(AdminClient.class);
         MetadataService metadata = new MetadataService(globalMetadata, globalAdmin, registry, targets,
                 mock(OperationAuditService.class), mock(MessageService.class),
-                mock(RuntimeAdminClientResolver.class));
+                mock(RuntimeAdminClientResolver.class),
+                mock(org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.class));
         TopicListToolHandler handler = new TopicListToolHandler(metadata);
         ToolDefinition definition = new ToolCatalog(new DefaultResourceLoader()).getDefinition(handler.name());
         ToolCatalog catalog = mock(ToolCatalog.class);

@@ -147,6 +147,25 @@ class CliAgentProviderTest {
     }
 
     @Test
+    void aFailedCliShouldAbbreviateItsOutputOnCodePointBoundariesTest() {
+        // The CLI quotes the prompt back when it fails, and the prompt is raw user text, so an emoji
+        // can sit on the 500th char. The script writes exactly that: 499 bytes of 'x', then the
+        // 4 UTF-8 bytes of U+1F600, then a tail that the cut drops.
+        String script = "head -c 499 /dev/zero | tr '\\000' x; "
+                + "printf '\\360\\237\\230\\200'; printf tail; exit 1";
+        FakeCli cli = new FakeCli(script);
+
+        assertThatThrownBy(() -> cli.complete(null, "prompt", null))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(502);
+                    assertThat(exception.getCode()).isEqualTo("llm.provider.cli_error");
+                    // A char-based cut would keep the high surrogate alone and drop the low one.
+                    assertThat(exception.getMessage())
+                            .isEqualTo("sh CLI failed: " + "x".repeat(499) + "\uD83D\uDE00" + "...");
+                });
+    }
+
+    @Test
     void completeRejectsOversizedPromptBeforeStartingCli() {
         FakeCli cli = new FakeCli("echo should-not-run");
 
@@ -232,5 +251,44 @@ class CliAgentProviderTest {
         // A probe only asks whether a binary exists, so nothing request-scoped may travel with it.
         assertThat(probe.isAvailable("sh")).isTrue();
         assertThat(applied).containsExactly(Map.of());
+    }
+
+    @Test
+    void probeRefusesANameTheShellCouldReadAsSyntaxTest() {
+        CliBinaryProbe probe = new CliBinaryProbe(
+                (builder, providerEnvironment) -> { },
+                builder -> {
+                    throw new AssertionError("a refused name must never reach the shell");
+                });
+
+        // Every case is a bare name plus something "sh -c" would parse, which is exactly what
+        // interpolating into "command -v " turns into a second command, an option or a path.
+        for (String name : List.of("rmqctl; id", "rmqctl && id", "rmqctl | id", "claude$(id)",
+                "claude`id`", "rmqctl\nid", "/bin/sh", "-x", " ", "")) {
+            assertThat(probe.isAvailable(name)).as("name=[%s]", name).isFalse();
+        }
+        assertThat(probe.isAvailable(null)).isFalse();
+    }
+
+    @Test
+    void probeStillAcceptsTheBareNamesItsCallersPassTest() throws InterruptedException {
+        AtomicReference<List<String>> probed = new AtomicReference<>();
+        Process process = mock(Process.class);
+        when(process.waitFor(anyLong(), eq(java.util.concurrent.TimeUnit.SECONDS))).thenReturn(true);
+        when(process.exitValue()).thenReturn(0);
+        CliBinaryProbe probe = new CliBinaryProbe(
+                (builder, providerEnvironment) -> { },
+                builder -> {
+                    probed.set(List.copyOf(builder.command()));
+                    return process;
+                });
+
+        // The constants the callers pass today, plus the shapes the identifier pattern allows.
+        assertThat(probe.isAvailable("rmqctl")).isTrue();
+        assertThat(probed.get()).containsExactly("sh", "-c", "command -v rmqctl");
+        assertThat(probe.isAvailable("claude")).isTrue();
+        assertThat(probe.isAvailable("qodercli")).isTrue();
+        assertThat(probe.isAvailable("definitely-not-on-path-9f3a")).isTrue();
+        assertThat(probe.isAvailable("rmqctl.beta_2+x")).isTrue();
     }
 }

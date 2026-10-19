@@ -30,6 +30,14 @@ import java.time.format.DateTimeFormatter;
 @Data
 public class DLQMessageExcelRow {
 
+    /**
+     * POI rejects any cell whose text exceeds this many characters, so one oversized dead-letter
+     * body would otherwise abort the whole export with a 502. The budget is counted in UTF-16
+     * chars, not code points, which is why {@code TextBounds} cannot be reused here.
+     */
+    private static final int MAX_EXCEL_CELL_CHARS = 32_767;
+    private static final String TRUNCATION_SUFFIX = "...[truncated]";
+
     private static final DateTimeFormatter STORE_TIME_FORMAT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -49,6 +57,8 @@ public class DLQMessageExcelRow {
     private String keys;
     @ExcelProperty("Body")
     private String body;
+    @ExcelProperty("Body Base64")
+    private String bodyBase64;
 
     public static DLQMessageExcelRow from(DLQMessageVO vo) {
         DLQMessageExcelRow row = new DLQMessageExcelRow();
@@ -60,7 +70,25 @@ public class DLQMessageExcelRow {
                 Instant.ofEpochMilli(vo.getStoreTime()), ZoneId.systemDefault()).format(STORE_TIME_FORMAT));
         row.setReconsumeTimes(vo.getReconsumeTimes());
         row.setKeys(vo.getKeys());
-        row.setBody(vo.getBody());
+        row.setBody(abbreviateForExcelCell(vo.getBody()));
+        row.setBodyBase64(abbreviateForExcelCell(vo.getBody() == null ? vo.getBodyBase64() : null));
         return row;
+    }
+
+    /**
+     * Caps any cell-bound text at {@link #MAX_EXCEL_CELL_CHARS} so POI never rejects the row. The
+     * cut lands on a code-point boundary so a surrogate pair is never split; for Base64 (pure ASCII)
+     * the guard never fires and the method is just a length cap.
+     */
+    private static String abbreviateForExcelCell(String text) {
+        if (text == null || text.length() <= MAX_EXCEL_CELL_CHARS) {
+            return text;
+        }
+        int keep = MAX_EXCEL_CELL_CHARS - TRUNCATION_SUFFIX.length();
+        // Back off onto a code-point boundary so the cut never splits a surrogate pair.
+        if (Character.isHighSurrogate(text.charAt(keep - 1))) {
+            keep--;
+        }
+        return text.substring(0, keep) + TRUNCATION_SUFFIX;
     }
 }

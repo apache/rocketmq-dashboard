@@ -24,10 +24,12 @@ vi.mock('../../../services/opsService', () => ({
 
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((complete) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((complete, fail) => {
     resolve = complete;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 };
 
 beforeAll(() => {
@@ -67,7 +69,7 @@ describe('NotificationDeliveriesPage', () => {
   });
 
   it('retries a failed delivery from the list and refreshes its status', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     render(
       <App>
         <LangProvider>
@@ -145,7 +147,7 @@ describe('NotificationDeliveriesPage', () => {
             size: 20,
           },
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     render(
       <App>
         <LangProvider>
@@ -171,7 +173,7 @@ describe('NotificationDeliveriesPage', () => {
   });
 
   it('surfaces a failed instance-list load with a retry instead of an empty filter', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(listInstances)
       .mockRejectedValueOnce(new Error('the instance service is down'))
       .mockResolvedValueOnce([]);
@@ -193,6 +195,142 @@ describe('NotificationDeliveriesPage', () => {
     await waitFor(() => expect(listInstances).toHaveBeenCalledTimes(2));
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: /^重\s*试$/ })).not.toBeInTheDocument(),
+    );
+  });
+
+  it('searches alert titles and errors and returns to page one when the filter changes', async () => {
+    vi.mocked(listAlertDeliveriesPage).mockImplementation(async (query) => ({
+      items: [
+        {
+          id: 7,
+          alertId: 3,
+          alertTitle: 'Broker disk usage',
+          channel: 'dingtalk',
+          status: 'FAILED',
+          attemptCount: 5,
+          createdAt: '2026-08-23T10:00:00',
+          lastError: 'Webhook rejected the request',
+        },
+      ],
+      total: 25,
+      page: query?.page ?? 1,
+      size: 20,
+    }));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('Broker disk usage');
+    const secondPage = document.querySelector('.ant-pagination-item-2') as HTMLElement;
+    await user.click(secondPage);
+    await waitFor(() =>
+      expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 2 }),
+      ),
+    );
+
+    await user.type(screen.getByPlaceholderText('搜索告警标题或失败原因'), 'WebHook{Enter}');
+    await waitFor(() =>
+      expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'WebHook', page: 1 }),
+      ),
+    );
+
+    await user.clear(screen.getByPlaceholderText('搜索告警标题或失败原因'));
+    await waitFor(() =>
+      expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: undefined, page: 1 }),
+      ),
+    );
+  });
+
+  it('forwards the selected local delivery time range as UTC bounds', async () => {
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    try {
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      render(
+        <App>
+          <LangProvider>
+            <NotificationDeliveriesPage />
+          </LangProvider>
+        </App>,
+      );
+
+      await screen.findByText('Broker disk usage');
+      const inputs = screen.getAllByLabelText('投递时间范围');
+      await user.type(inputs[0], '2026-09-01 14:00:00');
+      await user.keyboard('{Enter}');
+      await user.type(inputs[1], '2026-09-01 15:00:00');
+      await user.keyboard('{Enter}');
+
+      await waitFor(() =>
+        expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            from: '2026-09-01T06:00:00.000',
+            to: '2026-09-01T07:00:00.000',
+            page: 1,
+          }),
+        ),
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('does not expose stale delivery actions after a filtered list load fails', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('Broker disk usage');
+    const filteredLoad = deferred<Awaited<ReturnType<typeof listAlertDeliveriesPage>>>();
+    vi.mocked(listAlertDeliveriesPage)
+      .mockImplementationOnce(() => filteredLoad.promise)
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 8,
+            alertId: 4,
+            alertTitle: 'Delivered notification',
+            channel: 'email',
+            status: 'DELIVERED',
+            attemptCount: 1,
+            createdAt: '2026-08-23T10:00:00',
+            deliveredAt: '2026-08-23T10:01:00',
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      });
+    await user.click(screen.getAllByRole('combobox')[1]);
+    await user.click(await screen.findByText('DELIVERED'));
+
+    await waitFor(() =>
+      expect(listAlertDeliveriesPage).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'DELIVERED' }),
+      ),
+    );
+    expect(screen.getByRole('button', { name: '重新投递' })).toBeDisabled();
+    await act(async () => filteredLoad.reject(new Error('delivery list unavailable')));
+    expect(await screen.findByText('告警投递记录加载失败，请稍后重试')).toBeInTheDocument();
+    expect(screen.queryByText('Broker disk usage')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '重新投递' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^重\s*试$/ }));
+    expect(await screen.findByText('Delivered notification')).toBeInTheDocument();
+    expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: 'DELIVERED' }),
     );
   });
 });
