@@ -219,7 +219,7 @@ class MessageServiceTest {
     }
 
     @Test
-    void auditsACloudAcceptedDirectConsumeAsSuccessTest() {
+    void auditsACloudAcceptedDirectConsumeAsPartialTest() {
         MessageProvider fallback = mock(MessageProvider.class);
         InstanceProvider provider = mock(InstanceProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
@@ -233,7 +233,8 @@ class MessageServiceTest {
         when(registry.byInstanceId("tencent-instance")).thenReturn(Optional.of(provider));
         when(provider.capabilities()).thenReturn(Set.of(InstanceCapability.DIRECT_MESSAGE_CONSUME));
         // The Tencent OpenAPI answers REQUEST_ACCEPTED: the cloud accepted the verification
-        // request and never reports the consumption outcome.
+        // request and never reports the consumption outcome, so the audit grades it PARTIAL
+        // rather than claiming a SUCCESS it cannot observe.
         when(provider.consumeMessageDirectly(request)).thenReturn(DirectConsumeMessageResultVO.builder()
                 .consumeResult("REQUEST_ACCEPTED").build());
         MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class), audit, ownershipGuard());
@@ -244,7 +245,7 @@ class MessageServiceTest {
                 org.mockito.ArgumentMatchers.eq("MESSAGE"), org.mockito.ArgumentMatchers.eq("msg-1"),
                 org.mockito.ArgumentMatchers.eq("tencent-instance"),
                 org.mockito.ArgumentMatchers.contains("REQUEST_ACCEPTED"),
-                org.mockito.ArgumentMatchers.eq("SUCCESS"), org.mockito.ArgumentMatchers.isNull());
+                org.mockito.ArgumentMatchers.eq("PARTIAL"), org.mockito.ArgumentMatchers.isNull());
     }
 
     @Test
