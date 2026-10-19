@@ -141,49 +141,53 @@ describe('Message page query history', () => {
   it('requires the active query mode fields and trims submitted identifiers', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<MessagePage />);
-    const queryButton = screen.getByRole('button', { name: /^search查询$/ });
+    // The query button remounts when a mode's form fields change its position among the Space
+    // items, so the reference must be re-queried after every mode switch.
+    const queryButton = () => screen.getByRole('button', { name: /^search查询$/ });
 
-    expect(queryButton).toBeDisabled();
-    await waitFor(() => expect(queryButton).toHaveAttribute('title', '请选择 Topic'));
+    expect(queryButton()).toBeDisabled();
+    await waitFor(() => expect(queryButton()).toHaveAttribute('title', '请选择 Topic'));
 
     await user.click(lastElement(screen.getAllByRole('combobox')));
     await user.click(lastElement(await screen.findAllByText('order-create')));
-    expect(queryButton).toBeEnabled();
-    expect(queryButton).not.toHaveAttribute('title');
+    expect(queryButton()).toBeEnabled();
+    expect(queryButton()).not.toHaveAttribute('title');
 
     await user.click(screen.getByText('按 Message Key'));
-    expect(queryButton).toBeDisabled();
-    expect(queryButton).toHaveAttribute('title', '请输入 Message Key');
+    expect(queryButton()).toBeDisabled();
+    expect(queryButton()).toHaveAttribute('title', '请输入 Message Key');
 
     const keyInput = screen.getByPlaceholderText('输入 Message Key');
     await user.type(keyInput, '   ');
-    expect(queryButton).toBeDisabled();
+    expect(queryButton()).toBeDisabled();
     expect(messageServiceMocks.queryMessages).not.toHaveBeenCalled();
 
     await user.clear(keyInput);
     await user.type(keyInput, '  ORDER-001  ');
-    expect(queryButton).toBeEnabled();
-    await user.click(queryButton);
+    expect(queryButton()).toBeEnabled();
+    await user.click(queryButton());
     await waitFor(() => {
       expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith({
         topic: 'order-create',
         key: 'ORDER-001',
         instanceId: 1,
+        startTime: expect.any(Number),
+        endTime: expect.any(Number),
       });
     });
 
     await user.click(screen.getByText('按 Message ID'));
-    expect(queryButton).toBeDisabled();
-    expect(queryButton).toHaveAttribute('title', '请输入 Message ID');
+    expect(queryButton()).toBeDisabled();
+    expect(queryButton()).toHaveAttribute('title', '请输入 Message ID');
 
     const messageIdInput = screen.getByPlaceholderText('输入 Message ID');
     await user.type(messageIdInput, '   ');
-    expect(queryButton).toBeDisabled();
+    expect(queryButton()).toBeDisabled();
 
     await user.clear(messageIdInput);
     await user.type(messageIdInput, '  MID-001  ');
-    expect(queryButton).toBeEnabled();
-    await user.click(queryButton);
+    expect(queryButton()).toBeEnabled();
+    await user.click(queryButton());
     await waitFor(() => {
       expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith({
         topic: 'order-create',
@@ -225,6 +229,30 @@ describe('Message page query history', () => {
     expect(queryButton).toBeDisabled();
     expect(queryButton).toHaveAttribute('title', '请选择 Topic');
     expect(messageServiceMocks.queryMessages).not.toHaveBeenCalled();
+  });
+
+  it('sends the tag and time window along with key queries', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    messageServiceMocks.queryMessages.mockResolvedValue([]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message Key'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message Key'), 'ORDER-7');
+    await user.type(screen.getByPlaceholderText('Tag（可选）'), '  vip  ');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    await waitFor(() => {
+      expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith({
+        topic: 'order-create',
+        key: 'ORDER-7',
+        tag: 'vip',
+        instanceId: 1,
+        startTime: expect.any(Number),
+        endTime: expect.any(Number),
+      });
+    });
   });
 
   it('does not report consume verification success without a backend API', async () => {
