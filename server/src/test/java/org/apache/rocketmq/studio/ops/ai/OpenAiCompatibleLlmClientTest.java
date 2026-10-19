@@ -198,6 +198,19 @@ class OpenAiCompatibleLlmClientTest {
     }
 
     @Test
+    void streamShouldIgnoreOnlyTheLeadingUtf8BomTest() {
+        server.createContext("/v1/chat/completions", exchange -> respond(exchange, 200,
+                "\uFEFFdata: {\"choices\":[{\"delta\":{\"content\":\"first\"}}]}\n\n"
+                        + "data: {\"choices\":[{\"delta\":{\"content\":\"inner\uFEFFtext\"}}]}\n\n"
+                        + "data: [DONE]\n\n", "text/event-stream"));
+        List<String> tokens = new ArrayList<>();
+
+        client.stream(config("openai", "sk-test"), "hello", null, tokens::add);
+
+        assertThat(tokens).containsExactly("first", "inner\uFEFFtext");
+    }
+
+    @Test
     void streamShouldParseOpenAiCompatibleSseDeltas() {
         AtomicReference<JsonNode> requestBody = new AtomicReference<>();
         server.createContext("/v1/chat/completions", exchange -> {

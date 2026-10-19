@@ -253,8 +253,16 @@ public class OpenAiCompatibleLlmClient {
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(input, StandardCharsets.UTF_8))) {
             List<String> dataLines = new ArrayList<>();
+            boolean firstLine = true;
             String line;
             while ((line = reader.readLine()) != null) {
+                if (firstLine) {
+                    // SSE permits one UTF-8 BOM at the start of the stream, before any field name.
+                    if (line.startsWith("\uFEFF")) {
+                        line = line.substring(1);
+                    }
+                    firstLine = false;
+                }
                 if (line.isEmpty()) {
                     if (emitStreamEvent(dataLines, tokenConsumer)) {
                         return;
