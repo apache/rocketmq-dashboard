@@ -112,8 +112,27 @@ describe('prompt templates with denied storage access', () => {
       else storage.setItem('rocketmq-studio-ai-prompt-templates', original);
     }
   });
+});
 
-  it('does not show another operator\'s custom template after an account switch', async () => {
+describe('prompt templates scoped to the signed-in operator', () => {
+  beforeAll(() => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("does not show another operator's custom template after an account switch", async () => {
     localStorage.clear();
     useAuthStore.getState().login('alice', 1, false);
     saveCustomPromptTemplate(

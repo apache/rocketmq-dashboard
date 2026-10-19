@@ -85,15 +85,18 @@ describe('AI prompt templates', () => {
 
   it('keeps signed-in operators separate from each other and from unowned legacy templates', () => {
     saveCustomPromptTemplate({ title: 'Legacy', body: 'unowned notes' });
-    saveCustomPromptTemplate({ title: 'Alice', body: 'private topic details' }, undefined, 100, 'id:1');
+    saveCustomPromptTemplate(
+      { title: 'Alice', body: 'private topic details' },
+      undefined,
+      100,
+      'id:1',
+    );
     saveCustomPromptTemplate({ title: 'Bob', body: 'other notes' }, undefined, 200, 'id:2');
 
     expect(loadPromptTemplateCatalog(undefined, undefined, 'id:1').templates[0].title).toBe(
       'Alice',
     );
-    expect(loadPromptTemplateCatalog(undefined, undefined, 'id:2').templates[0].title).toBe(
-      'Bob',
-    );
+    expect(loadPromptTemplateCatalog(undefined, undefined, 'id:2').templates[0].title).toBe('Bob');
     expect(loadPromptTemplateCatalog().templates[0].title).toBe('Legacy');
     expect(localStorage.getItem(PROMPT_TEMPLATE_STORAGE_KEY)).toContain('Legacy');
   });

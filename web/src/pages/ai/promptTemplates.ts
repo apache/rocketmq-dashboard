@@ -60,7 +60,9 @@ type Translate = (key: string) => string;
 
 export const PROMPT_TEMPLATE_STORAGE_KEY = 'rocketmq-studio-ai-prompt-templates';
 const storageKeyFor = (owner?: string): string =>
-  owner ? `${PROMPT_TEMPLATE_STORAGE_KEY}:user:${encodeURIComponent(owner)}` : PROMPT_TEMPLATE_STORAGE_KEY;
+  owner
+    ? `${PROMPT_TEMPLATE_STORAGE_KEY}:user:${encodeURIComponent(owner)}`
+    : PROMPT_TEMPLATE_STORAGE_KEY;
 export const MAX_CUSTOM_PROMPT_TEMPLATES = 20;
 export const MAX_PROMPT_TEMPLATE_BODY_LENGTH = 6000;
 export const MAX_PROMPT_TEMPLATE_TITLE_LENGTH = 80;
@@ -274,7 +276,10 @@ function getBuiltinPromptTemplates(translate?: Translate): PromptTemplate[] {
   }));
 }
 
-function readCustomPromptTemplates(storage = getStorage(), owner?: string): {
+function readCustomPromptTemplates(
+  storage = getStorage(),
+  owner?: string,
+): {
   templates: PromptTemplate[];
   storageAvailable: boolean;
   invalidCustomCount: number;
