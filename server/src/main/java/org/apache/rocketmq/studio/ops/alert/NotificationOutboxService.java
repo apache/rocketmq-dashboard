@@ -498,23 +498,31 @@ public class NotificationOutboxService {
 
     private static String[] parseRecipients(String raw) throws AddressException {
         List<String> recipients = new ArrayList<>();
-        // Split on the documented separators (comma, plus the legacy
-        // semicolon) only outside a quoted display name: a list like
-        // `"Doe, John" <john@example.com>, ops@example.com` is valid RFC 822
-        // input, but a plain [,;] split broke it into unbalanced fragments
-        // that failed validation and drove the notification into retry
-        // instead of sending.
+        // Commas and legacy semicolons separate recipients only outside quoted
+        // strings and comments. Comments may nest and contain quoted pairs;
+        // keep each address intact for InternetAddress's strict validation.
         StringBuilder current = new StringBuilder();
         boolean quoted = false;
+        int commentDepth = 0;
         boolean escaped = false;
         for (int i = 0; i < raw.length(); i++) {
             char c = raw.charAt(i);
             if (escaped) {
                 current.append(c);
                 escaped = false;
-            } else if (quoted && c == '\\') {
+            } else if ((quoted || commentDepth > 0) && c == '\\') {
                 current.append(c);
                 escaped = true;
+            } else if (commentDepth > 0) {
+                current.append(c);
+                if (c == '(') {
+                    commentDepth++;
+                } else if (c == ')') {
+                    commentDepth--;
+                }
+            } else if (!quoted && c == '(') {
+                current.append(c);
+                commentDepth = 1;
             } else if (c == '"') {
                 current.append(c);
                 quoted = !quoted;
