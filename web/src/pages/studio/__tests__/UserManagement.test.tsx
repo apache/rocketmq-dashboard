@@ -582,4 +582,20 @@ describe('UserManagementPage', () => {
       localStorage.removeItem(LANGUAGE_STORAGE_KEY);
     }
   });
+  it('reloads the users and the session overview after resetting a password', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('operator');
+
+    await user.click(screen.getAllByRole('button', { name: /改密/ })[0]);
+    await user.type(screen.getByLabelText('新密码'), 'new-password-1');
+    await user.click(screen.getByRole('button', { name: 'OK' }));
+
+    // Resetting a password revokes that user's sessions on the server, so the page's counts and the
+    // overview card have to be read again - the other mutations refresh through the same counter.
+    await waitFor(() =>
+      expect(vi.mocked(listStudioUsers).mock.calls.length).toBeGreaterThanOrEqual(2),
+    );
+    expect(vi.mocked(getStudioUserSessionOverview).mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
 });
