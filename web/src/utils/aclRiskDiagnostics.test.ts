@@ -178,9 +178,9 @@ describe('ACL risk diagnostics', () => {
     );
 
     expect(diagnostics.summary.wildcardPermissionAccountCount).toBe(0);
-    expect(diagnostics.issues.filter((item) => item.code === 'INVALID_PERMISSION_ENTRY')).toHaveLength(
-      2,
-    );
+    expect(
+      diagnostics.issues.filter((item) => item.code === 'INVALID_PERMISSION_ENTRY'),
+    ).toHaveLength(2);
     expect(diagnostics.issues.map((item) => item.code)).not.toContain('WILDCARD_TOPIC_PERMISSION');
     expect(diagnostics.issues.map((item) => item.code)).not.toContain('WILDCARD_GROUP_PERMISSION');
   });
