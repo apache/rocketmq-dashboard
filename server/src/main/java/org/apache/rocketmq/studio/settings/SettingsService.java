@@ -46,6 +46,7 @@ import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
@@ -393,7 +394,7 @@ public class SettingsService {
             if (!StringUtils.hasText(request.getUsername()) || !StringUtils.hasText(request.getPassword())) {
                 throw new IllegalArgumentException("Basic authentication requires username and password");
             }
-            headers.setBasicAuth(request.getUsername().trim(), request.getPassword());
+            headers.setBasicAuth(request.getUsername().trim(), request.getPassword(), StandardCharsets.UTF_8);
             return;
         }
         if (AUTH_BEARER.equals(auth)) {
