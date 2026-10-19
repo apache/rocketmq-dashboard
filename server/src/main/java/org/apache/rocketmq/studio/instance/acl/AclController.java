@@ -101,6 +101,18 @@ public class AclController {
         return Result.ok(aclService.pageUsers(instanceId, page, pageSize, keyword));
     }
 
+    /**
+     * Returns the ACL account inventory as a CSV document rendered by {@link AclService}. The
+     * export covers the same filtered rows the users table reads, so the file matches what the
+     * operator sees after typing a keyword.
+     */
+    @GetMapping("/users/export")
+    public Result<String> exportUsers(
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(required = false) String keyword) {
+        return Result.ok(aclService.exportUsersCsv(instanceId, keyword));
+    }
+
     @GetMapping("/users/{id}/credentials")
     public ResponseEntity<Result<AclUserVO>> getUserCredentials(@PathVariable String id,
             @RequestParam(required = false) String instanceId) {

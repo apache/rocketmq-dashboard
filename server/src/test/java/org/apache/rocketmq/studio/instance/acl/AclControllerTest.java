@@ -344,6 +344,20 @@ class AclControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void exportUsersShouldReturnTheServiceRenderedCsvDocument() throws Exception {
+        when(aclService.exportUsersCsv("instance-1", "  alice  ")).thenReturn("csv-document");
+
+        mockMvc.perform(get("/api/acl/users/export")
+                        .param("instanceId", "instance-1")
+                        .param("keyword", "  alice  "))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data").value("csv-document"));
+
+        verify(aclService).exportUsersCsv("instance-1", "  alice  ");
+    }
+
+    @Test
     void getUserCredentialsShouldDisableResponseCaching() throws Exception {
         AclUserVO credentials = AclUserVO.builder()
                 .id(1L)

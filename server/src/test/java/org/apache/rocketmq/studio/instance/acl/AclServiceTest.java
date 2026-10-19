@@ -65,6 +65,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -231,6 +232,132 @@ class AclServiceTest {
         verify(aclRepository).findUserPage("orders", 2, 20);
         verify(aclRepository, never()).findUsers();
         verifyNoInteractions(instanceResolver, tencentAclService);
+    }
+
+    @Test
+    void exportUsersCsvShouldStreamTheMaskedInventoryForTheFilteredInstance() {
+        AclUserVO apacheUser = AclUserVO.builder()
+                .id(7L)
+                .username("alice")
+                .accessKey("LTAIxxxxxxxxxwxyz")
+                .secretKey("raw-secret-must-not-appear")
+                .admin(false)
+                .clusters(List.of("cluster-a", "cluster-b"))
+                .whiteRemoteAddress("10.*.*.*")
+                .gmtCreate(LocalDateTime.of(2026, 1, 2, 3, 4))
+                .build();
+        AclUserVO studioRole = AclUserVO.builder()
+                .id(8L)
+                .username("studio-role")
+                .accessKey("AKIDxxxxxxxxx4321")
+                .secretKey("raw-role-secret-must-not-appear")
+                .admin(false)
+                .permRead(true)
+                .permWrite(false)
+                .gmtCreate(LocalDateTime.of(2026, 1, 3, 4, 5))
+                .build();
+        when(aclRepository.findUserPage("alice", 1, 100))
+                .thenReturn(PageResult.of(List.of(apacheUser, studioRole), 2, 1, 100));
+
+        String csv = aclService.exportUsersCsv("instance-1", "  alice  ");
+
+        assertThat(csv).startsWith("\uFEFF" + "User ID,Username,Access Key,Admin,Clusters,"
+                + "Read Permission,Write Permission,IP Whitelist,Created\r\n");
+        assertThat(csv).contains("\"LTAI****wxyz\"", "\"AKID****4321\"", "\"cluster-a;cluster-b\"",
+                "\"10.*.*.*\"", "\"2026-01-02T03:04\"", "\"2026-01-03T04:05\"");
+        assertThat(csv).doesNotContain("raw-secret-must-not-appear");
+        assertThat(csv).doesNotContain("raw-role-secret-must-not-appear");
+        assertThat(csv).doesNotContain("Secret Key");
+        verify(aclRepository).findUserPage("alice", 1, 100);
+        verifyNoInteractions(tencentAclService);
+    }
+
+    @Test
+    void exportUsersCsvShouldWalkEveryPageOfTheFilteredResult() {
+        when(aclRepository.findUserPage(null, 1, 100))
+                .thenReturn(PageResult.of(aclUsers(1, 100), 150L, 1, 100));
+        when(aclRepository.findUserPage(null, 2, 100))
+                .thenReturn(PageResult.of(aclUsers(101, 150), 150L, 2, 100));
+
+        String csv = aclService.exportUsersCsv("instance-1", null);
+
+        assertThat(csv.split("\r\n")).hasSize(151);
+        assertThat(csv).contains("\"user-1\"").contains("\"user-150\"");
+        verify(aclRepository).findUserPage(null, 1, 100);
+        verify(aclRepository).findUserPage(null, 2, 100);
+    }
+
+    @Test
+    void exportUsersCsvShouldRejectAnInventoryBeyondTheExportBound() {
+        when(aclRepository.findUserPage(null, 1, 100))
+                .thenReturn(PageResult.of(aclUsers(1, 100), 10_001L, 1, 100));
+
+        assertThatThrownBy(() -> aclService.exportUsersCsv("instance-1", null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL user export exceeds the maximum of 10000 records; narrow the keyword filter");
+
+        verify(aclRepository).findUserPage(null, 1, 100);
+        verify(aclRepository, never()).findUserPage(null, 2, 100);
+    }
+
+    @Test
+    void exportUsersCsvShouldIssueASingleProviderListCallForTencentInstances() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("tencent-instance")
+                .vendor(InstanceVendor.TENCENT)
+                .type(InstanceType.CLOUD)
+                .build();
+        when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(instance));
+        List<AclUserVO> roles = new java.util.ArrayList<>();
+        roles.add(AclUserVO.builder()
+                .id(7L)
+                .username("studio-role")
+                .accessKey("AKIDxxxxxxxxx4321")
+                .secretKey("raw-role-secret-must-not-appear")
+                .admin(false)
+                .permRead(true)
+                .permWrite(false)
+                .gmtCreate(LocalDateTime.of(2026, 1, 3, 4, 5))
+                .build());
+        roles.addAll(aclUsers(1, 150));
+        when(tencentAclService.listUsers("tencent-instance")).thenReturn(roles);
+
+        String csv = aclService.exportUsersCsv("tencent-instance", null);
+
+        assertThat(csv).startsWith("\uFEFF" + "User ID,Username,Access Key,Admin,Clusters,"
+                + "Read Permission,Write Permission,IP Whitelist,Created\r\n");
+        assertThat(csv).contains("\"AKID****4321\"", "\"studio-role\"", "\"true\"");
+        assertThat(csv).doesNotContain("raw-role-secret-must-not-appear");
+        assertThat(csv).doesNotContain("Secret Key");
+        assertThat(csv.split("\r\n")).hasSize(152);
+        verify(tencentAclService, times(1)).listUsers("tencent-instance");
+        verifyNoInteractions(aclRepository);
+    }
+
+    @Test
+    void exportUsersCsvShouldBoundTheTencentInventoryWithASingleProviderCall() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("tencent-instance")
+                .vendor(InstanceVendor.TENCENT)
+                .type(InstanceType.CLOUD)
+                .build();
+        when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(instance));
+        when(tencentAclService.listUsers("tencent-instance")).thenReturn(aclUsers(1, 10_001));
+
+        assertThatThrownBy(() -> aclService.exportUsersCsv("tencent-instance", null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL user export exceeds the maximum of 10000 records; narrow the keyword filter");
+
+        verify(tencentAclService, times(1)).listUsers("tencent-instance");
+    }
+
+    private static List<AclUserVO> aclUsers(int firstId, int lastId) {
+        List<AclUserVO> users = new java.util.ArrayList<>();
+        for (int id = firstId; id <= lastId; id++) {
+            users.add(AclUserVO.builder().id((long) id).username("user-" + id)
+                    .accessKey("acce****" + id).admin(false).build());
+        }
+        return users;
     }
 
     @Test
