@@ -51,4 +51,31 @@ describe('InstanceSelect', () => {
     renderWithLang(<InstanceSelect onChange={() => {}} options={[]} placeholder="My instance" />);
     expect(screen.getByText('My instance')).toBeInTheDocument();
   });
+
+  it.each([
+    ['zh', '选择实例'],
+    ['en', 'Select Instance'],
+  ] as const)('namesTheSearchableInstanceSelectorIn%sTest', (lang, label) => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+    renderWithLang(
+      <InstanceSelect
+        value="cluster-a"
+        onChange={() => {}}
+        options={[{ value: 'cluster-a', label: 'Cluster A' }]}
+      />,
+    );
+    expect(screen.getByRole('combobox', { name: label })).toBeEnabled();
+  });
+
+  it('preservesTheExplicitInstancePromptAsAccessibleNameTest', () => {
+    renderWithLang(
+      <InstanceSelect onChange={() => {}} options={[]} placeholder="Source instance" />,
+    );
+    expect(screen.getByRole('combobox', { name: 'Source instance' })).toBeInTheDocument();
+  });
+
+  it('retainsTheInstanceSelectorNameWhenTheInstanceListFailsTest', () => {
+    renderWithLang(<InstanceSelect onChange={() => {}} options={[]} failed />);
+    expect(screen.getByRole('combobox', { name: '选择实例' })).toBeInTheDocument();
+  });
 });
