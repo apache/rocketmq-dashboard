@@ -16,8 +16,10 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
+import java.net.UnknownHostException;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
@@ -101,10 +103,30 @@ public final class BrokerTopologyGuards {
             }
             for (String brokerAddr : brokerData.getBrokerAddrs().values()) {
                 if (StringUtils.hasText(brokerAddr)) {
-                    endpoints.add(brokerAddr.trim());
+                    endpoints.add(normalizeIpv6Endpoint(brokerAddr.trim()));
                 }
             }
         }
         return endpoints;
+    }
+
+    private static String normalizeIpv6Endpoint(String endpoint) {
+        int separator = endpoint.lastIndexOf(':');
+        if (separator <= 0) {
+            return endpoint;
+        }
+        String host = endpoint.substring(0, separator);
+        if (host.startsWith("[") && host.endsWith("]")) {
+            host = host.substring(1, host.length() - 1);
+        }
+        // Only IPv6 literals are parsed: hostnames must not cause a DNS lookup here.
+        if (!host.contains(":")) {
+            return endpoint;
+        }
+        try {
+            return InetAddress.getByName(host).getHostAddress() + endpoint.substring(separator);
+        } catch (UnknownHostException ignored) {
+            return endpoint;
+        }
     }
 }
