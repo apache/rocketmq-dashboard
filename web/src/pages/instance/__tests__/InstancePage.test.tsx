@@ -377,6 +377,7 @@ describe('InstancePage', () => {
           withCounts: true,
         }),
       );
+      expect(searchInput).toHaveAccessibleName(searchName);
       await user.tab();
       expect(typeFilter).toHaveFocus();
       // rc-select uses the browser keyCode as well as the key string.
@@ -390,6 +391,7 @@ describe('InstancePage', () => {
           withCounts: true,
         }),
       );
+      expect(typeFilter).toHaveAccessibleName(typeName);
       await user.clear(searchInput);
       await waitFor(() =>
         expect(instanceService.listInstances).toHaveBeenLastCalledWith({
@@ -397,6 +399,8 @@ describe('InstancePage', () => {
           withCounts: true,
         }),
       );
+      expect(searchInput).toHaveAccessibleName(searchName);
+      expect(typeFilter).toHaveAccessibleName(typeName);
     },
   );
 
