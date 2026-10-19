@@ -819,6 +819,22 @@ class ClusterServiceTest {
     }
 
     @Test
+    void readBrokerConfigsSkipsBrokersWithoutAnAddress() {
+        // A slave-only broker whose master is down is discovered with no address; the config
+        // scan must skip it (like the config update does) instead of failing on a null key.
+        sampleCluster.setId("DefaultCluster");
+        sampleCluster.setBrokers(List.of(
+                BrokerVO.builder().name("broker-no-addr").build(),
+                BrokerVO.builder().name("broker-0").addr("10.0.0.1:10911").build()));
+        when(clusterProvider.discoverClusters("prod-apache")).thenReturn(List.of(sampleCluster));
+        when(brokerConfigService.getBrokerConfig("10.0.0.1:10911", "prod-apache"))
+                .thenReturn(sampleCluster.getConfig());
+
+        assertThat(clusterService.readBrokerConfigs("prod-apache"))
+                .containsOnlyKeys("10.0.0.1:10911");
+    }
+
+    @Test
     void instanceConfigPreviewUsesTheSameDiscoveredCluster() {
         sampleCluster.setId("DefaultCluster");
         when(clusterProvider.discoverClusters("prod-apache")).thenReturn(List.of(sampleCluster));
