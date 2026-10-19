@@ -72,6 +72,22 @@ class NamesrvAddrParserTest {
     }
 
     @Test
+    void rejectsIpv6NetworkPrefixesInSocketEndpointsTest() {
+        for (String endpoint : new String[] {
+            "[2001:db8::1/0]:9876",
+            "[2001:db8::1/64]:9876",
+            "[2001:db8::1/128]:9876",
+            "[fe80::1%eth0/64]:9876",
+            "[fe80::1%12/128]:9876"
+        }) {
+            assertThatThrownBy(() -> NamesrvAddrParser.normalize(endpoint))
+                    .as("network prefix must not be accepted as an endpoint: %s", endpoint)
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("malformed IPv6");
+        }
+    }
+
+    @Test
     void rejectsBlankInputTest() {
         assertThatThrownBy(() -> NamesrvAddrParser.normalize("   "))
                 .isInstanceOf(BusinessException.class)
