@@ -592,8 +592,8 @@ describe('Clients page', () => {
     const blob = createObjectURL.mock.calls[0][0] as Blob;
     await expect(blob.text()).resolves.toBe(
       [
-        '"Cluster","Client ID","Type","Group/Topic","Protocol","Address","Language","Version","Connected At","Partial"',
-        '"ns-prod","\'=risky-client","Producer","order-create","gRPC","10.0.1.12:49152","Java","5.0.7","2026-07-01 08:30:00","false"',
+        '"Cluster","Client ID","Type","Group/Topic","Protocol","Address","Language","Version","Partial"',
+        '"ns-prod","\'=risky-client","Producer","order-create","gRPC","10.0.1.12:49152","Java","5.0.7","false"',
       ].join('\n'),
     );
     expect(
@@ -888,6 +888,39 @@ describe('Clients page', () => {
     expect(within(dialog).getByText('10.0.1.12:49152')).toBeInTheDocument();
     expect(within(dialog).getByText('Java')).toBeInTheDocument();
     expect(within(dialog).getByText('5.0.7')).toBeInTheDocument();
-    expect(within(dialog).getByText('2026-07-01 08:30:00')).toBeInTheDocument();
+  });
+
+  // #6086: no provider (Apache remoting, proxy, or stub) can supply a connection time, so the page
+  // must not advertise one in the table, in the detail dialog or in the CSV export.
+  it('omits every connection-time control the API can never fill', async () => {
+    const createObjectURL = vi.fn((blob: Blob | MediaSource) => {
+      expect(blob).toBeInstanceOf(Blob);
+      return 'blob:connections-without-a-connection-time';
+    });
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      writable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ClientsPage />);
+
+    const row = await screen.findByRole('row', { name: /order-svc-0@10\.0\.1\.12:49152/ });
+    expect(screen.queryAllByText('心跳时间')).toHaveLength(0);
+
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+    const csv = await (createObjectURL.mock.calls[0][0] as Blob).text();
+    expect(csv.split('\n')[0]).toBe(
+      '"Cluster","Client ID","Type","Group/Topic","Protocol","Address","Language","Version","Partial"',
+    );
+
+    await expectInteractive(within(row).getByRole('button', { name: /详情/ }));
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+    const dialog = await screen.findByRole('dialog', { name: /客户端详情/ });
+    expect(within(dialog).queryAllByText('心跳时间')).toHaveLength(0);
   });
 });
