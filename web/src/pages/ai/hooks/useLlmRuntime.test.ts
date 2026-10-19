@@ -16,8 +16,9 @@
  */
 
 import { act, renderHook } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { LlmConfig } from '../../../api/llm';
+import type { LlmConfig, LlmModelsResult } from '../../../api/llm';
 import { useLlmRuntime } from './useLlmRuntime';
 
 vi.mock('../../../api/llm', () => ({
@@ -32,10 +33,12 @@ const modelsMock = vi.mocked(getLlmModels);
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((res) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
     resolve = res;
+    reject = rej;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 const config: LlmConfig = {
@@ -63,6 +66,75 @@ describe('useLlmRuntime', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('ignoresConfigCompletionAndDoesNotLoadModelsAfterUnmountTest', async () => {
+    const pending = deferred<LlmConfig>();
+    configMock.mockReturnValue(pending.promise);
+    modelsMock.mockResolvedValue({ status: 0, data: [] });
+    const onEngine = vi.fn();
+    const onError = vi.fn();
+    const { unmount } = renderHook(() => useLlmRuntime({ enabled: true, onEngine, onError }));
+    expect(configMock).toHaveBeenCalledTimes(1);
+
+    unmount();
+    await act(async () => pending.resolve(config));
+
+    expect(onEngine).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+    expect(modelsMock).not.toHaveBeenCalled();
+  });
+
+  it('ignoresConfigFailureAfterUnmountTest', async () => {
+    const pending = deferred<LlmConfig>();
+    configMock.mockReturnValue(pending.promise);
+    const onError = vi.fn();
+    const { unmount } = renderHook(() => useLlmRuntime({ enabled: true, onError }));
+
+    unmount();
+    await act(async () => pending.reject(new Error('late config failure')));
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(modelsMock).not.toHaveBeenCalled();
+  });
+
+  it('ignoresModelCatalogFailureAfterUnmountTest', async () => {
+    const pending = deferred<LlmModelsResult>();
+    configMock.mockResolvedValue(config);
+    modelsMock.mockReturnValue(pending.promise);
+    const onEngine = vi.fn();
+    const onError = vi.fn();
+    const { unmount } = renderHook(() => useLlmRuntime({ enabled: true, onEngine, onError }));
+    await act(async () => {});
+    expect(onEngine).toHaveBeenCalledWith('http');
+    expect(modelsMock).toHaveBeenCalledTimes(1);
+
+    unmount();
+    await act(async () => pending.reject(new Error('late models failure')));
+
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('keepsTheActiveStrictModeLoadAfterEffectCleanupTest', async () => {
+    const superseded = deferred<LlmConfig>();
+    const active = deferred<LlmConfig>();
+    configMock.mockReturnValueOnce(superseded.promise).mockReturnValueOnce(active.promise);
+    modelsMock.mockResolvedValue({ status: 0, data: [{ id: 'active-model' }] });
+    const onEngine = vi.fn();
+    const { result } = renderHook(() => useLlmRuntime({ enabled: true, onEngine }), {
+      wrapper: StrictMode,
+    });
+    expect(configMock).toHaveBeenCalledTimes(2);
+
+    await act(async () => active.resolve({ ...config, engine: 'qoder', model: 'active-model' }));
+    expect(result.current.selectedModel).toBe('active-model');
+    expect(result.current.modelsLoading).toBe(false);
+    expect(result.current.llmReady).toBe(true);
+
+    await act(async () => superseded.resolve(config));
+    expect(onEngine).toHaveBeenCalledExactlyOnceWith('qoder');
+    expect(modelsMock).toHaveBeenCalledTimes(1);
+    expect(result.current.config?.engine).toBe('qoder');
   });
 
   it('a late response for a disabled runtime never repopulates the state', async () => {

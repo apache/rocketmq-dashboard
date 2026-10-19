@@ -17,6 +17,7 @@
 package cmd
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/output"
@@ -73,7 +74,12 @@ func (a *App) newMCPConfigCommand(runtime commandRuntime) *cobra.Command {
 			out := cmd.OutOrStdout()
 			stdioArgs := []string{"mcp", "stdio"}
 			if runtime.options.configPath != "" {
-				stdioArgs = append(stdioArgs, "--config", runtime.options.configPath)
+				// The MCP client may launch from a different working directory.
+				configPath, err := filepath.Abs(runtime.options.configPath)
+				if err != nil {
+					return err
+				}
+				stdioArgs = append(stdioArgs, "--config", configPath)
 			}
 			if runtime.options.context != "" {
 				stdioArgs = append(stdioArgs, "--context", runtime.options.context)

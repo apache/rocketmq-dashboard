@@ -287,6 +287,26 @@ describe('Message page query history', () => {
     expect(messageServiceMocks.queryMessages).not.toHaveBeenCalled();
   });
 
+  it('keeps the action column wide enough for the four row buttons', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([{ ...createMessage('MID-WIDTH') }]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    await screen.findByRole('row', { name: /MID-WIDTH/ });
+
+    const widths = [...document.querySelectorAll('.ant-table-content colgroup col')].map(
+      (col) => (col as HTMLElement).style.width,
+    );
+    // 操作列 = 4 个小按钮（详情/轨迹/验证/下载）实测 264px + 3×6px gap + 单元格左右 padding 16px；
+    // 少给就会让右对齐的按钮组左溢压住「大小」列（实测于本地 Chromium + Noto Sans CJK，1600 视口，
+    // 详见 message.tsx 列定义注释）。
+    expect(lastElement(widths)).toBe('298px');
+    expect(widths).toContain('68px');
+  });
+
   it.each([
     ['UnsafeInteger', '{"orderId":9007199254740993}'],
     ['Int64Max', '{"orderId":9223372036854775807}'],
@@ -557,6 +577,109 @@ describe('Message page query history', () => {
     expect(await screen.findByText('消息体')).toBeInTheDocument();
     expect(screen.queryAllByRole('alert')).toHaveLength(0);
   });
+
+  it.each(['zh', 'en'])(
+    'keeps key results independent from the editable lookup mode in %s',
+    async (lang) => {
+      localStorage.setItem('rocketmq-studio-language', lang);
+      const en = lang === 'en';
+      const info = en
+        ? 'A key lookup may include multiple messages. End-to-end and inter-stage latency are unavailable; node costs and delivery states remain visible.'
+        : 'Key 查询可能包含多条消息，不计算端到端和阶段间耗时；仍显示节点耗时与消费状态。';
+      const nodes = [
+        {
+          title: 'Produce A',
+          timestamp: 1785456000000,
+          costTime: 1,
+          status: 'finish',
+          description: 'A',
+        },
+        {
+          title: 'Consume A',
+          timestamp: 1785456000010,
+          costTime: 9,
+          status: 'finish',
+          description: 'A',
+        },
+        {
+          title: 'Produce B',
+          timestamp: 1785456060000,
+          costTime: 1,
+          status: 'finish',
+          description: 'B',
+        },
+        {
+          title: 'Consume B',
+          timestamp: 1785456060010,
+          costTime: 9,
+          status: 'finish',
+          description: 'B',
+        },
+      ];
+      const consumerStatus = [
+        {
+          group: 'cg-orders',
+          deliveryStatus: 'success',
+          consumeTime: 1785456060010,
+          retryCount: 0,
+        },
+      ];
+      messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-CORRELATION')]);
+      messageServiceMocks.getMessageTrace.mockResolvedValue({
+        nodes: nodes.slice(0, 2),
+        consumerStatus,
+      });
+      messageServiceMocks.getMessageTraceByKey.mockResolvedValue({
+        queryType: 'KEY',
+        nodes,
+        consumerStatus,
+      });
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      renderWithProviders(<MessagePage />);
+
+      await user.click(screen.getByText(en ? 'Query by Message ID' : '按 Message ID'));
+      await user.click(lastElement(screen.getAllByRole('combobox')));
+      await user.click(lastElement(await screen.findAllByText('order-create')));
+      await user.type(
+        screen.getByPlaceholderText(en ? 'Enter message ID' : '输入 Message ID'),
+        'MID-CORRELATION',
+      );
+      await user.click(screen.getByRole('button', { name: en ? /^searchQuery$/ : /^search查询$/ }));
+      const row = await screen.findByRole('row', { name: /MID-CORRELATION/ });
+      await user.click(within(row).getByRole('button', { name: en ? /Trace/ : /轨迹/ }));
+      const dialog = await screen.findByRole('dialog');
+      await within(dialog).findByText('Produce A');
+      await user.click(within(dialog).getByText(en ? 'Query by Message Key' : '按 Message Key'));
+      const keyInput = within(dialog).getByPlaceholderText(
+        en ? 'Enter message key' : '输入 Message Key',
+      );
+      await user.clear(keyInput);
+      await user.type(keyInput, 'order-key');
+      await user.click(
+        within(dialog).getByRole('button', { name: en ? /Query Trace/ : /查询轨迹/ }),
+      );
+
+      expect(await within(dialog).findByText(info)).toBeInTheDocument();
+      expect(within(dialog).getByText(en ? 'Trace Healthy' : '轨迹健康')).toBeInTheDocument();
+      const latency = within(dialog)
+        .getByText(en ? 'End-to-End Latency' : '端到端耗时')
+        .closest('.ant-statistic');
+      expect(latency?.querySelector('.ant-statistic-content')).toHaveTextContent('-');
+      await user.click(within(dialog).getByText(en ? 'Query by Message ID' : '按 Message ID'));
+      expect(within(dialog).getByText(info)).toBeInTheDocument();
+      expect(latency?.querySelector('.ant-statistic-content')).toHaveTextContent('-');
+      await user.click(
+        within(dialog).getByRole('button', { name: en ? /Query Trace/ : /查询轨迹/ }),
+      );
+      await waitFor(() => expect(within(dialog).queryByText(info)).not.toBeInTheDocument());
+      await waitFor(() => {
+        const currentLatency = within(dialog)
+          .getByText(en ? 'End-to-End Latency' : '端到端耗时')
+          .closest('.ant-statistic');
+        expect(currentLatency?.querySelector('.ant-statistic-content')).toHaveTextContent('10 ms');
+      });
+    },
+  );
 
   it('renders trace diagnostics in English when the UI language is English', async () => {
     localStorage.setItem('rocketmq-studio-language', 'en');
