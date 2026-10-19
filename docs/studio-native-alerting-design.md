@@ -191,6 +191,8 @@ consecutiveSamples=2, severity=CRITICAL
 
 The evaluator runs after a collector writes a new sample. It computes an aggregation over the bounded local snapshot window, then advances an alert state keyed by a stable fingerprint.
 
+Before writing runtime state, lifecycle events, or notification outbox rows, both sampled evaluation and missing-state reconciliation take a current `SELECT ... FOR UPDATE` read of the rule inside their existing transaction. A deleted or disabled rule, or a rule whose evaluation conditions differ from the collection snapshot, is skipped. The lock remains held through those writes, so a concurrent management update waits and then applies its normal runtime-state cleanup. A current locking read also observes committed management changes under MySQL REPEATABLE READ; a second ordinary snapshot read would not provide that guarantee. Presentation-only edits use the current rule metadata for events and notifications. Existing event and delivery history is retained when disabling a rule. This checks the currently committed rule rather than tracking every intermediate disable/re-enable or condition change.
+
 ```text
 OK -- condition met --> PENDING -- consecutive samples met --> FIRING
 FIRING -- condition clear --> RESOLVED
