@@ -973,6 +973,7 @@ GET /api/topics?clusterId={clusterId}&type={type}&search={keyword}
 | `tps` | `number` | 当前 TPS |
 | `consumerGroupCount` | `number` | 订阅消费组数 |
 | `remark` | `string` | 备注 |
+| `liteTtlMinutes` | `number` | Lite 父主题 TTL（分钟），创建专用请求字段；读路径不回填，响应中为 `null` |
 | `createdAt` | `string` | 创建时间 (ISO 8601) |
 | `updatedAt` | `string` | 更新时间 (ISO 8601) |
 
@@ -1021,6 +1022,7 @@ POST /api/topics/create
 | `readQueues` | `number` | 否 | 读队列数，须 ≥ 0；缺省或非正数时取 8 |
 | `perm` | `string` | 否 | 权限，默认 `RW` |
 | `remark` | `string` | 否 | 备注 |
+| `liteTtlMinutes` | `number` | 否 | Lite 父主题 TTL（分钟），仅 `type=LITE` 时接受，取值 1-43200（30 天）；控制台默认 `1440`。与 `type` 一并写入 broker 属性（`+message.type` 与 `+lite.topic.expiration`）。`type=LITE` 时名称不得含 `$`（保留给 `%LMQ%$parent$liteTopic` 子主题），且集群需支持 LiteTopic，否则返回 `501` |
 
 **Response `data`:** `Topic`
 
@@ -1043,6 +1045,8 @@ POST /api/topics/update
 | `readQueues` | `number` | 否 | 读队列数，须 ≥ 0；缺省或非正数时保留现值 |
 | `perm` | `string` | 否 | 权限，默认 `RW` |
 | `remark` | `string` | 否 | 备注 |
+
+`liteTtlMinutes` 是创建专用字段：更新请求携带该字段返回 `400`，更新也从不改写 `lite.topic.expiration`（TTL 调整走 LiteTopic 的延长 TTL 接口，单位毫秒）。
 
 **Response `data`:** `Topic`
 

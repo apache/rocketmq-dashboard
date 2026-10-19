@@ -19,6 +19,8 @@ export interface Topic {
   tps: number;
   consumerGroupCount: number;
   remark: string;
+  /** Create-only TTL of a Lite parent topic in minutes (type=LITE); never sent on updates. */
+  liteTtlMinutes?: number;
   gmtCreate: string;
   gmtModified: string;
 }

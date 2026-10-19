@@ -1050,6 +1050,79 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void createTopicShouldWriteLiteTtlAttributeWithMessageTypeTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(null);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("chat");
+        topic.setType(TopicType.LITE);
+        topic.setLiteTtlMinutes(1440);
+
+        adminClient.createTopic(topic);
+
+        ArgumentCaptor<TopicConfig> captor = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt).createAndUpdateTopicConfig(anyString(), captor.capture());
+        assertThat(captor.getValue().getAttributes())
+                .containsEntry("+message.type", TopicType.LITE.name())
+                .containsEntry("+lite.topic.expiration", "1440");
+    }
+
+    @Test
+    void createTopicShouldIgnoreTtlMinutesForNonLiteTypesTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(null);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("orders");
+        topic.setType(TopicType.NORMAL);
+        topic.setLiteTtlMinutes(1440);
+
+        adminClient.createTopic(topic);
+
+        ArgumentCaptor<TopicConfig> captor = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt).createAndUpdateTopicConfig(anyString(), captor.capture());
+        assertThat(captor.getValue().getAttributes())
+                .containsEntry("+message.type", TopicType.NORMAL.name())
+                .doesNotContainKey("+lite.topic.expiration");
+    }
+
+    @Test
+    void updateTopicShouldIgnoreLiteTtlMinutesTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        RmqTopic existing = new RmqTopic();
+        existing.setTopicType(TopicType.LITE.name());
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        TopicConfig stored = new TopicConfig("orders");
+        stored.setAttributes(Map.of("lite.topic.expiration", "1440"));
+        when(adminExt.examineTopicConfig(anyString(), eq("orders"))).thenReturn(stored);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        // A stale or malicious update payload carries a TTL: the generic update path must not
+        // write it — TTL is create-only and lives on the LiteTopic extension endpoint.
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("orders");
+        topic.setType(TopicType.LITE);
+        topic.setLiteTtlMinutes(60);
+
+        adminClient.updateTopic(topic);
+
+        ArgumentCaptor<TopicConfig> captor = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt).createAndUpdateTopicConfig(anyString(), captor.capture());
+        assertThat(captor.getValue().getAttributes())
+                .containsOnlyKeys("+message.type")
+                .containsEntry("+message.type", TopicType.LITE.name());
+    }
+
+    @Test
     void updateTopicWithoutTypePreservesExistingType() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         RmqTopic existing = new RmqTopic();
@@ -2159,7 +2232,8 @@ class RocketMQAdminClientImplTest {
         lenient().when(registry.byInstanceId("instance-a")).thenReturn(Optional.of(provider));
         return new MetadataService(mock(MetadataProvider.class), adminClient, registry,
                 mock(InstanceResolver.class), mock(OperationAuditService.class), mock(MessageService.class),
-                runtimeAdminClientResolver, ownershipGuard);
+                runtimeAdminClientResolver, ownershipGuard,
+                mock(org.apache.rocketmq.studio.provider.LiteTopicProvider.class));
     }
 
     @Test

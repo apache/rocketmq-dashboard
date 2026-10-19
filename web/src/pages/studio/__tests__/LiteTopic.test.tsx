@@ -18,6 +18,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import type { LiteTopicItem, LiteTopicQuota } from '../../../api/liteTopic';
@@ -75,7 +76,12 @@ const renderPage = () =>
   render(
     <App>
       <LangProvider>
-        <LiteTopic />
+        <MemoryRouter initialEntries={['/studio/lite-topic']}>
+          <Routes>
+            <Route path="/studio/lite-topic" element={<LiteTopic />} />
+            <Route path="/instance/topic" element={<div>topic-create-page</div>} />
+          </Routes>
+        </MemoryRouter>
       </LangProvider>
     </App>,
   );
@@ -356,6 +362,16 @@ describe('LiteTopic Page', () => {
         'current-owner',
       ),
     );
+  });
+
+  it('routes to the generic topic page to create a Lite parent', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('order-*');
+    await user.click(screen.getByRole('button', { name: /创建 Lite 父主题/ }));
+
+    expect(await screen.findByText('topic-create-page')).toBeInTheDocument();
   });
 
   it('returns to the first page when the local TTL filter changes', async () => {

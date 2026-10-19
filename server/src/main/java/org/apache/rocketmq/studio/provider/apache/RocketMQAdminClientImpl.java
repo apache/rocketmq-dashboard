@@ -72,6 +72,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -307,7 +308,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 topicConfig.setWriteQueueNums(writeQueues);
                 topicConfig.setReadQueueNums(readQueues);
                 topicConfig.setPerm(toRocketMQPerm(effectivePerm));
-                applyTopicType(topicConfig, topic.getType());
+                applyTopicType(topicConfig, topic.getType(), topic.getLiteTtlMinutes());
 
                 boolean physicalExists = importing && verifyTopicImport(admin, brokerAddrs, topicConfig);
                 if (!physicalExists) {
@@ -407,7 +408,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     topicConfig.setPerm(perm);
                     // Broker attributes are merged separately and writes require delta keys.
                     topicConfig.setAttributes(Map.of());
-                    applyTopicType(topicConfig, topic.getType());
+                    // TTL is create-only: the update path passes none so a stored
+                    // lite.topic.expiration stays untouched (see the pin test).
+                    applyTopicType(topicConfig, topic.getType(), null);
                     pending.put(addr, topicConfig);
                 }
                 for (Map.Entry<String, TopicConfig> entry : pending.entrySet()) {
@@ -476,13 +479,25 @@ public class RocketMQAdminClientImpl implements AdminClient {
         return current == null ? new TopicConfig(topicName) : new TopicConfig(current);
     }
 
-    private void applyTopicType(TopicConfig topicConfig, TopicType topicType) {
-        if (topicType == null) {
+    /**
+     * Writes the create-time topic attributes as one change set. The update protocol only accepts
+     * attribute change entries ({@code +key=value}) which the broker merges into the stored
+     * attributes, so the message type and a Lite parent topic's TTL are sent together and only on
+     * create — updates pass no TTL and never touch {@code lite.topic.expiration}.
+     */
+    private void applyTopicType(TopicConfig topicConfig, TopicType topicType, Integer liteTtlMinutes) {
+        if (topicType == null && liteTtlMinutes == null) {
             return;
         }
-        topicConfig.setAttributes(Map.of(
-                "+" + TopicAttributes.TOPIC_MESSAGE_TYPE_ATTRIBUTE.getName(),
-                topicType.name()));
+        Map<String, String> attributes = new HashMap<>();
+        if (topicType != null) {
+            attributes.put("+" + TopicAttributes.TOPIC_MESSAGE_TYPE_ATTRIBUTE.getName(), topicType.name());
+        }
+        if (topicType == TopicType.LITE && liteTtlMinutes != null) {
+            attributes.put("+" + TopicAttributes.LITE_EXPIRATION_ATTRIBUTE.getName(),
+                    String.valueOf(liteTtlMinutes));
+        }
+        topicConfig.setAttributes(attributes);
     }
 
     @Override
