@@ -98,7 +98,7 @@ class AuthServiceDatabaseTest {
     }
 
     @Test
-    void listUsersShouldTreatSearchWildcardsAsLiteralCharacters() {
+    void listUsersShouldTreatSearchWildcardsAsLiteralCharactersTest() {
         Page<RmqStudioUser> databasePage = new Page<>(1, 20, 0);
         databasePage.setRecords(List.of());
         when(userMapper.selectPage(any(Page.class), any(Wrapper.class))).thenReturn(databasePage);
@@ -108,6 +108,7 @@ class AuthServiceDatabaseTest {
         org.mockito.ArgumentCaptor<QueryWrapper<RmqStudioUser>> queryCaptor =
                 org.mockito.ArgumentCaptor.forClass(QueryWrapper.class);
         verify(userMapper).selectPage(any(Page.class), queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getSqlSegment()).contains("username LIKE");
         assertThat(queryCaptor.getValue().getParamNameValuePairs().values())
                 .containsExactly("%ops\\_\\%%");
     }
