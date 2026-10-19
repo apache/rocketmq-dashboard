@@ -66,6 +66,7 @@ export interface MetricData {
   resultType: string;
   series: MetricSeries[];
   warnings: string[];
+  infos?: string[];
 }
 
 export interface MetricQuery {

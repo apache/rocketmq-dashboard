@@ -64,7 +64,8 @@ class InstanceMetricsToolHandlerTest {
         MetricDataVO data = MetricDataVO.builder()
                 .resultType("matrix")
                 .series(List.of(series, otherBrokerCluster))
-                .warnings(List.of())
+                .warnings(List.of("partial response"))
+                .infos(List.of("ignored histogram samples"))
                 .build();
         when(metricsService.queryInstance(eq("instance-a"), any(MetricQueryDTO.class)))
                 .thenReturn(data);
@@ -74,6 +75,8 @@ class InstanceMetricsToolHandlerTest {
                 1700000000L, 1700000060L, "30s"), context("instance-a"));
 
         assertThat(result.getResultType()).isEqualTo("matrix");
+        assertThat(result.getWarnings()).containsExactly("partial response");
+        assertThat(result.getInfos()).containsExactly("ignored histogram samples");
         assertThat(result.getSeries()).extracting(MetricDataVO.MetricSeriesVO::getLabels)
                 .containsExactly(series.getLabels(), otherBrokerCluster.getLabels());
         MetricDataVO.MetricSeriesVO seriesItem = result.getSeries().getFirst();
@@ -89,4 +92,18 @@ class InstanceMetricsToolHandlerTest {
         assertThat(captured.getStart()).isEqualTo(1700000000L);
         assertThat(captured.getStep()).isEqualTo("30s");
     }
+    @Test
+    void executeShouldNormalizeMissingInfosTest() {
+        when(metricsService.queryInstance(eq("instance-a"), any(MetricQueryDTO.class)))
+                .thenReturn(MetricDataVO.builder().resultType("matrix").series(List.of()).build());
+
+        MetricDataVO result = handler.execute(new InstanceMetricsInput(
+                "instance-a", "rocketmq_topic_tps", null, null,
+                1700000000L, 1700000060L, "30s"), context("instance-a"));
+
+        assertThat(result.getInfos()).isEmpty();
+        assertThat(result.getWarnings()).isEmpty();
+        assertThat(result.getSeries()).isEmpty();
+    }
+
 }
