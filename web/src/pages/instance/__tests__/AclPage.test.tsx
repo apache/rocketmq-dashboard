@@ -262,6 +262,7 @@ describe('ACL page', () => {
             id: 21,
             principal: 'remote-user',
             resource: 'remote-topic',
+            resourceType: 'Topic',
             resourcePattern: 'LITERAL',
             actions: ['PUB'],
             decision: 'ALLOW',
