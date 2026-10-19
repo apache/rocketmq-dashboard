@@ -152,6 +152,8 @@ RUN mvn dependency:go-offline
 COPY server/src ./src
 COPY server/style ./style
 COPY server/scripts/legal.py ./scripts/legal.py
+COPY server/scripts/legal-determinations.json ./scripts/legal-determinations.json
+COPY server/legal/licenses ./legal/licenses
 COPY server/LICENSE server/NOTICE ./
 
 RUN mvn package -DskipTests
