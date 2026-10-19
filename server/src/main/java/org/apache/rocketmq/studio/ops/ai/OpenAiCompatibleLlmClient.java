@@ -96,7 +96,7 @@ public class OpenAiCompatibleLlmClient {
         try {
             HttpResponse<LimitedBody> response = httpClient.send(request, limitedBodyHandler());
             String responseBody = checkedBody(response.body());
-            if (response.statusCode() >= 400) {
+            if (isUpstreamFailure(response.statusCode())) {
                 throw upstreamException(response.statusCode(), responseBody);
             }
             return parseCompletion(responseBody);
@@ -121,7 +121,7 @@ public class OpenAiCompatibleLlmClient {
         try {
             HttpResponse<LimitedBody> response = httpClient.send(request, limitedBodyHandler());
             String responseBody = checkedBody(response.body());
-            if (response.statusCode() >= 400) {
+            if (isUpstreamFailure(response.statusCode())) {
                 throw upstreamException(response.statusCode(), responseBody);
             }
             return parseModels(responseBody);
@@ -147,7 +147,7 @@ public class OpenAiCompatibleLlmClient {
         HttpRequest request = request(config, "text/event-stream", requestBody);
         try {
             HttpResponse<StreamBody> response = httpClient.send(request, streamBodyHandler());
-            if (response.statusCode() >= 400) {
+            if (isUpstreamFailure(response.statusCode())) {
                 throw upstreamException(response.statusCode(), checkedBody(response.body().errorBody()));
             }
             parseStreamWithTimeout(response.body().stream(), tokenConsumer);
@@ -232,13 +232,19 @@ public class OpenAiCompatibleLlmClient {
         }
     }
 
+    private static boolean isUpstreamFailure(int statusCode) {
+        // Redirects are disabled on the client (Redirect.NEVER), so a 3xx answer means a
+        // misrouted request — an auth portal or a wrong scheme — not a payload to parse.
+        return statusCode < 200 || statusCode >= 300;
+    }
+
     private HttpResponse.BodyHandler<LimitedBody> limitedBodyHandler() {
         return responseInfo -> new LimitedBodySubscriber(responseBodyLimitBytes());
     }
 
     private HttpResponse.BodyHandler<StreamBody> streamBodyHandler() {
         return responseInfo -> {
-            if (responseInfo.statusCode() >= 400) {
+            if (isUpstreamFailure(responseInfo.statusCode())) {
                 return HttpResponse.BodySubscribers.mapping(
                         new LimitedBodySubscriber(responseBodyLimitBytes()), StreamBody::error);
             }
