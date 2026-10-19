@@ -82,19 +82,20 @@ public class MybatisPlusAlertRepository implements AlertRepository {
 
     private QueryWrapper<RmqAlertRule> ruleQuery(String search, Boolean enabled) {
         return new QueryWrapper<RmqAlertRule>()
-                .like(StringUtils.hasText(search), "name", search)
+                .like(StringUtils.hasText(search), "name", escapeLike(search))
                 .eq(enabled != null, "enabled", enabled)
                 .orderByAsc("name", "id");
     }
 
     @Override
     public PageResult<AlertRuleVO> findRulesPage(AlertRuleQuery query) {
+        String literalSearch = StringUtils.hasText(query.search()) ? escapeLike(query.search().trim()) : null;
         QueryWrapper<RmqAlertRule> conditions = new QueryWrapper<RmqAlertRule>()
                 .eq(query.enabled() != null, "enabled", query.enabled())
                 .and(StringUtils.hasText(query.search()), wrapper -> wrapper
-                        .like("name", query.search().trim())
+                        .like("name", literalSearch)
                         .or()
-                        .like("metric", query.search().trim()))
+                        .like("metric", literalSearch))
                 .orderByAsc("name")
                 .orderByAsc("id");
         if (query.domain() == AlertDomain.BUSINESS) {
@@ -106,6 +107,11 @@ public class MybatisPlusAlertRepository implements AlertRepository {
         Page<RmqAlertRule> result = ruleMapper.selectPage(new Page<>(query.page(), query.pageSize()), conditions);
         return PageResult.of(result.getRecords().stream().map(MybatisPlusAlertRepository::toRuleVO).toList(),
                 result.getTotal(), query.page(), query.pageSize());
+    }
+
+    private static String escapeLike(String value) {
+        return value == null ? null : value.replace("\\", "\\\\")
+                .replace("%", "\\%").replace("_", "\\_");
     }
 
     @Override
