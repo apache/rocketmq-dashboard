@@ -1156,6 +1156,136 @@ describe('MetricsExplorer', () => {
     expect(screen.getAllByTitle('默认数据源').length).toBeGreaterThan(0);
   });
 
+  it('does not reset the selected data source when the explorer unmounts before the fallback timer runs', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listDataSources).mockResolvedValue([
+      {
+        key: 'ds-instance-a',
+        name: 'Instance A Prometheus',
+        type: 'Prometheus',
+        url: '',
+        auth: 'None',
+        status: 'healthy',
+        instanceIds: ['instance-1'],
+      },
+    ]);
+
+    const view = renderWithProviders(<MetricsExplorer instanceId="instance-1" />);
+
+    await screen.findByRole('combobox', { name: '数据源' });
+    await user.click(screen.getByRole('combobox', { name: '数据源' }));
+    await user.click(
+      await screen.findByText('Instance A Prometheus', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(queryByDataSource).toHaveBeenCalledWith(
+        expect.objectContaining({
+          key: 'ds-instance-a',
+          instanceId: 'instance-1',
+        }),
+      ),
+    );
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+
+    // Switching away queues the zero-delay fallback for the source that just left
+    // scope; unmounting before it executes must cancel it instead of letting it
+    // reset the source and re-query under the abandoned instance.
+    view.rerender(
+      <App>
+        <LangProvider>
+          <MetricsExplorer instanceId="instance-2" />
+        </LangProvider>
+      </App>,
+    );
+    const queriesAfterScopeChange = vi.mocked(queryMetrics).mock.calls.length;
+    view.unmount();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    // The instance switch's own panel reload is cancelled by the unmount, so the
+    // pending fallback must add no query of its own either.
+    expect(vi.mocked(queryMetrics).mock.calls).toHaveLength(queriesAfterScopeChange);
+  });
+
+  it('keeps the selected data source when the instance scope returns before the fallback timer runs', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listDataSources).mockResolvedValue([
+      {
+        key: 'ds-instance-a',
+        name: 'Instance A Prometheus',
+        type: 'Prometheus',
+        url: '',
+        auth: 'None',
+        status: 'healthy',
+        instanceIds: ['instance-1'],
+      },
+    ]);
+
+    const view = renderWithProviders(<MetricsExplorer instanceId="instance-1" />);
+
+    await screen.findByRole('combobox', { name: '数据源' });
+    await user.click(screen.getByRole('combobox', { name: '数据源' }));
+    await user.click(
+      await screen.findByText('Instance A Prometheus', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(queryByDataSource).toHaveBeenCalledWith(
+        expect.objectContaining({
+          key: 'ds-instance-a',
+          instanceId: 'instance-1',
+        }),
+      ),
+    );
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    const dataSourceQueriesBeforeReturn = vi.mocked(queryByDataSource).mock.calls.length;
+
+    // Switching away queues the zero-delay fallback; switching back before it executes
+    // must cancel it, otherwise it resets a source that is in scope again.
+    view.rerender(
+      <App>
+        <LangProvider>
+          <MetricsExplorer instanceId="instance-2" />
+        </LangProvider>
+      </App>,
+    );
+    view.rerender(
+      <App>
+        <LangProvider>
+          <MetricsExplorer instanceId="instance-1" />
+        </LangProvider>
+      </App>,
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    // The instance-switch reload still resolves through the restored scope...
+    await waitFor(() =>
+      expect(vi.mocked(queryByDataSource).mock.calls.length).toBeGreaterThan(
+        dataSourceQueriesBeforeReturn,
+      ),
+    );
+    expect(queryByDataSource).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        key: 'ds-instance-a',
+        instanceId: 'instance-1',
+      }),
+    );
+    // ...and the obsolete fallback did not knock the selection back to the default.
+    const dataSourceSelection = view.container
+      .querySelector('[aria-label="数据源"]')
+      ?.closest('.ant-select')
+      ?.querySelector('.ant-select-selection-item');
+    expect(dataSourceSelection?.textContent).toBe('Instance A Prometheus');
+  });
+
   it('exports the clicked metric panel as CSV', async () => {
     const user = userEvent.setup();
     const consumerLagData = {

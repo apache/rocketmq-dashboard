@@ -937,7 +937,11 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
 
   useEffect(() => {
     if (dataSourceKey && !availableDataSources.some((source) => source.key === dataSourceKey)) {
-      window.setTimeout(() => {
+      // The fallback runs on a zero-delay timer, which is still asynchronous: an unmount,
+      // or a scope that has already changed back before the callback executes, must not
+      // reset the source afterwards. Cancel the pending fallback whenever this effect
+      // re-runs or the explorer unmounts.
+      const fallbackTimerId = window.setTimeout(() => {
         // Keep the ref in sync with the state; queries read the ref, so a stale key would
         // keep hitting the de-registered data source while the UI shows the default.
         dataSourceCredentialsRef.current = null;
@@ -949,6 +953,9 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           void runCustomQuery(appliedCustomPromql, selectedRange);
         }
       }, 0);
+      return () => {
+        window.clearTimeout(fallbackTimerId);
+      };
     }
   }, [
     availableDataSources,
