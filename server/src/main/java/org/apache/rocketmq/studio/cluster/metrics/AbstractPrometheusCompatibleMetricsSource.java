@@ -39,6 +39,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.SocketTimeoutException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -208,7 +209,7 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
                     throw new PrometheusException(HttpStatus.SERVICE_UNAVAILABLE.value(),
                             backendLabel() + " basic authentication is incomplete");
                 }
-                headers.setBasicAuth(settings.getUsername(), settings.getPassword());
+                headers.setBasicAuth(settings.getUsername(), settings.getPassword(), StandardCharsets.UTF_8);
             }
             case "bearer" -> {
                 if (!StringUtils.hasText(settings.getBearerToken())) {

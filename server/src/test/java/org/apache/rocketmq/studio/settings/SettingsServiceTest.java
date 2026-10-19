@@ -26,6 +26,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -663,6 +664,26 @@ class SettingsServiceTest {
         DataSourceTestResultVO result = settingsService.testDataSource(request);
 
         assertThat(result.isSuccess()).isTrue();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"op\u00e9rator, p\u00e4ssword", "\u7528\u6237, \u5bc6\u7801", "studio, secret\ud83d\udd12"})
+    void connectionShouldEncodeBasicCredentialsAsUtf8Test(String username, String password) {
+        String expectedAuthorization = "Basic " + Base64.getEncoder()
+                .encodeToString((username + ":" + password).getBytes(StandardCharsets.UTF_8));
+        prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, expectedAuthorization))
+                .andRespond(withSuccess(PROMETHEUS_SUCCESS_BODY, MediaType.APPLICATION_JSON));
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url(PROMETHEUS_BASE_URL)
+                .type("Prometheus")
+                .auth("Basic Auth")
+                .username(username)
+                .password(password)
+                .build();
+
+        assertThat(settingsService.testDataSource(request).isSuccess()).isTrue();
     }
 
     @Test
