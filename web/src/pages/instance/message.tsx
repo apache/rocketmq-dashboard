@@ -942,6 +942,13 @@ const MessagePageContent = ({
           <Typography.Title level={5} style={{ marginBottom: 8 }}>
             {t('topic.messageBody')}
           </Typography.Title>
+          {(selectedMsg.bodyTruncated || selectedMsg.propertiesTruncated) && (
+            <Typography.Text type="warning" style={{ display: 'block', marginBottom: 8 }}>
+              {selectedMsg.bodyTruncated ? t('messagePage.bodyTruncated') : null}
+              {selectedMsg.bodyTruncated && selectedMsg.propertiesTruncated ? ' · ' : null}
+              {selectedMsg.propertiesTruncated ? t('messagePage.propertiesTruncated') : null}
+            </Typography.Text>
+          )}
           <Paragraph
             copyable
             style={{
