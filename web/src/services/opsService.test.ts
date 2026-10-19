@@ -132,8 +132,14 @@ describe('ops service mock data', () => {
       });
       createdIds.push(...secondImport.map((rule) => rule.id));
 
+      const removedId = createdIds.pop()!;
+      await deleteAlertRule(removedId);
+      const replacement = await createAlertRule({ name: 'rapid-replacement', channels: [] });
+      createdIds.push(replacement.id);
+
       expect(new Set(createdIds).size).toBe(createdIds.length);
       expect(createdIds).toEqual([...createdIds].sort((a, b) => a - b));
+      expect(replacement.id).toBeGreaterThan(removedId);
     } finally {
       now.mockRestore();
       for (const id of createdIds) await deleteAlertRule(id);
