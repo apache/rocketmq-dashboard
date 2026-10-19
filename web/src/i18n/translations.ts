@@ -2564,6 +2564,10 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'All configurations and progress will be removed. This cannot be undone.',
   },
   'consumer.deleted': { zh: '消费组 {name} 已删除', en: 'Consumer group {name} deleted' },
+  'consumer.deleteFailed': {
+    zh: '删除消费组失败，请稍后重试',
+    en: 'Failed to delete consumer group. Please try again later.',
+  },
   'consumer.searchPlaceholder': { zh: '搜索 Group 名称或 Topic', en: 'Search group name or topic' },
   'consumer.allModes': { zh: '全部模式', en: 'All Modes' },
   'consumer.push': { zh: 'Push', en: 'Push' },

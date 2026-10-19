@@ -1108,10 +1108,16 @@ const ConsumerPageContent = ({
                 okButtonProps: { danger: true },
                 cancelText: '取消',
                 onOk: async () => {
-                  await deleteConsumerGroup(record.name, selectedInstanceId || undefined);
-                  await reloadConsumerGroupPage();
-                  setSelectedRowKeys((prev) => prev.filter((key) => key !== record.name));
-                  message.success(`消费组 ${record.name} 已删除`);
+                  try {
+                    await deleteConsumerGroup(record.name, selectedInstanceId || undefined);
+                    await reloadConsumerGroupPage();
+                    setSelectedRowKeys((prev) => prev.filter((key) => key !== record.name));
+                    message.success(`消费组 ${record.name} 已删除`);
+                  } catch {
+                    // A failed delete must tell the operator: the row still exists on the
+                    // server, and a silent rejection leaves the dialog open with no outcome.
+                    message.error(t('consumer.deleteFailed'));
+                  }
                 },
               });
             }}

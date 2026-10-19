@@ -471,6 +471,30 @@ describe('Consumer page', () => {
     confirmSpy.mockRestore();
   });
 
+  it('reports a failed consumer group deletion instead of staying silent', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    vi.mocked(consumerService.deleteConsumerGroup).mockRejectedValue(new Error('network error'));
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(groupPage([group]));
+    renderWithProviders(<ConsumerPage />);
+
+    const row = await screen.findByRole('row', { name: /remote-cg/ });
+    await user.click(within(row).getByRole('button', { name: /删除/ }));
+
+    await waitFor(() =>
+      expect(consumerService.deleteConsumerGroup).toHaveBeenCalledWith('remote-cg', 'instance-1'),
+    );
+    // The delete was rejected, so the operator must be told instead of the request
+    // failing with no feedback at all.
+    expect(await screen.findByText('删除消费组失败，请稍后重试')).toBeInTheDocument();
+    // The group still exists on the server, so the row must still be listed.
+    expect(await screen.findByRole('row', { name: /remote-cg/ })).toBeInTheDocument();
+    confirmSpy.mockRestore();
+  });
+
   it('moves back from an emptied last consumer group page after batch deletion', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
