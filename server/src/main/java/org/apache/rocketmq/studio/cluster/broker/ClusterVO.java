@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.cluster.broker;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
 import org.apache.rocketmq.studio.cluster.proxy.ProxyVO;
@@ -41,7 +42,11 @@ import java.util.List;
 @AllArgsConstructor
 public class ClusterVO {
     private String id;
+    // Bookkeeping columns left over from the persisted-entity shape. Clusters are discovered
+    // from the NameServer, so nothing fills them and ClusterInfo does not declare them.
+    @JsonIgnore
     private LocalDateTime gmtCreate;
+    @JsonIgnore
     private LocalDateTime gmtModified;
     private String name;
     private String nsClusterName;
