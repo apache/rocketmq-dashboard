@@ -171,6 +171,50 @@ class LlmConfigServiceTest {
     }
 
     @Test
+    void getConfigKeepsCliEnginesEnabledWithoutAStoredApiKey() {
+        when(settingsService.getGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .theme("dark")
+                .compact(true)
+                .desktopNotify(true)
+                .notifySound(false)
+                .sessionTimeout(45)
+                .requireLogin(true)
+                .llmProvider("deepseek")
+                .llmEngine("claude-code")
+                .apiKey("")
+                .model("deepseek-chat")
+                .build());
+
+        LlmConfigVO config = llmConfigService.getConfig();
+
+        assertThat(config.getEngine()).isEqualTo("claude-code");
+        assertThat(config.isEnabled()).isTrue();
+        assertThat(config.isReady()).isTrue();
+    }
+
+    @Test
+    void getConfigStillRequiresAStoredKeyForHttpEnginesOnRemoteProviders() {
+        when(settingsService.getGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .theme("dark")
+                .compact(true)
+                .desktopNotify(true)
+                .notifySound(false)
+                .sessionTimeout(45)
+                .requireLogin(true)
+                .llmProvider("deepseek")
+                .llmEngine("http")
+                .apiKey("")
+                .model("deepseek-chat")
+                .build());
+
+        LlmConfigVO config = llmConfigService.getConfig();
+
+        assertThat(config.getEngine()).isEqualTo("http");
+        assertThat(config.isEnabled()).isFalse();
+        assertThat(config.isReady()).isFalse();
+    }
+
+    @Test
     void saveConfigShouldPreserveGeneralSettingsAndStoreLlmFields() {
         LlmConfigVO config = LlmConfigVO.builder()
                 .provider("deepseek")
