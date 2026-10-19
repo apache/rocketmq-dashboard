@@ -308,6 +308,18 @@ class AiConversationPersistenceIntegrationTest {
     }
 
     @Test
+    void recentHistoryShouldStayBeforeTheCurrentRunAndInsideItsConversationTest() {
+        Seeded seeded = seed();
+        Seeded other = seed();
+        assertThat(eventRepository.findRecentBeforeSeq(seeded.conversationId, 101, 3))
+                .extracting(RmqAiEvent::getSeq).containsExactly(98, 99, 100);
+        assertThat(eventRepository.findRecentBeforeSeq(seeded.conversationId, 101, 3))
+                .allSatisfy(row -> assertThat(row.getConversationId())
+                        .isEqualTo(seeded.conversationId).isNotEqualTo(other.conversationId));
+        assertThat(eventRepository.findRecentBeforeSeq(seeded.conversationId, 1, 3)).isEmpty();
+    }
+
+    @Test
     void deletingAConversationShouldTakeItsChildrenWithItTest() {
         Seeded seeded = seed();
 

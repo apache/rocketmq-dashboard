@@ -54,6 +54,7 @@ import java.util.function.Consumer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -487,13 +488,36 @@ class AiRunExecutorTest {
     }
 
     @Test
+    void httpTurnShouldReceiveOnlyItsPriorConversationMessagesTest() {
+        when(llmClient.supports(any())).thenReturn(true);
+        RmqAiEvent question = new RmqAiEvent();
+        question.setSeq(1);
+        question.setTurn(1);
+        question.setPayload("{\"type\":\"user\",\"text\":\"previous question\"}");
+        RmqAiEvent answer = new RmqAiEvent();
+        answer.setSeq(2);
+        answer.setTurn(1);
+        answer.setPayload("{\"type\":\"text\",\"text\":\"previous answer\"}");
+        when(eventRepository.findRecentBeforeSeq(eq(CONVERSATION_ID), eq(3), anyInt()))
+                .thenReturn(List.of(question, answer));
+        run.setStartSeq(3);
+
+        executor.submit(context(LlmConfigVO.ENGINE_HTTP));
+
+        verify(llmClient).streamConversation(any(), eq(List.of(
+                new OpenAiCompatibleLlmClient.ChatMessage("user", "previous question"),
+                new OpenAiCompatibleLlmClient.ChatMessage("assistant", "previous answer"))),
+                eq("hello"), eq("qwen3.8-max"), any());
+    }
+
+    @Test
     void httpEngineShouldStreamTokensAsTextDeltasWithoutAnAgentProviderTest() {
         doAnswer(invocation -> {
-            Consumer<String> tokens = invocation.getArgument(3);
+            Consumer<String> tokens = invocation.getArgument(4);
             tokens.accept("hello ");
             tokens.accept("world");
             return null;
-        }).when(llmClient).stream(any(), any(), any(), any());
+        }).when(llmClient).streamConversation(any(), any(), any(), any(), any());
         when(llmClient.supports(any())).thenReturn(true);
 
         AiRunExecutor.RunContext context = context(LlmConfigVO.ENGINE_HTTP);

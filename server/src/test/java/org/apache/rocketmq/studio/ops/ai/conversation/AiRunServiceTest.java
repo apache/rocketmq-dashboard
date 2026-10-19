@@ -57,6 +57,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -247,13 +248,27 @@ class AiRunServiceTest {
     }
 
     @Test
+    void resumeFalseShouldKeepAnHttpTurnIndependentOfPriorHistoryTest() {
+        when(eventRepository.maxSeq(CONVERSATION_ID)).thenReturn(10);
+        when(llmClient.supports(any())).thenReturn(true);
+        service.sendMessage(CONVERSATION_ID, new AiRunService.RunRequest(
+                "fresh question", null, LlmConfigVO.ENGINE_HTTP, null, false, false));
+
+        verify(eventRepository, never()).findRecentBeforeSeq(anyLong(), anyInt(), anyInt());
+        verify(llmClient).streamConversation(any(), org.mockito.ArgumentMatchers.eq(List.of()),
+                org.mockito.ArgumentMatchers.eq("fresh question"), any(), any());
+        assertThat(runUpdates.get(runUpdates.size() - 1).getStatus())
+                .isEqualTo(RunStatus.COMPLETED.name());
+    }
+
+    @Test
     void anHttpTurnShouldNotPrepareAnAgentWorkspaceItCannotUseTest() {
         when(llmClient.supports(any())).thenReturn(true);
         doAnswer(invocation -> {
-            Consumer<String> tokens = invocation.getArgument(3);
+            Consumer<String> tokens = invocation.getArgument(4);
             tokens.accept("pong");
             return null;
-        }).when(llmClient).stream(any(), any(), any(), any());
+        }).when(llmClient).streamConversation(any(), any(), any(), any(), any());
         when(workspace.prepare(anyLong(), any()))
                 .thenThrow(new BusinessException(500, "the workspace directory is unusable"));
 
