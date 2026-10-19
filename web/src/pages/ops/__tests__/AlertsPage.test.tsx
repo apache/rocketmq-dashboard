@@ -865,6 +865,125 @@ describe('AlertsPage', () => {
     expect(template).toHaveValue('Alert: ${ruleName}');
   });
 
+  it.each([
+    { lang: 'zh', initial: 'a'.repeat(3995), kind: 'ASCII' },
+    { lang: 'en', initial: 'a'.repeat(3995), kind: 'ASCII' },
+    { lang: 'zh', initial: '🚀'.repeat(2000), kind: 'supplementaryUnicode' },
+    { lang: 'en', initial: '🚀'.repeat(2000), kind: 'supplementaryUnicode' },
+  ])('rejectsOversizedInsertedTemplate $lang $kind Test', async ({ lang, initial }) => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+    vi.mocked(listAlertRulesPage).mockResolvedValue(
+      pageResult([{ ...alertRules[0], instanceId: 'local', notificationTemplate: initial }]),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Broker disk usage');
+    await expectRuleRowInteractive('Broker disk usage');
+    const editLabel = lang === 'zh' ? '编辑' : 'Edit';
+    await user.click(
+      within(getRuleRow('Broker disk usage')).getByRole('button', { name: editLabel }),
+    );
+    const dialog = screen.getByRole('dialog');
+    const template = within(dialog).getByRole('textbox', {
+      name: lang === 'zh' ? '通知模板' : 'Notification Template',
+    }) as HTMLTextAreaElement;
+    template.setSelectionRange(initial.length, initial.length);
+
+    await user.click(within(dialog).getByRole('button', { name: '${ruleName}' }));
+
+    expect(template).toHaveValue(`${initial}\${ruleName}`);
+    expect(template.value.length).toBe(initial.length + 11);
+    const error =
+      lang === 'zh'
+        ? '通知模板不能超过 4000 个字符'
+        : 'Notification template must not exceed 4000 characters';
+    expect(await within(dialog).findByText(error)).toBeInTheDocument();
+    expect(template).toHaveAttribute('aria-invalid', 'true');
+    await user.click(
+      within(dialog).getByRole('button', { name: lang === 'zh' ? '试运行' : 'Test Run' }),
+    );
+    expect(testAlertRule).not.toHaveBeenCalled();
+    await user.click(
+      within(dialog).getByRole('button', { name: lang === 'zh' ? /^编\s*辑$/ : 'Edit' }),
+    );
+    expect(updateAlertRule).not.toHaveBeenCalled();
+    expect(createAlertRule).not.toHaveBeenCalled();
+    expect(dialog).toBeInTheDocument();
+    expect(template).toHaveValue(`${initial}\${ruleName}`);
+  });
+
+  it.each([
+    { initial: 'a'.repeat(4000), kind: 'ASCII' },
+    { initial: '🚀'.repeat(2000), kind: 'supplementaryUnicode' },
+  ])('allowsExactLimitTemplateSelectionReplacement $kind Test', async ({ initial }) => {
+    vi.mocked(listAlertRulesPage).mockResolvedValue(
+      pageResult([{ ...alertRules[0], instanceId: 'local', notificationTemplate: initial }]),
+    );
+    vi.mocked(updateAlertRule).mockImplementation(async (rule) => rule as AlertRule);
+    vi.mocked(testAlertRule).mockResolvedValue({ samples: [] });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Broker disk usage');
+    await expectRuleRowInteractive('Broker disk usage');
+    await user.click(within(getRuleRow('Broker disk usage')).getByRole('button', { name: '编辑' }));
+    const dialog = screen.getByRole('dialog');
+    const template = within(dialog).getByRole('textbox', {
+      name: '通知模板',
+    }) as HTMLTextAreaElement;
+    template.setSelectionRange(3992, 4000);
+
+    await user.click(within(dialog).getByRole('button', { name: '${title}' }));
+
+    const expected = `${initial.slice(0, 3992)}\${title}`;
+    expect(template).toHaveValue(expected);
+    expect(template.value.length).toBe(4000);
+    await user.click(within(dialog).getByRole('button', { name: '试运行' }));
+    await waitFor(() =>
+      expect(testAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({ notificationTemplate: expected }),
+      ),
+    );
+    await user.click(within(dialog).getByRole('button', { name: /^编\s*辑$/ }));
+    await waitFor(() =>
+      expect(updateAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({ notificationTemplate: expected }),
+      ),
+    );
+  });
+
+  it('allowsSubmissionAfterCorrectingInsertedTemplateLengthTest', async () => {
+    const initial = 'a'.repeat(4000);
+    vi.mocked(listAlertRulesPage).mockResolvedValue(
+      pageResult([{ ...alertRules[0], instanceId: 'local', notificationTemplate: initial }]),
+    );
+    vi.mocked(updateAlertRule).mockImplementation(async (rule) => rule as AlertRule);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Broker disk usage');
+    await expectRuleRowInteractive('Broker disk usage');
+    await user.click(within(getRuleRow('Broker disk usage')).getByRole('button', { name: '编辑' }));
+    const dialog = screen.getByRole('dialog');
+    const template = within(dialog).getByRole('textbox', {
+      name: '通知模板',
+    }) as HTMLTextAreaElement;
+    template.setSelectionRange(4000, 4000);
+    await user.click(within(dialog).getByRole('button', { name: '${ruleName}' }));
+    expect(await within(dialog).findByText('通知模板不能超过 4000 个字符')).toBeInTheDocument();
+
+    template.setSelectionRange(3992, 4011);
+    await user.click(within(dialog).getByRole('button', { name: '${title}' }));
+
+    const expected = `${initial.slice(0, 3992)}\${title}`;
+    expect(template).toHaveValue(expected);
+    await waitFor(() => expect(template).not.toHaveAttribute('aria-invalid', 'true'));
+    await user.click(within(dialog).getByRole('button', { name: /^编\s*辑$/ }));
+    await waitFor(() =>
+      expect(updateAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({ notificationTemplate: expected }),
+      ),
+    );
+  });
+
   it('renders a local notification template preview with unknown variable notices', async () => {
     const user = userEvent.setup();
     renderPage();

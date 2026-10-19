@@ -985,6 +985,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'alerts.triggered24h': { zh: '24h 触发', en: 'Triggered (24h)' },
   'alerts.newRule': { zh: '新建规则', en: 'New Rule' },
   'alerts.notificationTemplate': { zh: '通知模板', en: 'Notification Template' },
+  'alerts.notificationTemplateTooLong': {
+    zh: '通知模板不能超过 {max} 个字符',
+    en: 'Notification template must not exceed {max} characters',
+  },
   'alerts.notificationTemplateHelp': {
     zh: '支持 ${ruleName}、${title}、${description}、${transition}、${metric}、${instanceId}、${value}、${threshold}、${thresholdUnit}、${level}、${time}、${labels}',
     en: 'Supports ${ruleName}, ${title}, ${description}, ${transition}, ${metric}, ${instanceId}, ${value}, ${threshold}, ${thresholdUnit}, ${level}, ${time}, and ${labels}',
