@@ -105,6 +105,21 @@ class LegalTest(unittest.TestCase):
         self.assertIn("npm install -g @anthropic-ai/claude-code @qoder-ai/qodercli", docker)
         self.assertIn("COPY --from=rmqctl-build /out/legal", docker)
 
+    def dockerBuildStageIncludesLegalInputsTest(self):
+        docker = (legal.SERVER / "Dockerfile").read_text()
+        build = docker.split(" AS build\n", 1)[1].split("\nFROM ", 1)[0]
+        before_package = build.split("RUN mvn package", 1)[0]
+        # The build stage does not inherit runtime-base's /opt/studio-legal files.
+        # Maven's package-phase gate resolves these inputs relative to /app/scripts/legal.py.
+        for instruction in [
+            "COPY server/scripts/legal.py ./scripts/legal.py",
+            "COPY server/scripts/legal-determinations.json ./scripts/legal-determinations.json",
+            "COPY server/legal/licenses ./legal/licenses",
+            "COPY server/LICENSE server/NOTICE ./",
+        ]:
+            with self.subTest(instruction=instruction):
+                self.assertIn(instruction, before_package.splitlines())
+
 
 def load_tests(_loader, _tests, _pattern):
     return unittest.TestSuite(LegalTest(name) for name in LegalTest.__dict__ if name.endswith("Test"))
