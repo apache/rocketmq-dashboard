@@ -44,6 +44,7 @@ import {
   Progress,
   Switch,
   message,
+  theme,
 } from 'antd';
 import {
   Plus,
@@ -102,9 +103,9 @@ import {
   validateConsumerGroupCsvImport,
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
-import { downloadCsv } from '../../utils/download';
+import { downloadCsv, localExportDateStamp } from '../../utils/download';
 import { formatLag, isLagAvailable, lagSortValue } from '../../utils/consumerLag';
-import { formatOnlineInstances, onlineInstancesSortValue } from '../../utils/consumerConnections';
+import { formatOnlineInstances, onlineInstancesCount } from '../../utils/consumerConnections';
 import { tableScrollX } from '../../utils/table';
 import {
   analyzeConsumerGroupHealth,
@@ -246,6 +247,7 @@ const ConsumerPageContent = ({
   reloadInstances,
 }: ConsumerPageContentProps) => {
   const { t, lang } = useLang();
+  const { token } = theme.useToken();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const hasSelectedInstance = Boolean(selectedInstanceId);
@@ -527,7 +529,7 @@ const ConsumerPageContent = ({
         search: search.trim() || undefined,
         subscriptionMode: modeFilter !== 'ALL' ? modeFilter : undefined,
       });
-      downloadCsv(`rocketmq-consumer-groups-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+      downloadCsv(`rocketmq-consumer-groups-${localExportDateStamp()}.csv`, csv);
       message.success('Group 导出完成');
     } catch {
       message.error('导出 Group 失败，请稍后重试');
@@ -993,6 +995,7 @@ const ConsumerPageContent = ({
       dataIndex: 'subscriptionDataType',
       key: 'subscriptionDataType',
       width: 100,
+      align: 'center',
       sorter: (a, b) => (a.subscriptionDataType ?? '').localeCompare(b.subscriptionDataType ?? ''),
       render: (type: string) => {
         const config = TOPIC_TYPE_MAP[type] || { labelKey: type, color: 'default' };
@@ -1004,6 +1007,7 @@ const ConsumerPageContent = ({
       dataIndex: 'subscriptionMode',
       key: 'subscriptionMode',
       width: 84,
+      align: 'center',
       sorter: (a, b) => (a.subscriptionMode ?? '').localeCompare(b.subscriptionMode ?? ''),
       render: (mode: string) => <Tag color={mode === 'Push' ? 'blue' : 'green'}>{mode}</Tag>,
     },
@@ -1014,8 +1018,8 @@ const ConsumerPageContent = ({
       width: 100,
       align: 'center',
       sorter: (a, b) =>
-        onlineInstancesSortValue(a.onlineInstances) - onlineInstancesSortValue(b.onlineInstances),
-      render: (value: number) => formatOnlineInstances(value, UNAVAILABLE_LAG_LABEL),
+        onlineInstancesCount(a.onlineInstances) - onlineInstancesCount(b.onlineInstances),
+      render: (value: number) => onlineInstancesCount(value).toLocaleString(),
     },
     {
       title: '总堆积量',
@@ -1227,7 +1231,13 @@ const ConsumerPageContent = ({
       dataIndex: 'protocol',
       key: 'protocol',
       width: 80,
-      render: (protocol: string) => {
+      render: (protocol?: string) => {
+        // The Apache provider cannot tell the protocol from a broker connection set,
+        // so the field is legitimately absent — render a placeholder, not an empty tag.
+        // Plain '-' matches the other optional columns of this page.
+        if (!protocol) {
+          return '-';
+        }
         const config = PROTOCOL_MAP[protocol] || { labelKey: protocol, color: 'default' };
         return <Tag color={config.color}>{t(config.labelKey)}</Tag>;
       },
@@ -1995,7 +2005,9 @@ const ConsumerPageContent = ({
                     <Card
                       size="small"
                       style={{
-                        background: '#fafafa',
+                        // Theme fill instead of a fixed light grey, which left this summary
+                        // card unreadable in dark mode.
+                        background: token.colorFillQuaternary,
                         borderRadius: 8,
                       }}
                       styles={{ body: { padding: '8px 16px' } }}
@@ -2146,7 +2158,9 @@ const ConsumerPageContent = ({
                       size="small"
                       style={{
                         marginBottom: 16,
-                        background: '#fafafa',
+                        // Theme fill instead of a fixed light grey, which left this summary
+                        // card unreadable in dark mode.
+                        background: token.colorFillQuaternary,
                         borderRadius: 8,
                       }}
                       styles={{ body: { padding: '8px 16px' } }}

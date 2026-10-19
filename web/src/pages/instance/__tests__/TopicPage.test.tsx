@@ -246,6 +246,60 @@ describe('TopicPage', () => {
     expect(actionCol.style.width).toBe('290px');
   });
 
+  it('centers the type and status columns', async () => {
+    renderWithProviders('/instance/instance-proxy-1/topic');
+    const row = (await screen.findByText('topic-01')).closest('tr') as HTMLElement;
+
+    // 用户约定 2026-10-16：类型 / 状态两列的表头与单元格都居中，别改回默认左对齐。
+    const headers = Array.from(row.closest('table')!.querySelectorAll('thead th')).map((th) =>
+      th.textContent?.trim(),
+    );
+    const cells = within(row).getAllByRole('cell');
+    for (const title of ['类型', '状态']) {
+      const index = headers.indexOf(title);
+      expect(index).toBeGreaterThan(-1);
+      expect(cells[index].style.textAlign).toBe('center');
+    }
+  });
+
+  it('truncates long topic names inside the sync dialog instead of overflowing the modal', async () => {
+    const longName = 'A_VERY_LONG_TOPIC_NAME_TO_PROBE_TABLE_LAYOUT_TRUNCATION';
+    mockTopicsList([{ ...buildTopics(1)[0], name: longName }]);
+    renderWithProviders('/instance/instance-proxy-1/topic');
+    await screen.findByText(longName);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+
+    await user.click(screen.getByRole('button', { name: /同步数据/ }));
+    const dialog = await screen.findByRole('dialog', { name: /同步数据/ });
+    await waitFor(() => expect(within(dialog).getByText('缺失路由')).toBeInTheDocument());
+
+    // 用户约定 2026-10-16：同步弹窗的表格不得宽于弹窗 body——48 字符的长名曾把表的 min-content
+    // 撑到 727px，溢出 680 弹窗的 632px body 右缘（表格直接画出弹窗外）。长名靠 Topic 列
+    // ellipsis 截断 + 悬停看全名。jsdom 无布局量度，这里守 ellipsis 类名这个机制本身，
+    // 真实宽度由 playwright（/tmp/pw-verify/sync-modal-width.js）在浏览器里量。
+    expect(within(dialog).getByText(longName).closest('td')).toHaveClass('ant-table-cell-ellipsis');
+  });
+
+  it('updates the per-broker queue hint as the queue count changes', async () => {
+    renderWithProviders('/instance/instance-proxy-1/topic');
+    await screen.findByText('topic-01');
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+
+    await user.click(screen.getByRole('button', { name: /创建 Topic/ }));
+    const dialog = await screen.findByRole('dialog', { name: /创建 Topic/ });
+    // 用户约定 2026-10-16：读写队列提示合并为单条、跟随输入值，并说明读写一般需一致。
+    expect(
+      within(dialog).getByText(
+        /每个 Broker 节点写 8 \/ 读 8 个队列；读写队列数一般情况下需保持一致/,
+      ),
+    ).toBeInTheDocument();
+    const inputs = within(dialog).getAllByRole('spinbutton');
+    await user.clear(inputs[0]);
+    await user.type(inputs[0], '16');
+    expect(within(dialog).getByText(/每个 Broker 节点写 16 \/ 读 8 个队列/)).toBeInTheDocument();
+    expect(within(dialog).getAllByText(/每个 Broker 节点写/).length).toBe(1);
+  });
+
   it('gives each of the four row actions its own color', async () => {
     renderWithProviders('/instance/instance-proxy-1/topic');
     await screen.findByText('topic-01');
