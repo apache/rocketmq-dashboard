@@ -1178,4 +1178,151 @@ describe('DLQ page', () => {
     expect(screen.queryByText('cg-order')).not.toBeInTheDocument();
     expect(screen.getByText('-cg-"payment"')).toBeInTheDocument();
   });
+
+  it('warns instead of celebrating when the selected resend could not match every message', async () => {
+    vi.mocked(messageService.listDLQMessages).mockResolvedValue({
+      items: [
+        {
+          msgId: 'dlq-gone',
+          topic: '%DLQ%cg-order',
+          queueId: 0,
+          offset: 7,
+          storeTime: 1_700_000_000_000,
+          keys: null,
+          body: 'payload',
+          bodyBase64: null,
+          properties: {},
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    // The selection was captured before the messages were purged: the server reports matched=0,
+    // resent=0, failed=0 with outcome PARTIAL, and the old logic fell through to the success toast.
+    vi.mocked(messageService.resendDLQSelected).mockResolvedValue({
+      matched: 0,
+      resent: 0,
+      failed: 0,
+      outcome: 'PARTIAL',
+      scanIncomplete: false,
+      failedQueueCount: 0,
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    const orderRow = (await screen.findByText('cg-order')).closest('tr');
+    if (!orderRow) throw new Error('DLQ group row not found');
+    await user.click(within(orderRow).getByRole('button', { name: /消息明细/ }));
+    const messageRow = (await screen.findByText('dlq-gone')).closest('tr');
+    if (!messageRow) throw new Error('DLQ message row not found');
+    await user.click(within(messageRow).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: /批量重发选中/ }));
+
+    expect(await screen.findByText(/1 条无法定位/)).toBeInTheDocument();
+    expect(screen.queryByText(/重发完成：成功 0 条/)).not.toBeInTheDocument();
+  });
+
+  it('warns when a queue could not be scanned for the selected resend', async () => {
+    vi.mocked(messageService.listDLQMessages).mockResolvedValue({
+      items: [
+        {
+          msgId: 'dlq-scanned',
+          topic: '%DLQ%cg-order',
+          queueId: 0,
+          offset: 9,
+          storeTime: 1_700_000_000_000,
+          keys: null,
+          body: 'payload',
+          bodyBase64: null,
+          properties: {},
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    // The message matched, but one queue refused the scan: the caller has to hear that the result
+    // is incomplete, exactly like the time-range resend path reports it.
+    vi.mocked(messageService.resendDLQSelected).mockResolvedValue({
+      matched: 1,
+      resent: 0,
+      failed: 0,
+      outcome: 'PARTIAL',
+      scanIncomplete: true,
+      failedQueueCount: 2,
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    const orderRow = (await screen.findByText('cg-order')).closest('tr');
+    if (!orderRow) throw new Error('DLQ group row not found');
+    await user.click(within(orderRow).getByRole('button', { name: /消息明细/ }));
+    const messageRow = (await screen.findByText('dlq-scanned')).closest('tr');
+    if (!messageRow) throw new Error('DLQ message row not found');
+    await user.click(within(messageRow).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: /批量重发选中/ }));
+
+    expect(await screen.findByText(/2 个队列无法扫描/)).toBeInTheDocument();
+    expect(screen.queryByText(/重发完成：成功 0 条/)).not.toBeInTheDocument();
+  });
+
+  it('keeps the unmatched warning when the selected resend also reports failures', async () => {
+    vi.mocked(messageService.listDLQMessages).mockResolvedValue({
+      items: [
+        {
+          msgId: 'dlq-failed',
+          topic: '%DLQ%cg-order',
+          queueId: 0,
+          offset: 11,
+          storeTime: 1_700_000_000_000,
+          keys: null,
+          body: 'payload',
+          bodyBase64: null,
+          properties: {},
+        },
+        {
+          msgId: 'dlq-unmatched',
+          topic: '%DLQ%cg-order',
+          queueId: 1,
+          offset: 12,
+          storeTime: 1_700_000_000_000,
+          keys: null,
+          body: 'payload',
+          bodyBase64: null,
+          properties: {},
+        },
+      ],
+      total: 2,
+      page: 1,
+      size: 20,
+    });
+    // Both rows are selected: one fails outright and one can no longer be resolved. The failure
+    // summary reports only resent + failed, so the unmatched count still has to be surfaced —
+    // this is the path the bare `failed > 0` branch used to swallow.
+    vi.mocked(messageService.resendDLQSelected).mockResolvedValue({
+      matched: 1,
+      resent: 0,
+      failed: 1,
+      outcome: 'PARTIAL',
+      scanIncomplete: true,
+      failedQueueCount: 3,
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    const orderRow = (await screen.findByText('cg-order')).closest('tr');
+    if (!orderRow) throw new Error('DLQ group row not found');
+    await user.click(within(orderRow).getByRole('button', { name: /消息明细/ }));
+    for (const msgId of ['dlq-failed', 'dlq-unmatched']) {
+      const messageRow = (await screen.findByText(msgId)).closest('tr');
+      if (!messageRow) throw new Error(`DLQ message row not found: ${msgId}`);
+      await user.click(within(messageRow).getByRole('checkbox'));
+    }
+    await user.click(screen.getByRole('button', { name: /批量重发选中/ }));
+
+    expect(await screen.findByText(/重投部分完成：成功 0，失败 1/)).toBeInTheDocument();
+    expect(await screen.findByText(/1 条无法定位/)).toBeInTheDocument();
+    expect(screen.queryByText(/重发完成：成功 0 条/)).not.toBeInTheDocument();
+  });
 });
