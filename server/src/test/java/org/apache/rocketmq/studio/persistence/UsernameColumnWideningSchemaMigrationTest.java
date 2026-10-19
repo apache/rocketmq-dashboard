@@ -28,6 +28,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.logging.Logger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -68,34 +70,42 @@ class UsernameColumnWideningSchemaMigrationTest {
 
     @Test
     void leavesAlreadyWidenedColumnsUntouched() throws Exception {
-        JdbcDataSource dataSource = newDataSource("username-widening-done");
-        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+        JdbcDataSource delegate = newDataSource("username-widening-done");
+        try (Connection connection = delegate.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE rmq_instance_message "
                     + "(id BIGINT PRIMARY KEY, queried_by VARCHAR(128))");
             statement.execute("INSERT INTO rmq_instance_message (id, queried_by) VALUES (1, 'wide-user')");
         }
 
-        UsernameColumnWideningSchemaMigration migration = new UsernameColumnWideningSchemaMigration(dataSource);
+        List<String> updates = new ArrayList<>();
+        UsernameColumnWideningSchemaMigration migration =
+                new UsernameColumnWideningSchemaMigration(interceptingUpdates(delegate, updates::add));
         migration.run(new DefaultApplicationArguments());
 
-        assertWidth(dataSource, "rmq_instance_message", "queried_by", 128);
-        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+        assertWidth(delegate, "rmq_instance_message", "queried_by", 128);
+        try (Connection connection = delegate.getConnection(); Statement statement = connection.createStatement()) {
             assertStoredValue(statement, "SELECT queried_by FROM rmq_instance_message WHERE id = 1", "wide-user");
         }
+        // MODIFY to the width a column already has succeeds on H2, so the width assertion above would
+        // still pass without the columnWidth() guard; only the statement count proves it was skipped.
+        assertThat(updates).isEmpty();
     }
 
     @Test
     void skipsMissingTablesSoCustomSchemaCanCreateThemLater() throws Exception {
-        JdbcDataSource dataSource = newDataSource("username-widening-missing");
+        JdbcDataSource delegate = newDataSource("username-widening-missing");
 
-        UsernameColumnWideningSchemaMigration migration = new UsernameColumnWideningSchemaMigration(dataSource);
+        List<String> updates = new ArrayList<>();
+        UsernameColumnWideningSchemaMigration migration =
+                new UsernameColumnWideningSchemaMigration(interceptingUpdates(delegate, updates::add));
         migration.run(new DefaultApplicationArguments());
 
-        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+        try (Connection connection = delegate.getConnection(); Statement statement = connection.createStatement()) {
             assertThat(tableExists(statement, "rmq_instance_message")).isFalse();
             assertThat(tableExists(statement, "rmq_instance_trace")).isFalse();
             assertThat(tableExists(statement, "rmq_operation_audit")).isFalse();
         }
+        assertThat(updates).isEmpty();
     }
 
     @Test
@@ -106,11 +116,17 @@ class UsernameColumnWideningSchemaMigrationTest {
                     + "(id BIGINT PRIMARY KEY, queried_by VARCHAR(64))");
         }
 
-        UsernameColumnWideningSchemaMigration migration =
-                new UsernameColumnWideningSchemaMigration(refusingWidening(delegate));
+        List<String> updates = new ArrayList<>();
+        UsernameColumnWideningSchemaMigration migration = new UsernameColumnWideningSchemaMigration(
+                interceptingUpdates(delegate, sql -> {
+                    updates.add(sql);
+                    throw new SQLException("widening refused by server");
+                }));
         migration.run(new DefaultApplicationArguments());
 
         assertWidth(delegate, "rmq_instance_message", "queried_by", 64);
+        // The ALTER has to be attempted for the failure branch (and its re-check of the width) to run.
+        assertThat(updates).containsExactly("ALTER TABLE rmq_instance_message MODIFY queried_by VARCHAR(128)");
     }
 
     private static JdbcDataSource newDataSource(String name) {
@@ -145,17 +161,17 @@ class UsernameColumnWideningSchemaMigrationTest {
         }
     }
 
-    /** DataSource whose ALTER statements fail, mimicking a server that rejects the widening. */
-    private static DataSource refusingWidening(DataSource delegate) {
+    /** DataSource that hands every {@code executeUpdate} SQL to {@code interceptor} before running it. */
+    private static DataSource interceptingUpdates(DataSource delegate, UpdateInterceptor interceptor) {
         return new DataSource() {
             @Override
             public Connection getConnection() throws SQLException {
-                return refusingConnection(delegate.getConnection());
+                return interceptedConnection(delegate.getConnection(), interceptor);
             }
 
             @Override
             public Connection getConnection(String username, String password) throws SQLException {
-                return refusingConnection(delegate.getConnection(username, password));
+                return interceptedConnection(delegate.getConnection(username, password), interceptor);
             }
 
             @Override
@@ -195,25 +211,30 @@ class UsernameColumnWideningSchemaMigrationTest {
         };
     }
 
-    private static Connection refusingConnection(Connection delegate) {
+    /** Records or rejects one {@code executeUpdate} statement before it reaches the database. */
+    private interface UpdateInterceptor {
+        void intercept(String sql) throws SQLException;
+    }
+
+    private static Connection interceptedConnection(Connection delegate, UpdateInterceptor interceptor) {
         return (Connection) Proxy.newProxyInstance(
                 UsernameColumnWideningSchemaMigrationTest.class.getClassLoader(),
                 new Class<?>[] {Connection.class},
                 (proxy, method, args) -> {
                     if (method.getName().startsWith("createStatement")) {
-                        return refusingStatement(delegate.createStatement());
+                        return interceptedStatement(delegate.createStatement(), interceptor);
                     }
                     return method.invoke(delegate, args);
                 });
     }
 
-    private static Statement refusingStatement(Statement delegate) {
+    private static Statement interceptedStatement(Statement delegate, UpdateInterceptor interceptor) {
         return (Statement) Proxy.newProxyInstance(
                 UsernameColumnWideningSchemaMigrationTest.class.getClassLoader(),
                 new Class<?>[] {Statement.class},
                 (proxy, method, args) -> {
                     if (method.getName().equals("executeUpdate")) {
-                        throw new SQLException("widening refused by server");
+                        interceptor.intercept(String.valueOf(args[0]));
                     }
                     return method.invoke(delegate, args);
                 });

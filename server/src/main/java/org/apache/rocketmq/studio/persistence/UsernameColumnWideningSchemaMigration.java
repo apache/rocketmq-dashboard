@@ -43,6 +43,16 @@ import java.util.List;
 @RequiredArgsConstructor
 public class UsernameColumnWideningSchemaMigration implements ApplicationRunner {
     private static final int REQUIRED_WIDTH = 128;
+    /**
+     * Width reported when the metadata lookup cannot answer, so the column is left untouched. Used
+     * before an ALTER is considered: an unverifiable schema must not be modified.
+     */
+    private static final int WIDTH_UNKNOWN_ASSUME_WIDE = REQUIRED_WIDTH;
+    /**
+     * Width reported when the metadata lookup cannot answer after an ALTER was attempted, so the
+     * caller treats the widening as unconfirmed and warns.
+     */
+    private static final int WIDTH_UNKNOWN_ASSUME_NARROW = 0;
     private static final List<Widening> WIDENINGS = List.of(
             new Widening("rmq_instance_message", "queried_by"),
             new Widening("rmq_instance_trace", "queried_by"),
@@ -68,7 +78,8 @@ public class UsernameColumnWideningSchemaMigration implements ApplicationRunner 
         if (!hasTable(metadata, catalog, widening.table())) {
             return;
         }
-        if (columnWidth(metadata, catalog, widening.table(), widening.column()) >= REQUIRED_WIDTH) {
+        if (columnWidth(metadata, catalog, widening.table(), widening.column(),
+                WIDTH_UNKNOWN_ASSUME_WIDE) >= REQUIRED_WIDTH) {
             return;
         }
         try (Statement statement = connection.createStatement()) {
@@ -79,7 +90,10 @@ public class UsernameColumnWideningSchemaMigration implements ApplicationRunner 
         } catch (SQLException failure) {
             // A server that refuses the widening must not stop the application from booting; the
             // column stays narrow until the deployment grants the ALTER (schema.sql stays idempotent).
-            if (columnWidth(metadata, catalog, widening.table(), widening.column()) < REQUIRED_WIDTH) {
+            // The re-check reports an unreadable width as "not widened" so the warning below still
+            // reaches the log instead of being swallowed by a second metadata failure.
+            if (columnWidth(metadata, catalog, widening.table(), widening.column(),
+                    WIDTH_UNKNOWN_ASSUME_NARROW) < REQUIRED_WIDTH) {
                 log.warn("Could not widen {}.{} to VARCHAR({}): {}",
                         widening.table(), widening.column(), REQUIRED_WIDTH, failure.getMessage());
             }
@@ -95,17 +109,20 @@ public class UsernameColumnWideningSchemaMigration implements ApplicationRunner 
     }
 
     /**
-     * Returns the declared width of the column, or {@link #REQUIRED_WIDTH} when the column or its
-     * size cannot be determined, so an unverifiable schema is left untouched.
+     * Returns the declared width of the column, or {@code undeterminable} when the column or its size
+     * cannot be read. Callers pick the fallback: {@link #WIDTH_UNKNOWN_ASSUME_WIDE} leaves an
+     * unverifiable schema untouched, {@link #WIDTH_UNKNOWN_ASSUME_NARROW} reports a widening that
+     * could not be confirmed.
      */
-    private static int columnWidth(DatabaseMetaData metadata, String catalog, String table, String column) {
+    private static int columnWidth(DatabaseMetaData metadata, String catalog, String table, String column,
+            int undeterminable) {
         try (ResultSet columns = metadata.getColumns(catalog, null, table, column)) {
             if (!columns.next()) {
-                return REQUIRED_WIDTH;
+                return undeterminable;
             }
             return columns.getInt("COLUMN_SIZE");
         } catch (SQLException failure) {
-            return REQUIRED_WIDTH;
+            return undeterminable;
         }
     }
 
