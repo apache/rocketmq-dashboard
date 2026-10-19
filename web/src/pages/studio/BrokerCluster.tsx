@@ -16,7 +16,20 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Table, Button, Tag, Tabs, Card, Space, Switch, Progress, Spin, App, Select } from 'antd';
+import {
+  Table,
+  Button,
+  Tag,
+  Tabs,
+  Card,
+  Space,
+  Switch,
+  Progress,
+  Spin,
+  App,
+  Select,
+  theme,
+} from 'antd';
 import {
   ArrowClockwise,
   Cloud,
@@ -193,6 +206,7 @@ const BrokerClusterPage = () => {
   const requestedInstanceRef = useRef<string | undefined>(undefined);
   const { t } = useLang();
   const { message } = App.useApp();
+  const { token } = theme.useToken();
 
   const clearData = useCallback(() => {
     setBrokerData([]);
@@ -371,7 +385,8 @@ const BrokerClusterPage = () => {
         <code
           style={{
             fontSize: 14,
-            background: '#f5f5f5',
+            // Theme fill instead of a fixed light grey, unreadable in dark mode.
+            background: token.colorFillQuaternary,
             padding: '2px 6px',
             borderRadius: 4,
           }}
@@ -428,7 +443,8 @@ const BrokerClusterPage = () => {
         <code
           style={{
             fontSize: 14,
-            background: '#f5f5f5',
+            // Theme fill instead of a fixed light grey, unreadable in dark mode.
+            background: token.colorFillQuaternary,
             padding: '2px 6px',
             borderRadius: 4,
           }}
@@ -467,7 +483,8 @@ const BrokerClusterPage = () => {
         <code
           style={{
             fontSize: 14,
-            background: '#f5f5f5',
+            // Theme fill instead of a fixed light grey, unreadable in dark mode.
+            background: token.colorFillQuaternary,
             padding: '2px 6px',
             borderRadius: 4,
           }}
@@ -484,7 +501,8 @@ const BrokerClusterPage = () => {
         <code
           style={{
             fontSize: 14,
-            background: '#f5f5f5',
+            // Theme fill instead of a fixed light grey, unreadable in dark mode.
+            background: token.colorFillQuaternary,
             padding: '2px 6px',
             borderRadius: 4,
           }}

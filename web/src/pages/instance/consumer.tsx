@@ -2005,7 +2005,9 @@ const ConsumerPageContent = ({
                     <Card
                       size="small"
                       style={{
-                        background: '#fafafa',
+                        // Theme fill instead of a fixed light grey, which left this summary
+                        // card unreadable in dark mode.
+                        background: token.colorFillQuaternary,
                         borderRadius: 8,
                       }}
                       styles={{ body: { padding: '8px 16px' } }}
