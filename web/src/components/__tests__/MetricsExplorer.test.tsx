@@ -254,7 +254,11 @@ describe('MetricsExplorer', () => {
         });
         expect(queryMetrics).not.toHaveBeenCalled();
         expect(queryByDataSource).not.toHaveBeenCalled();
-        if (nextAction === 'return') expect(screen.getAllByTitle('Scoped A').length).toBeGreaterThan(0);
+        if (nextAction === 'unmount') {
+          expect(screen.queryAllByTitle('Scoped A')).toHaveLength(0);
+        } else {
+          expect(screen.getAllByTitle('Scoped A').length).toBeGreaterThan(0);
+        }
       } finally {
         vi.useRealTimers();
       }
