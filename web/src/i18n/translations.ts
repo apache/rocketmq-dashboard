@@ -1092,6 +1092,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'alerts.neverTriggered': { zh: '从未触发', en: 'Never' },
   'alerts.runtime': { zh: '运行态', en: 'Runtime' },
   'alerts.notCollected': { zh: '未采集', en: 'Not collected' },
+  'alerts.runtimeLoadFailed': {
+    zh: '运行状态读取失败，无法判断该规则当前是否在采集',
+    en: 'The rule runtime state could not be read, so whether this rule is collecting is unknown',
+  },
   'alerts.firingCount': { zh: '触发 {count}', en: 'Firing {count}' },
   'alerts.pendingCount': { zh: '待定 {count}', en: 'Pending {count}' },
   'alerts.duplicate': { zh: '复制', en: 'Duplicate' },
