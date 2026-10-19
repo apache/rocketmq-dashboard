@@ -131,6 +131,7 @@ const UserManagementPage = () => {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>();
   const [loading, setLoading] = useState(false);
   const [sessionOverview, setSessionOverview] = useState<StudioUserSessionOverview | null>(null);
+  const [sessionOverviewFailed, setSessionOverviewFailed] = useState(false);
   const [sessionModalUser, setSessionModalUser] = useState<StudioUser | null>(null);
   const [sessionDetails, setSessionDetails] = useState<StudioUserSessionDetail[]>([]);
   const [sessionDetailsLoading, setSessionDetailsLoading] = useState(false);
@@ -158,6 +159,7 @@ const UserManagementPage = () => {
       setUsers([]);
       setTotal(0);
       setSessionOverview(null);
+      setSessionOverviewFailed(false);
       sessionModalUserIdRef.current = null;
       setSessionModalUser(null);
       setSessionDetails([]);
@@ -176,10 +178,14 @@ const UserManagementPage = () => {
           page,
           pageSize,
         }),
-        getStudioUserSessionOverview().catch(() => null),
+        getStudioUserSessionOverview().then(
+          (value) => ({ value, failed: false }),
+          () => ({ value: null, failed: true }),
+        ),
       ]);
       if (requestId !== requestSeqRef.current) return;
-      setSessionOverview(overview);
+      setSessionOverview(overview.value);
+      setSessionOverviewFailed(overview.failed);
       if (result.items.length === 0 && result.total > 0 && page > 1) {
         const lastPage = Math.max(1, Math.ceil(result.total / result.size));
         if (page > lastPage) {
@@ -590,6 +596,23 @@ const UserManagementPage = () => {
           {t('userMgmt.changeMyPassword')}
         </Button>
       </Card>
+      {admin && sessionOverviewFailed && (
+        <Alert
+          type="error"
+          showIcon
+          message={t('userMgmt.sessionOverviewLoadFailed')}
+          action={
+            <Button
+              size="small"
+              loading={loading}
+              onClick={() => setRefreshVersion((version) => version + 1)}
+            >
+              {t('common.retry')}
+            </Button>
+          }
+          style={{ marginBottom: 16 }}
+        />
+      )}
       {admin && sessionOverview && (
         <Card title={t('userMgmt.sessionOverview')} style={{ marginBottom: 16 }}>
           <Flex gap={32} wrap>

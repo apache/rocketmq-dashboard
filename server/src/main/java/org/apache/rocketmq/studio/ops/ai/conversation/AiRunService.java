@@ -307,7 +307,7 @@ public class AiRunService {
                     continue;
                 }
                 terminalReplayed = terminalReplayed || event.get() instanceof TimelineEvent.RunStatus;
-                projector.replay(event.get()).ifPresent(session::sendReplayed);
+                projector.replay(event.get(), run.getDurationMs()).ifPresent(session::sendReplayed);
             }
         } catch (RuntimeException exception) {
             // The session this method created never reaches a response now, so no transport
