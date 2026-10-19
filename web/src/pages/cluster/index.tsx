@@ -1581,14 +1581,19 @@ const ClusterPage = () => {
         key: 'status',
         width: 90,
         sorter: (a, b) => safeText(a.status).localeCompare(safeText(b.status)),
-        render: (status: string | null) => {
+        render: (status: string | null, record: NameserverRegistryEntry) => {
+          // The probe result is the live truth: an entry whose probe could not run comes
+          // back as an unavailable placeholder (warning) and must not claim the status
+          // stored at registration time.
+          const probed = resolveNameserverRegistryCluster(record);
+          const effective = probed ? probed.status : status;
           const map: Record<string, { color: string; label: string }> = {
             healthy: { color: 'green', label: t('cluster.running') },
             warning: { color: 'gold', label: t('cluster.warning') },
             error: { color: 'red', label: t('cluster.error') },
             offline: { color: 'default', label: t('cluster.offline') },
           };
-          const cfg = map[status ?? ''] ?? { color: 'default', label: safeText(status) };
+          const cfg = map[effective ?? ''] ?? { color: 'default', label: safeText(effective) };
           return <Tag color={cfg.color}>{cfg.label}</Tag>;
         },
       },
@@ -1610,7 +1615,9 @@ const ClusterPage = () => {
               <Button
                 size="small"
                 icon={<EyeOutlined />}
-                disabled={!matchedCluster}
+                // A matched placeholder (no cluster id) is only the registry entry's
+                // known address — there is no discovered cluster to diff against.
+                disabled={!matchedCluster?.id}
                 loading={
                   nsConfigDiffState.loading && nsConfigDiffState.cluster?.id === matchedCluster?.id
                 }

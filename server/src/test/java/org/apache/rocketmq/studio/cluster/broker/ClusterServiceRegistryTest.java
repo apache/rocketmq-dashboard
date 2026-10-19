@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.cluster.broker;
 
 import org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryService;
 import org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryVO;
+import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
 import org.apache.rocketmq.studio.provider.apache.RocketMQBrokerConfigService;
@@ -32,7 +33,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
@@ -58,7 +58,7 @@ class ClusterServiceRegistryTest {
     private ClusterService clusterService;
 
     @Test
-    void listRegistryClustersShouldProbeConcurrentlyAndSkipFailuresTest() {
+    void listRegistryClustersShouldProbeConcurrentlyAndDegradeFailuresTest() {
         when(registryService.list()).thenReturn(List.of(
                 NameserverRegistryVO.builder()
                         .id(1L)
@@ -77,11 +77,19 @@ class ClusterServiceRegistryTest {
 
         List<ClusterVO> result = clusterService.listRegistryClusters();
 
-        assertThat(result).hasSize(1);
+        // rocketmq2's probe failed. Dropping it would make the entry indistinguishable
+        // from one that was never registered; it must be reported as unavailable instead.
+        assertThat(result).hasSize(2);
         ClusterVO cluster = result.get(0);
         assertThat(cluster.getName()).isEqualTo("rocketmq1");
         assertThat(cluster.getNsClusterName()).isEqualTo("DefaultCluster");
         assertThat(cluster.getEndpoint()).isEqualTo("rocketmq1-nameserver:9876");
+        ClusterVO degraded = result.get(1);
+        assertThat(degraded.getName()).isEqualTo("rocketmq2");
+        assertThat(degraded.getEndpoint()).isEqualTo("rocketmq2-nameserver:9876");
+        assertThat(degraded.getStatus()).isEqualTo(ClusterStatus.warning);
+        assertThat(degraded.getBrokers()).isEmpty();
+        assertThat(degraded.getNsClusterName()).isNull();
     }
 
     @Test
@@ -124,9 +132,14 @@ class ClusterServiceRegistryTest {
             clusterService.setRegistryProbeRunner(runner);
 
             // Two refresh rounds with every probe blocked: a cached thread pool would
-            // accumulate a fresh blocked thread per entry per round.
-            assertThat(clusterService.listRegistryClusters()).isEmpty();
-            assertThat(clusterService.listRegistryClusters()).isEmpty();
+            // accumulate a fresh blocked thread per entry per round. Each blocked probe
+            // still has to surface as an unavailable row instead of vanishing.
+            List<ClusterVO> firstRound = clusterService.listRegistryClusters();
+            List<ClusterVO> secondRound = clusterService.listRegistryClusters();
+            assertThat(firstRound).hasSize(4);
+            assertThat(secondRound).hasSize(4);
+            assertThat(firstRound).allSatisfy(row ->
+                    assertThat(row.getStatus()).isEqualTo(ClusterStatus.warning));
 
             // The pool never grows past its bound and both rounds actually ran every probe.
             assertThat(runner.poolSize()).isLessThanOrEqualTo(maxConcurrency);
@@ -159,9 +172,16 @@ class ClusterServiceRegistryTest {
         try (RegistryProbeRunner runner = new RegistryProbeRunner(1, 1, 150)) {
             clusterService.setRegistryProbeRunner(runner);
 
-            assertThatCode(() -> assertThat(clusterService.listRegistryClusters()).isEmpty())
-                    .doesNotThrowAnyException();
+            List<ClusterVO> result = clusterService.listRegistryClusters();
             assertThat(runner.poolSize()).isLessThanOrEqualTo(1);
+            // The rejected entry must not vanish: with the two blocked probes it is still
+            // reported, so an operator sees three unavailable entries rather than nothing.
+            assertThat(result).hasSize(3);
+            assertThat(result)
+                    .extracting(ClusterVO::getName)
+                    .containsExactlyInAnyOrder("ns-1", "ns-2", "ns-3");
+            assertThat(result).allSatisfy(row ->
+                    assertThat(row.getStatus()).isEqualTo(ClusterStatus.warning));
         } finally {
             block.countDown();
         }
