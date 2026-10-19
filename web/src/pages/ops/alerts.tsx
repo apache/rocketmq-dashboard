@@ -1045,7 +1045,10 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
             pageSize={pageSize}
             total={totalRules}
             showSizeChanger
-            showTotal={(total) => t('alerts.totalRules', { count: total })}
+            // totalRules has no {count} placeholder (it is also the plain
+            // header-card label), so the count must be appended explicitly —
+            // passing it as a param silently dropped it from the pagination.
+            showTotal={(total) => `${t('alerts.totalRules')} ${total}`}
             pageSizeOptions={[10, 20, 50, 100]}
             onChange={(nextPage, nextPageSize) => {
               setPage(nextPage);
