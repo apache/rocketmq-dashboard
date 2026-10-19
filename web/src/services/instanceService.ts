@@ -1,4 +1,5 @@
 import { isMockMode } from './dataMode';
+import useAuthStore from '../stores/authStore';
 import * as instanceApi from '../api/instance';
 import type {
   Instance,
@@ -22,6 +23,7 @@ function matchesType(instance: Instance, type?: Instance['type']) {
 }
 
 const inflightListRequests = new Map<string, Promise<Instance[]>>();
+let inflightAuthState: ReturnType<typeof useAuthStore.getState> | undefined;
 
 // A mutation that just completed must not be shadowed by a list request that
 // started earlier: callers issuing a read after a write would otherwise join
@@ -31,6 +33,13 @@ function invalidateInflightListRequests(): void {
 }
 
 export function listInstances(query: InstanceQuery = {}): Promise<Instance[]> {
+  const authState = useAuthStore.getState();
+  // Login/logout replace this snapshot even when the same user signs back in. Page renders do
+  // not: callers in one session still share a request, but a new session never joins an old one.
+  if (authState !== inflightAuthState) {
+    inflightAuthState = authState;
+    invalidateInflightListRequests();
+  }
   const mockMode = isMockMode();
   // withCounts is part of the identity: a counts-free response must never satisfy a caller that
   // renders the counts (it would show zeros), nor the other way round.
