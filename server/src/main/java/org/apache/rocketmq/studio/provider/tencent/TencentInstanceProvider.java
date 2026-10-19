@@ -1024,7 +1024,9 @@ public class TencentInstanceProvider implements InstanceProvider {
         }
         return TopicConsumerVO.builder()
                 .group(subscription.getConsumerGroup())
-                .consumeType(toConsumeType(subscription.getConsumeType(), messageModel))
+                // ConsumeType is the vendor's consumption mechanism (PUSH/PULL/POP); the
+                // subscription model the contract carries is MessageModel.
+                .consumeType(toConsumeType(messageModel, subscription.getConsumeType()))
                 .messageModel(messageModel)
                 .diffTotal(subscription.getConsumerLag() == null ? 0L : subscription.getConsumerLag())
                 .build();
@@ -1155,8 +1157,11 @@ public class TencentInstanceProvider implements InstanceProvider {
         }
     }
 
-    private static ConsumeType toConsumeType(String consumeType, String messageModel) {
-        String value = StringUtils.hasText(consumeType) ? consumeType : messageModel;
+    private static ConsumeType toConsumeType(String messageModel, String consumeType) {
+        // Tencent's ConsumeType is the consumption mechanism (PUSH/PULL/POP) and never carries the
+        // subscription model, so MessageModel is the one to read; the mechanism stays as the fallback
+        // for rows that only report it.
+        String value = StringUtils.hasText(messageModel) ? messageModel : consumeType;
         if (!StringUtils.hasText(value)) {
             return null;
         }

@@ -576,6 +576,26 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void getTopicConsumersShouldDeriveTheSubscriptionModelFromTheMessageModelTest() throws Exception {
+        SubscriptionData subscription = new SubscriptionData();
+        subscription.setConsumerGroup("GID_orders");
+        // The vendor reports the consumption mechanism in ConsumeType (PUSH/PULL/POP); the
+        // subscription model the contract carries lives in MessageModel.
+        subscription.setConsumeType("PUSH");
+        subscription.setMessageModel("CLUSTERING");
+        subscription.setConsumerLag(42L);
+        DescribeTopicResponse response = new DescribeTopicResponse();
+        response.setSubscriptionData(new SubscriptionData[]{subscription});
+        when(client.DescribeTopic(any())).thenReturn(response);
+
+        List<TopicConsumerVO> consumers = provider.getTopicConsumers(STUDIO_INSTANCE_ID, "orders");
+
+        assertThat(consumers).hasSize(1);
+        assertThat(consumers.get(0).getConsumeType()).isEqualTo(ConsumeType.CLUSTERING);
+        assertThat(consumers.get(0).getMessageModel()).isEqualTo("CLUSTERING");
+    }
+
+    @Test
     void getTopicConsumersShouldReadEverySubscriptionPageTest() throws Exception {
         DescribeTopicResponse firstPage = new DescribeTopicResponse();
         firstPage.setSubscriptionCount(101L);
