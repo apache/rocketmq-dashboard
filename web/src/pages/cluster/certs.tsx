@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Table,
   Tag,
@@ -55,6 +55,7 @@ interface CreateCertFormValues {
 
 const K8sCertsPage = () => {
   const { t } = useLang();
+  const tRef = useRef(t);
   const [certs, setCerts] = useState<K8sCertInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -65,6 +66,14 @@ const K8sCertsPage = () => {
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [createForm] = Form.useForm<CreateCertFormValues>();
+
+  // The load effect below must run once per mount and per explicit reload, while the translation
+  // function changes identity with the display language. Holding it in a ref keeps the failure
+  // message localized without re-issuing the certificate list request on every language switch
+  // (same pattern as pages/cluster/index.tsx).
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
 
   useEffect(() => {
     let active = true;
@@ -79,7 +88,7 @@ const K8sCertsPage = () => {
         // Keeping the previous rows and marking the failure: clearing the list made a failed read
         // look like a cluster without certificates, and nothing offered a retry.
         if (active) {
-          message.error(describeThrownMessage(error) || t('cert.requestFailed'));
+          message.error(describeThrownMessage(error) || tRef.current('cert.requestFailed'));
           setLoadFailed(true);
         }
       })
@@ -89,7 +98,7 @@ const K8sCertsPage = () => {
     return () => {
       active = false;
     };
-  }, [reloadNonce, t]);
+  }, [reloadNonce]);
 
   const normalizedCertSearch = certSearch.trim().toLowerCase();
   const filteredCerts = certs.filter((cert) => {
