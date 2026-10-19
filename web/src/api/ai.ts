@@ -270,15 +270,15 @@ async function consumeEventStream(
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
-      if (buffer.length > MAX_SSE_EVENT_CHARS && !getEventBoundary(buffer)) {
-        throw eventTooLargeError();
-      }
       let boundary = getEventBoundary(buffer);
       while (boundary) {
         const frame = buffer.slice(0, boundary.index);
         buffer = buffer.slice(boundary.index + boundary.length);
         if (dispatch(frame)) return;
         boundary = getEventBoundary(buffer);
+      }
+      if (buffer.length > MAX_SSE_EVENT_CHARS) {
+        throw eventTooLargeError();
       }
     }
 
