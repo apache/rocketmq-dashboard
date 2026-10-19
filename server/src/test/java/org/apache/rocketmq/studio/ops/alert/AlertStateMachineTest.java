@@ -105,6 +105,35 @@ class AlertStateMachineTest {
     }
 
     @Test
+    void keepsPendingWhenARepresentableDurationOverflowsThePendingDeadlineTest() {
+        Duration representableOverflow = Duration.ofSeconds(Long.MAX_VALUE);
+
+        AlertStateUpdate pending = stateMachine.advance(null, met(), 1, representableOverflow, now);
+        AlertStateUpdate rolledBack = stateMachine.advance(pending.state(), met(), 1, representableOverflow,
+                now.minusSeconds(1));
+
+        assertThat(pending.transition()).isEqualTo(AlertStateTransition.PENDING);
+        assertThat(pending.state().status()).isEqualTo(AlertStateStatus.PENDING);
+        assertThat(rolledBack.transition()).isEqualTo(AlertStateTransition.PENDING);
+    }
+
+    @Test
+    void suppressesReminderWhenARepresentableIntervalOverflowsTheReminderDeadlineTest() {
+        AlertRuleState firing = new AlertRuleState(AlertStateStatus.FIRING, 1, 0.9, now, now, now, null);
+        Duration representableOverflow = Duration.ofSeconds(Long.MAX_VALUE);
+
+        AlertStateUpdate suppressed = stateMachine.advance(firing, met(), 1, Duration.ZERO,
+                representableOverflow, now.plusSeconds(60));
+        AlertStateUpdate rolledBack = stateMachine.advance(firing, met(), 1, Duration.ZERO,
+                representableOverflow, now.minusSeconds(60));
+
+        assertThat(suppressed.transition()).isEqualTo(AlertStateTransition.NONE);
+        assertThat(suppressed.state().lastNotifiedAt()).isEqualTo(now);
+        assertThat(rolledBack.transition()).isEqualTo(AlertStateTransition.NONE);
+        assertThat(rolledBack.state().lastNotifiedAt()).isEqualTo(now);
+    }
+
+    @Test
     void rejectsInvalidReminderIntervalsTest() {
         assertThatThrownBy(() -> stateMachine.advance(null, met(), 1, Duration.ZERO, null, now))
                 .isInstanceOf(IllegalArgumentException.class)
