@@ -219,7 +219,11 @@ final class InstanceResourceCountRunner implements AutoCloseable {
 
     @Override
     public void close() {
-        executor.shutdownNow();
+        for (Runnable queued : executor.shutdownNow()) {
+            if (queued instanceof Future<?> future) {
+                future.cancel(false);
+            }
+        }
         executor.purge();
     }
 
