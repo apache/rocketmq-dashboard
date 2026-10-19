@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.ai.conversation;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.RunStatus;
 import org.apache.rocketmq.studio.persistence.entity.RmqAiRun;
@@ -128,6 +129,13 @@ public class MybatisPlusAiRunRepository implements AiRunRepository {
     @Override
     public void update(RmqAiRun run) {
         runMapper.updateById(run);
+    }
+
+    @Override
+    public int updateWhileNonTerminal(RmqAiRun run) {
+        return runMapper.update(run, new UpdateWrapper<RmqAiRun>()
+                .eq("id", run.getId())
+                .in("status", RunStatus.ACTIVE_STATUSES));
     }
 
     @Override

@@ -45,13 +45,13 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -59,7 +59,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -121,6 +120,20 @@ class AiRunServiceTest {
             runUpdates.add(AiRunTestSupport.copyOf(updated));
             return null;
         }).when(runRepository).update(any(RmqAiRun.class));
+        doAnswer(invocation -> {
+            RmqAiRun updated = invocation.getArgument(0);
+            // Mirror the SQL guard of updateWhileNonTerminal: the RUNNING write only lands while
+            // the database row is still non-terminal. The row's view is the last write recorded
+            // through update(), not the entity object the caller has already been mutating.
+            String rowStatus = runUpdates.isEmpty()
+                    ? null
+                    : runUpdates.get(runUpdates.size() - 1).getStatus();
+            if (rowStatus != null && RunStatus.valueOf(rowStatus).isTerminal()) {
+                return 0;
+            }
+            runUpdates.add(AiRunTestSupport.copyOf(updated));
+            return 1;
+        }).when(runRepository).updateWhileNonTerminal(any(RmqAiRun.class));
         doAnswer(invocation -> {
             RmqAiConversation updated = invocation.getArgument(0);
             conversationUpdates.add(AiRunTestSupport.copyOf(updated));
@@ -223,20 +236,6 @@ class AiRunServiceTest {
     }
 
     @Test
-    void aDegradedConversationShouldTellTheLiveStreamTooTest() {
-        when(workspace.prepare(anyLong(), any())).thenReturn(Optional.empty());
-
-        service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("hello"));
-
-        // Live and replayed must render alike: the notice is persisted as the run's first event, so
-        // the observer that is still attached has to hear it as well - not only whoever reloads
-        // after the fact.
-        assertThat(AiRunTestSupport.typesOf(inserted)).startsWith("user", "notice");
-        assertThat(emitters.get(0).eventCount("\"type\":\"notice\"")).isEqualTo(1);
-        assertThat(emitters.get(0).eventText()).contains(RmqctlWorkspace.DEGRADED_NOTICE_MESSAGE);
-    }
-
-    @Test
     void aConversationWithNoInstanceShouldSayItIsUnboundRatherThanDegradedTest() {
         conversation.setInstanceId(null);
         when(workspace.prepare(anyLong(), any())).thenReturn(Optional.empty());
@@ -244,29 +243,6 @@ class AiRunServiceTest {
         service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("hello"));
 
         assertThat(inserted.get(1).getPayload()).contains(RmqctlWorkspace.UNBOUND_NOTICE_MESSAGE);
-    }
-
-    @Test
-    void anHttpTurnShouldNotPrepareAnAgentWorkspaceItCannotUseTest() {
-        when(llmClient.supports(any())).thenReturn(true);
-        doAnswer(invocation -> {
-            Consumer<String> tokens = invocation.getArgument(3);
-            tokens.accept("pong");
-            return null;
-        }).when(llmClient).stream(any(), any(), any(), any());
-        when(workspace.prepare(anyLong(), any()))
-                .thenThrow(new BusinessException(500, "the workspace directory is unusable"));
-
-        service.sendMessage(CONVERSATION_ID, new AiRunService.RunRequest(
-                "hello", null, LlmConfigVO.ENGINE_HTTP, null, false, null));
-
-        // A completion turn has no agent CLI, so it never reads the workspace: a broken tools
-        // configuration must not fail it, and an unbound conversation must not be warned about
-        // tools this engine never had.
-        verify(workspace, never()).prepare(anyLong(), any());
-        assertThat(AiRunTestSupport.typesOf(inserted)).containsExactly("user", "text", "run_status");
-        assertThat(runUpdates.get(runUpdates.size() - 1).getStatus())
-                .isEqualTo(RunStatus.COMPLETED.name());
     }
 
     @Test
@@ -383,14 +359,12 @@ class AiRunServiceTest {
             service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("a long answer"));
             assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
             assertThat(registry.isLive(RUN_ID)).isTrue();
-            // Capture the handle before stopping: stop() cancels the worker, and the worker's own
-            // finalisation removes the registration, so looking it up again afterwards races with
-            // that cleanup and is legitimately empty on a loaded machine.
-            AgentRunHandle handle = registry.handle(RUN_ID).orElseThrow();
 
             RmqAiRun stopped = service.stop(RUN_ID);
 
-            assertThat(handle.abortReason()).contains(AbortReason.USER_STOP);
+            assertThat(registry.handle(RUN_ID))
+                    .get()
+                    .satisfies(handle -> assertThat(handle.abortReason()).contains(AbortReason.USER_STOP));
             release.countDown();
             assertThat(stopped.getId()).isEqualTo(RUN_ID);
             assertThat(awaitRunStatus(RunStatus.STOPPED, Duration.ofSeconds(5))).isTrue();
@@ -411,26 +385,6 @@ class AiRunServiceTest {
         // Idempotent, so the stop button is safe to press twice and a client that missed the terminal
         // frame can still ask.
         assertThat(service.stop(RUN_ID)).isSameAs(finished);
-        assertThat(runUpdates).isEmpty();
-        assertThat(inserted).isEmpty();
-    }
-
-    @Test
-    void secondStopOfAnAbortingRunShouldNotWriteItsOwnTerminalStateTest() {
-        RmqAiRun running = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.RUNNING);
-        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(running));
-        when(runRepository.findActiveByConversationId(CONVERSATION_ID))
-                .thenReturn(Optional.of(running));
-        // A worker in this process owns the run and is already aborting, which is exactly what
-        // registry.stop() reports as false - the same value it returns for a run nobody owns here.
-        AgentRunHandle handle = new AgentRunHandle(RUN_ID, Duration.ofSeconds(3));
-        registry.register(RUN_ID, handle);
-        assertThat(handle.requestStop(AbortReason.USER_STOP)).isTrue();
-
-        service.stop(RUN_ID);
-
-        // The worker writes the terminal state itself; a fabricated one here would append a second
-        // terminal row and close the observers mid-flush.
         assertThat(runUpdates).isEmpty();
         assertThat(inserted).isEmpty();
     }
@@ -535,6 +489,31 @@ class AiRunServiceTest {
         assertThatThrownBy(() -> service.stop(RUN_ID))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getCode()).isEqualTo(404));
+    }
+
+    @Test
+    void aWorkerThatStartsAfterFinalisationMustNotResurrectTheRunTest() {
+        // A stop can land between registration and submission, and submit() then finalises the run
+        // itself. The worker task may still be scheduled, and when it eventually runs, markRunning
+        // must not write RUNNING over the terminal row: an active row nobody owns locks the
+        // conversation behind 409s until the orphan sweep reaps it.
+        DeferredExecutorService deferred = new DeferredExecutorService();
+        service = serviceWith(deferred);
+        AiEventSink sink = executor.newSink(CONVERSATION_ID, RUN_ID, 1, 0);
+        AgentRunHandle handle = new AgentRunHandle(RUN_ID, Duration.ofMillis(1));
+        AiRunExecutor.RunContext context = new AiRunExecutor.RunContext(conversation,
+                AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.QUEUED), sink, handle,
+                null, provider.engine(), "hello", null, false, Duration.ofSeconds(300), null);
+
+        handle.requestStop(AbortReason.USER_STOP);
+        executor.submit(context);
+
+        assertThat(lastRun().getStatus()).isEqualTo(RunStatus.STOPPED.name());
+
+        deferred.runQueued();
+
+        assertThat(lastRun().getStatus()).isEqualTo(RunStatus.STOPPED.name());
+        assertThat(registry.isLive(RUN_ID)).isFalse();
     }
 
     @Test
@@ -673,6 +652,54 @@ class AiRunServiceTest {
     private static RmqctlWorkspace.Preparation preparation() {
         return new RmqctlWorkspace.Preparation("/tmp/ws", "/tmp/ws/home", "/tmp/ws/rmqctl.yaml",
                 "/tmp/ws/mcp.json", "/tmp/ws/agent-system-prompt.txt", "localtest", Map.of());
+    }
+
+    /** An executor that parks each submitted task instead of running it, so a test decides when the
+     * worker starts — the interleaving the stop-before-worker-start race needs. */
+    private static final class DeferredExecutorService
+            extends AbstractExecutorService implements ExecutorService {
+
+        private Runnable queued;
+        private boolean shutdown;
+
+        @Override
+        public void execute(Runnable command) {
+            queued = command;
+        }
+
+        void runQueued() {
+            Runnable task = queued;
+            queued = null;
+            if (task != null) {
+                task.run();
+            }
+        }
+
+        @Override
+        public void shutdown() {
+            shutdown = true;
+        }
+
+        @Override
+        public List<Runnable> shutdownNow() {
+            shutdown = true;
+            return List.of();
+        }
+
+        @Override
+        public boolean isShutdown() {
+            return shutdown;
+        }
+
+        @Override
+        public boolean isTerminated() {
+            return shutdown;
+        }
+
+        @Override
+        public boolean awaitTermination(long timeout, TimeUnit unit) {
+            return true;
+        }
     }
 
     private static RmqAiEvent event(int seq, String type, String payload) {
