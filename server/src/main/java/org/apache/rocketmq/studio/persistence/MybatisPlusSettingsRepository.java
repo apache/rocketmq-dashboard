@@ -144,8 +144,8 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
 
     @Override
     public PageResult<DataSourceVO> findDataSources(String search, String type, int page, int pageSize) {
-        String normalizedSearch = search == null || search.isBlank() ? null : search.trim();
-        String normalizedType = type == null || type.isBlank() ? null : type.trim();
+        String normalizedSearch = search == null || search.isBlank() ? null : escapeLike(search.trim());
+        String normalizedType = type == null || type.isBlank() ? null : escapeLike(type.trim());
         QueryWrapper<RmqDataSource> query = new QueryWrapper<RmqDataSource>()
                 .like(normalizedSearch != null, "json", normalizedSearch)
                 .apply(normalizedType != null,
@@ -154,6 +154,10 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
         Page<RmqDataSource> result = dataSourceMapper.selectPage(new Page<>(page, pageSize), query);
         return PageResult.of(result.getRecords().stream().map(this::toDataSourceVO).toList(),
                 result.getTotal(), page, pageSize);
+    }
+
+    private static String escapeLike(String value) {
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     @Override
