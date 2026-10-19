@@ -174,6 +174,34 @@ class MybatisPlusAclRepositoryTest {
     }
 
     @Test
+    void findUserPageShouldTreatWildcardCharactersAsLiteralText() {
+        Page<RmqAclUser> mapperPage = new Page<RmqAclUser>(1, 20)
+                .setRecords(List.of()).setTotal(0);
+        when(userMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
+
+        repository.findUserPage(" SVC_% ", 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqAclUser>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(userMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        assertThat(((QueryWrapper<RmqAclUser>) queryCaptor.getValue()).getParamNameValuePairs().values())
+                .containsExactlyInAnyOrder("%svc\\_\\%%", "%svc\\_\\%%");
+    }
+
+    @Test
+    void findRulePageShouldTreatPrincipalAndResourceAsLiteralText() {
+        Page<RmqAclRule> mapperPage = new Page<RmqAclRule>(1, 20)
+                .setRecords(List.of()).setTotal(0);
+        when(ruleMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
+
+        repository.findRulePage("svc_%", "topic_%", null, null, null, 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqAclRule>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(ruleMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        assertThat(((QueryWrapper<RmqAclRule>) queryCaptor.getValue()).getParamNameValuePairs().values())
+                .contains("%svc\\_\\%%", "%topic\\_\\%%");
+    }
+
+    @Test
     void replaceRuleShouldReturnEmptyWhenConcurrentDeleteWins() {
         RmqAclRule existing = new RmqAclRule();
         existing.setId(1L);
