@@ -358,6 +358,85 @@ describe('ConversationListModal', () => {
     expect(await screen.findByText('检查集群状态')).toBeInTheDocument();
   });
 
+  it.each([
+    { target: 7, nextActive: 8, lifecycle: 'navigate', notified: false },
+    { target: 8, nextActive: 8, lifecycle: 'navigate', notified: true },
+    { target: 7, nextActive: 7, lifecycle: 'close', notified: true },
+    { target: 7, nextActive: 7, lifecycle: 'unmount', notified: false },
+  ])(
+    'usesTheCurrentConversationWhenDeletionFinishesTest ($target/$lifecycle)',
+    async ({ target, nextActive, lifecycle, notified }) => {
+      const user = userEvent.setup();
+      listMock.mockResolvedValue(page([conversation(7, 'first'), conversation(8, 'second')], 2, 1));
+      let finish!: () => void;
+      deleteMock.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const view = renderModal({ activeConversationId: 7 });
+      await screen.findByTestId('ai-conversation-row-delete-' + target);
+      await user.click(screen.getByTestId('ai-conversation-row-delete-' + target));
+      await confirmDelete(user);
+      await waitFor(() => expect(deleteMock).toHaveBeenCalledWith(target));
+      if (lifecycle === 'unmount') view.unmount();
+      else
+        view.rerender(
+          <App>
+            <LangProvider>
+              <ConversationListModal
+                open={lifecycle !== 'close'}
+                onClose={vi.fn()}
+                onSelect={view.onSelect}
+                activeConversationId={nextActive}
+                onActiveDeleted={view.onActiveDeleted}
+              />
+            </LangProvider>
+          </App>,
+        );
+      await act(async () => {
+        finish();
+      });
+      expect(view.onActiveDeleted).toHaveBeenCalledTimes(notified ? 1 : 0);
+    },
+  );
+
+  /**
+   * The delete toasts are global, so closing the panel mid-delete must not swallow them. Guarding on
+   * `mountedRef` one statement earlier — where the notify call is — passes every other case in this
+   * file and still loses the failure message, which is the one an operator cannot recover by looking
+   * at a list that is no longer on screen.
+   */
+  it('stillReportsAFailedDeleteAfterThePanelWasClosedTest', async () => {
+    const user = userEvent.setup();
+    listMock.mockResolvedValue(page([conversation(7, 'first'), conversation(8, 'second')], 2, 1));
+    let fail!: (reason: Error) => void;
+    deleteMock.mockImplementation(
+      () =>
+        new Promise<void>((_, reject) => {
+          fail = reject;
+        }),
+    );
+    const view = renderModal({ activeConversationId: 8 });
+    await screen.findByTestId('ai-conversation-row-delete-7');
+    await user.click(screen.getByTestId('ai-conversation-row-delete-7'));
+    await confirmDelete(user);
+    await waitFor(() => expect(deleteMock).toHaveBeenCalledWith(7));
+
+    // Deleting row 7 while row 8 is open: the shell has nothing to navigate away from, so the toast
+    // is the only signal left that the delete did not happen. `unmount` rather than `open={false}`
+    // because jsdom never finishes the close animation, so `destroyOnHidden` would leave the panel
+    // — and its `mountedRef` — alive and the guard under test would never engage.
+    view.unmount();
+    await act(async () => {
+      fail(new Error('boom'));
+    });
+
+    expect(await screen.findByText('删除失败，请稍后重试')).toBeInTheDocument();
+    expect(view.onActiveDeleted).not.toHaveBeenCalled();
+  });
+
   it('deletesASingleConversationFromItsRowActionTest', async () => {
     const user = userEvent.setup();
     listMock

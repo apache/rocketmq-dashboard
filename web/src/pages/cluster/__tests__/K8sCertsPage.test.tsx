@@ -207,7 +207,9 @@ describe('K8sCertsPage', () => {
 
   it('deletes a certificate after confirmation', async () => {
     vi.mocked(deleteK8sCert).mockResolvedValue();
-    const user = userEvent.setup();
+    // The row is rendered before the table's loading mask finishes leaving, and while it does the
+    // action buttons carry `pointer-events: none`, so a strict pointer check flakes under load.
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
 
     await screen.findByText('rocketmq-prod-tls');
@@ -247,5 +249,23 @@ describe('K8sCertsPage', () => {
     renderPage();
 
     expect(await screen.findByText('请求失败，请稍后重试')).toBeInTheDocument();
+  });
+
+  it('reports a failed certificate load with a retry instead of an empty inventory', async () => {
+    vi.mocked(listK8sCerts).mockRejectedValueOnce(new Error('certificate store offline'));
+    const user = userEvent.setup();
+
+    renderPage();
+
+    expect(await screen.findByText('获取数据失败')).toBeInTheDocument();
+    // A failed read must not be presented as a measured zero.
+    expect(screen.getByText('不可用')).toBeInTheDocument();
+    expect(screen.queryByText('共 0 个证书')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /重试/ }));
+
+    await screen.findByText('rocketmq-prod-tls');
+    await waitFor(() => expect(screen.queryByText('获取数据失败')).not.toBeInTheDocument());
+    expect(screen.getByText('共 3 个证书')).toBeInTheDocument();
   });
 });

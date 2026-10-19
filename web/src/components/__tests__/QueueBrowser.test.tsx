@@ -15,12 +15,23 @@
  * limitations under the License.
  */
 
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
+import { message } from 'antd';
 import userEvent from '@testing-library/user-event';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { StrictMode } from 'react';
 import type { MessageRecord, QueueOffset } from '../../api/message';
 import { getQueueOffsets, pullMessageAtOffset } from '../../api/message';
-import { QueueBrowserResults, useQueueBrowser } from '../QueueBrowser';
+import { QueueBrowserControls, QueueBrowserResults, useQueueBrowser } from '../QueueBrowser';
+import { LangProvider } from '../../i18n/LangContext';
 
 vi.mock('../../api/message', () => ({
   getQueueOffsets: vi.fn(),
@@ -45,10 +56,12 @@ beforeAll(() => {
 
 const createDeferred = <T,>() => {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((promiseResolve) => {
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
     resolve = promiseResolve;
+    reject = promiseReject;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 };
 
 const queue = (brokerName: string): QueueOffset => ({
@@ -73,6 +86,16 @@ const messageRecord = (msgId: string): MessageRecord => ({
   properties: {},
   size: 2,
 });
+
+const renderLoadedBrowser = async (queues = [queue('broker-a')]) => {
+  vi.mocked(getQueueOffsets).mockResolvedValue(queues);
+  const { result } = renderHook(() => useQueueBrowser('instance-a'));
+  act(() => result.current.setTopic('topic-a'));
+  await act(async () => {
+    await result.current.loadQueues();
+  });
+  return result;
+};
 
 function QueueBrowserProbe({ instanceId = 'instance-a' }: { instanceId?: string }) {
   const state = useQueueBrowser(instanceId);
@@ -128,7 +151,68 @@ function QueueBrowserResultsProbe() {
 describe('QueueBrowser request ownership', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getQueueOffsets).mockReset();
+    vi.mocked(pullMessageAtOffset).mockReset();
   });
+
+  describe('page lifetime', () => {
+    afterEach(() => vi.restoreAllMocks());
+    it.each([
+      { operation: 'load', abandoned: true },
+      { operation: 'pull', abandoned: true },
+      { operation: 'load', abandoned: false },
+      { operation: 'pull', abandoned: false },
+    ])(
+      'onlyReportsFailuresOwnedByTheMountedPageTest ($operation/$abandoned)',
+      async ({ operation, abandoned }) => {
+        const errorToast = vi
+          .spyOn(message, 'error')
+          .mockImplementation(() => (() => {}) as ReturnType<typeof message.error>);
+        let reject!: (error: Error) => void;
+        const pending = new Promise<never>((_resolve, rejectPromise) => {
+          reject = rejectPromise;
+        });
+        vi.mocked(getQueueOffsets).mockResolvedValue([queue('broker-a')]);
+        vi.mocked(pullMessageAtOffset).mockResolvedValue(messageRecord('fresh-message'));
+        if (operation === 'load') vi.mocked(getQueueOffsets).mockReturnValueOnce(pending);
+        else vi.mocked(pullMessageAtOffset).mockReturnValueOnce(pending);
+        const user = userEvent.setup();
+        const view = render(
+          <StrictMode>
+            <QueueBrowserProbe />
+          </StrictMode>,
+        );
+        await user.click(screen.getByRole('button', { name: 'topic-a' }));
+        await user.click(screen.getByRole('button', { name: 'load' }));
+        if (operation === 'pull') {
+          await waitFor(() =>
+            expect(screen.getByLabelText('queues')).toHaveTextContent('broker-a'),
+          );
+          await user.click(screen.getByRole('button', { name: 'pull' }));
+        }
+        if (abandoned) view.unmount();
+        await act(async () => {
+          reject(new Error('queue request failed'));
+        });
+        expect(errorToast).toHaveBeenCalledTimes(abandoned ? 0 : 1);
+        if (!abandoned) view.unmount();
+        render(
+          <StrictMode>
+            <QueueBrowserProbe />
+          </StrictMode>,
+        );
+        await user.click(screen.getByRole('button', { name: 'topic-a' }));
+        await user.click(screen.getByRole('button', { name: 'load' }));
+        await waitFor(() => expect(screen.getByLabelText('queues')).toHaveTextContent('broker-a'));
+        await user.click(screen.getByRole('button', { name: 'pull' }));
+        await waitFor(() =>
+          expect(screen.getByLabelText('entries')).toHaveTextContent('fresh-message'),
+        );
+        expect(screen.getByLabelText('pulling')).toHaveTextContent('false');
+      },
+    );
+  });
+  afterEach(() => vi.restoreAllMocks());
 
   it('keeps the newest topic queue load when an older request resolves later', async () => {
     const topicA = createDeferred<QueueOffset[]>();
@@ -223,6 +307,109 @@ describe('QueueBrowser request ownership', () => {
     await act(async () => pull.resolve(messageRecord('message-a')));
   });
 
+  it('does not reopen a closed message card when its replacement pull resolves', async () => {
+    const replacement = createDeferred<MessageRecord | null>();
+    vi.mocked(getQueueOffsets).mockResolvedValue([queue('broker-a')]);
+    vi.mocked(pullMessageAtOffset)
+      .mockResolvedValueOnce(messageRecord('initial-message'))
+      .mockReturnValueOnce(replacement.promise);
+    const user = userEvent.setup();
+    render(<QueueBrowserResultsProbe />);
+
+    await user.click(screen.getByRole('button', { name: 'topic-a' }));
+    await user.click(screen.getByRole('button', { name: 'load' }));
+    await screen.findByText('broker-a');
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+    await screen.findByText('initial-message');
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+    await waitFor(() => expect(pullMessageAtOffset).toHaveBeenCalledTimes(2));
+    await user.click(screen.getByRole('button', { name: 'close' }));
+
+    await act(async () => replacement.resolve(messageRecord('late-message')));
+
+    expect(screen.queryByText('initial-message')).not.toBeInTheDocument();
+    expect(screen.queryByText('late-message')).not.toBeInTheDocument();
+  });
+
+  it('closing one queue keeps another queue pull active', async () => {
+    const closedPull = createDeferred<MessageRecord | null>();
+    const otherPull = createDeferred<MessageRecord | null>();
+    vi.mocked(pullMessageAtOffset)
+      .mockResolvedValueOnce(messageRecord('initial-message'))
+      .mockReturnValueOnce(closedPull.promise)
+      .mockReturnValueOnce(otherPull.promise);
+    const browser = await renderLoadedBrowser([queue('broker-a'), queue('broker-b')]);
+    await act(async () => {
+      await browser.current.handlePull(queue('broker-a'));
+    });
+    act(() => {
+      void browser.current.handlePull(queue('broker-a'));
+      void browser.current.handlePull(queue('broker-b'));
+      browser.current.closeEntry('broker-a-0');
+    });
+
+    await act(async () => closedPull.resolve(messageRecord('late-message')));
+    expect(browser.current.entries).toEqual([]);
+    expect([...browser.current.pulling]).toEqual(['broker-b-0']);
+    await act(async () => otherPull.resolve(messageRecord('other-message')));
+    expect(browser.current.entries.map((entry) => entry.message?.msgId)).toEqual(['other-message']);
+    expect(browser.current.pulling.size).toBe(0);
+  });
+
+  it('a dismissed pull cannot unlock or overwrite a newly requested message', async () => {
+    const stalePull = createDeferred<MessageRecord | null>();
+    const currentPull = createDeferred<MessageRecord | null>();
+    vi.mocked(pullMessageAtOffset)
+      .mockResolvedValueOnce(messageRecord('initial-message'))
+      .mockReturnValueOnce(stalePull.promise)
+      .mockReturnValueOnce(currentPull.promise);
+    const browser = await renderLoadedBrowser();
+    await act(async () => {
+      await browser.current.handlePull(queue('broker-a'));
+    });
+    act(() => {
+      void browser.current.handlePull(queue('broker-a'));
+      browser.current.closeEntry('broker-a-0');
+      void browser.current.handlePull(queue('broker-a'));
+    });
+    expect(pullMessageAtOffset).toHaveBeenCalledTimes(3);
+
+    await act(async () => stalePull.resolve(messageRecord('stale-message')));
+    expect(browser.current.entries).toEqual([]);
+    expect(browser.current.pulling.has('broker-a-0')).toBe(true);
+    act(() => {
+      void browser.current.handlePull(queue('broker-a'));
+    });
+    expect(pullMessageAtOffset).toHaveBeenCalledTimes(3);
+    await act(async () => currentPull.resolve(messageRecord('current-message')));
+    expect(browser.current.entries.map((entry) => entry.message?.msgId)).toEqual([
+      'current-message',
+    ]);
+    expect(browser.current.pulling.size).toBe(0);
+  });
+
+  it('ignores a dismissed pull failure', async () => {
+    const dismissedPull = createDeferred<MessageRecord | null>();
+    const errorToast = vi.spyOn(message, 'error').mockImplementation(vi.fn());
+    vi.mocked(pullMessageAtOffset)
+      .mockResolvedValueOnce(messageRecord('initial-message'))
+      .mockReturnValueOnce(dismissedPull.promise);
+    const browser = await renderLoadedBrowser();
+    await act(async () => {
+      await browser.current.handlePull(queue('broker-a'));
+    });
+    act(() => {
+      void browser.current.handlePull(queue('broker-a'));
+      browser.current.closeEntry('broker-a-0');
+    });
+
+    await act(async () => dismissedPull.reject(new Error('dismissed request failed')));
+    expect(errorToast).not.toHaveBeenCalled();
+    expect(browser.current.entries).toEqual([]);
+    expect(browser.current.pulling.size).toBe(0);
+    errorToast.mockRestore();
+  });
+
   it('keeps a replacement pull locked when a stale pull settles', async () => {
     const stalePull = createDeferred<MessageRecord | null>();
     const currentPull = createDeferred<MessageRecord | null>();
@@ -315,5 +502,162 @@ describe('QueueBrowser request ownership', () => {
     expect(
       within(properties).getByText('属性过多或单值过长，服务端已截断展示'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('QueueBrowser localization', () => {
+  // The queue browser hardcoded Chinese strings regardless of the display language (#4941 fixed
+  // the composer font size; this panel regressed the other way). The strings now go through the
+  // translation table like every other surface.
+  it('renders the controls and empty states in the display language', () => {
+    window.localStorage.setItem('rocketmq-studio-language', 'en');
+
+    // The hook itself consumes the language context, so it must render inside the provider.
+    const Inner = () => {
+      const state = useQueueBrowser(undefined);
+      return (
+        <>
+          <QueueBrowserControls
+            instanceId={undefined}
+            state={state}
+            topicOptions={[]}
+            topicLoading={false}
+          />
+          <QueueBrowserResults state={state} />
+        </>
+      );
+    };
+    render(
+      <LangProvider>
+        <Inner />
+      </LangProvider>,
+    );
+
+    // The search icon contributes to the accessible name, so match on the label text.
+    expect(screen.getByRole('button', { name: /Load Queues/ })).toBeInTheDocument();
+    expect(
+      screen.getByText('Select a topic and click "Load Queues" to browse messages by queue'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Select a topic')).toBeInTheDocument();
+    // The empty queue list renders before the detail pane, so only its hint is visible here;
+    // the point is that no hardcoded Chinese remains on the rendered surface.
+    expect(screen.queryByText('加载队列')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('选择 Topic 并点击「加载队列」，按队列浏览消息'),
+    ).not.toBeInTheDocument();
+  });
+
+  // The remaining queueBrowser.* keys only surface once a topic has actually been loaded, so they
+  // need a probe that drives the hook (and therefore the language context) under the en locale.
+  const renderEnglishResults = () => {
+    window.localStorage.setItem('rocketmq-studio-language', 'en');
+    const Inner = () => {
+      const state = useQueueBrowser('instance-a');
+      const firstQueue = state.queues[0];
+      return (
+        <div>
+          <button type="button" onClick={() => state.setTopic('topic-a')}>
+            topic-a
+          </button>
+          <button type="button" onClick={() => void state.loadQueues()}>
+            load
+          </button>
+          <button
+            type="button"
+            disabled={!firstQueue}
+            onClick={() => firstQueue && void state.handlePull(firstQueue)}
+          >
+            pull
+          </button>
+          <QueueBrowserResults state={state} />
+        </div>
+      );
+    };
+    render(
+      <LangProvider>
+        <Inner />
+      </LangProvider>,
+    );
+    const user = userEvent.setup();
+    const loadTopic = async () => {
+      await user.click(screen.getByRole('button', { name: 'topic-a' }));
+      await user.click(screen.getByRole('button', { name: 'load' }));
+      await screen.findByText('broker-a');
+    };
+    return { user, loadTopic };
+  };
+
+  it('renders the loaded queue table and its summary in the display language', async () => {
+    vi.mocked(getQueueOffsets).mockResolvedValue([
+      { brokerName: 'broker-a', queueId: 0, minOffset: 0, maxOffset: 3 },
+      { brokerName: 'broker-b', queueId: 1, minOffset: 5, maxOffset: 12 },
+    ]);
+    const { loadTopic } = renderEnglishResults();
+
+    await loadTopic();
+
+    expect(screen.getByText('Offset Range')).toBeInTheDocument();
+    // The summary interpolates both counters, so assert the substituted numbers: a key missing
+    // from the dictionary would render the raw `{queues} queues, {messages} messages in total`.
+    expect(screen.getByText('2 queues, 10 messages in total')).toBeInTheDocument();
+    expect(
+      screen.getByText('Click "View" on the left; message details appear here'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Offset 范围')).not.toBeInTheDocument();
+    expect(screen.queryByText(/共 \d+ 个队列/)).not.toBeInTheDocument();
+    expect(screen.queryByText('点击左侧「查看」，消息详情将显示在这里')).not.toBeInTheDocument();
+  });
+
+  it('announces a queue load failure in the display language', async () => {
+    const errorToast = vi.spyOn(message, 'error').mockImplementation(vi.fn());
+    // The toast only falls back to the dictionary when the rejection carries no message of its
+    // own, which is what a non-Error provider failure looks like.
+    vi.mocked(getQueueOffsets).mockRejectedValue('provider rejected the request');
+    const { user } = renderEnglishResults();
+
+    await user.click(screen.getByRole('button', { name: 'topic-a' }));
+    await user.click(screen.getByRole('button', { name: 'load' }));
+
+    await waitFor(() =>
+      expect(errorToast).toHaveBeenCalledWith('Failed to load queue information'),
+    );
+    expect(errorToast).not.toHaveBeenCalledWith('加载队列信息失败');
+    errorToast.mockRestore();
+  });
+
+  it('announces a pull failure in the display language', async () => {
+    const errorToast = vi.spyOn(message, 'error').mockImplementation(vi.fn());
+    vi.mocked(getQueueOffsets).mockResolvedValue([queue('broker-a')]);
+    vi.mocked(pullMessageAtOffset).mockRejectedValue('provider rejected the pull');
+    const { loadTopic, user } = renderEnglishResults();
+
+    await loadTopic();
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+
+    await waitFor(() => expect(errorToast).toHaveBeenCalledWith('Failed to pull the message'));
+    expect(errorToast).not.toHaveBeenCalledWith('拉取消息失败');
+    errorToast.mockRestore();
+  });
+
+  it('renders the pulled message detail in the display language', async () => {
+    vi.mocked(getQueueOffsets).mockResolvedValue([queue('broker-a')]);
+    vi.mocked(pullMessageAtOffset)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...messageRecord('sized-message'), size: 1024 });
+    const { loadTopic, user } = renderEnglishResults();
+
+    await loadTopic();
+
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+    // An offset with nothing behind it renders the placeholder instead of an empty detail card.
+    await screen.findByText('No message at this offset');
+    expect(screen.queryByText('该 offset 处无消息')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+    await screen.findByText('sized-message');
+    // The size cell goes through the shared byte formatter, so it reads as a scaled unit rather
+    // than a raw byte count.
+    expect(screen.getByText('1.0 KB')).toBeInTheDocument();
+    expect(screen.queryByText('1024 bytes')).not.toBeInTheDocument();
   });
 });

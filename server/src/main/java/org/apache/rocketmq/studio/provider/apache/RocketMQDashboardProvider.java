@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -60,6 +61,8 @@ import lombok.extern.slf4j.Slf4j;
 @Primary
 public class RocketMQDashboardProvider implements DashboardProvider {
 
+    private static final BigDecimal MAX_TPS = BigDecimal.valueOf(Long.MAX_VALUE);
+
     private static final Set<String> SYSTEM_TOPIC_PREFIXES = Set.of(
             "rmq_sys_", "SCHEDULE_TOPIC_", "RMQ_SYS_", "broker_", "%RETRY%", "%DLQ%",
             "TBW102", "SELF_TEST_TOPIC", "BenchmarkTest", "OFFSET_MOVED_EVENT",
@@ -84,7 +87,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 return unavailableTopologyDashboard();
             }
             return adminFactory.execute(namesrvAddr, null,
-                    admin -> collectDashboardData(admin, ClusterType.V5_PROXY_CLUSTER, countEndpoints(namesrvAddr)));
+                    admin -> collectDashboardData(admin, ClusterType.V5_PROXY_CLUSTER,
+                            countEndpoints(namesrvAddr), null));
         }
         return aggregateInstances(apacheInstances);
     }
@@ -123,8 +127,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             totalNameServers += stats.getTotalNameServers() == null ? 0 : stats.getTotalNameServers();
             totalTopics += stats.getTotalTopics();
             totalGroups += stats.getTotalConsumerGroups();
-            tpsIn += stats.getTpsIn();
-            tpsOut += stats.getTpsOut();
+            tpsIn = saturatedSum(tpsIn, stats.getTpsIn());
+            tpsOut = saturatedSum(tpsOut, stats.getTpsOut());
             messagesToday += stats.getTotalMessagesToday();
             for (ClusterOverviewVO cluster : part.getClusters()) {
                 clusters.add(scopeClusterToInstance(instance.getName(), cluster));
@@ -140,7 +144,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 .totalTopics(totalTopics)
                 .totalConsumerGroups(totalGroups)
                 .totalMessagesToday(messagesToday)
-                .messagesPerSecond(tpsIn + tpsOut)
+                .messagesPerSecond(saturatedSum(tpsIn, tpsOut))
                 .tpsIn(tpsIn)
                 .tpsOut(tpsOut)
                 .build();
@@ -187,18 +191,20 @@ public class RocketMQDashboardProvider implements DashboardProvider {
         InstanceVO instance = runtimeAdminClientResolver.resolveInstance(instanceId);
         Integer configuredNameServers = instance.getType() == InstanceType.DIRECT
                 ? countEndpoints(instance.getEndpoint()) : null;
+        String configuredCluster = runtimeAdminClientResolver.configuredClusterName(instanceId);
         return runtimeAdminClientResolver.execute(instance,
-                admin -> collectDashboardData(admin, clusterTypeFor(instance), configuredNameServers));
+                admin -> collectDashboardData(admin, clusterTypeFor(instance), configuredNameServers,
+                        configuredCluster));
     }
 
     private DashboardDataVO collectDashboardData(
-            MQAdminExt admin, ClusterType clusterType, Integer configuredNameServers) {
+            MQAdminExt admin, ClusterType clusterType, Integer configuredNameServers, String configuredCluster) {
         int totalClusters = 0;
         int totalBrokers = 0;
         int totalTopics = 0;
         int totalGroups = 0;
-        long tpsIn = 0;
-        long tpsOut = 0;
+        BigDecimal tpsIn = BigDecimal.ZERO;
+        BigDecimal tpsOut = BigDecimal.ZERO;
         long messagesToday = 0;
         List<ClusterOverviewVO> clusters = new ArrayList<>();
         Map<String, KVTable> runtimeStatsByBroker = new HashMap<>();
@@ -211,12 +217,14 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             // The NameServer topology is decoded from JSON; a payload missing either
             // table yields null here. Treat it as empty so a partial topology degrades
             // instead of throwing and zeroing the whole dashboard.
-            Map<String, Set<String>> clusterAddrTable =
+            Map<String, Set<String>> clusterAddrTable = scopeClusterTable(
                     clusterInfo.getClusterAddrTable() == null
-                            ? Map.of() : clusterInfo.getClusterAddrTable();
-            Map<String, BrokerData> brokerAddrTable =
+                            ? Map.of() : clusterInfo.getClusterAddrTable(),
+                    configuredCluster);
+            Map<String, BrokerData> brokerAddrTable = scopeBrokerTable(
                     clusterInfo.getBrokerAddrTable() == null
-                            ? Map.of() : clusterInfo.getBrokerAddrTable();
+                            ? Map.of() : clusterInfo.getBrokerAddrTable(),
+                    clusterAddrTable, configuredCluster);
 
             totalClusters = clusterAddrTable.size();
             totalBrokers = brokerAddrTable.size();
@@ -342,8 +350,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                     runtimeStatsByBroker.put(brokerAddr, runtimeInfo);
                     if (runtimeInfo != null && runtimeInfo.getTable() != null) {
                         Map<String, String> table = runtimeInfo.getTable();
-                        tpsIn += parseTps(table.get("putTps"));
-                        tpsOut += parseTps(BrokerRuntimeStats.outboundTps(table));
+                        tpsIn = tpsIn.add(parseTps(table.get("putTps")));
+                        tpsOut = tpsOut.add(parseTps(BrokerRuntimeStats.outboundTps(table)));
 
                         messagesToday += BrokerRuntimeStats.dailyCounterDelta(table,
                                 "msgPutTotalTodayMorning", "msgPutTotalTodayNow");
@@ -355,13 +363,17 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             totalTopics = allTopics.size();
             totalGroups = allGroups.size();
 
-            // Build per-cluster overview
-            for (Map.Entry<String, Set<String>> clusterEntry : clusterAddrTable.entrySet()) {
+            // Build per-cluster overview. A HashMap iterates deterministically for a given key
+            // set, but the cluster list view sorts by name; sort here too so the two views agree.
+            List<Map.Entry<String, Set<String>>> sortedClusters =
+                    new ArrayList<>(clusterAddrTable.entrySet());
+            sortedClusters.sort(Map.Entry.comparingByKey());
+            for (Map.Entry<String, Set<String>> clusterEntry : sortedClusters) {
                 String clusterName = clusterEntry.getKey();
                 Set<String> brokerNames = clusterEntry.getValue() == null ? Set.of() : clusterEntry.getValue();
                 int clusterBrokers = 0;
-                long clusterTpsIn = 0;
-                long clusterTpsOut = 0;
+                BigDecimal clusterTpsIn = BigDecimal.ZERO;
+                BigDecimal clusterTpsOut = BigDecimal.ZERO;
                 String version = "unknown";
                 boolean runtimeMetricsUnavailable = topologyUnavailableClusters.contains(clusterName)
                         || topicCountsUnavailableClusters.contains(clusterName)
@@ -375,8 +387,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                         if (masterAddr != null) {
                             KVTable runtimeInfo = runtimeStatsByBroker.get(masterAddr);
                             if (runtimeInfo != null && runtimeInfo.getTable() != null) {
-                                clusterTpsIn += parseTps(runtimeInfo.getTable().get("putTps"));
-                                clusterTpsOut += parseTps(BrokerRuntimeStats.outboundTps(runtimeInfo.getTable()));
+                                clusterTpsIn = clusterTpsIn.add(parseTps(runtimeInfo.getTable().get("putTps")));
+                                clusterTpsOut = clusterTpsOut.add(parseTps(BrokerRuntimeStats.outboundTps(runtimeInfo.getTable())));
                                 String value = runtimeInfo.getTable().get("brokerVersionDesc");
                                 if (value != null && "unknown".equals(version)) {
                                     String brokerVersion = value.trim();
@@ -400,8 +412,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                         .proxies(clusterType == ClusterType.V4_DIRECT ? 0 : null)
                         .topics(topicsByCluster.getOrDefault(clusterName, Set.of()).size())
                         .groups(groupsByCluster.getOrDefault(clusterName, Set.of()).size())
-                        .tpsIn(clusterTpsIn)
-                        .tpsOut(clusterTpsOut)
+                        .tpsIn(publishTps(clusterTpsIn))
+                        .tpsOut(publishTps(clusterTpsOut))
                         .version(version)
                         .throughput(List.of())
                         .build());
@@ -415,7 +427,10 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             throw new BusinessException(502, "Failed to collect dashboard data: " + e.getMessage());
         }
 
-        long messagesPerSecond = tpsIn + tpsOut;
+        // Sum decimal broker samples exactly, then truncate once at the integer response boundary.
+        long measuredTpsIn = publishTps(tpsIn);
+        long measuredTpsOut = publishTps(tpsOut);
+        long messagesPerSecond = saturatedSum(measuredTpsIn, measuredTpsOut);
 
         int healthyClusters = Math.toIntExact(clusters.stream()
                 .filter(cluster -> cluster.getStatus() == ClusterStatus.healthy)
@@ -431,14 +446,46 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 .totalConsumerGroups(totalGroups)
                 .totalMessagesToday(messagesToday)
                 .messagesPerSecond(messagesPerSecond)
-                .tpsIn(tpsIn)
-                .tpsOut(tpsOut)
+                .tpsIn(measuredTpsIn)
+                .tpsOut(measuredTpsOut)
                 .build();
 
         return DashboardDataVO.builder()
                 .stats(stats)
                 .clusters(clusters)
                 .build();
+    }
+
+    /**
+     * Narrows the NameServer topology to the cluster a default-cluster instance is configured for,
+     * the way {@code discoverClusters} and {@code discoverBrokers} already narrow their reads: a
+     * shared NameServer must not mix another cluster's brokers, topics, groups and TPS into this
+     * instance's dashboard. A configured cluster the topology does not contain keeps its (empty)
+     * entry so the row degrades to a warning instead of disappearing.
+     */
+    private static Map<String, Set<String>> scopeClusterTable(
+            Map<String, Set<String>> clusterAddrTable, String configuredCluster) {
+        if (configuredCluster == null) {
+            return clusterAddrTable;
+        }
+        Set<String> members = clusterAddrTable.get(configuredCluster);
+        return Map.of(configuredCluster, members == null ? Set.of() : members);
+    }
+
+    private static Map<String, BrokerData> scopeBrokerTable(
+            Map<String, BrokerData> brokerAddrTable, Map<String, Set<String>> clusterAddrTable,
+            String configuredCluster) {
+        if (configuredCluster == null) {
+            return brokerAddrTable;
+        }
+        Map<String, BrokerData> scoped = new HashMap<>();
+        for (String brokerName : clusterAddrTable.getOrDefault(configuredCluster, Set.of())) {
+            BrokerData brokerData = brokerAddrTable.get(brokerName);
+            if (brokerData != null) {
+                scoped.put(brokerName, brokerData);
+            }
+        }
+        return scoped;
     }
 
     private ClusterType clusterTypeFor(InstanceVO instance) {
@@ -482,11 +529,11 @@ public class RocketMQDashboardProvider implements DashboardProvider {
 
     /**
      * Parse TPS value from RocketMQ runtime stats format: "10minAvg 1minAvg 10secAvg"
-     * Returns the 1-minute average (second value) as a long.
+     * Keeps the fractional 1-minute average (second value) until the aggregate is published.
      */
-    private long parseTps(String tpsStr) {
+    private BigDecimal parseTps(String tpsStr) {
         if (tpsStr == null || tpsStr.isBlank()) {
-            return 0;
+            return BigDecimal.ZERO;
         }
         try {
             String[] parts = tpsStr.trim().split("\\s+");
@@ -498,15 +545,24 @@ public class RocketMQDashboardProvider implements DashboardProvider {
         } catch (NumberFormatException e) {
             log.debug("Failed to parse TPS value: {}", tpsStr);
         }
-        return 0;
+        return BigDecimal.ZERO;
     }
 
-    private long parseTpsValue(String value) {
+    private BigDecimal parseTpsValue(String value) {
         double parsed = Double.parseDouble(value);
         if (!Double.isFinite(parsed) || parsed < 0 || parsed > Long.MAX_VALUE) {
-            return 0;
+            return BigDecimal.ZERO;
         }
-        return (long) parsed;
+        // Preserve the runtime parser's range and underflow behavior before decimal accumulation.
+        return BigDecimal.valueOf(parsed);
+    }
+
+    private static long publishTps(BigDecimal value) {
+        return value.min(MAX_TPS).longValue();
+    }
+
+    private static long saturatedSum(long left, long right) {
+        return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
     }
 
     private boolean isSystemTopic(String topic) {

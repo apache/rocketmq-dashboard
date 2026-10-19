@@ -246,6 +246,11 @@ public class ApacheInstanceProvider implements InstanceProvider {
     }
 
     @Override
+    public SendMessageVO redeliverMessage(SendMessageDTO request, String sourceTopic) {
+        return adminClient.redeliverMessage(request, sourceTopic);
+    }
+
+    @Override
     public DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {
         return messageProvider.consumeMessageDirectly(request);
     }
