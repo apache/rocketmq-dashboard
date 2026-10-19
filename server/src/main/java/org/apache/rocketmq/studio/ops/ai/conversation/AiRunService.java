@@ -278,29 +278,44 @@ public class AiRunService {
      * reconnect path: the client that lost its connection, a second tab, or a page reload that found an
      * {@code activeRun}.
      *
-     * <p>The observer is registered before the replay is flushed and every live frame carries the seq of
-     * the row it belongs to, so the two hazards of replay-then-tail are both covered: nothing is lost in
-     * the gap, and nothing already replayed is delivered twice.
+     * <p>The observer is registered before the replay is even queried and every live frame carries the
+     * seq of the row it belongs to, so the two hazards of replay-then-tail are both covered: nothing is
+     * lost in the gap — frames published during the replay are buffered by the session and drained,
+     * deduplicated, afterwards — and nothing already replayed is delivered twice.
      */
     public SseEmitter attach(Long runId, int afterSeq) {
         String owner = AiConversationService.currentOwner();
         RmqAiRun run = requireOwnedRun(runId, owner);
         AgentStreamSession session = runExecutor.newSession(run.getId(),
                 runExecutor.streamTimeoutMillis(run.getEngine()));
-        AgentEventProjector projector = new AgentEventProjector(run.getId());
-        List<RmqAiEvent> rows = eventRepository.findByConversationIdAfterSeq(run.getConversationId(),
-                Math.max(0, afterSeq), AiConversationService.DEFAULT_TIMELINE_LIMIT);
-        boolean terminalReplayed = false;
-        for (RmqAiEvent row : rows) {
-            session.noteWatermark(row.getSeq());
-            Optional<TimelineEvent> event = AiEventCodec.read(objectMapper, row);
-            if (event.isEmpty()) {
-                continue;
-            }
-            terminalReplayed = terminalReplayed || event.get() instanceof TimelineEvent.RunStatus;
-            projector.replay(event.get()).ifPresent(session::sendReplayed);
-        }
+        // Registered BEFORE the replay query, not after the replay flush: the session buffers live
+        // frames that arrive while it is REPLAYING and deduplicates them against the replay
+        // watermark when it drains, so a frame published during the replay cannot fall into the gap
+        // between the query and the registration. Registering later would silently lose exactly the
+        // rows the run persisted while the reconnecting client was catching up.
         boolean live = registry.attach(run.getId(), session);
+        AgentEventProjector projector = new AgentEventProjector(run.getId());
+        boolean terminalReplayed = false;
+        List<RmqAiEvent> rows;
+        try {
+            rows = eventRepository.findByConversationIdAfterSeq(run.getConversationId(),
+                    Math.max(0, afterSeq), AiConversationService.DEFAULT_TIMELINE_LIMIT);
+            for (RmqAiEvent row : rows) {
+                session.noteWatermark(row.getSeq());
+                Optional<TimelineEvent> event = AiEventCodec.read(objectMapper, row);
+                if (event.isEmpty()) {
+                    continue;
+                }
+                terminalReplayed = terminalReplayed || event.get() instanceof TimelineEvent.RunStatus;
+                projector.replay(event.get(), run.getDurationMs()).ifPresent(session::sendReplayed);
+            }
+        } catch (RuntimeException exception) {
+            // The session this method created never reaches a response now, so no transport
+            // callback will ever close it; closing it here is what stops its heartbeat, which
+            // would otherwise keep firing into a buffer nobody drains for the life of the process.
+            session.complete();
+            throw exception;
+        }
         session.finishReplay();
         if (!live) {
             // Nothing is generating here any more, so no further frame will ever arrive. A run reaped by

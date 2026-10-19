@@ -36,6 +36,8 @@ import org.apache.rocketmq.studio.persistence.entity.RmqAiRun;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.Clock;
@@ -573,8 +575,26 @@ class AiRunServiceTest {
         // reduce to the same transcript.
         assertThat(text).contains("\"type\":\"text_delta\"").contains("group A is 4000 behind");
         assertThat(text).contains("\"type\":\"run_finished\"").contains("event:done");
+        assertThat(text).doesNotContain("\"durationMs\"");
         // The user's own turn has no live counterpart: the client renders it from what it sent.
         assertThat(text).doesNotContain("what is lagging");
+        assertThat(emitters.get(0).completed()).isTrue();
+    }
+
+    @Test
+    void aFailingReplayReadMustCloseTheSessionItCreatedTest() {
+        // The emitter is only handed to a response when attach() returns; a failure in the replay
+        // read means it never gets there, so no transport callback can ever close the session. The
+        // service must close it itself, or the heartbeat it started keeps firing into a buffer
+        // nobody drains for the life of the process.
+        RmqAiRun active = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.RUNNING);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(active));
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 0, 200))
+                .thenThrow(new IllegalStateException("database unavailable"));
+
+        assertThatThrownBy(() -> service.attach(RUN_ID, 0))
+                .isInstanceOf(IllegalStateException.class);
+
         assertThat(emitters.get(0).completed()).isTrue();
     }
 
@@ -595,6 +615,28 @@ class AiRunServiceTest {
         verifyCursor(2);
         String text = emitters.get(0).eventText();
         assertThat(text).contains("tail").contains("\"type\":\"run_finished\"").contains("FAILED");
+        assertThat(text).contains("\"durationMs\":1234");
+        assertThat(emitters.get(0).completed()).isTrue();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"COMPLETED,8123", "STOPPED,0", "FAILED,1234"})
+    void attachShouldReplayTheRecordedRunDurationTest(RunStatus status, long durationMs) {
+        RmqAiRun finished = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, status);
+        finished.setDurationMs(durationMs);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(finished));
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 2, 200))
+                .thenReturn(List.of(event(3, "run_status",
+                        "{\"type\":\"run_status\",\"status\":\"" + status.name() + "\"}")));
+
+        service.attach(RUN_ID, 2);
+
+        verifyCursor(2);
+        String text = emitters.get(0).eventText();
+        assertThat(text).containsOnlyOnce("\"type\":\"run_finished\"")
+                .contains("\"runId\":" + RUN_ID)
+                .contains("\"status\":\"" + status.name() + "\"")
+                .contains("\"durationMs\":" + durationMs);
         assertThat(emitters.get(0).completed()).isTrue();
     }
 
@@ -614,6 +656,30 @@ class AiRunServiceTest {
         registry.publish(RUN_ID, 2L, new LiveEvent.TextDelta("and since"));
 
         assertThat(emitters.get(0).eventText()).contains("and since");
+    }
+
+    @Test
+    void attachShouldRegisterTheObserverBeforeTheReplayQueryTest() {
+        // The documented invariant of the reconnect path: the observer joins BEFORE the replay is
+        // queried, so a frame the run publishes while the replay is in flight is buffered by the
+        // session and drained after the replayed rows, not lost in the gap between the query and
+        // the registration. Losing it would leave a hole in the transcript that only another
+        // reload could fill.
+        RmqAiRun active = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.RUNNING);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(active));
+        registry.register(RUN_ID, new AgentRunHandle(RUN_ID, Duration.ofMillis(1)));
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 0, 200)).thenAnswer(invocation -> {
+            registry.publish(RUN_ID, 2L, new LiveEvent.TextDelta("written while the replay query ran"));
+            return List.of(event(1, "text", "{\"type\":\"text\",\"text\":\"so far\"}"));
+        });
+
+        service.attach(RUN_ID, 0);
+
+        assertThat(emitters.get(0).eventText())
+                .contains("so far")
+                .contains("written while the replay query ran")
+                .doesNotContain("event:done");
+        assertThat(emitters.get(0).completed()).isFalse();
     }
 
     // --- resolution ------------------------------------------------------------

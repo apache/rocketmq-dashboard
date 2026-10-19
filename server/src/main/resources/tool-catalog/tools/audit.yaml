@@ -61,6 +61,8 @@ tools:
                 type:
                   - string
                   - 'null'
+                description: When the entry was recorded, as an offset-less UTC wall clock (the
+                  JSON wire convention; parse it as UTC, not as the local zone).
               operator:
                 type:
                   - string

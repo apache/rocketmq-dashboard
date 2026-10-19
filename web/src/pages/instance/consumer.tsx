@@ -44,6 +44,7 @@ import {
   Progress,
   Switch,
   message,
+  theme,
 } from 'antd';
 import {
   Plus,
@@ -246,6 +247,7 @@ const ConsumerPageContent = ({
   reloadInstances,
 }: ConsumerPageContentProps) => {
   const { t, lang } = useLang();
+  const { token } = theme.useToken();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const hasSelectedInstance = Boolean(selectedInstanceId);
@@ -1229,7 +1231,13 @@ const ConsumerPageContent = ({
       dataIndex: 'protocol',
       key: 'protocol',
       width: 80,
-      render: (protocol: string) => {
+      render: (protocol?: string) => {
+        // The Apache provider cannot tell the protocol from a broker connection set,
+        // so the field is legitimately absent — render a placeholder, not an empty tag.
+        // Plain '-' matches the other optional columns of this page.
+        if (!protocol) {
+          return '-';
+        }
         const config = PROTOCOL_MAP[protocol] || { labelKey: protocol, color: 'default' };
         return <Tag color={config.color}>{t(config.labelKey)}</Tag>;
       },
@@ -1997,7 +2005,9 @@ const ConsumerPageContent = ({
                     <Card
                       size="small"
                       style={{
-                        background: '#fafafa',
+                        // Theme fill instead of a fixed light grey, which left this summary
+                        // card unreadable in dark mode.
+                        background: token.colorFillQuaternary,
                         borderRadius: 8,
                       }}
                       styles={{ body: { padding: '8px 16px' } }}
@@ -2148,7 +2158,9 @@ const ConsumerPageContent = ({
                       size="small"
                       style={{
                         marginBottom: 16,
-                        background: '#fafafa',
+                        // Theme fill instead of a fixed light grey, which left this summary
+                        // card unreadable in dark mode.
+                        background: token.colorFillQuaternary,
                         borderRadius: 8,
                       }}
                       styles={{ body: { padding: '8px 16px' } }}

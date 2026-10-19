@@ -214,19 +214,19 @@ describe('consumer service mock data', () => {
 
     first[0].name = 'mutated-group';
     first[0].subscribedTopics.push('mutated-topic');
-    first[0].instances[0].topicLag['order-create'] = 999999;
+    first[0].instances[0].topicLag!['order-create'] = 999999;
 
     const second = await listConsumerGroups({ search: 'cg-order-notify' });
     expect(second[0].name).toBe('cg-order-notify');
     expect(second[0].subscribedTopics).not.toContain('mutated-topic');
-    expect(second[0].instances[0].topicLag['order-create']).toBe(180);
+    expect(second[0].instances[0].topicLag!['order-create']).toBe(180);
     expect(second[0]).not.toBe(first[0]);
     expect(second[0].instances[0]).not.toBe(first[0].instances[0]);
   });
 
   it('returns copied consumer group details', async () => {
     const first = await getConsumerGroup('cg-order-notify');
-    first.instances[0].subscribedTopics.push('mutated-topic');
+    first.instances[0].subscribedTopics!.push('mutated-topic');
 
     const second = await getConsumerGroup('cg-order-notify');
     expect(second.instances[0].subscribedTopics).not.toContain('mutated-topic');
@@ -336,6 +336,25 @@ describe('consumer service mock data', () => {
       });
     } finally {
       mode.mock = true;
+    }
+  });
+  it('rejects an empty API page while the reported group total is still unseen', async () => {
+    mode.mock = false;
+    metadataApi.listConsumerGroupPage.mockReset();
+    metadataApi.listConsumerGroupPage
+      .mockResolvedValueOnce({
+        items: [{ name: 'cg-a', subscribedTopics: [], instances: [] }],
+        total: 2,
+        page: 1,
+        size: 100,
+      })
+      .mockResolvedValueOnce({ items: [], total: 2, page: 2, size: 100 });
+    try {
+      await expect(listAllConsumerGroups()).rejects.toThrow('Incomplete consumer group list');
+      expect(metadataApi.listConsumerGroupPage).toHaveBeenCalledTimes(2);
+    } finally {
+      mode.mock = true;
+      metadataApi.listConsumerGroupPage.mockReset();
     }
   });
   it('returns copied progress and subscription rows', async () => {
@@ -508,6 +527,29 @@ describe('consumer service mock data', () => {
 });
 
 describe('consumer group CSV export', () => {
+  it('exports an unavailable total lag as unknown while preserving measured values', async () => {
+    const unavailable = {
+      ...mockConsumerGroups[0],
+      name: 'cg-lag-unavailable',
+      totalLag: -1,
+    };
+    const confirmedZero = { ...unavailable, name: 'cg-lag-zero', totalLag: 0 };
+    const measured = { ...unavailable, name: 'cg-lag-measured', totalLag: 1234 };
+    mockConsumerGroups.push(unavailable, confirmedZero, measured);
+    try {
+      const csv = await exportConsumerGroups({
+        names: ['cg-lag-unavailable', 'cg-lag-zero', 'cg-lag-measured'],
+      });
+
+      expect(csv).toMatch(/"cg-lag-unavailable",(?:"[^"]*",){5}"unknown",/);
+      expect(csv).toMatch(/"cg-lag-zero",(?:"[^"]*",){5}"0",/);
+      expect(csv).toMatch(/"cg-lag-measured",(?:"[^"]*",){5}"1234",/);
+      expect(csv).not.toContain(`"'-1"`);
+    } finally {
+      mockConsumerGroups.splice(-3);
+    }
+  });
+
   it('renders an unavailable connection count as unknown instead of the sentinel', async () => {
     const unavailable = {
       ...mockConsumerGroups[0],
