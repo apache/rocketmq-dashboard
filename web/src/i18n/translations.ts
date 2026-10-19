@@ -3026,6 +3026,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Proxy 重启已提交: {addr}',
     en: 'Proxy restart submitted: {addr}',
   },
+  'cluster.restartProxyFailed': {
+    zh: '重启 Proxy "{addr}" 失败，请稍后重试',
+    en: 'Failed to restart Proxy "{addr}". Please try again later.',
+  },
   'cluster.restartBrokerConfirm': {
     zh: '确定要重启 Broker "{name}" 吗？',
     en: 'Are you sure to restart Broker "{name}"?',
