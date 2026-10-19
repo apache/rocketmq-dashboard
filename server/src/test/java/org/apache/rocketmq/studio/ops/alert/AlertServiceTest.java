@@ -49,6 +49,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -69,6 +71,27 @@ class AlertServiceTest {
     void setUpTest() {
         alertService = new AlertService(alertRepository, alertStateRepository, new AlertRuleAssetService(),
                 operationAuditService, new MetricProfileService(new PrometheusProperties()));
+    }
+
+    @Test
+    void createNativeRuleShouldRejectMissingOperatorBeforePersistenceTest() {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("Orders lag");
+        request.setMetric("consumer.lag.total");
+        request.setInstanceId("local");
+        request.setConsumerGroup("orders");
+        request.setThreshold(100);
+        request.setEnabled(true);
+        lenient().when(alertRepository.insertRule(any(AlertRuleVO.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThatThrownBy(() -> alertService.createRule(AlertDomain.BUSINESS, request.toAlertRuleVO()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("operator")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verify(alertRepository, never()).insertRule(any(AlertRuleVO.class));
+        verifyNoInteractions(operationAuditService);
     }
 
     @Test
@@ -184,18 +207,38 @@ class AlertServiceTest {
         assertThat(updated.isEnabled()).isTrue();
         verify(alertRepository).replaceRule(cluster);
         verify(alertRepository, never()).findAllRules();
-        verify(alertStateRepository).deleteByRuleId(2L);
+        verify(alertStateRepository, never()).deleteByRuleId(2L);
     }
 
     @Test
     void updatingRuleShouldResetItsPreviousEvaluationStateTest() {
+        AlertRuleVO existing = AlertRuleVO.builder().id(4L).name("Lag").metric("consumer.lag.total")
+                .operator(">").threshold(50).instanceId("local").build();
         AlertRuleVO rule = AlertRuleVO.builder().id(4L).name("Lag").metric("consumer.lag.total")
                 .operator(">").threshold(100).instanceId("local").build();
+        when(alertRepository.findRuleById(4L)).thenReturn(Optional.of(existing));
         when(alertRepository.replaceRule(rule)).thenReturn(true);
 
         alertService.updateRule(rule);
 
         verify(alertStateRepository).deleteByRuleId(4L);
+    }
+
+    @Test
+    void updatingOnlyNonSemanticFieldsShouldPreserveEvaluationStateTest() {
+        AlertRuleVO existing = AlertRuleVO.builder().id(4L).name("Lag old")
+                .metric("consumer.lag.total").operator(">").threshold(100)
+                .instanceId("local").enabled(true).severity("warning").build();
+        AlertRuleVO updated = AlertRuleVO.builder().id(4L).name("Lag renamed")
+                .metric("consumer.lag.total").operator(">").threshold(100)
+                .instanceId("local").enabled(true).severity("critical")
+                .channels(List.of("dingtalk")).build();
+        when(alertRepository.findRuleById(4L)).thenReturn(Optional.of(existing));
+        when(alertRepository.replaceRule(updated)).thenReturn(true);
+
+        alertService.updateRule(updated);
+
+        verify(alertStateRepository, never()).deleteByRuleId(4L);
     }
 
     @Test
@@ -220,6 +263,26 @@ class AlertServiceTest {
                 .contains("rocketmq_consumer_lag_messages > 100000")
                 .contains("rocketmq_producer_send_to_back_rt > 1000")
                 .contains("severity: critical");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(doubles = {
+        1e20, -1e20, 0x1.0p63, -0x1.0000000000001p63, Double.MAX_VALUE,
+        -Double.MAX_VALUE, 0x1.fffffffffffffp62, -0x1.0p63, 5000, 0.25})
+    void exportedThresholdRetainsItsFiniteNumericValueTest(double threshold) throws Exception {
+        AlertRuleVO rule = AlertRuleVO.builder().name("Large threshold")
+                .metric("rocketmq_consumer_lag_messages").operator(">").threshold(threshold)
+                .duration("3m").enabled(true).build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        JsonNode yaml = new ObjectMapper(new YAMLFactory()).readTree(alertService.exportPrometheusRulesYaml());
+        String expression = yaml.path("groups").get(0).path("rules").get(0).path("expr").asText();
+        String literal = expression.substring(expression.lastIndexOf(' ') + 1);
+
+        assertThat(Double.parseDouble(literal)).isEqualTo(threshold);
+        if (threshold == 0x1.0p63) {
+            assertThat(literal).isNotEqualTo(Long.toString(Long.MAX_VALUE));
+        }
     }
 
     @Test
@@ -261,6 +324,26 @@ class AlertServiceTest {
         String result = alertService.exportPrometheusRulesYaml();
 
         assertThat(result).contains("for: 1h30m").doesNotContain("for: 5m");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldReplaceUnorderedLegacyDurationsTest() {
+        for (String duration : List.of("1s1m", "1m1m", "1ms1s", "1h2d")) {
+            AlertRuleVO rule = AlertRuleVO.builder()
+                    .name("High Lag")
+                    .metric("rocketmq_consumer_lag_messages")
+                    .operator(">")
+                    .threshold(5000)
+                    .duration(duration)
+                    .enabled(true)
+                    .build();
+            when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+            assertThat(alertService.exportPrometheusRulesYaml())
+                    .as("legacy duration %s", duration)
+                    .contains("for: 5m")
+                    .doesNotContain("for: " + duration);
+        }
     }
 
     @Test
@@ -1018,6 +1101,37 @@ class AlertServiceTest {
         verify(alertRepository).insertRule(distinct);
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"60s,1m", "1h30m,90m", "1000ms,1s", "0s,''"})
+    void equivalentDurationEditKeepsEvaluationStateTest(String original, String replacement) {
+        AlertRuleVO existing = durationRule(1L, original);
+        AlertRuleVO update = durationRule(1L, replacement);
+        when(alertRepository.findRuleById(1L)).thenReturn(java.util.Optional.of(existing));
+        when(alertRepository.replaceRule(update)).thenReturn(true);
+
+        alertService.updateRule(update);
+
+        verify(alertStateRepository, never()).deleteByRuleId(1L);
+    }
+
+    @Test
+    void changedDurationStillResetsEvaluationStateTest() {
+        AlertRuleVO existing = durationRule(1L, "60s");
+        AlertRuleVO update = durationRule(1L, "2m");
+        when(alertRepository.findRuleById(1L)).thenReturn(java.util.Optional.of(existing));
+        when(alertRepository.replaceRule(update)).thenReturn(true);
+
+        alertService.updateRule(update);
+
+        verify(alertStateRepository).deleteByRuleId(1L);
+    }
+
+    private static AlertRuleVO durationRule(Long id, String duration) {
+        return AlertRuleVO.builder().id(id).name("Disk usage").domain(AlertDomain.CLUSTER)
+                .instanceId("local").metric("broker.disk.usage_ratio").operator(">=").threshold(0.85)
+                .duration(duration).enabled(true).build();
+    }
+
     @Test
     void updateRuleShouldRejectAnotherRulesEvaluationConditionsTest() {
         AlertRuleVO existing = AlertRuleVO.builder()
@@ -1212,18 +1326,18 @@ class AlertServiceTest {
                 .extracting(AlertRuleVO::isEnabled).isEqualTo(true);
         verify(alertRepository).replaceRule(rule);
         verify(alertRepository, never()).findAllRules();
-        verify(alertStateRepository).deleteByRuleId(1L);
+        verify(alertStateRepository, never()).deleteByRuleId(1L);
     }
 
     @Test
-    void domainBulkOperationsShouldResetEachMutatedRuleStateTest() {
+    void domainBulkDisableAndDeleteShouldResetEachMutatedRuleStateTest() {
         AlertRuleVO rule = AlertRuleVO.builder().id(1L).name("Broker unavailable")
                 .domain(AlertDomain.CLUSTER).enabled(false).build();
         when(alertRepository.findRulesByIds(List.of(1L))).thenReturn(List.of(rule));
         when(alertRepository.replaceRule(rule)).thenReturn(true);
         when(alertRepository.deleteRule(1L)).thenReturn(true);
 
-        alertService.bulkToggleRules(AlertDomain.CLUSTER, List.of(1L), true);
+        alertService.bulkToggleRules(AlertDomain.CLUSTER, List.of(1L), false);
         alertService.bulkDeleteRules(AlertDomain.CLUSTER, List.of(1L));
 
         verify(alertStateRepository, org.mockito.Mockito.times(2)).deleteByRuleId(1L);

@@ -103,8 +103,15 @@ public class InstanceService {
         countRunner.close();
     }
 
-    public List<InstanceVO> listInstances(InstanceType type, String search) {
-        log.debug("Listing instances, type={}, search={}", type, search);
+    /**
+     * Lists instances, resolving resource counts only when {@code withCounts} is set. Cloud vendors
+     * answer counts through remote OpenAPIs — two calls per instance — so a list of a dozen
+     * instances costs seconds, which every caller that only needs names (the instance selector on
+     * each instance-scoped page) must not pay. Without counts the rows are marked unavailable rather
+     * than left at the VO default, so a zero can never be mistaken for a measured count.
+     */
+    public List<InstanceVO> listInstances(InstanceType type, String search, boolean withCounts) {
+        log.debug("Listing instances, type={}, search={}, withCounts={}", type, search, withCounts);
         String normalizedSearch = search == null || search.isBlank() ? null : search.trim();
 
         List<InstanceVO> instances;
@@ -117,7 +124,11 @@ public class InstanceService {
         } else {
             instances = instanceRepository.findAll();
         }
-        fillCountsInParallel(instances);
+        if (withCounts) {
+            fillCountsInParallel(instances);
+        } else {
+            instances.forEach(InstanceService::clearCounts);
+        }
         instances.forEach(instance -> instance.setRegionName(regionNames.resolve(instance.getRegionId())));
         List<InstanceVO> sorted = new ArrayList<>(instances);
         sorted.sort(Comparator

@@ -53,7 +53,9 @@ import org.springframework.util.StringUtils;
 
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.AliyunResponseValidator;
 import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
@@ -129,8 +131,11 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 .build();
         ListTopicsResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
                 client -> client.listTopics(request));
-        ListTopicsResponseBody body = response == null ? null : response.getBody();
-        ListTopicsResponseBody.Data data = body == null ? null : body.getData();
+        ListTopicsResponseBody body = AliyunResponseValidator.requireReadableBody(
+                "topic listing", response == null ? null : response.getBody(),
+                ListTopicsResponseBody::getSuccess, ListTopicsResponseBody::getCode,
+                ListTopicsResponseBody::getMessage);
+        ListTopicsResponseBody.Data data = body.getData();
         Long totalCount = data == null ? null : data.getTotalCount();
         return totalCount == null || totalCount < 0
                 ? listTopics(instanceId, null, null).size()
@@ -147,8 +152,11 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 .build();
         ListConsumerGroupsResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
                 client -> client.listConsumerGroups(request));
-        ListConsumerGroupsResponseBody body = response == null ? null : response.getBody();
-        ListConsumerGroupsResponseBody.Data data = body == null ? null : body.getData();
+        ListConsumerGroupsResponseBody body = AliyunResponseValidator.requireReadableBody(
+                "consumer group listing", response == null ? null : response.getBody(),
+                ListConsumerGroupsResponseBody::getSuccess, ListConsumerGroupsResponseBody::getCode,
+                ListConsumerGroupsResponseBody::getMessage);
+        ListConsumerGroupsResponseBody.Data data = body.getData();
         Long totalCount = data == null ? null : data.getTotalCount();
         return totalCount == null || totalCount < 0
                 ? listConsumerGroups(instanceId, null).size()
@@ -194,8 +202,11 @@ public class AliyunInstanceProvider implements InstanceProvider {
         ListTopicsRequest request = buildTopicRequest(ctx.cloudInstanceId(), type, search, page, pageSize);
         ListTopicsResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
                 client -> client.listTopics(request));
-        ListTopicsResponseBody body = response == null ? null : response.getBody();
-        return body == null ? null : body.getData();
+        ListTopicsResponseBody body = AliyunResponseValidator.requireReadableBody(
+                "topic listing", response == null ? null : response.getBody(),
+                ListTopicsResponseBody::getSuccess, ListTopicsResponseBody::getCode,
+                ListTopicsResponseBody::getMessage);
+        return body.getData();
     }
 
     private ListTopicsRequest buildTopicRequest(String cloudInstanceId, String type, String search,
@@ -267,6 +278,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
         if (topic == null || !StringUtils.hasText(topic.getName())) {
             throw new BusinessException(400, "Topic name is required");
         }
+        requireUpdatableFields(topic);
         UpdateTopicRequest request = UpdateTopicRequest.builder()
                 .instanceId(ctx.cloudInstanceId())
                 .topicName(topic.getName())
@@ -275,6 +287,24 @@ public class AliyunInstanceProvider implements InstanceProvider {
         clientFactory.call(ctx.credentialId(), ctx.regionId(), client -> client.updateTopic(request));
         topic.setInstanceId(instanceId);
         return topic;
+    }
+
+    /**
+     * Rejects the topic properties the Aliyun OpenAPI cannot change. Neither {@code
+     * CreateTopicRequest} nor {@code UpdateTopicRequest} carries a queue count or a permission
+     * field (and reads report the fixed read-write default), so an update that asks for either
+     * would otherwise return the requested values as if they had been written to the cloud. The
+     * console sends the topic's current values, which are zero queue counts and RW.
+     */
+    private static void requireUpdatableFields(TopicVO topic) {
+        if (topic.getWriteQueues() > 0 || topic.getReadQueues() > 0) {
+            throw new BusinessException(400,
+                    "Aliyun RocketMQ does not support changing a topic's queue counts");
+        }
+        if (topic.getPerm() != null && topic.getPerm() != TopicPerm.RW) {
+            throw new BusinessException(400,
+                    "Aliyun RocketMQ topics are always read-write; the topic permission cannot be changed");
+        }
     }
 
     @Override
@@ -296,8 +326,11 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 .build();
         ListTopicSubscriptionsResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
                 client -> client.listTopicSubscriptions(request));
-        ListTopicSubscriptionsResponseBody body = response == null ? null : response.getBody();
-        List<ListTopicSubscriptionsResponseBody.Data> data = body == null ? null : body.getData();
+        ListTopicSubscriptionsResponseBody body = AliyunResponseValidator.requireReadableBody(
+                "topic subscription query", response == null ? null : response.getBody(),
+                ListTopicSubscriptionsResponseBody::getSuccess, ListTopicSubscriptionsResponseBody::getCode,
+                ListTopicSubscriptionsResponseBody::getMessage);
+        List<ListTopicSubscriptionsResponseBody.Data> data = body.getData();
         List<TopicConsumerVO> consumers = new ArrayList<>();
         if (data == null) {
             return consumers;
@@ -326,8 +359,11 @@ public class AliyunInstanceProvider implements InstanceProvider {
             ListConsumerGroupsRequest request = builder.build();
             ListConsumerGroupsResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
                     client -> client.listConsumerGroups(request));
-            ListConsumerGroupsResponseBody body = response == null ? null : response.getBody();
-            ListConsumerGroupsResponseBody.Data data = body == null ? null : body.getData();
+            ListConsumerGroupsResponseBody body = AliyunResponseValidator.requireReadableBody(
+                    "consumer group listing", response == null ? null : response.getBody(),
+                    ListConsumerGroupsResponseBody::getSuccess, ListConsumerGroupsResponseBody::getCode,
+                    ListConsumerGroupsResponseBody::getMessage);
+            ListConsumerGroupsResponseBody.Data data = body.getData();
             List<ListConsumerGroupsResponseBody.List> list = data == null ? null : data.getList();
             if (list == null || list.isEmpty()) {
                 break;
@@ -366,12 +402,19 @@ public class AliyunInstanceProvider implements InstanceProvider {
         } else {
             retryPolicy.retryPolicy(DEFAULT_RETRY_POLICY);
         }
-        CreateConsumerGroupRequest request = CreateConsumerGroupRequest.builder()
+        CreateConsumerGroupRequest.Builder requestBuilder = CreateConsumerGroupRequest.builder()
                 .instanceId(ctx.cloudInstanceId())
                 .consumerGroupId(group.getName())
                 .deliveryOrderType(deliveryOrderType)
-                .consumeRetryPolicy(retryPolicy.build())
-                .build();
+                .consumeRetryPolicy(retryPolicy.build());
+        // A requested broadcast model used to be dropped here while the response echoed it back and
+        // the group page read the vendor's real (clustering) model afterwards - the same silent
+        // downgrade #4816 fixed for the delivery order type.
+        String messageModel = AliyunConverters.toMessageModel(group.getConsumeType());
+        if (messageModel != null) {
+            requestBuilder.messageModel(messageModel);
+        }
+        CreateConsumerGroupRequest request = requestBuilder.build();
         clientFactory.call(ctx.credentialId(), ctx.regionId(), client -> client.createConsumerGroup(request));
         group.setInstanceId(instanceId);
         group.setDeliveryOrderType(deliveryOrderType);
@@ -423,8 +466,11 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 .build();
         GetConsumerGroupLagResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
                 client -> client.getConsumerGroupLag(request));
-        GetConsumerGroupLagResponseBody body = response == null ? null : response.getBody();
-        GetConsumerGroupLagResponseBody.Data data = body == null ? null : body.getData();
+        GetConsumerGroupLagResponseBody body = AliyunResponseValidator.requireReadableBody(
+                "consumer lag query", response == null ? null : response.getBody(),
+                GetConsumerGroupLagResponseBody::getSuccess, GetConsumerGroupLagResponseBody::getCode,
+                GetConsumerGroupLagResponseBody::getMessage);
+        GetConsumerGroupLagResponseBody.Data data = body.getData();
         if (data == null) {
             return new ArrayList<>();
         }
@@ -440,8 +486,11 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 .build();
         ListConsumerGroupSubscriptionsResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
                 client -> client.listConsumerGroupSubscriptions(request));
-        ListConsumerGroupSubscriptionsResponseBody body = response == null ? null : response.getBody();
-        List<ListConsumerGroupSubscriptionsResponseBody.Data> data = body == null ? null : body.getData();
+        ListConsumerGroupSubscriptionsResponseBody body = AliyunResponseValidator.requireReadableBody(
+                "consumer subscription query", response == null ? null : response.getBody(),
+                ListConsumerGroupSubscriptionsResponseBody::getSuccess, ListConsumerGroupSubscriptionsResponseBody::getCode,
+                ListConsumerGroupSubscriptionsResponseBody::getMessage);
+        List<ListConsumerGroupSubscriptionsResponseBody.Data> data = body.getData();
         List<SubscriptionEntryVO> subscriptions = new ArrayList<>();
         if (data == null) {
             return subscriptions;
@@ -534,10 +583,19 @@ public class AliyunInstanceProvider implements InstanceProvider {
             ListMessagesRequest request = builder.build();
             ListMessagesResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
                     client -> client.listMessages(request));
-            ListMessagesResponseBody body = response == null ? null : response.getBody();
-            ListMessagesResponseBody.Data data = body == null ? null : body.getData();
+            ListMessagesResponseBody body = AliyunResponseValidator.requireReadableBody(
+                    "message query", response == null ? null : response.getBody(),
+                    ListMessagesResponseBody::getSuccess, ListMessagesResponseBody::getCode,
+                    ListMessagesResponseBody::getMessage);
+            ListMessagesResponseBody.Data data = body.getData();
             List<ListMessagesResponseBody.List> list = data == null ? null : data.getList();
+            int returned = list == null ? 0 : list.size();
+            Long totalCount = data == null ? null : data.getTotalCount();
+            // Use unfiltered provider row counts, not the records retained by the local tag filter.
+            boolean incomplete = Pagination.isIncompletePage(
+                    fetched, returned, AliyunConverters.MESSAGE_PAGE_SIZE, totalCount);
             if (list == null || list.isEmpty()) {
+                mayBeTruncated = incomplete;
                 break;
             }
             fetched += list.size();
@@ -550,10 +608,10 @@ public class AliyunInstanceProvider implements InstanceProvider {
                     records.add(vo);
                 }
             }
-            Long totalCount = data.getTotalCount();
             boolean shortPage = list.size() < AliyunConverters.MESSAGE_PAGE_SIZE;
             boolean allFetched = totalCount != null && totalCount > 0L && fetched >= totalCount;
             if (shortPage || allFetched) {
+                mayBeTruncated = incomplete;
                 break;
             }
             if (page == AliyunConverters.MESSAGE_MAX_PAGES) {
@@ -602,8 +660,11 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 .build();
         GetTraceResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
                 client -> client.getTrace(request));
-        GetTraceResponseBody body = response == null ? null : response.getBody();
-        GetTraceResponseBody.Data data = body == null ? null : body.getData();
+        GetTraceResponseBody body = AliyunResponseValidator.requireReadableBody(
+                "message trace query", response == null ? null : response.getBody(),
+                GetTraceResponseBody::getSuccess, GetTraceResponseBody::getCode,
+                GetTraceResponseBody::getMessage);
+        GetTraceResponseBody.Data data = body.getData();
         if (data == null) {
             return emptyTraceRecord();
         }

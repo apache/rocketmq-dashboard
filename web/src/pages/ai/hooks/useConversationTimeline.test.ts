@@ -48,10 +48,12 @@ function page(
 
 function deferred<T>() {
   let resolve: (value: T) => void = () => undefined;
-  const promise = new Promise<T>((release) => {
+  let reject: (reason: unknown) => void = () => undefined;
+  const promise = new Promise<T>((release, fail) => {
     resolve = release;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 function render(conversationId: number | null = 7, limit?: number, maxPages?: number) {
@@ -179,6 +181,145 @@ describe('useConversationTimeline', () => {
       { type: 'text', text: 'from conversation 8' },
     ]);
     expect(result.current.loading).toBe(false);
+  });
+
+  it.each([{ label: 'pending' }, { label: 'failed' }])(
+    'hidesThePreviousTranscriptWhenTheNewSnapshotIs($label)Test',
+    async ({ label }) => {
+      const second = deferred<AiTimelineVO>();
+      timelineMock
+        .mockResolvedValueOnce(page([item(5, { type: 'user', text: 'conversation 7' })], 5))
+        .mockReturnValueOnce(second.promise);
+
+      const { result, rerender } = render(7, 1, 1);
+      await waitFor(() => expect(result.current.lastSeq).toBe(5));
+      expect(result.current.bubbles).toHaveLength(1);
+      expect(result.current.hasMore).toBe(true);
+
+      rerender({ id: 8 });
+      if (label === 'failed') {
+        await act(async () => {
+          second.reject(new Error('conversation 8 unavailable'));
+        });
+        expect(result.current.error).toBe('conversation 8 unavailable');
+        expect(result.current.loading).toBe(false);
+      } else {
+        expect(result.current.loading).toBe(true);
+      }
+
+      expect(result.current.items).toEqual([]);
+      expect(result.current.bubbles).toEqual([]);
+      expect(result.current.lastSeq).toBe(0);
+      expect(result.current.hasMore).toBe(false);
+      expect(result.current.activeRun).toBeNull();
+
+      if (label === 'pending') {
+        await act(async () => {
+          second.resolve(page([], null));
+        });
+      }
+    },
+  );
+
+  it.each([{ label: 'pending' }, { label: 'failed' }])(
+    'blocksLoadMoreWhenTheNewSnapshotIs($label)Test',
+    async ({ label }) => {
+      const second = deferred<AiTimelineVO>();
+      timelineMock
+        .mockResolvedValueOnce(page([item(5, { type: 'text', text: 'conversation 7' })], 5))
+        .mockReturnValueOnce(second.promise)
+        .mockResolvedValue(page([item(6, { type: 'text', text: 'conversation 8' })], null));
+
+      const { result, rerender } = render(7, 1, 1);
+      await waitFor(() => expect(result.current.lastSeq).toBe(5));
+      rerender({ id: 8 });
+      if (label === 'failed') {
+        await act(async () => {
+          second.reject(new Error('conversation 8 unavailable'));
+        });
+      }
+
+      await act(async () => {
+        await result.current.loadMore();
+      });
+      expect(timelineMock).toHaveBeenCalledTimes(2);
+      expect(timelineMock).toHaveBeenLastCalledWith(8, { after: 0, limit: 1 });
+
+      if (label === 'pending') {
+        await act(async () => {
+          second.resolve(page([], null));
+        });
+      } else {
+        expect(result.current.error).toBe('conversation 8 unavailable');
+      }
+    },
+  );
+
+  it('loadsMoreUsingOnlyTheNewConversationsSnapshotAndCursorTest', async () => {
+    const second = deferred<AiTimelineVO>();
+    timelineMock
+      .mockResolvedValueOnce(page([item(5, { type: 'text', text: 'conversation 7' })], 5))
+      .mockReturnValueOnce(second.promise)
+      .mockResolvedValueOnce(page([item(12, { type: 'text', text: 'more conversation 8' })], null));
+
+    const { result, rerender } = render(7, 1, 1);
+    await waitFor(() => expect(result.current.lastSeq).toBe(5));
+    rerender({ id: 8 });
+
+    await act(async () => {
+      second.resolve(page([item(11, { type: 'text', text: 'conversation 8' })], 11));
+    });
+    expect(result.current.items.map((row) => row.seq)).toEqual([11]);
+    expect(result.current.hasMore).toBe(true);
+
+    await act(async () => {
+      await result.current.loadMore();
+    });
+    expect(timelineMock).toHaveBeenLastCalledWith(8, { after: 11, limit: 1 });
+    expect(result.current.items.map((row) => row.seq)).toEqual([11, 12]);
+    expect(result.current.lastSeq).toBe(12);
+    expect(result.current.hasMore).toBe(false);
+  });
+
+  it('retainsTheCurrentTranscriptAndCursorWhenItsRefreshFailsTest', async () => {
+    const refreshed = deferred<AiTimelineVO>();
+    timelineMock
+      .mockResolvedValueOnce(page([item(5, { type: 'user', text: 'conversation 7' })], 5))
+      .mockReturnValueOnce(refreshed.promise)
+      .mockResolvedValueOnce(page([item(6, { type: 'text', text: 'more conversation 7' })], null));
+
+    const { result } = render(7, 1, 1);
+    await waitFor(() => expect(result.current.lastSeq).toBe(5));
+    const bubbles = result.current.bubbles;
+
+    let refetchPromise: Promise<void> = Promise.resolve();
+    act(() => {
+      refetchPromise = result.current.refetch();
+    });
+    expect(result.current.items.map((row) => row.seq)).toEqual([5]);
+    expect(result.current.bubbles).toEqual(bubbles);
+    expect(result.current.lastSeq).toBe(5);
+    expect(result.current.hasMore).toBe(true);
+    expect(result.current.loading).toBe(true);
+
+    await act(async () => {
+      const rejection = expect(refetchPromise).rejects.toThrow('refresh unavailable');
+      refreshed.reject(new Error('refresh unavailable'));
+      await rejection;
+    });
+    expect(result.current.items.map((row) => row.seq)).toEqual([5]);
+    expect(result.current.bubbles).toEqual(bubbles);
+    expect(result.current.lastSeq).toBe(5);
+    expect(result.current.hasMore).toBe(true);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).toBe('refresh unavailable');
+
+    await act(async () => {
+      await result.current.loadMore();
+    });
+    expect(timelineMock).toHaveBeenLastCalledWith(7, { after: 5, limit: 1 });
+    expect(result.current.items.map((row) => row.seq)).toEqual([5, 6]);
+    expect(result.current.hasMore).toBe(false);
   });
 
   it('refetchReloadsTheWholeTranscriptAndIsAwaitableTest', async () => {

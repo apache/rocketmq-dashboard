@@ -52,6 +52,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -420,6 +421,29 @@ class RocketMQClientProviderTest {
         verify(adminExt).examineBrokerClusterInfo();
         verify(adminExt, never()).getAllProducerInfo(anyString());
         verify(adminExt, never()).examineProducerConnectionInfo(anyString(), anyString());
+    }
+
+    @Test
+    void connectionScanShouldReturnStableOrderAcrossTopologyChanges() throws Exception {
+        // The broker table of a route is a hash map, so its iteration order varies between
+        // snapshots; the aggregated client list must not inherit that instability.
+        ClusterInfo clusterInfo = new ClusterInfo();
+        Map<String, BrokerData> brokerAddrTable = new LinkedHashMap<>();
+        brokerAddrTable.put("broker-z", new BrokerData(
+                "cluster-a", "broker-z", new HashMap<>(Map.of(0L, "10.0.0.2:10911"))));
+        brokerAddrTable.put("broker-a", new BrokerData(
+                "cluster-a", "broker-a", new HashMap<>(Map.of(0L, "10.0.0.1:10911"))));
+        clusterInfo.setBrokerAddrTable(brokerAddrTable);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        when(adminExt.getAllProducerInfo("10.0.0.2:10911")).thenReturn(new ProducerTableInfo(Map.of(
+                "pg-zeta", List.of(producerInfo("producer-zeta", "10.0.0.2:1000")))));
+        when(adminExt.getAllProducerInfo("10.0.0.1:10911")).thenReturn(new ProducerTableInfo(Map.of(
+                "pg-alpha", List.of(producerInfo("producer-alpha", "10.0.0.1:1000")))));
+
+        List<ClientConnectionVO> connections = provider.findConnectionsAt("10.0.1.31:9876", null, "Producer");
+
+        assertThat(connections).extracting(ClientConnectionVO::getGroupOrTopic)
+                .containsExactly("pg-alpha", "pg-zeta");
     }
 
     @Test

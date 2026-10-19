@@ -20,6 +20,8 @@ import { render, screen } from '@testing-library/react';
 import { LangProvider } from '../../../../i18n/LangContext';
 import type { TimelineEvent } from '../../../../api/aiEvents';
 import { foldTimelineBlocks } from '../../render/foldTimeline';
+import { reduceLiveBlocks } from '../../render/reduceLive';
+import type { ChatSseEvent } from '../../../../api/aiEvents';
 import { runningToolBlock } from '../../render/blocks';
 import type { ToolBlock as ToolBlockData } from '../../render/blocks';
 import ToolBlock from '../blocks/ToolBlock';
@@ -71,6 +73,47 @@ function foldOne(event: TimelineEvent): ToolBlockData {
 }
 
 describe('ToolBlock', () => {
+  it.each([
+    ['persisted', null],
+    ['persisted', undefined],
+    ['live', null],
+    ['live', undefined],
+  ] as const)('rendersAResultWithAnUnavailableToolNameTest: %s %s', (source, tool) => {
+    // The backend projector permits a missing name when no tool start was observed.
+    // JSON serialization also omits undefined names, as NON_NULL serialization can do.
+    const wire = JSON.parse(
+      JSON.stringify({
+        ...ORPHANED_RESULT,
+        type: source === 'live' ? 'tool_done' : 'tool_result',
+        tool,
+      }),
+    );
+    const block = (
+      source === 'live'
+        ? reduceLiveBlocks([], wire as ChatSseEvent)[0]
+        : foldOne(wire as TimelineEvent)
+    ) as ToolBlockData;
+    render(
+      <LangProvider>
+        <ToolBlock
+          block={block}
+          toolCatalog={[
+            {
+              name: 'rmq.topic.list',
+              description: 'List topics',
+              parameters: {},
+              riskLevel: 'LOW',
+            },
+          ]}
+        />
+      </LangProvider>,
+    );
+    expect(screen.getByTestId('ai-tool-name')).toHaveTextContent('未知工具');
+    expect(screen.getByTestId('tool-result')).toHaveTextContent('TopicA');
+    expect(screen.getByTestId('ai-tool-status')).toHaveTextContent('成功');
+    expect(screen.queryByTestId('ai-tool-risk')).not.toBeInTheDocument();
+  });
+
   it('rendersADoneCardWithNullInputForAnOrphanedToolResultTest', () => {
     const block = foldOne(ORPHANED_RESULT);
 

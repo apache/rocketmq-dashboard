@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { LangProvider } from '../../../../i18n/LangContext';
@@ -70,6 +70,45 @@ const TOOL_RESULT = {
   success: true,
 };
 
+describe('terminal tool rendering', () => {
+  it.each(['STOPPED', 'FAILED', 'COMPLETED'] as const)(
+    'doesNotClaimAnUnfinishedToolIsStillRunningAfter%sTest',
+    (runStatus) => {
+      const pendingTool = runningToolBlock('pending', 'rmq.topic.list', { instanceId: 'prod' });
+      const { rerender } = render(
+        <LangProvider>
+          <AssistantBubble bubble={bubble([pendingTool])} streaming />
+        </LangProvider>,
+      );
+      expect(screen.getByTestId('ai-tool-progress')).toBeInTheDocument();
+      rerender(
+        <LangProvider>
+          <AssistantBubble bubble={bubble([pendingTool], { runStatus })} />
+        </LangProvider>,
+      );
+      expect(screen.queryByTestId('ai-tool-progress')).not.toBeInTheDocument();
+      const card = screen.getByTestId('ai-tool-block');
+      expect(within(card).queryByText('执行中')).not.toBeInTheDocument();
+      expect(within(card).queryByText('成功')).not.toBeInTheDocument();
+      expect(within(card).queryByText('失败')).not.toBeInTheDocument();
+      expect(within(card).getByText('未返回结果')).toBeInTheDocument();
+      expect(within(card).getByTestId('tool-input')).toHaveTextContent('prod');
+      expect(pendingTool.status).toBe('running');
+    },
+  );
+
+  it('keepsAnObservedResultOnATerminalRunTest', () => {
+    renderBubble({
+      blocks: withToolResult([], TOOL_RESULT),
+      bubbleExtra: { runStatus: 'STOPPED' },
+    });
+    const card = screen.getByTestId('ai-tool-block');
+    expect(within(card).getByText('成功')).toBeInTheDocument();
+    expect(within(card).getByTestId('tool-result')).toHaveTextContent('TopicA');
+    expect(within(card).queryByText('未返回结果')).not.toBeInTheDocument();
+  });
+});
+
 function bubble(blocks: RenderBlock[], extra: Partial<Bubble> = {}): Bubble {
   return { role: 'assistant', blocks, ...extra };
 }
@@ -95,6 +134,131 @@ describe('AssistantBubble', () => {
   beforeEach(() => {
     // Labels are asserted in Chinese, which is the default locale once localStorage is cleared.
     localStorage.clear();
+  });
+
+  describe('copy response', () => {
+    const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const execCommandDescriptor = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    const answer = '**First answer**\n\nSecond answer';
+    let execCommand: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
+      execCommand = vi.fn(() => true);
+      Object.defineProperty(document, 'execCommand', { configurable: true, value: execCommand });
+    });
+
+    afterEach(() => {
+      if (clipboardDescriptor) {
+        Object.defineProperty(navigator, 'clipboard', clipboardDescriptor);
+      } else {
+        Reflect.deleteProperty(navigator, 'clipboard');
+      }
+      if (execCommandDescriptor) {
+        Object.defineProperty(document, 'execCommand', execCommandDescriptor);
+      } else {
+        Reflect.deleteProperty(document, 'execCommand');
+      }
+      vi.restoreAllMocks();
+    });
+
+    async function copyResponse() {
+      renderBubble({
+        blocks: [
+          ...appendText([], '**First answer**'),
+          ...appendThinking([], 'Private reasoning', 'model'),
+          ...appendText([], 'Second answer'),
+        ],
+      });
+      const button = screen.getByRole('button', { name: '复制回复' });
+      fireEvent.click(button);
+      fireEvent.mouseEnter(button);
+      return screen.findByRole('tooltip');
+    }
+
+    function expectFallbackText() {
+      const textarea = document.querySelector('textarea');
+      expect(textarea).toHaveValue(answer);
+      expect(textarea?.selectionStart).toBe(0);
+      expect(textarea?.selectionEnd).toBe(answer.length);
+    }
+
+    it('copiesOnlyAnswerMarkdownWithTheClipboardApiTest', async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+
+      expect(await copyResponse()).toHaveTextContent('已复制');
+
+      expect(writeText).toHaveBeenCalledExactlyOnceWith(answer);
+      expect(execCommand).not.toHaveBeenCalled();
+      expect(document.querySelector('textarea')).toBeNull();
+    });
+
+    it.each([
+      { label: 'rejected', writeText: () => Promise.reject(new Error('Permission denied')) },
+      {
+        label: 'throwing',
+        writeText: () => {
+          throw new Error('Clipboard unavailable');
+        },
+      },
+    ])('fallsBackAfterThe$labelClipboardWriteTest', async ({ writeText }) => {
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+      execCommand.mockImplementation(() => {
+        expectFallbackText();
+        return true;
+      });
+
+      expect(await copyResponse()).toHaveTextContent('已复制');
+
+      expect(execCommand).toHaveBeenCalledExactlyOnceWith('copy');
+      expect(document.querySelector('textarea')).toBeNull();
+    });
+
+    it('fallsBackWhenTheClipboardApiIsUnavailableTest', async () => {
+      execCommand.mockImplementation(() => {
+        expectFallbackText();
+        return true;
+      });
+
+      expect(await copyResponse()).toHaveTextContent('已复制');
+
+      expect(execCommand).toHaveBeenCalledExactlyOnceWith('copy');
+      expect(document.querySelector('textarea')).toBeNull();
+    });
+
+    it.each(['false', 'throwing', 'unavailable'] as const)(
+      'doesNotReportCopiedWhenTheFallbackIs%sTest',
+      async (failure) => {
+        if (failure === 'unavailable') {
+          Object.defineProperty(document, 'execCommand', { configurable: true, value: undefined });
+        } else {
+          execCommand.mockImplementation(() => {
+            expectFallbackText();
+            if (failure === 'throwing') throw new Error('Copy unsupported');
+            return false;
+          });
+        }
+
+        expect(await copyResponse()).toHaveTextContent('复制回复');
+
+        if (failure !== 'unavailable') {
+          expect(execCommand).toHaveBeenCalledExactlyOnceWith('copy');
+        }
+        expect(document.querySelector('textarea')).toBeNull();
+      },
+    );
+
+    it('cleansUpWhenSelectingTheFallbackTextThrowsTest', async () => {
+      vi.spyOn(HTMLTextAreaElement.prototype, 'select').mockImplementation(() => {
+        throw new Error('Selection unavailable');
+      });
+
+      expect(await copyResponse()).toHaveTextContent('复制回复');
+
+      expect(execCommand).not.toHaveBeenCalled();
+      expect(document.querySelector('textarea')).toBeNull();
+    });
   });
 
   it('rendersEveryBlockKindTest', () => {
@@ -147,6 +311,38 @@ describe('AssistantBubble', () => {
     expect(screen.getAllByText('mqadmin clusterList')[0].closest('pre')).toBeInTheDocument();
     expect(screen.getByText('mqadmin topicList').closest('pre')).toBeInTheDocument();
   });
+
+  it.each(['COMPLETED', 'STOPPED', 'FAILED'] as const)(
+    'collapsesManuallyExpandedEarlierReasoningOnCompletionTest (%s)',
+    (runStatus) => {
+      const blocks: RenderBlock[] = [
+        { kind: 'thinking', source: 'enhance', text: 'earlier rewrite' },
+        { kind: 'thinking', source: 'model', text: 'latest reasoning' },
+        { kind: 'text', text: 'final answer' },
+      ];
+      const view = renderBubble({ blocks, streaming: true });
+      const earlier = screen.getAllByTestId('ai-thinking-block')[0];
+      fireEvent.click(within(earlier).getByTestId('ai-thinking-summary'));
+      expect(earlier).toHaveAttribute('open');
+      view.rerender(
+        <LangProvider>
+          <AssistantBubble bubble={bubble(blocks, { runStatus })} streaming={false} />
+        </LangProvider>,
+      );
+      for (const details of screen.getAllByTestId('ai-thinking-block')) {
+        expect(details).not.toHaveAttribute('open');
+      }
+      // A reader can still expand a completed answer's reasoning.
+      fireEvent.click(within(earlier).getByTestId('ai-thinking-summary'));
+      expect(earlier).toHaveAttribute('open');
+      view.rerender(
+        <LangProvider>
+          <AssistantBubble bubble={bubble([...blocks], { runStatus })} streaming={false} />
+        </LangProvider>,
+      );
+      expect(earlier).toHaveAttribute('open');
+    },
+  );
 
   it('collapsesThinkingByDefaultAndCountsItsCharactersTest', () => {
     const text = '先确认实例能力。';

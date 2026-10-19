@@ -65,6 +65,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -423,7 +424,9 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             int delaySeconds = 0;
             boolean timestampAvailable = false;
             if (newestConsumedTimestamp > 0) {
-                long elapsedSeconds = (System.currentTimeMillis() - newestConsumedTimestamp) / 1000;
+                // An old last-message timestamp measures inactivity once every queue is caught up.
+                long elapsedSeconds = !lagUnknown && totalLag == 0 ? 0
+                        : (System.currentTimeMillis() - newestConsumedTimestamp) / 1000;
                 delaySeconds = (int) Math.max(elapsedSeconds, 0);
                 timestampAvailable = true;
             }
@@ -502,7 +505,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
             List<BrokerRouteVO> routes = new ArrayList<>();
             if (routeData.getQueueDatas() != null) {
-                for (QueueData qd : routeData.getQueueDatas()) {
+                // The route rows come straight off the broker's table walk; order them by
+                // broker name so the route table agrees with the queue stats view on the same screen.
+                List<QueueData> orderedQueueDatas = new ArrayList<>(routeData.getQueueDatas());
+                orderedQueueDatas.sort(Comparator.comparing(QueueData::getBrokerName,
+                        Comparator.nullsLast(Comparator.naturalOrder())));
+                for (QueueData qd : orderedQueueDatas) {
                     BrokerData bd = brokerDataMap.get(qd.getBrokerName());
                     Map<Long, String> brokerAddrs = orderedBrokerAddrs(bd);
                     String masterAddr = brokerAddrs.get(MixAll.MASTER_ID);
