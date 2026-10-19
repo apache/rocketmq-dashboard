@@ -51,6 +51,17 @@ services:
       STUDIO_METRICS_PROMETHEUS_PASSWORD: ${STUDIO_METRICS_PROMETHEUS_PASSWORD:-}
       STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN: ${STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN:-}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      # 邮件通知通道：Spring Boot 仅在 spring.mail.host 存在时装配 JavaMailSender，未配置时告警邮件
+      # 投递报 "SMTP is not configured"。测试机用 mailpit 本地收件箱（SMTP 1025、UI 8025，均只绑
+      # 127.0.0.1）打通告警闭环（2026-10-16）。host 留空即不改变既有行为；port 默认 25 与 Boot 一致。
+      # 同样必须在此声明：compose 只透传 environment 里列出的变量名。
+      SPRING_MAIL_HOST: ${SPRING_MAIL_HOST:-}
+      SPRING_MAIL_PORT: ${SPRING_MAIL_PORT:-25}
+      # application.yml 把 mail.smtp.auth / starttls 写死为 true；对接免认证的本地产 SMTP
+      # （如 mailpit）时需要关掉，否则空凭据 AUTH 被拒（"Authentication failed"）。默认 true 保持
+      # 对接真实 SMTP 的既有行为。
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:-true}
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:-true}
       # These three MUST be declared here, not only in .env: compose forwards only what the
       # environment block names, so a variable set in .env without a matching line below never
       # reaches the container. They used to exist only on the deployed host, and a deploy.sh run
@@ -115,7 +126,11 @@ services:
     container_name: rocketmq-web
     restart: unless-stopped
     ports:
-      - "6789:80"
+      # The deploy flow (deploy/deploy.sh) and README configure the public
+      # entrance through PUBLIC_PORT; the mapping must follow it, otherwise
+      # the deployment listens on 6789 while the health check and the success
+      # message point at the configured port.
+      - "${PUBLIC_PORT:-6789}:80"
     depends_on:
       rocketmq-server:
         condition: service_healthy

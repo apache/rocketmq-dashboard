@@ -110,7 +110,7 @@ export interface ComposerProps {
   value: string;
   onChange: (value: string) => void;
   /**
-   * Called with the trimmed draft once a send was accepted. The composer clears the draft itself, so
+   * Called with the trimmed draft after the composer clears it, so
    * a caller that has to reject the send (no conversation yet, 409 from the server) should put the
    * text back with `onChange`.
    */
@@ -269,14 +269,16 @@ const Composer = ({
   const handleSend = useCallback(() => {
     const text = value.trim();
     if (!text || !canSend) return;
-    onSend(text);
     onChange('');
+    onSend(text);
   }, [canSend, onChange, onSend, value]);
 
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
       // An IME candidate being confirmed must not send the half-typed prompt.
-      if (event.nativeEvent.isComposing) return;
+      // WebKit can deliver the confirming key after compositionend, with only keyCode 229
+      // identifying it as IME input (https://bugs.webkit.org/show_bug.cgi?id=165004).
+      if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
       if (event.key === 'Escape') {
         if (generating) {
           event.preventDefault();
