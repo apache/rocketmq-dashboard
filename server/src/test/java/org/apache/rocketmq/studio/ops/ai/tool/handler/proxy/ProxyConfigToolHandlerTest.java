@@ -1,10 +1,10 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
+ * The ASF licenses this file to You under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
@@ -16,8 +16,10 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.handler.proxy;
 
+import org.apache.rocketmq.studio.cluster.broker.ClusterProvider;
 import org.apache.rocketmq.studio.cluster.proxy.ProxyAddressService;
 import org.apache.rocketmq.studio.cluster.proxy.ProxyTopologyVO;
+import org.apache.rocketmq.studio.cluster.proxy.ProxyVO;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.proxy.ProxyConfigInput;
@@ -34,6 +36,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.apache.rocketmq.studio.ops.ai.tool.TestToolExecutionContexts.context;
@@ -45,22 +48,31 @@ class ProxyConfigToolHandlerTest {
     private PlatformClusterResolver clusterResolver;
 
     @Mock
+    private ClusterProvider clusterProvider;
+
+    @Mock
     private ProxyAddressService proxyAddressService;
 
     @InjectMocks
     private ProxyConfigToolHandler handler;
 
     @Test
-    void snapshotsTopologyForOwnedClusterTest() {
+    void snapshotsTopologyForTheResolvedInstancesProxiesTest() {
         assertThat(handler.name()).isEqualTo("rmq.proxy.config");
         stubOwnedCluster();
-        when(proxyAddressService.buildTopology()).thenReturn(List.of(
-                topology("127.0.0.1:8081", "UP", true, true),
-                topology("10.0.0.1:8081", "DOWN", false, false)));
+        when(clusterProvider.discoverProxies("instance-a")).thenReturn(List.of(
+                proxy("127.0.0.1:8081"), proxy("10.0.0.1:8081"), proxy(" 10.0.0.1:8081 ")));
+        when(proxyAddressService.buildTopology(List.of("127.0.0.1:8081", "10.0.0.1:8081")))
+                .thenReturn(List.of(
+                        topology("127.0.0.1:8081", "UP", true, true),
+                        topology("10.0.0.1:8081", "DOWN", false, false)));
 
         ListOutput<ProxyConfigItem> result = handler.execute(
                 new ProxyConfigInput("rmq-a", null), context("instance-a"));
 
+        // The probe set is exactly what the owning instance discovered — deduplicated and trimmed —
+        // never the global registry that also carries other instances' addresses.
+        verify(proxyAddressService).buildTopology(List.of("127.0.0.1:8081", "10.0.0.1:8081"));
         assertThat(result.items()).hasSize(2);
         ProxyConfigItem up = result.items().getFirst();
         assertThat(up.addr()).isEqualTo("127.0.0.1:8081");
@@ -75,18 +87,35 @@ class ProxyConfigToolHandlerTest {
     }
 
     @Test
-    void filtersSnapshotByAddrTest() {
+    void filtersSnapshotByAddrWithinTheScopedSetTest() {
         stubOwnedCluster();
-        when(proxyAddressService.buildTopology()).thenReturn(List.of(
-                topology("127.0.0.1:8081", "UP", true, true),
-                topology("10.0.0.1:8081", "DOWN", false, false)));
+        when(clusterProvider.discoverProxies("instance-a"))
+                .thenReturn(List.of(proxy("127.0.0.1:8081")));
+        when(proxyAddressService.buildTopology(List.of("127.0.0.1:8081")))
+                .thenReturn(List.of(topology("127.0.0.1:8081", "UP", true, true)));
 
         ListOutput<ProxyConfigItem> result = handler.execute(
-                new ProxyConfigInput("rmq-a", "10.0.0.1:8081"), context("instance-a"));
+                new ProxyConfigInput("rmq-a", "127.0.0.1:8081"), context("instance-a"));
 
         assertThat(result.items()).singleElement()
                 .extracting(ProxyConfigItem::addr)
-                .isEqualTo("10.0.0.1:8081");
+                .isEqualTo("127.0.0.1:8081");
+    }
+
+    @Test
+    void anAddrOutsideTheScopedSetFiltersToNothingTest() {
+        // 10.0.0.9 belongs to another instance's registry. The filter runs against the scoped
+        // snapshot only, so it cannot pull that row in — before, the global registry answered.
+        stubOwnedCluster();
+        when(clusterProvider.discoverProxies("instance-a"))
+                .thenReturn(List.of(proxy("127.0.0.1:8081")));
+        when(proxyAddressService.buildTopology(List.of("127.0.0.1:8081")))
+                .thenReturn(List.of(topology("127.0.0.1:8081", "UP", true, true)));
+
+        ListOutput<ProxyConfigItem> result = handler.execute(
+                new ProxyConfigInput("rmq-a", "10.0.0.9:8081"), context("instance-a"));
+
+        assertThat(result.items()).isEmpty();
     }
 
     @Test
@@ -98,12 +127,16 @@ class ProxyConfigToolHandlerTest {
                 new ProxyConfigInput("rmq-x", null), context("instance-a")))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Cluster not found: rmq-x");
-        verifyNoInteractions(proxyAddressService);
+        verifyNoInteractions(proxyAddressService, clusterProvider);
     }
 
     private void stubOwnedCluster() {
         when(clusterResolver.require("rmq-a")).thenReturn(new ManagedCluster(
                 "rmq-a", "instance-a", List.of(), List.of()));
+    }
+
+    private static ProxyVO proxy(String addr) {
+        return ProxyVO.builder().addr(addr).build();
     }
 
     private static ProxyTopologyVO topology(
