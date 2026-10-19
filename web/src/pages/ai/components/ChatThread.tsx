@@ -184,13 +184,6 @@ const ChatThread = ({
             area while the transcript is short; once the transcript overflows, the spacer
             collapses to zero and the composer scrolls with the content like any document. */}
         <div style={{ width: '100%', minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
-          {hasMore && onLoadMore && (
-            <Flex justify="center" style={{ marginBottom: 12 }}>
-              <Button size="small" onClick={() => onLoadMore()} style={{ fontSize: 14 }}>
-                {t('ai.thread.loadEarlier')}
-              </Button>
-            </Flex>
-          )}
           <BubbleList
             bubbles={bubbles}
             liveBlocks={liveBlocks}
@@ -202,6 +195,16 @@ const ChatThread = ({
             model={model}
             empty={empty}
           />
+          {/* loadMore continues the forward cursor and appends newer rows at the
+              end, so the affordance belongs below the transcript with a label
+              that matches what it fetches (the conversation's remaining events). */}
+          {hasMore && onLoadMore && (
+            <Flex justify="center" style={{ marginTop: 8, marginBottom: 4 }}>
+              <Button size="small" onClick={() => onLoadMore()} style={{ fontSize: 14 }}>
+                {t('ai.thread.loadRemaining')}
+              </Button>
+            </Flex>
+          )}
           <div ref={sentinelRef} />
           <div style={{ flex: 1 }} />
           {footer}

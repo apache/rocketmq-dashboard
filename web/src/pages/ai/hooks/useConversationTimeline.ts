@@ -28,7 +28,8 @@ import { describeThrownMessage } from '../../../utils/apiError';
  * The timeline endpoint is a forward cursor (`seq > after`), while a chat view needs the whole
  * transcript, so the initial load pages forward until the cursor is exhausted. `maxPages` bounds
  * that walk: a pathological conversation stops growing the request loop and leaves `hasMore` set,
- * which the caller can turn into a "加载更早内容" affordance via {@link UseConversationTimelineResult.loadMore}.
+ * which the caller can turn into a "加载剩余内容" affordance (the walk continues
+ * the forward cursor to the conversation's newest events) via {@link UseConversationTimelineResult.loadMore}.
  *
  * `refetch` is the function `useAgentRun` awaits in its finally block. Refetching BEFORE the live
  * blocks are cleared is what makes the persisted transcript replace the streaming bubble in one
