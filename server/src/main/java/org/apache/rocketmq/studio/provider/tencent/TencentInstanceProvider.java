@@ -1024,7 +1024,9 @@ public class TencentInstanceProvider implements InstanceProvider {
         }
         return TopicConsumerVO.builder()
                 .group(subscription.getConsumerGroup())
-                .consumeType(toConsumeType(subscription.getConsumeType(), messageModel))
+                // ConsumeType is the vendor's consumption mechanism (PUSH/PULL/POP); the
+                // subscription model the contract carries is MessageModel.
+                .consumeType(toConsumeType(messageModel, subscription.getConsumeType()))
                 .messageModel(messageModel)
                 .diffTotal(subscription.getConsumerLag() == null ? 0L : subscription.getConsumerLag())
                 .build();
