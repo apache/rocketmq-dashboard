@@ -59,6 +59,10 @@ export const useQueueBrowser = (instanceId?: string) => {
   const [offsets, setOffsets] = useState<Record<string, number>>({});
   const [pulling, setPulling] = useState<Set<string>>(() => new Set());
   const [entries, setEntries] = useState<PulledEntry[]>([]);
+  // A load that ran and found nothing is not the same as a load that never ran, and a failed
+  // load is neither: the results panel needs the three states separately.
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const requestSeqRef = useRef(0);
   const loadingRef = useRef(false);
   const pullingRef = useRef(new Map<string, symbol>());
@@ -74,6 +78,8 @@ export const useQueueBrowser = (instanceId?: string) => {
       setLoading(false);
       pullingRef.current.clear();
       setPulling(new Set());
+      setHasLoaded(false);
+      setLoadFailed(false);
     });
     return () => {
       // Leaving the page invalidates pending loads and pulls just like a scope change.
@@ -86,6 +92,7 @@ export const useQueueBrowser = (instanceId?: string) => {
     loadingRef.current = true;
     const requestId = ++requestSeqRef.current;
     setLoading(true);
+    setLoadFailed(false);
     setQueues([]);
     setOffsets({});
     setEntries([]);
@@ -97,6 +104,7 @@ export const useQueueBrowser = (instanceId?: string) => {
       const result = await getQueueOffsets({ instanceId, topic });
       if (requestId !== requestSeqRef.current) return;
       setQueues(result);
+      setHasLoaded(true);
       const initial: Record<string, number> = {};
       for (const q of result) {
         initial[`${q.brokerName}-${q.queueId}`] =
@@ -105,6 +113,7 @@ export const useQueueBrowser = (instanceId?: string) => {
       setOffsets(initial);
     } catch (err) {
       if (requestId === requestSeqRef.current) {
+        setLoadFailed(true);
         message.error(err instanceof Error ? err.message : t('queueBrowser.loadQueuesFailed'));
       }
     } finally {
@@ -166,6 +175,8 @@ export const useQueueBrowser = (instanceId?: string) => {
     setOffsets,
     pulling,
     entries,
+    hasLoaded,
+    loadFailed,
     loadQueues,
     handlePull,
     closeEntry,
@@ -221,10 +232,22 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
         <Flex justify="center" style={{ padding: 32 }}>
           <Spin />
         </Flex>
+      ) : state.loadFailed ? (
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={t('queueBrowser.loadQueuesFailed')}
+          style={{ padding: '32px 0' }}
+        >
+          <Button size="small" onClick={() => void state.loadQueues()}>
+            {t('common.retry')}
+          </Button>
+        </Empty>
       ) : state.queues.length === 0 ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={t('queueBrowser.emptyHint')}
+          description={t(
+            state.hasLoaded ? 'queueBrowser.noReadableQueues' : 'queueBrowser.emptyHint',
+          )}
           style={{ padding: '32px 0' }}
         />
       ) : (

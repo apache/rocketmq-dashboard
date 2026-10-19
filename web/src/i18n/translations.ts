@@ -866,6 +866,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '选择 Topic 并点击「加载队列」，按队列浏览消息',
     en: 'Select a topic and click "Load Queues" to browse messages by queue',
   },
+  'queueBrowser.noReadableQueues': {
+    zh: '该 Topic 没有可读队列（只写权限，或读队列数为 0）',
+    en: 'This topic exposes no readable queues (a write-only permission, or zero read queues)',
+  },
   'queueBrowser.offsetRange': { zh: 'Offset 范围', en: 'Offset Range' },
   'queueBrowser.queueSummary': {
     zh: '共 {queues} 个队列，总消息量 {messages} 条',
