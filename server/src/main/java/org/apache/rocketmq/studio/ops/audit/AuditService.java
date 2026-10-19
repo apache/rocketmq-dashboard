@@ -43,6 +43,12 @@ public class AuditService {
     private static final int MAX_EXPORT_RECORDS = 10_000;
     private static final int CLEANUP_BATCH_SIZE = 500;
     private static final int CLEANUP_MAX_BATCHES = 20;
+    /**
+     * Most rows one cleanup call can delete: {@code CLEANUP_BATCH_SIZE} rows in each of
+     * {@code CLEANUP_MAX_BATCHES} batches. Reaching it means the sweep ran out of budget, not that
+     * the retention window was applied.
+     */
+    private static final int CLEANUP_ROW_CEILING = CLEANUP_BATCH_SIZE * CLEANUP_MAX_BATCHES;
     private static final String CSV_COLUMNS =
             "operator,operationType,resourceType,target,clusterId,detail,result,errorMessage";
 
@@ -181,7 +187,7 @@ public class AuditService {
         log.info("Audit recorded: {} on {} -> {}", operationType, target, result);
     }
 
-    public int cleanupLogs(int beforeDays) {
+    public AuditCleanupResultVO cleanupLogs(int beforeDays) {
         if (beforeDays <= 0) {
             throw new BusinessException(400, "beforeDays must be greater than 0");
         }
@@ -190,7 +196,15 @@ public class AuditService {
         }
         log.info("Cleaning up audit logs older than {} days", beforeDays);
         LocalDateTime cutoff = LocalDateTime.now().minusDays(beforeDays);
-        return auditRepository.deleteBefore(cutoff, CLEANUP_BATCH_SIZE, CLEANUP_MAX_BATCHES);
+        int deleted = auditRepository.deleteBefore(cutoff, CLEANUP_BATCH_SIZE, CLEANUP_MAX_BATCHES);
+        // Equal to the ceiling means the delete loop stopped because it ran out of batches, so rows
+        // older than the cutoff may still be stored. Reporting the count alone hid that.
+        boolean truncated = deleted >= CLEANUP_ROW_CEILING;
+        if (truncated) {
+            log.warn("Audit cleanup older than {} days stopped at the {}-row ceiling after deleting {} rows; "
+                    + "older rows may remain", beforeDays, CLEANUP_ROW_CEILING, deleted);
+        }
+        return AuditCleanupResultVO.builder().deleted(deleted).truncated(truncated).build();
     }
 
     private void validatePagination(int page, int pageSize) {

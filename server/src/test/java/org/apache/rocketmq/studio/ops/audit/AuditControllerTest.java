@@ -50,6 +50,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(LegacyJackson2Config.class)
 class AuditControllerTest extends WebMvcAuthTestSupport {
 
+    private static AuditCleanupResultVO cleanupResult(int deleted, boolean truncated) {
+        return AuditCleanupResultVO.builder().deleted(deleted).truncated(truncated).build();
+    }
     @Autowired
     private MockMvc mockMvc;
 
@@ -96,7 +99,7 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
 
     @Test
     void cleanupLogsShouldUseProvidedRetention() throws Exception {
-        when(auditService.cleanupLogs(90)).thenReturn(7);
+        when(auditService.cleanupLogs(90)).thenReturn(cleanupResult(7, false));
 
         mockMvc.perform(post("/api/audit-logs/cleanup")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -109,8 +112,19 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void cleanupLogsShouldDiscloseASweepThatHitItsCeilingTest() throws Exception {
+        when(auditService.cleanupLogs(90)).thenReturn(cleanupResult(10_000, true));
+
+        mockMvc.perform(post("/api/audit-logs/cleanup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("beforeDays", 90))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.deleted").value(10_000))
+                .andExpect(jsonPath("$.data.truncated").value(true));
+    }
+    @Test
     void cleanupLogsShouldDefaultRetentionWhenBodyIsEmpty() throws Exception {
-        when(auditService.cleanupLogs(30)).thenReturn(3);
+        when(auditService.cleanupLogs(30)).thenReturn(cleanupResult(3, false));
 
         mockMvc.perform(post("/api/audit-logs/cleanup"))
                 .andExpect(status().isOk())
@@ -121,7 +135,7 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
 
     @Test
     void cleanupLogsShouldDefaultRetentionWhenBeforeDaysIsMissing() throws Exception {
-        when(auditService.cleanupLogs(30)).thenReturn(3);
+        when(auditService.cleanupLogs(30)).thenReturn(cleanupResult(3, false));
 
         mockMvc.perform(post("/api/audit-logs/cleanup")
                         .contentType(MediaType.APPLICATION_JSON)
