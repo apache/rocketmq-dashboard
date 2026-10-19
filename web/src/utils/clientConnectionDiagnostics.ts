@@ -41,6 +41,7 @@ export interface ClientConnectionIssue {
   severity: ClientConnectionIssueSeverity;
   title: string;
   description: string;
+  cluster?: string;
   resource?: string;
   clientId?: string;
   evidence: string[];
@@ -49,6 +50,7 @@ export interface ClientConnectionIssue {
 
 export interface ClientResourceSummary {
   id: string;
+  cluster: string;
   type: string;
   resource: string;
   connectionCount: number;
@@ -86,6 +88,7 @@ export interface ClientConnectionDiagnostics {
 }
 
 type ConnectionGroup = {
+  cluster: string;
   type: string;
   resource: string;
   connections: ClientConnection[];
@@ -116,6 +119,17 @@ const uniqueSorted = (values: Array<string | null | undefined>): string[] =>
     a.localeCompare(b),
   );
 
+// Only values a client actually reported are observed dimensions. Proxy-derived rows
+// carry no protocol/version/language by design, so an absent field must stay out of
+// mixed-resource comparisons instead of counting as an "unknown" dimension next to a
+// reported one.
+const reportedValues = (values: Array<string | null | undefined>): string[] => {
+  const reported = values
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value));
+  return [...new Set(reported)].sort((a, b) => a.localeCompare(b));
+};
+
 const countBy = (values: Array<string | null | undefined>): Map<string, number> => {
   const counts = new Map<string, number>();
   values.forEach((value) => {
@@ -132,6 +146,7 @@ const issue = (
   description: string,
   recommendation: string,
   options: {
+    cluster?: string;
     resource?: string;
     clientId?: string;
     evidence?: string[];
@@ -140,29 +155,35 @@ const issue = (
 ): ClientConnectionIssue => ({
   id:
     options.id ??
-    [options.resource, options.clientId, code, ...(options.evidence ?? [])]
+    [options.cluster, options.resource, options.clientId, code, ...(options.evidence ?? [])]
       .filter(Boolean)
       .join(':'),
   code,
   severity,
   title,
   description,
+  cluster: options.cluster,
   resource: options.resource,
   clientId: options.clientId,
   evidence: options.evidence ?? [],
   recommendation,
 });
 
+// Identities stay JSON tuples (#6303) so values containing delimiters cannot merge.
+// The physical cluster is part of both: a NameServer can serve several independent
+// clusters whose group names, client IDs and even addresses coincide, and rows from
+// different clusters describe separate inventories, never one shared observation.
 const connectionIdentity = (connection: ClientConnection): string =>
   JSON.stringify([
-    normalizeText(connection.type),
-    normalizeText(connection.clientId),
-    normalizeText(connection.groupOrTopic),
-    normalizeText(connection.address),
+    connection.clusterName,
+    connection.type,
+    connection.clientId,
+    connection.groupOrTopic,
+    connection.address,
   ]);
 
 const resourceKey = (connection: ClientConnection): string =>
-  `${normalizeText(connection.type)}:${normalizeText(connection.groupOrTopic)}`;
+  JSON.stringify([connection.clusterName, connection.type, connection.groupOrTopic]);
 
 const groupConnections = (connections: ClientConnection[]): ConnectionGroup[] => {
   const groups = new Map<string, ConnectionGroup>();
@@ -175,15 +196,18 @@ const groupConnections = (connections: ClientConnection[]): ConnectionGroup[] =>
       return;
     }
     groups.set(key, {
-      type: normalizeText(connection.type),
-      resource: normalizeText(connection.groupOrTopic),
+      cluster: connection.clusterName,
+      type: connection.type,
+      resource: connection.groupOrTopic,
       connections: [connection],
     });
   });
 
   return [...groups.values()].sort(
     (left, right) =>
-      left.type.localeCompare(right.type) || left.resource.localeCompare(right.resource),
+      left.cluster.localeCompare(right.cluster) ||
+      left.type.localeCompare(right.type) ||
+      left.resource.localeCompare(right.resource),
   );
 };
 
@@ -221,7 +245,9 @@ const addInventoryIssues = (connections: ClientConnection[], issues: ClientConne
         'PARTIAL_CONNECTION_SCAN',
         'warning',
         '客户端扫描结果不完整',
-        '部分 Producer 连接来自受限 Topic 扫描，当前列表可能不是完整客户端清单。',
+        // The provider marks incomplete Consumer group queries as well as restricted
+        // Producer topic scans, so the warning must not claim only producers.
+        '部分 Producer 或 Consumer 连接来自受限查询，当前列表可能不是完整客户端清单。',
         '缩小 Topic 或集群范围后重新查询，并在排障时避免把当前列表视为全集。',
         { evidence: [`partial=${partialCount}`] },
       ),
@@ -230,20 +256,23 @@ const addInventoryIssues = (connections: ClientConnection[], issues: ClientConne
 };
 
 const addClientIdIssues = (connections: ClientConnection[], issues: ClientConnectionIssue[]) => {
+  // A client ID is only meaningful inside one physical cluster: the same ID observed
+  // on two independent clusters is two ordinary clients, not one colliding instance.
   const connectionsByClient = new Map<string, ClientConnection[]>();
   const identityCounts = new Map<string, number>();
 
   connections.forEach((connection) => {
-    const clientId = normalizeText(connection.clientId);
-    const existing = connectionsByClient.get(clientId) ?? [];
+    const clientKey = JSON.stringify([connection.clusterName, connection.clientId]);
+    const existing = connectionsByClient.get(clientKey) ?? [];
     existing.push(connection);
-    connectionsByClient.set(clientId, existing);
+    connectionsByClient.set(clientKey, existing);
 
     const identity = connectionIdentity(connection);
     identityCounts.set(identity, (identityCounts.get(identity) ?? 0) + 1);
   });
 
-  connectionsByClient.forEach((clientConnections, clientId) => {
+  connectionsByClient.forEach((clientConnections, clientKey) => {
+    const [cluster, clientId]: string[] = JSON.parse(clientKey);
     const addresses = uniqueSorted(clientConnections.map((connection) => connection.address));
     if (addresses.length > 1) {
       issues.push(
@@ -254,6 +283,7 @@ const addClientIdIssues = (connections: ClientConnection[], issues: ClientConnec
           '同一个 Client ID 同时出现在多个远端地址，可能是实例 ID 配置冲突或旧连接未及时清理。',
           '检查客户端 instanceName/clientId 配置，确保同一进程实例使用唯一标识。',
           {
+            cluster,
             clientId,
             evidence: addresses,
           },
@@ -264,7 +294,7 @@ const addClientIdIssues = (connections: ClientConnection[], issues: ClientConnec
 
   identityCounts.forEach((count, identity) => {
     if (count <= 1) return;
-    const [, clientId, resource, address]: string[] = JSON.parse(identity);
+    const [cluster, , clientId, resource, address]: string[] = JSON.parse(identity);
     issues.push(
       issue(
         'EXACT_DUPLICATE_CONNECTION',
@@ -273,6 +303,7 @@ const addClientIdIssues = (connections: ClientConnection[], issues: ClientConnec
         '相同客户端、资源和地址出现了重复记录，可能来自采集侧合并或上游返回重复项。',
         '刷新连接清单；若重复持续存在，检查客户端连接采集路径是否重复汇总。',
         {
+          cluster,
           clientId,
           resource,
           evidence: [`address=${address}`, `count=${count}`],
@@ -293,6 +324,7 @@ const addUnknownFieldIssues = (
     const protocol = normalizeText(connection.protocol);
     const language = normalizeText(connection.language);
     const version = normalizeText(connection.version);
+    const cluster = connection.clusterName;
 
     // A proxy-derived row carries no protocol and no version by design (the Proxy response
     // has neither — the clients page renders those rows with a dedicated unknown-protocol
@@ -308,6 +340,7 @@ const addUnknownFieldIssues = (
           '该客户端连接的协议不在 Studio 已知协议列表中，统计和排障可能不准确。',
           '确认客户端协议版本和服务端采集字段，必要时补充协议映射。',
           {
+            cluster,
             clientId,
             resource,
             evidence: [`protocol=${protocol}`],
@@ -326,6 +359,7 @@ const addUnknownFieldIssues = (
           '该客户端连接的语言不在 Studio 已知语言列表中。',
           '确认客户端 SDK 语言和采集字段，必要时补充语言展示映射。',
           {
+            cluster,
             clientId,
             resource,
             evidence: [`language=${language}`],
@@ -344,6 +378,7 @@ const addUnknownFieldIssues = (
           '该客户端没有上报明确版本，升级治理和兼容性判断缺少依据。',
           '升级客户端 SDK 或检查版本字段采集，确保连接清单能展示真实客户端版本。',
           {
+            cluster,
             clientId,
             resource,
             evidence: [`version=${version}`],
@@ -362,6 +397,7 @@ const addUnknownFieldIssues = (
           '该连接的时间字段无法被浏览器解析，排序和人工判断可能受影响。',
           '统一连接时间格式，优先返回 ISO-8601 或 yyyy-MM-dd HH:mm:ss。',
           {
+            cluster,
             clientId,
             resource,
             evidence: [connection.connectedAt],
@@ -375,11 +411,14 @@ const addUnknownFieldIssues = (
 
 const addResourceIssues = (groups: ConnectionGroup[], issues: ClientConnectionIssue[]) => {
   groups.forEach((group) => {
-    const protocols = uniqueSorted(group.connections.map((connection) => connection.protocol));
-    const versions = uniqueSorted(group.connections.map((connection) => connection.version));
-    const languages = uniqueSorted(group.connections.map((connection) => connection.language));
+    const protocols = reportedValues(group.connections.map((connection) => connection.protocol));
+    const versions = reportedValues(group.connections.map((connection) => connection.version));
+    const languages = reportedValues(group.connections.map((connection) => connection.language));
     const clients = uniqueSorted(group.connections.map((connection) => connection.clientId));
     const addresses = uniqueSorted(group.connections.map((connection) => connection.address));
+    // A partial scan cannot establish that no further client is online: with any
+    // partial row in the group, a lone consumer is an observation, not a fact.
+    const partial = group.connections.some((connection) => connection.partial);
     const resource = `${group.type}:${group.resource}`;
 
     if (protocols.length > 1) {
@@ -391,6 +430,7 @@ const addResourceIssues = (groups: ConnectionGroup[], issues: ClientConnectionIs
           '同一个 Group 或 Topic 同时存在 gRPC 与 Remoting 客户端，迁移期排障需要区分控制面来源。',
           '确认该资源是否处于协议迁移期，并分别检查 Proxy 与 Broker 侧连接状态。',
           {
+            cluster: group.cluster,
             resource,
             evidence: protocols,
           },
@@ -407,6 +447,7 @@ const addResourceIssues = (groups: ConnectionGroup[], issues: ClientConnectionIs
           '同一个 Group 或 Topic 内客户端版本不一致，可能导致重试、负载均衡或协议能力差异。',
           '按资源维度收敛客户端 SDK 版本，升级后再次确认连接清单。',
           {
+            cluster: group.cluster,
             resource,
             evidence: versions,
           },
@@ -414,7 +455,7 @@ const addResourceIssues = (groups: ConnectionGroup[], issues: ClientConnectionIs
       );
     }
 
-    if (group.type === 'Consumer' && clients.length === 1 && addresses.length === 1) {
+    if (group.type === 'Consumer' && !partial && clients.length === 1 && addresses.length === 1) {
       issues.push(
         issue(
           'SINGLE_CONSUMER_INSTANCE',
@@ -423,6 +464,7 @@ const addResourceIssues = (groups: ConnectionGroup[], issues: ClientConnectionIs
           '该 Consumer Group 当前只有一个客户端实例，进程故障会直接影响消费连续性。',
           '为关键 Consumer Group 保持至少两个实例在线，并确认负载均衡后队列分配正常。',
           {
+            cluster: group.cluster,
             resource,
             evidence: [`address=${addresses[0]}`],
           },
@@ -439,9 +481,10 @@ const addResourceIssues = (groups: ConnectionGroup[], issues: ClientConnectionIs
           '该资源由多语言 SDK 共同访问，升级治理和兼容性排查需要同时关注语言与版本。',
           '记录各语言 SDK 的目标版本矩阵，避免只按单一语言判断升级完成度。',
           {
+            cluster: group.cluster,
             resource,
             evidence: [...languages, ...versions],
-            id: `${resource}:MIXED_LANGUAGE_VERSION_RESOURCE`,
+            id: `${group.cluster}:${resource}:MIXED_LANGUAGE_VERSION_RESOURCE`,
           },
         ),
       );
@@ -453,31 +496,43 @@ const addAddressConcentrationIssues = (
   connections: ClientConnection[],
   issues: ClientConnectionIssue[],
 ) => {
-  if (connections.length < 4) return;
+  // Concentration is a statement about one deployment target, so judge each physical
+  // cluster on its own rows instead of pooling independent inventories together.
+  const connectionsByCluster = new Map<string, ClientConnection[]>();
+  connections.forEach((connection) => {
+    const existing = connectionsByCluster.get(connection.clusterName) ?? [];
+    existing.push(connection);
+    connectionsByCluster.set(connection.clusterName, existing);
+  });
 
-  const addressCounts = countBy(connections.map((connection) => connection.address));
-  const threshold = Math.max(4, Math.ceil(connections.length * 0.5));
+  connectionsByCluster.forEach((clusterConnections, cluster) => {
+    if (clusterConnections.length < 4) return;
 
-  addressCounts.forEach((count, address) => {
-    if (count < threshold) return;
-    issues.push(
-      issue(
-        'ADDRESS_CONCENTRATION',
-        'warning',
-        '连接集中在单一地址',
-        '较多客户端连接集中在同一个地址，主机或网关故障会影响多个生产或消费链路。',
-        '检查该地址上的客户端部署密度，必要时拆分实例或调整负载分布。',
-        {
-          evidence: [`${address}: ${count}/${connections.length}`],
-          id: `${address}:ADDRESS_CONCENTRATION`,
-        },
-      ),
-    );
+    const addressCounts = countBy(clusterConnections.map((connection) => connection.address));
+    const threshold = Math.max(4, Math.ceil(clusterConnections.length * 0.5));
+
+    addressCounts.forEach((count, address) => {
+      if (count < threshold) return;
+      issues.push(
+        issue(
+          'ADDRESS_CONCENTRATION',
+          'warning',
+          '连接集中在单一地址',
+          '较多客户端连接集中在同一个地址，主机或网关故障会影响多个生产或消费链路。',
+          '检查该地址上的客户端部署密度，必要时拆分实例或调整负载分布。',
+          {
+            cluster,
+            evidence: [`${address}: ${count}/${clusterConnections.length}`],
+            id: `${JSON.stringify([cluster, address])}:ADDRESS_CONCENTRATION`,
+          },
+        ),
+      );
+    });
   });
 };
 
-const issuesForResource = (issues: ClientConnectionIssue[], resource: string) =>
-  issues.filter((issue) => issue.resource === resource);
+const issuesForResource = (issues: ClientConnectionIssue[], cluster: string, resource: string) =>
+  issues.filter((issue) => issue.cluster === cluster && issue.resource === resource);
 
 const buildResourceSummaries = (
   groups: ConnectionGroup[],
@@ -486,9 +541,12 @@ const buildResourceSummaries = (
   groups
     .map((group) => {
       const resource = `${group.type}:${group.resource}`;
-      const resourceIssues = issuesForResource(issues, resource);
+      const resourceIssues = issuesForResource(issues, group.cluster, resource);
       return {
-        id: resource,
+        // Cluster-scoped identity keeps rows from different physical clusters apart
+        // (it doubles as the table row key); the resource field stays the readable name.
+        id: JSON.stringify([group.cluster, group.type, group.resource]),
+        cluster: group.cluster,
         type: group.type,
         resource: group.resource,
         connectionCount: group.connections.length,
@@ -517,21 +575,40 @@ const buildResourceSummaries = (
       );
     });
 
+const scopedDistinctCount = (
+  connections: ClientConnection[],
+  valueOf: (connection: ClientConnection) => string | null | undefined,
+): number =>
+  new Set(
+    connections.map((connection) =>
+      JSON.stringify([connection.clusterName, normalizeText(valueOf(connection))]),
+    ),
+  ).size;
+
 const buildSummary = (
   connections: ClientConnection[],
+  groups: ConnectionGroup[],
   issues: ClientConnectionIssue[],
   resources: ClientResourceSummary[],
 ): ClientConnectionHealthSummary => {
   const addressConcentrationIssues = issues.filter((item) => item.code === 'ADDRESS_CONCENTRATION');
   return {
     totalConnections: connections.length,
-    uniqueClientCount: uniqueSorted(connections.map((connection) => connection.clientId)).length,
-    uniqueAddressCount: uniqueSorted(connections.map((connection) => connection.address)).length,
+    // Distinct counts keep the cluster scope: the same ID string observed on two
+    // independent physical clusters is two clients, not one pooled entry.
+    uniqueClientCount: scopedDistinctCount(connections, (connection) => connection.clientId),
+    uniqueAddressCount: scopedDistinctCount(connections, (connection) => connection.address),
     resourceCount: resources.length,
     partialConnectionCount: connections.filter((connection) => connection.partial).length,
-    mixedProtocolResourceCount: resources.filter((resource) => resource.protocols.length > 1)
-      .length,
-    mixedVersionResourceCount: resources.filter((resource) => resource.versions.length > 1).length,
+    // Mirror addResourceIssues: only reported dimensions form a mixed resource.
+    mixedProtocolResourceCount: groups.filter(
+      (group) =>
+        reportedValues(group.connections.map((connection) => connection.protocol)).length > 1,
+    ).length,
+    mixedVersionResourceCount: groups.filter(
+      (group) =>
+        reportedValues(group.connections.map((connection) => connection.version)).length > 1,
+    ).length,
     singleConsumerGroupCount: issues.filter((item) => item.code === 'SINGLE_CONSUMER_INSTANCE')
       .length,
     concentratedAddressCount: addressConcentrationIssues.length,
@@ -576,12 +653,14 @@ const buildRecommendations = (issues: ClientConnectionIssue[]): string[] => {
 export const analyzeClientConnections = (
   connections: ClientConnection[],
 ): ClientConnectionDiagnostics => {
-  // Only the identity fields are normalized up front. protocol/language/version stay raw so
-  // the unknown-field checks can tell "the Proxy response carries no protocol/version" (an
-  // expected shape, rendered with a dedicated unknown sentinel on the clients page) apart
-  // from a present-but-unrecognized value; every other consumer normalizes at point of use.
+  // Only the identity fields are normalized up front (cluster included — it scopes
+  // every grouping below). protocol/language/version stay raw so the unknown-field
+  // checks can tell "the Proxy response carries no protocol/version" (an expected
+  // shape, rendered with a dedicated unknown sentinel on the clients page) apart from
+  // a present-but-unrecognized value; every other consumer normalizes at point of use.
   const normalizedConnections = connections.map((connection) => ({
     ...connection,
+    clusterName: normalizeText(connection.clusterName),
     clientId: normalizeText(connection.clientId),
     type: normalizeText(connection.type),
     groupOrTopic: normalizeText(connection.groupOrTopic),
@@ -605,7 +684,7 @@ export const analyzeClientConnections = (
     statusText: STATUS_TEXT[status],
     statusColor: STATUS_COLOR[status],
     score,
-    summary: buildSummary(normalizedConnections, issues, resources),
+    summary: buildSummary(normalizedConnections, groups, issues, resources),
     resources,
     issues,
     recommendations: buildRecommendations(issues),
