@@ -95,6 +95,8 @@ func TestConfigSetContextRejectsServerCredentialsBeforeSaving(t *testing.T) {
 		"https://:example-password@studio.example.com",
 		"https://@studio.example.com",
 		"https://example-user:example-password%zz@studio.example.com",
+		"https://studio.example.com/?accessKey=example-password",
+		"https://studio.example.com/#secretKey=example-password",
 	} {
 		for _, existing := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/existing=%t", server, existing), func(t *testing.T) {

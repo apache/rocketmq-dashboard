@@ -46,6 +46,15 @@ func newConfigSetContextCommand(runtime commandRuntime) *cobra.Command {
 				if parsed.User != nil {
 					return invalidArgument("--server must not contain user info; use environment credential references")
 				}
+				// studio.Target.validate() rejects a query and a fragment at request time. Without the
+				// same guard here "--server https://host/?accessKey=..." is written to the config file
+				// and echoed back by `config get-contexts` in plain text.
+				if parsed.RawQuery != "" {
+					return invalidArgument("--server must not contain a query; use environment credential references")
+				}
+				if parsed.Fragment != "" {
+					return invalidArgument("--server must not contain a fragment; use environment credential references")
+				}
 			}
 			path, cfg, err := runtime.configForWrite()
 			if err != nil {
