@@ -81,6 +81,12 @@ export async function deleteNameserverRegistry(id: number): Promise<void> {
 export async function testClusterConnection(namesrvAddr: string): Promise<ClusterProbeResult> {
   if (isMockMode()) {
     const trimmed = namesrvAddr.trim();
+    // TestConnectionDTO declares @NotBlank namesrvAddr, so the endpoint refuses a blank address with
+    // 400 "namesrvAddr is required". The connect form's required rule accepts a whitespace-only
+    // value, so the mock must reject it here - connectionsService already does the same check.
+    if (!trimmed) {
+      throw new Error('namesrvAddr is required');
+    }
     const cluster = clusters[0];
     const brokerNames = cluster ? cluster.brokers.map((broker) => broker.name) : [];
     return {
