@@ -39,115 +39,162 @@ import java.util.Map;
 @DependsOnDatabaseInitialization
 @RequiredArgsConstructor
 public class ResourceOwnershipSchemaMigration implements InitializingBean {
-    /** Bounded retries for the index-metadata read; see {@link #indexes(Connection, String)}. */
-    private static final int INDEX_METADATA_ATTEMPTS = 5;
+    /**
+     * Bounded retries when H2 surfaces a ConcurrentModificationException from, or a stale read of,
+     * the unsynchronized index metadata that concurrent DDL mutates in place; see
+     * {@link #afterPropertiesSet()}, {@link #ensureIndex} and {@link #dropLegacyIndex}.
+     */
+    private static final int METADATA_RACE_ATTEMPTS = 5;
 
     private final DataSource dataSource;
     private final RocketMQDefaultClusterResolver defaultClusters;
 
     @Override
     public void afterPropertiesSet() throws Exception {
-        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
-            // Both tables are pre-checked; no DDL runs on any conflict and no record is discarded.
-            for (String kind : List.of("topic", "group")) {
-                String table = "rmq_instance_" + kind;
-                try (ResultSet rows = statement.executeQuery("SELECT name, COUNT(*) FROM " + table
-                        + " GROUP BY name HAVING COUNT(*) > 1")) {
-                    if (rows.next()) {
-                        throw new IllegalStateException("Global resource uniqueness migration failed: duplicate name requires manual resolution: "
-                                + table + "/" + rows.getString(1));
+        // H2 keeps every table's index list in a plain ArrayList that CREATE INDEX and DROP INDEX
+        // mutate in place without synchronization, while any statement touching the table iterates
+        // it (query planning as well as getIndexInfo), so a concurrently starting node can surface
+        // a ConcurrentModificationException wrapped in a SQLException from reads and DDL alike,
+        // or a stale answer that contradicts the concurrent map behind CREATE INDEX's existence
+        // check. The migration is idempotent by design, so {@link #ensureIndex} and
+        // {@link #dropLegacyIndex} retry their read-and-DDL pairs, and this wrapper retries the
+        // whole sequence on a fresh connection when a race escapes elsewhere — instead of
+        // serializing every startup behind one lock, which would also turn the concurrent-startup
+        // regression test into a tautology. MySQL mutates committed metadata behind row locks and
+        // never takes these paths.
+        SQLException transientFailure = null;
+        for (int attempt = 1; attempt <= METADATA_RACE_ATTEMPTS; attempt++) {
+            try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+                migrate(connection, statement);
+                return;
+            } catch (SQLException failure) {
+                if (!isConcurrentMetadataRead(failure)) {
+                    throw failure;
+                }
+                transientFailure = failure;
+            }
+        }
+        throw transientFailure;
+    }
+
+    private void migrate(Connection connection, Statement statement) throws SQLException {
+        // Both tables are pre-checked; no DDL runs on any conflict and no record is discarded.
+        for (String kind : List.of("topic", "group")) {
+            String table = "rmq_instance_" + kind;
+            try (ResultSet rows = statement.executeQuery("SELECT name, COUNT(*) FROM " + table
+                    + " GROUP BY name HAVING COUNT(*) > 1")) {
+                if (rows.next()) {
+                    throw new IllegalStateException("Global resource uniqueness migration failed: duplicate name requires manual resolution: "
+                            + table + "/" + rows.getString(1));
+                }
+            }
+        }
+        List<String> virtualNames = null;
+        for (String kind : List.of("topic", "group")) {
+            try (ResultSet rows = statement.executeQuery("SELECT r.name, r.instance_id, r.cluster_id, i.name, owner.name"
+                    + " FROM rmq_instance_" + kind + " r LEFT JOIN rmq_instance i ON i.name = r.cluster_id"
+                    + " LEFT JOIN rmq_instance owner ON owner.name = r.instance_id")) {
+                while (rows.next()) {
+                    if (!StringUtils.hasText(rows.getString(1)) || !StringUtils.hasText(rows.getString(3))
+                            || !rows.getString(1).equals(rows.getString(1).trim())
+                            || !rows.getString(3).equals(rows.getString(3).trim())) {
+                        throw new IllegalStateException("Resource ownership cannot be determined and requires manual confirmation: " + rows.getString(1));
+                    }
+                    if (!StringUtils.hasText(rows.getString(2))) {
+                        if (virtualNames == null) {
+                            virtualNames = defaultClusters.names();
+                        }
+                        if (rows.getString(4) != null || !virtualNames.contains(rows.getString(3))) {
+                            throw new IllegalStateException("Legacy empty instance_id has no trusted virtual cluster mapping and requires manual confirmation: "
+                                    + rows.getString(1));
+                        }
+                    } else if (!rows.getString(2).equals(rows.getString(2).trim())) {
+                        throw new IllegalStateException("Instance ownership identifier is not normalized and requires manual confirmation: " + rows.getString(1));
+                    } else if (rows.getString(5) == null) {
+                        if (virtualNames == null) {
+                            virtualNames = defaultClusters.names();
+                        }
+                        if (!rows.getString(2).equals(rows.getString(3))
+                                || !virtualNames.contains(rows.getString(3))) {
+                            throw new IllegalStateException("Owning instance of the resource does not exist and has no trusted virtual mapping: " + rows.getString(1));
+                        }
                     }
                 }
             }
-            List<String> virtualNames = null;
-            for (String kind : List.of("topic", "group")) {
-                try (ResultSet rows = statement.executeQuery("SELECT r.name, r.instance_id, r.cluster_id, i.name, owner.name"
-                        + " FROM rmq_instance_" + kind + " r LEFT JOIN rmq_instance i ON i.name = r.cluster_id"
-                        + " LEFT JOIN rmq_instance owner ON owner.name = r.instance_id")) {
-                    while (rows.next()) {
-                        if (!StringUtils.hasText(rows.getString(1)) || !StringUtils.hasText(rows.getString(3))
-                                || !rows.getString(1).equals(rows.getString(1).trim())
-                                || !rows.getString(3).equals(rows.getString(3).trim())) {
-                            throw new IllegalStateException("Resource ownership cannot be determined and requires manual confirmation: " + rows.getString(1));
-                        }
-                        if (!StringUtils.hasText(rows.getString(2))) {
-                            if (virtualNames == null) {
-                                virtualNames = defaultClusters.names();
-                            }
-                            if (rows.getString(4) != null || !virtualNames.contains(rows.getString(3))) {
-                                throw new IllegalStateException("Legacy empty instance_id has no trusted virtual cluster mapping and requires manual confirmation: "
-                                        + rows.getString(1));
-                            }
-                        } else if (!rows.getString(2).equals(rows.getString(2).trim())) {
-                            throw new IllegalStateException("Instance ownership identifier is not normalized and requires manual confirmation: " + rows.getString(1));
-                        } else if (rows.getString(5) == null) {
-                            if (virtualNames == null) {
-                                virtualNames = defaultClusters.names();
-                            }
-                            if (!rows.getString(2).equals(rows.getString(3))
-                                    || !virtualNames.contains(rows.getString(3))) {
-                                throw new IllegalStateException("Owning instance of the resource does not exist and has no trusted virtual mapping: " + rows.getString(1));
-                            }
-                        }
-                    }
-                }
-            }
-            statement.executeUpdate("CREATE TABLE IF NOT EXISTS rmq_instance_ownership_lock ("
-                    + "id bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT 'primary key',"
-                    + "gmt_create datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'create time',"
-                    + "gmt_modified datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'modify time',"
-                    + "name VARCHAR(128) NOT NULL, PRIMARY KEY (id), UNIQUE KEY uk_ownership_instance_name (name))"
-                    + " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-            for (String kind : List.of("topic", "group")) {
-                String table = "rmq_instance_" + kind;
-                ensureIndex(connection, table, "uk_" + kind + "_name", "name", true);
-                ensureIndex(connection, table, "idx_" + kind + "_instance", "instance_id", false);
-                ensureIndex(connection, table, "idx_" + kind + "_cluster", "cluster_id", false);
-                // Create the global unique key before dropping the legacy composite index; a mid-way failure keeps existing constraints.
-                String legacy = "uk_cluster_instance_" + kind;
-                if (indexes(connection, table).containsKey(legacy)) {
-                    try {
-                        statement.executeUpdate("ALTER TABLE " + table + " DROP INDEX " + legacy);
-                    } catch (SQLException failure) {
-                        if (indexes(connection, table).containsKey(legacy)) {
-                            throw failure;
-                        }
-                    }
-                }
-            }
+        }
+        statement.executeUpdate("CREATE TABLE IF NOT EXISTS rmq_instance_ownership_lock ("
+                + "id bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT 'primary key',"
+                + "gmt_create datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'create time',"
+                + "gmt_modified datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'modify time',"
+                + "name VARCHAR(128) NOT NULL, PRIMARY KEY (id), UNIQUE KEY uk_ownership_instance_name (name))"
+                + " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        for (String kind : List.of("topic", "group")) {
+            String table = "rmq_instance_" + kind;
+            ensureIndex(connection, table, "uk_" + kind + "_name", "name", true);
+            ensureIndex(connection, table, "idx_" + kind + "_instance", "instance_id", false);
+            ensureIndex(connection, table, "idx_" + kind + "_cluster", "cluster_id", false);
+            dropLegacyIndex(connection, table, "uk_cluster_instance_" + kind);
         }
     }
 
     private void ensureIndex(Connection connection, String table, String name, String column, boolean unique)
             throws SQLException {
-        Map<String, List<String>> indexes = indexes(connection, table);
+        // H2 answers CREATE INDEX's own existence check from a concurrent map, but serves getIndexInfo
+        // from the table's plain ArrayList of indexes, which DDL mutates without synchronization. The
+        // losing side of a racing CREATE INDEX can therefore see "already exists" while its metadata
+        // read still misses the winner's index, and vice versa. The read and the create are each
+        // idempotent, so retry the pair a bounded number of times instead of deciding from one read;
+        // a conflicting definition still throws immediately, so duplicate-data failures are never
+        // swallowed — the create is simply re-attempted until the metadata read settles or the
+        // attempts run out.
         String expected = (unique ? "unique:" : "index:") + column;
-        if (indexes.containsKey(name)) {
-            if (!indexes.get(name).equals(List.of(expected))) {
-                throw new IllegalStateException("Index definition violates the ownership constraint: " + table + "." + name);
+        SQLException failure = null;
+        for (int attempt = 1; attempt <= METADATA_RACE_ATTEMPTS; attempt++) {
+            Map<String, List<String>> indexes = indexes(connection, table);
+            if (indexes.containsKey(name)) {
+                if (!indexes.get(name).equals(List.of(expected))) {
+                    throw new IllegalStateException("Index definition violates the ownership constraint: " + table + "." + name);
+                }
+                return;
             }
-            return;
-        }
-        try (Statement statement = connection.createStatement()) {
-            statement.executeUpdate("CREATE " + (unique ? "UNIQUE " : "") + "INDEX " + name
-                    + " ON " + table + " (" + column + ")");
-        } catch (SQLException failure) {
-            // Concurrent startups only accept an identical index; failures caused by duplicate data must not be swallowed.
-            if (!List.of(expected).equals(indexes(connection, table).get(name))) {
-                throw failure;
+            try (Statement statement = connection.createStatement()) {
+                statement.executeUpdate("CREATE " + (unique ? "UNIQUE " : "") + "INDEX " + name
+                        + " ON " + table + " (" + column + ")");
+                return;
+            } catch (SQLException e) {
+                failure = e;
             }
         }
+        throw failure;
+    }
+
+    /** The legacy composite index is dropped only after the global unique key exists, so a mid-way failure keeps existing constraints. */
+    private void dropLegacyIndex(Connection connection, String table, String name) throws SQLException {
+        // The same unsynchronized index list serves this read, so the loser of a racing DROP may be
+        // told the index is still there; retry the pair for the same reason as {@link #ensureIndex}.
+        SQLException failure = null;
+        for (int attempt = 1; attempt <= METADATA_RACE_ATTEMPTS; attempt++) {
+            if (!indexes(connection, table).containsKey(name)) {
+                return;
+            }
+            try (Statement statement = connection.createStatement()) {
+                statement.executeUpdate("ALTER TABLE " + table + " DROP INDEX " + name);
+                return;
+            } catch (SQLException e) {
+                failure = e;
+            }
+        }
+        throw failure;
     }
 
     private Map<String, List<String>> indexes(Connection connection, String table) throws SQLException {
         // H2 serves getIndexInfo from a mutable metadata cache without taking a snapshot, so an index
         // created by a concurrently starting node surfaces here as a ConcurrentModificationException
         // wrapped in a SQLException. The read is idempotent and ensureIndex already tolerates a racing
-        // CREATE INDEX, so retry it a bounded number of times instead of serializing every startup
-        // behind one lock — a lock would also turn the concurrent-startup regression test into a
-        // tautology. MySQL reads committed metadata and never takes this path.
+        // CREATE INDEX, so retry it here to keep the common case from redoing the pre-checks;
+        // {@link #afterPropertiesSet()} retries the whole sequence when a race escapes elsewhere.
         SQLException transientFailure = null;
-        for (int attempt = 1; attempt <= INDEX_METADATA_ATTEMPTS; attempt++) {
+        for (int attempt = 1; attempt <= METADATA_RACE_ATTEMPTS; attempt++) {
             try {
                 return readIndexes(connection, table);
             } catch (SQLException failure) {
