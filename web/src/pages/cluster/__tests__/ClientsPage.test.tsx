@@ -168,6 +168,148 @@ async function expectInteractive(element: Element) {
 }
 
 describe('Clients page', () => {
+  it('doesNotDiagnoseConnectionsBeforeTheFirstReadCompletesTest', async () => {
+    const registry = deferred<ClusterInfo[]>();
+    const pending = deferred<ClientConnection[]>();
+    vi.mocked(clusterService.listRegistryClusters).mockReturnValue(registry.promise);
+    vi.mocked(connectionsService.listConnections).mockReturnValue(pending.promise);
+    renderWithProviders(<ClientsPage />);
+
+    expect(screen.queryByTestId('client-connection-diagnostics')).not.toBeInTheDocument();
+    await act(async () => registry.resolve(registryClusters));
+    await waitFor(() => expect(connectionsService.listConnections).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId('client-connection-diagnostics')).not.toBeInTheDocument();
+
+    await act(async () => pending.resolve([connection]));
+    expect(await screen.findByTestId('client-connection-diagnostics')).toBeInTheDocument();
+  });
+
+  it('doesNotDiagnoseAFailedConnectionReadAndRecoversAfterRetryTest', async () => {
+    const retry = deferred<ClientConnection[]>();
+    let retrying = false;
+    vi.mocked(connectionsService.listConnections).mockImplementation(() =>
+      retrying ? retry.promise : Promise.reject(new Error('Connection inventory unavailable')),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ClientsPage />);
+
+    expect(await screen.findByText('Connection inventory unavailable')).toBeInTheDocument();
+    expect(screen.queryByTestId('client-connection-diagnostics')).not.toBeInTheDocument();
+    retrying = true;
+    await user.click(screen.getByRole('button', { name: /重\s*试/ }));
+    await waitFor(() => expect(connectionsService.listConnections).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId('client-connection-diagnostics')).not.toBeInTheDocument();
+
+    await act(async () => retry.resolve([connection]));
+    expect(await screen.findByTestId('client-connection-diagnostics')).toBeInTheDocument();
+    expect(screen.queryByText('Connection inventory unavailable')).not.toBeInTheDocument();
+  });
+
+  it('doesNotDiagnoseAFailedRegistryReadAndRecoversAfterRetryTest', async () => {
+    let retrying = false;
+    vi.mocked(clusterService.listRegistryClusters).mockImplementation(() =>
+      retrying
+        ? Promise.resolve(registryClusters)
+        : Promise.reject(new Error('Registry inventory unavailable')),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ClientsPage />);
+
+    expect(await screen.findByText('Registry inventory unavailable')).toBeInTheDocument();
+    expect(screen.queryByTestId('client-connection-diagnostics')).not.toBeInTheDocument();
+    expect(connectionsService.listConnections).not.toHaveBeenCalled();
+    retrying = true;
+    await user.click(screen.getByRole('button', { name: /重\s*试/ }));
+    expect(await screen.findByTestId('client-connection-diagnostics')).toBeInTheDocument();
+  });
+
+  it('doesNotDiagnoseConnectionsWithoutARegisteredNameserverTest', async () => {
+    vi.mocked(clusterService.listRegistryClusters).mockResolvedValue([]);
+    renderWithProviders(<ClientsPage />);
+
+    await waitFor(() => expect(clusterService.listRegistryClusters).toHaveBeenCalledTimes(1));
+    expect(connectionsService.listConnections).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('client-connection-diagnostics')).not.toBeInTheDocument();
+  });
+
+  it('diagnosesAConfirmedEmptyConnectionInventoryTest', async () => {
+    vi.mocked(connectionsService.listConnections).mockResolvedValue([]);
+    renderWithProviders(<ClientsPage />);
+
+    await waitFor(() => expect(connectionsService.listConnections).toHaveBeenCalledTimes(1));
+    const diagnostics = await screen.findByTestId('client-connection-diagnostics');
+    expect(within(diagnostics).getByText('未发现客户端连接')).toBeInTheDocument();
+    expect(within(diagnostics).getByText('客户端连接存在高风险')).toBeInTheDocument();
+    expect(within(diagnostics).getByText('76/100')).toBeInTheDocument();
+  });
+
+  it('doesNotRestoreAnEarlierEmptyDiagnosisWhenRegistryRetryFinishesFirstTest', async () => {
+    const retry = deferred<ClientConnection[]>();
+    let phase = 'initial';
+    vi.mocked(clusterService.listRegistryClusters).mockImplementation(async () =>
+      registryClusters.map((cluster) => ({ ...cluster })),
+    );
+    vi.mocked(connectionsService.listConnections).mockImplementation((query) => {
+      if (phase === 'initial') return Promise.resolve([]);
+      if (phase === 'retry') return retry.promise;
+      return Promise.reject(new Error(`${query?.type ?? 'ALL'} inventory unavailable`));
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<ClientsPage />);
+    await waitFor(() => expect(connectionsService.listConnections).toHaveBeenCalledTimes(1));
+    expect(await screen.findByTestId('client-connection-diagnostics')).toBeInTheDocument();
+
+    phase = 'failed';
+    await user.click(screen.getByRole('combobox', { name: '类型' }));
+    await selectOption(user, 'Consumer');
+    expect(await screen.findByText('Consumer inventory unavailable')).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: '类型' }));
+    await selectOption(user, '全部');
+    expect(await screen.findByText('ALL inventory unavailable')).toBeInTheDocument();
+
+    phase = 'retry';
+    await user.click(screen.getByRole('button', { name: /重\s*试/ }));
+    await waitFor(() => expect(clusterService.listRegistryClusters).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(vi.mocked(connectionsService.listConnections).mock.calls.length).toBeGreaterThan(3),
+    );
+    expect(screen.queryByText('ALL inventory unavailable')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('client-connection-diagnostics')).not.toBeInTheDocument();
+
+    await act(async () => retry.resolve([connection]));
+    expect(await screen.findByTestId('client-connection-diagnostics')).toBeInTheDocument();
+    expect(screen.queryByText('未发现客户端连接')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { scope: 'nameserver', label: 'NameServer', option: 'rocketmq2 (namesrv-2:9876)' },
+    { scope: 'cluster', label: '所属集群', option: 'ns-audit' },
+    { scope: 'type', label: '类型', option: 'Consumer' },
+  ])(
+    'hidesPreviousDiagnosticsUntilTheNewScopeReadCompletes $scope Test',
+    async ({ label, option }) => {
+      const next = deferred<ClientConnection[]>();
+      let switched = false;
+      vi.mocked(connectionsService.listConnections).mockImplementation(() =>
+        switched ? next.promise : Promise.resolve([]),
+      );
+      const user = userEvent.setup();
+      renderWithProviders(<ClientsPage />);
+      await waitFor(() => expect(connectionsService.listConnections).toHaveBeenCalledTimes(1));
+      expect(await screen.findByTestId('client-connection-diagnostics')).toBeInTheDocument();
+
+      switched = true;
+      await user.click(screen.getByRole('combobox', { name: label }));
+      await selectOption(user, option);
+      await waitFor(() => expect(connectionsService.listConnections).toHaveBeenCalledTimes(2));
+      expect(screen.queryByTestId('client-connection-diagnostics')).not.toBeInTheDocument();
+
+      await act(async () => next.resolve([connection]));
+      expect(await screen.findByTestId('client-connection-diagnostics')).toBeInTheDocument();
+      expect(screen.queryByText('未发现客户端连接')).not.toBeInTheDocument();
+    },
+  );
+
   it('returns to the first page when the connection search changes', async () => {
     const pagedConnections = Array.from({ length: 21 }, (_, index) => ({
       ...connection,
