@@ -992,6 +992,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'alerts.threshold': { zh: '阈值条件', en: 'Threshold' },
   'alerts.duration': { zh: '持续时间', en: 'Duration' },
   'alerts.reminderInterval': { zh: '重提醒间隔', en: 'Reminder Interval' },
+  'alerts.severity': { zh: '严重级别', en: 'Severity' },
+  'alerts.severityCritical': { zh: '严重', en: 'Critical' },
+  'alerts.severityWarning': { zh: '警告', en: 'Warning' },
+  'alerts.severityInfo': { zh: '信息', en: 'Info' },
+  'alerts.severityHelp': {
+    zh: '规则触发时告警事件的级别，决定系统告警页的级别标签与过滤',
+    en: 'Level of the alert event when this rule fires; drives the level tag and filter on the system alerts page',
+  },
   'alerts.channels': { zh: '通知渠道', en: 'Channels' },
   'alerts.lastTriggered': { zh: '最近触发', en: 'Last Triggered' },
   'alerts.neverTriggered': { zh: '从未触发', en: 'Never' },
@@ -1666,7 +1674,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '会话已恢复到进行中',
     en: 'Conversation moved back to active',
   },
-  'ai.list.archiveFailed': { zh: '归档操作失败，请稍后重试', en: 'Archive action failed, please retry later' },
+  'ai.list.archiveFailed': {
+    zh: '归档操作失败，请稍后重试',
+    en: 'Archive action failed, please retry later',
+  },
   'ai.list.deleteConfirm': { zh: '删除这条会话？', en: 'Delete this conversation?' },
   'ai.list.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
   'ai.list.deleteSelectedConfirm': {
