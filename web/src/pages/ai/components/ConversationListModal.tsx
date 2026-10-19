@@ -175,7 +175,11 @@ const ConversationListPanel = ({
   const deleting = deletingIds.length > 0;
   // Pulled out of `list` for the callback below: the hook returns a fresh object every render, so
   // depending on it would rebuild `columns` — and with it every cell — on each one.
-  const { items, page, setPage, reload, archived } = list;
+  const { items, reload, archived } = list;
+  const reloadRef = useRef(reload);
+  useEffect(() => {
+    reloadRef.current = reload;
+  }, [reload]);
   const rowCount = items.length;
   const mountedRef = useRef(false);
   useEffect(() => {
@@ -253,15 +257,10 @@ const ConversationListPanel = ({
       // belong to the panel is the refresh below: re-querying a list nobody renders any more wastes a
       // request and drives this hook's state from a component that is already gone.
       if (!mountedRef.current) return;
-      // A page emptied by the delete has to fall back one, or the pager keeps offering a page that
-      // no longer exists; `setPage` re-queries through the hook, `reload` covers every other case.
-      if (deletedCount > 0 && deletedCount >= rowCount && page > 1) {
-        setPage(page - 1);
-      } else {
-        reload();
-      }
+      // Refresh today's query; the hook clamps an emptied page using the current server total.
+      reloadRef.current();
     },
-    [onDeleted, page, reload, rowCount, setPage, t],
+    [onDeleted, t],
   );
 
   const columns = useMemo<ColumnsType<AiConversationListItemVO>>(
