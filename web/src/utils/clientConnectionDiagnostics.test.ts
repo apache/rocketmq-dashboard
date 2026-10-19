@@ -260,3 +260,247 @@ describe('client connection diagnostics', () => {
     );
   });
 });
+
+describe('client connection diagnostics across physical clusters', () => {
+  it('keeps same-named resources from independent clusters scoped per cluster', () => {
+    const diagnostics = analyzeClientConnections([
+      connection({ clusterName: 'cluster-a', clientId: 'producer-a', version: '5.0.7' }),
+      connection({
+        clusterName: 'cluster-b',
+        clientId: 'producer-b',
+        version: '4.9.8',
+        address: '10.0.2.10:49152',
+      }),
+    ]);
+
+    expect(diagnostics.summary.resourceCount).toBe(2);
+    expect(diagnostics.summary.mixedVersionResourceCount).toBe(0);
+    expect(diagnostics.resources).toEqual([
+      expect.objectContaining({ cluster: 'cluster-a', resource: 'order-events', status: 'healthy' }),
+      expect.objectContaining({ cluster: 'cluster-b', resource: 'order-events', status: 'healthy' }),
+    ]);
+    expect(diagnostics.issues).toEqual([]);
+  });
+
+  it('does not flag a client ID shared across clusters as a collision', () => {
+    const diagnostics = analyzeClientConnections([
+      connection({ clusterName: 'cluster-a', clientId: 'shared-client' }),
+      connection({
+        clusterName: 'cluster-b',
+        clientId: 'shared-client',
+        address: '10.0.2.10:49152',
+      }),
+    ]);
+
+    expect(diagnostics.issues.filter((item) => item.code === 'CLIENT_ID_COLLISION')).toEqual([]);
+  });
+
+  it('does not flag identical connection records from different clusters as duplicates', () => {
+    const diagnostics = analyzeClientConnections([
+      connection({ clusterName: 'cluster-a', clientId: 'same-client' }),
+      connection({ clusterName: 'cluster-b', clientId: 'same-client' }),
+    ]);
+
+    expect(
+      diagnostics.issues.filter((item) => item.code === 'EXACT_DUPLICATE_CONNECTION'),
+    ).toEqual([]);
+  });
+
+  it('counts distinct clients and addresses within their cluster scope', () => {
+    const diagnostics = analyzeClientConnections([
+      connection({ clusterName: 'cluster-a', clientId: 'same-client' }),
+      connection({
+        clusterName: 'cluster-b',
+        clientId: 'same-client',
+        address: '10.0.2.10:49152',
+      }),
+    ]);
+
+    expect(diagnostics.summary.uniqueClientCount).toBe(2);
+    expect(diagnostics.summary.uniqueAddressCount).toBe(2);
+  });
+
+  it('bases address concentration on each cluster scope instead of pooled inventories', () => {
+    // All five rows share one address string; pooled they trip the concentration
+    // threshold, but no single physical cluster holds enough rows to judge it.
+    const diagnostics = analyzeClientConnections([
+      connection({ clusterName: 'cluster-a', clientId: 'a-1' }),
+      connection({ clusterName: 'cluster-a', clientId: 'a-2' }),
+      connection({ clusterName: 'cluster-b', clientId: 'b-1' }),
+      connection({ clusterName: 'cluster-b', clientId: 'b-2' }),
+      connection({ clusterName: 'cluster-b', clientId: 'b-3' }),
+    ]);
+
+    expect(diagnostics.summary.concentratedAddressCount).toBe(0);
+  });
+
+  it('still flags concentration inside one cluster and identifies the cluster', () => {
+    const diagnostics = analyzeClientConnections([
+      connection({ clusterName: 'cluster-a', clientId: 'a-1' }),
+      connection({ clusterName: 'cluster-a', clientId: 'a-2' }),
+      connection({ clusterName: 'cluster-a', clientId: 'a-3' }),
+      connection({ clusterName: 'cluster-a', clientId: 'a-4' }),
+    ]);
+
+    expect(diagnostics.summary.concentratedAddressCount).toBe(1);
+    expect(diagnostics.issues.find((item) => item.code === 'ADDRESS_CONCENTRATION')).toMatchObject({
+      cluster: 'cluster-a',
+      evidence: ['10.0.1.10:49152: 4/4'],
+    });
+  });
+
+  it('preserves same-cluster mixed-version and duplicate diagnoses with cluster identity', () => {
+    const diagnostics = analyzeClientConnections([
+      connection({ clusterName: 'cluster-a', clientId: 'producer-a', version: '5.0.7' }),
+      connection({
+        clusterName: 'cluster-a',
+        clientId: 'producer-b',
+        version: '4.9.8',
+        address: '10.0.1.11:49152',
+      }),
+      connection({ clusterName: 'cluster-b', clientId: 'dup-client' }),
+      connection({ clusterName: 'cluster-b', clientId: 'dup-client' }),
+    ]);
+
+    expect(diagnostics.summary.mixedVersionResourceCount).toBe(1);
+    expect(diagnostics.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'MIXED_VERSION_RESOURCE',
+          cluster: 'cluster-a',
+          resource: 'Producer:order-events',
+        }),
+        expect.objectContaining({
+          code: 'EXACT_DUPLICATE_CONNECTION',
+          cluster: 'cluster-b',
+          clientId: 'dup-client',
+        }),
+      ]),
+    );
+  });
+});
+
+describe('client connection diagnostics with unknown provider results', () => {
+  it('does not infer mixed protocol and version metadata from unknown proxy rows', () => {
+    // Mirrors RocketMQClientProvider.toConnectionVO: Proxy-derived rows carry no
+    // protocol/version by design, so an unknown dimension is not an observed one.
+    const diagnostics = analyzeClientConnections([
+      connection({
+        type: 'Consumer',
+        groupOrTopic: 'cg-order',
+        clientId: 'direct-consumer',
+        protocol: 'Remoting',
+        version: 'V5_0_0',
+      }),
+      connection({
+        type: 'Consumer',
+        groupOrTopic: 'cg-order',
+        clientId: 'proxy-consumer',
+        protocol: null,
+        version: null,
+        address: '10.0.1.11:49152',
+      }),
+    ]);
+
+    expect(diagnostics.issues.map((item) => item.code)).not.toContain('MIXED_PROTOCOL_RESOURCE');
+    expect(diagnostics.issues.map((item) => item.code)).not.toContain('MIXED_VERSION_RESOURCE');
+    expect(diagnostics.summary.mixedProtocolResourceCount).toBe(0);
+    expect(diagnostics.summary.mixedVersionResourceCount).toBe(0);
+    expect(diagnostics.status).toBe('healthy');
+  });
+
+  it('does not infer mixed language or version dimensions from unknown metadata', () => {
+    const diagnostics = analyzeClientConnections([
+      connection({
+        type: 'Consumer',
+        groupOrTopic: 'cg-order',
+        clientId: 'direct-consumer',
+        protocol: 'Remoting',
+        language: 'Java',
+        version: 'V5_0_0',
+      }),
+      connection({
+        type: 'Consumer',
+        groupOrTopic: 'cg-order',
+        clientId: 'proxy-consumer',
+        protocol: null,
+        language: null,
+        version: null,
+        address: '10.0.1.11:49152',
+      }),
+    ]);
+
+    expect(
+      diagnostics.issues.filter((item) => item.code === 'MIXED_VERSION_RESOURCE'),
+    ).toEqual([]);
+  });
+
+  it('does not assert a single online consumer from an incomplete scan', () => {
+    const diagnostics = analyzeClientConnections([
+      connection({
+        type: 'Consumer',
+        groupOrTopic: 'cg-order',
+        clientId: 'consumer-a',
+        partial: true,
+      }),
+    ]);
+
+    expect(
+      diagnostics.issues.filter((item) => item.code === 'SINGLE_CONSUMER_INSTANCE'),
+    ).toEqual([]);
+    expect(diagnostics.summary.singleConsumerGroupCount).toBe(0);
+  });
+
+  it('describes partial scans for both producer and consumer queries', () => {
+    const diagnostics = analyzeClientConnections([
+      connection({
+        type: 'Consumer',
+        groupOrTopic: 'cg-order',
+        clientId: 'consumer-a',
+        partial: true,
+      }),
+    ]);
+
+    const partialIssue = diagnostics.issues.find(
+      (item) => item.code === 'PARTIAL_CONNECTION_SCAN',
+    );
+    expect(partialIssue).toBeDefined();
+    expect(partialIssue?.description).toContain('Producer');
+    expect(partialIssue?.description).toContain('Consumer');
+  });
+
+  it('keeps genuine mixed dimensions and custom reported metadata diagnosed', () => {
+    const diagnostics = analyzeClientConnections([
+      connection({
+        type: 'Consumer',
+        groupOrTopic: 'cg-order',
+        clientId: 'direct-consumer',
+        protocol: 'Remoting',
+        version: 'V5_0_0',
+      }),
+      connection({
+        type: 'Consumer',
+        groupOrTopic: 'cg-order',
+        clientId: 'custom-consumer',
+        protocol: 'Custom',
+        version: 'V4_9_8',
+        address: '10.0.1.11:49152',
+      }),
+    ]);
+
+    expect(diagnostics.issues.map((item) => item.code)).toContain('MIXED_PROTOCOL_RESOURCE');
+    expect(diagnostics.issues.map((item) => item.code)).toContain('MIXED_VERSION_RESOURCE');
+    expect(diagnostics.issues.map((item) => item.code)).toContain('UNKNOWN_PROTOCOL');
+    expect(diagnostics.summary.mixedProtocolResourceCount).toBe(1);
+    expect(diagnostics.summary.mixedVersionResourceCount).toBe(1);
+  });
+
+  it('still flags a single online consumer when the scan is complete', () => {
+    const diagnostics = analyzeClientConnections([
+      connection({ type: 'Consumer', groupOrTopic: 'cg-order', clientId: 'consumer-a' }),
+    ]);
+
+    expect(diagnostics.summary.singleConsumerGroupCount).toBe(1);
+    expect(diagnostics.issues.map((item) => item.code)).toContain('SINGLE_CONSUMER_INSTANCE');
+  });
+});
