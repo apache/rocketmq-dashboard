@@ -39,6 +39,7 @@ public class AlertRuleTransferService {
             if (candidate.getMetric() != null) {
                 candidate.setMetric(candidate.getMetric().trim());
             }
+            NativeAlertRulePolicy.validate(candidate);
             metricCatalogService.validate(candidate);
             return candidate;
         }).toList();

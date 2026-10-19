@@ -150,6 +150,12 @@ The metric catalog is capability-aware. The rule editor must query the selected 
 
 Rules are structured. Studio does not parse or execute free-form PromQL.
 
+New, updated, imported, and trial rules require a finite threshold. NaN and positive
+or negative infinity are rejected before persistence or evaluation. Explicit JSON
+null is rejected; an omitted threshold retains the default zero, including for
+`UNAVAILABLE` rules. Finite negative values, signed zero, and large finite values
+remain valid. PromQL export keeps its existing fallback for legacy non-finite data.
+
 ```text
 StudioAlertRule
   id

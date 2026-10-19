@@ -120,4 +120,25 @@ class NativeAlertRulePolicyTest {
     private static AlertRuleVO.AlertRuleVOBuilder rule(AlertDomain domain, String metric) {
         return AlertRuleVO.builder().domain(domain).name("Test rule").metric(metric).consecutiveSamples(1);
     }
+    @Test
+    void rejectsNonFiniteThresholdsForNativeAndLegacyRulesTest() {
+        for (double threshold : new double[]{Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY}) {
+            for (String metric : List.of("consumer.lag.total", "rocketmq_consumer_lag_messages")) {
+                assertThatThrownBy(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.BUSINESS, metric)
+                        .instanceId("local").threshold(threshold).build()))
+                        .isInstanceOf(BusinessException.class).hasMessage("threshold must be finite");
+            }
+        }
+    }
+
+    @Test
+    void acceptsFiniteThresholdsForNativeAndLegacyRulesTest() {
+        for (double threshold : new double[]{0.0, -0.0, -12.5, 1e308, Double.MAX_VALUE}) {
+            for (String metric : List.of("consumer.lag.total", "rocketmq_consumer_lag_messages")) {
+                assertThatCode(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.BUSINESS, metric)
+                        .instanceId("local").threshold(threshold).build())).doesNotThrowAnyException();
+            }
+        }
+    }
+
 }
