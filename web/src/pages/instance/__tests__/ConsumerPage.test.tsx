@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App, ConfigProvider, Modal, message, theme } from 'antd';
+import { App, ConfigProvider, Form, Modal, message, theme } from 'antd';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
@@ -614,6 +614,34 @@ describe('Consumer page', () => {
     expect(await screen.findByText('cg-created')).toBeInTheDocument();
     expect(screen.getByText('共 2 个 Group')).toBeInTheDocument();
     confirmSpy.mockRestore();
+  });
+
+  it('reports an unexpected create form validation failure without opening confirmation', async () => {
+    const useFormSpy = vi.spyOn(Form, 'useForm');
+    const errorSpy = vi.spyOn(message, 'error').mockImplementation((() => undefined) as never);
+    const confirmSpy = vi.spyOn(Modal, 'confirm');
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    await screen.findByText('remote-cg');
+    const createButton = screen.getByRole('button', { name: '创建 Group' });
+    await waitFor(() => expect(createButton).toBeEnabled());
+    await user.click(createButton);
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText('Group 名称'), 'cg-invalid');
+
+    const createForm = useFormSpy.mock.results
+      .map((result) => result.value?.[0])
+      .find((form) => form?.getFieldValue('name') === 'cg-invalid');
+    expect(createForm).toBeDefined();
+    vi.spyOn(createForm!, 'validateFields').mockRejectedValueOnce(new Error('validation crashed'));
+
+    await user.click(within(dialog).getByRole('button', { name: /创\s*建/ }));
+
+    await waitFor(() => expect(errorSpy).toHaveBeenCalledWith('消费组创建失败'));
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(consumerService.createConsumerGroup).not.toHaveBeenCalled();
+    expect(dialog).toBeInTheDocument();
   });
 
   it('prefills the group search from the ?group= query parameter', async () => {
@@ -2108,6 +2136,39 @@ describe('Consumer page', () => {
     await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
 
     expect(await within(dialog).findByText('请输入重试队列数')).toBeInTheDocument();
+    expect(consumerService.updateConsumerGroupSettings).not.toHaveBeenCalled();
+    expect(dialog).toBeInTheDocument();
+  });
+
+  it('reports an unexpected settings form validation failure without submitting', async () => {
+    vi.mocked(consumerService.getConsumerGroupSettings).mockResolvedValue({
+      groupName: 'remote-cg',
+      retryQueueNums: 1,
+      retryMaxTimes: 16,
+    });
+    const useFormSpy = vi.spyOn(Form, 'useForm');
+    const errorSpy = vi.spyOn(message, 'error').mockImplementation((() => undefined) as never);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    const row = await screen.findByRole('row', { name: /remote-cg/ });
+    await user.click(within(row).getByRole('button', { name: /详\s*情/ }));
+    const dialog = await screen.findByRole('dialog', { name: /remote-cg/ });
+    await user.click(within(dialog).getByRole('tab', { name: /配\s*置/ }));
+    const retryQueueInput = await within(dialog).findByLabelText('重试队列数');
+    await waitFor(() => expect(retryQueueInput).toHaveValue('1'));
+
+    const settingsForm = useFormSpy.mock.results
+      .map((result) => result.value?.[0])
+      .find((form) => form?.getFieldValue('retryQueueNums') === 1);
+    expect(settingsForm).toBeDefined();
+    vi.spyOn(settingsForm!, 'validateFields').mockRejectedValueOnce(new Error('validation crashed'));
+
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() =>
+      expect(errorSpy).toHaveBeenCalledWith('保存消费组配置失败，请稍后重试'),
+    );
     expect(consumerService.updateConsumerGroupSettings).not.toHaveBeenCalled();
     expect(dialog).toBeInTheDocument();
   });
