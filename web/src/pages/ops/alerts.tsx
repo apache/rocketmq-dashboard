@@ -176,6 +176,7 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
   const [enabledFilter, setEnabledFilter] = useState<boolean | undefined>();
+  const rulesQueryRef = useRef({ version: 0, enabled: enabledFilter });
   const [rulesVersion, setRulesVersion] = useState(0);
   const [runtime, setRuntime] = useState<AlertRuleRuntime[]>([]);
   const [loading, setLoading] = useState(true);
@@ -359,6 +360,10 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
 
   useEffect(() => {
     let cancelled = false;
+    rulesQueryRef.current = {
+      version: rulesQueryRef.current.version + 1,
+      enabled: enabledFilter,
+    };
 
     void listAlertRulesPage(domain, {
       page,
@@ -411,7 +416,7 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   const selectedCount = selectedRuleIds.length;
   const hasSelectedRules = selectedCount > 0;
   const isBulkRunning = bulkAction !== null;
-  const isActionRunning = actionId !== null || isBulkRunning;
+  const isActionRunning = loading || actionId !== null || isBulkRunning;
 
   // eslint-disable-next-line react-hooks/purity
   const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
@@ -536,12 +541,22 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
 
   const handleToggle = async (rule: AlertRule, enabled: boolean) => {
     if (isActionRunning) return;
+    const queryVersion = rulesQueryRef.current.version;
     setActionId(`toggle-${rule.id}`);
     try {
       const updated = await (domain === 'CLUSTER'
         ? toggleAlertRule(rule.id, enabled)
         : toggleAlertRule(rule.id, enabled, domain));
-      setRules((previous) => previous.map((item) => (item.id === rule.id ? updated : item)));
+      const queryChanged = queryVersion !== rulesQueryRef.current.version;
+      if (!queryChanged) {
+        setRules((previous) => previous.map((item) => (item.id === rule.id ? updated : item)));
+      }
+      // A toggle can change filtered membership, page fill and the result-set total.
+      // The effect reloads the current query, including navigation during the mutation.
+      if (queryChanged || rulesQueryRef.current.enabled !== undefined) {
+        setLoading(true);
+        refreshRules();
+      }
     } catch {
       message.error(t('alerts.ruleUpdateFailed'));
     } finally {
@@ -569,6 +584,7 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     const targetIds = selectedRuleIds.map(Number);
     if (targetIds.length === 0 || isActionRunning) return;
 
+    const queryVersion = rulesQueryRef.current.version;
     setBulkAction(enabled ? 'enable' : 'disable');
     try {
       const result = await (domain === 'CLUSTER'
@@ -576,12 +592,20 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
         : bulkToggleAlertRules(targetIds, enabled, domain));
       const updatedRules = new Map(result.updatedRules.map((rule) => [rule.id, rule]));
       const failedIds = Object.keys(result.failures);
+      const queryChanged = queryVersion !== rulesQueryRef.current.version;
 
       if (updatedRules.size > 0) {
-        setRules((previous) => previous.map((rule) => updatedRules.get(rule.id) ?? rule));
+        if (!queryChanged) {
+          setRules((previous) => previous.map((rule) => updatedRules.get(rule.id) ?? rule));
+        }
+        if (queryChanged || rulesQueryRef.current.enabled !== undefined) {
+          setLoading(true);
+          refreshRules();
+        }
       }
 
-      setSelectedRuleIds(failedIds.map(Number));
+      // Navigation may already have removed failed rows from the selection.
+      setSelectedRuleIds((previous) => previous.filter((id) => failedIds.includes(String(id))));
 
       if (failedIds.length === 0) {
         message.success(
