@@ -12,6 +12,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { formatUtcDateTime } from '../../../utils/format';
+import type { PageResult, SystemAlert } from '../../../api/ops';
 import { downloadCsv } from '../../../utils/download';
 import {
   acknowledgeAlert,
@@ -1114,5 +1115,186 @@ describe('SystemAlertsPage', () => {
     // The last page stays readable, but numbers derived from the failed read must not look current.
     expect(screen.getByText('Broker unavailable')).toBeInTheDocument();
     expect(levelFilterItem(/严重/).textContent).not.toMatch(/[0-9]/);
+  });
+});
+
+describe('successful acknowledgement reconciliation', () => {
+  const pendingAlert: SystemAlert = {
+    id: 41,
+    level: 'warning',
+    title: 'Pending broker acknowledgement',
+    description: 'A persisted alert event',
+    time: '2026-10-19T12:00:00',
+    acknowledged: false,
+  };
+  const acknowledgedAlert: SystemAlert = {
+    ...pendingAlert,
+    acknowledged: true,
+    acknowledgedBy: 'operator-a',
+    acknowledgedAt: '2026-10-19T12:05:00',
+  };
+  const pageOf = (
+    items: SystemAlert[],
+    page = 1,
+    total = items.length,
+  ): PageResult<SystemAlert> => ({
+    items,
+    page,
+    total,
+    size: 20,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(acknowledgeAlert).mockReset().mockResolvedValue(undefined);
+    vi.mocked(listSystemAlertsPage).mockReset();
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+  });
+
+  it.each(['en', 'zh'])(
+    'loads the persisted acknowledgement attribution in %s Test',
+    async (lang) => {
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+      vi.mocked(listSystemAlertsPage)
+        .mockResolvedValueOnce(pageOf([pendingAlert]))
+        .mockResolvedValueOnce(pageOf([acknowledgedAlert]));
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByText(pendingAlert.title);
+      await user.click(
+        screen.getByRole('button', { name: lang === 'en' ? 'Acknowledge' : /^确\s*认$/ }),
+      );
+
+      expect(await screen.findByText(new RegExp('operator-a'))).toHaveTextContent(
+        formatUtcDateTime(acknowledgedAlert.acknowledgedAt),
+      );
+      expect(acknowledgeAlert).toHaveBeenCalledTimes(1);
+      expect(acknowledgeAlert).toHaveBeenCalledWith(pendingAlert.id);
+      expect(listSystemAlertsPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1, pageSize: 20 }),
+      );
+    },
+  );
+
+  it('ignores a pre-acknowledgement filtered read that resolves after success Test', async () => {
+    const ack = deferred<void>();
+    const earlierRead = deferred<PageResult<SystemAlert>>();
+    vi.mocked(acknowledgeAlert).mockReturnValueOnce(ack.promise);
+    vi.mocked(listSystemAlertsPage)
+      .mockResolvedValueOnce(pageOf([pendingAlert]))
+      .mockReturnValueOnce(earlierRead.promise)
+      .mockResolvedValueOnce(pageOf([acknowledgedAlert]));
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText(pendingAlert.title);
+    await user.click(screen.getByRole('button', { name: 'Acknowledge' }));
+    await waitFor(() => expect(acknowledgeAlert).toHaveBeenCalledTimes(1));
+    await user.click(levelFilterItem(/Warning/i));
+    await waitFor(() => expect(listSystemAlertsPage).toHaveBeenCalledTimes(2));
+
+    await act(async () => ack.resolve());
+    await act(async () => earlierRead.resolve(pageOf([pendingAlert])));
+
+    expect(screen.queryByRole('button', { name: 'Acknowledge' })).not.toBeInTheDocument();
+    expect(await screen.findByText(/Acknowledged by: operator-a/)).toBeInTheDocument();
+    expect(listSystemAlertsPage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ level: 'warning', page: 1, pageSize: 20 }),
+    );
+  });
+
+  it('keeps success when an earlier read settles in the same batch and reconciliation fails Test', async () => {
+    const ack = deferred<void>();
+    const earlierRead = deferred<PageResult<SystemAlert>>();
+    vi.mocked(acknowledgeAlert).mockReturnValueOnce(ack.promise);
+    vi.mocked(listSystemAlertsPage)
+      .mockResolvedValueOnce(pageOf([pendingAlert]))
+      .mockReturnValueOnce(earlierRead.promise)
+      .mockRejectedValueOnce(new Error('reconciliation read failed'));
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText(pendingAlert.title);
+    await user.click(screen.getByRole('button', { name: 'Acknowledge' }));
+    await user.click(levelFilterItem(/Warning/i));
+    await waitFor(() => expect(listSystemAlertsPage).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      ack.resolve();
+      await Promise.resolve();
+      earlierRead.resolve(pageOf([pendingAlert]));
+    });
+
+    expect(await screen.findByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Acknowledge' })).not.toBeInTheDocument();
+    expect(screen.getByText('Alert Acknowledged')).toBeInTheDocument();
+    expect(acknowledgeAlert).toHaveBeenCalledTimes(1);
+    expect(listSystemAlertsPage).toHaveBeenCalledTimes(3);
+  });
+
+  it('reconciles the current page without reviving the acknowledged previous-page row Test', async () => {
+    const ack = deferred<void>();
+    const secondAlert = { ...pendingAlert, id: 42, title: 'Second-page alert' };
+    vi.mocked(acknowledgeAlert).mockReturnValueOnce(ack.promise);
+    vi.mocked(listSystemAlertsPage)
+      .mockResolvedValueOnce(pageOf([pendingAlert], 1, 21))
+      .mockResolvedValueOnce(pageOf([secondAlert], 2, 21))
+      .mockResolvedValueOnce(pageOf([secondAlert], 2, 21));
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText(pendingAlert.title);
+    await user.click(screen.getByRole('button', { name: 'Acknowledge' }));
+    await waitFor(() => expect(acknowledgeAlert).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByTitle('2'));
+    await screen.findByText(secondAlert.title);
+
+    await act(async () => ack.resolve());
+
+    await waitFor(() => expect(listSystemAlertsPage).toHaveBeenCalledTimes(3));
+    expect(listSystemAlertsPage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 2, pageSize: 20 }),
+    );
+    expect(screen.queryByText(pendingAlert.title)).not.toBeInTheDocument();
+    expect(screen.getByText(secondAlert.title)).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Acknowledge' })).toHaveLength(1);
+  });
+
+  it('does not reload or mark the row acknowledged when the write fails Test', async () => {
+    vi.mocked(acknowledgeAlert).mockRejectedValueOnce(new Error('write failed'));
+    vi.mocked(listSystemAlertsPage).mockResolvedValueOnce(pageOf([pendingAlert]));
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText(pendingAlert.title);
+    await user.click(screen.getByRole('button', { name: 'Acknowledge' }));
+
+    await waitFor(() => expect(acknowledgeAlert).toHaveBeenCalledTimes(1));
+    expect(
+      await screen.findByText('Failed to acknowledge alert. Please try again later.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Acknowledge' })).toBeEnabled();
+    expect(listSystemAlertsPage).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Alert Acknowledged')).not.toBeInTheDocument();
+  });
+
+  it('keeps a successful acknowledgement when its refresh fails and lets the read retry Test', async () => {
+    vi.mocked(listSystemAlertsPage)
+      .mockResolvedValueOnce(pageOf([pendingAlert]))
+      .mockRejectedValueOnce(new Error('read failed'))
+      .mockResolvedValueOnce(pageOf([acknowledgedAlert]));
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText(pendingAlert.title);
+    await user.click(screen.getByRole('button', { name: 'Acknowledge' }));
+
+    const retry = await screen.findByRole('button', { name: 'Retry' });
+    expect(screen.queryByRole('button', { name: 'Acknowledge' })).not.toBeInTheDocument();
+    expect(screen.getByText('Alert Acknowledged')).toBeInTheDocument();
+    await user.click(retry);
+
+    expect(await screen.findByText(/Acknowledged by: operator-a/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Acknowledge' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Failed to acknowledge alert. Please try again later.'),
+    ).not.toBeInTheDocument();
+    expect(acknowledgeAlert).toHaveBeenCalledTimes(1);
+    expect(listSystemAlertsPage).toHaveBeenCalledTimes(3);
   });
 });
