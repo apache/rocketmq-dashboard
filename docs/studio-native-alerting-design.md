@@ -263,6 +263,15 @@ delivery is running. Deployments with slower receivers can tune `studio.alerting
 `studio.alerting.notification-claim-renewal-interval`; the renewal interval must remain shorter than the claim timeout.
 `studio.alerting.notification-heartbeat-threads` bounds the daemon workers used for these renewals.
 
+Queued deliveries recheck the current heartbeat immediately before the SMTP sender or HTTP
+client is called, after alert/settings/silence reads and channel-specific preparation. If
+renewal has already confirmed claim loss, that worker does not begin the external call or
+write a delivery/retry outcome; the recognized claimant handles recovery. Explicit test
+notifications are not queued claims and keep their existing behavior. This cooperative
+admission check cannot make the database lease atomic with a remote send: a claim may be
+lost immediately after the check, and already-started sends can finish. Delivery remains
+at-least-once and receivers still need deduplication.
+
 Email delivery uses Spring's standard SMTP configuration. Configure `STUDIO_ALERTING_SMTP_HOST`,
 `STUDIO_ALERTING_SMTP_PORT`, `STUDIO_ALERTING_SMTP_USERNAME`, `STUDIO_ALERTING_SMTP_PASSWORD`,
 `STUDIO_ALERTING_SMTP_AUTH`, and `STUDIO_ALERTING_SMTP_STARTTLS`; recipient addresses are configured in

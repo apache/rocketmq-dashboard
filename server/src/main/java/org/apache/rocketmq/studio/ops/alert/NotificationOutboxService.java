@@ -43,6 +43,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.ArrayList;
 import java.util.function.Supplier;
+import java.util.function.BooleanSupplier;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -168,8 +169,8 @@ public class NotificationOutboxService {
                 .description(TEST_MESSAGE_DESCRIPTIONS.get(channel)).build();
         try {
             String content = AlertNotificationTemplate.render(null, alert, null);
-            if ("email".equals(channel)) sendEmail(settings, alert, content);
-            else sendWebhook(settings, alert, channel, content);
+            if ("email".equals(channel)) sendEmail(settings, alert, content, () -> true);
+            else sendWebhook(settings, alert, channel, content, () -> true);
         } catch (Exception error) {
             throw new IllegalStateException("Test notification failed: " + error.getMessage(), error);
         }
@@ -380,10 +381,14 @@ public class NotificationOutboxService {
                 return;
             }
             GeneralSettingsVO settings = settingsRepository.loadGeneralSettings();
+            boolean sent;
             if ("email".equals(row.getChannel())) {
-                sendEmail(settings, alert, message(row, alert));
+                sent = sendEmail(settings, alert, message(row, alert), heartbeat::isLeaseOwned);
             } else {
-                sendWebhook(settings, alert, row.getChannel(), message(row, alert));
+                sent = sendWebhook(settings, alert, row.getChannel(), message(row, alert), heartbeat::isLeaseOwned);
+            }
+            if (!sent) {
+                return;
             }
             externalSendCompleted = true;
             if (!heartbeat.isLeaseOwned()) {
@@ -423,7 +428,8 @@ public class NotificationOutboxService {
                 .set("sending_started_at", null).set("claim_token", null));
     }
 
-    private void sendWebhook(GeneralSettingsVO settings, SystemAlertVO alert, String channel, String content) {
+    private boolean sendWebhook(GeneralSettingsVO settings, SystemAlertVO alert, String channel, String content,
+            BooleanSupplier sendAllowed) {
         String webhook = webhook(settings, channel);
         if (!StringUtils.hasText(webhook)) {
             throw new IllegalStateException("No configured " + channel + " webhook");
@@ -431,14 +437,21 @@ public class NotificationOutboxService {
         UrlHostGuard.check(webhook, false);
         // The URL already contains escaped query values, including the DingTalk signature.
         // The String overload would treat it as a URI template and encode those escapes again.
-        ResponseEntity<String> response = restTemplate.postForEntity(URI.create(dingTalkWebhook(webhook, settings, channel)),
-                payload(alert, channel, content), String.class);
+        URI uri = URI.create(dingTalkWebhook(webhook, settings, channel));
+        Map<String, Object> request = payload(alert, channel, content);
+        // Preparation may block while the heartbeat confirms that this claim was lost.
+        // This is an admission check, not an atomic fence around the remote request.
+        if (!sendAllowed.getAsBoolean()) {
+            return false;
+        }
+        ResponseEntity<String> response = restTemplate.postForEntity(uri, request, String.class);
         if (!response.getStatusCode().is2xxSuccessful()) {
             throw new IllegalStateException("Webhook returned " + response.getStatusCode());
         }
         if ("dingtalk".equals(channel)) {
             validateDingTalkResponse(response.getBody());
         }
+        return true;
     }
 
     private static String dingTalkWebhook(String webhook, GeneralSettingsVO settings, String channel) {
@@ -481,7 +494,8 @@ public class NotificationOutboxService {
                 ? settings.getDingtalkWebhook() : settings.getSmsWebhook());
     }
 
-    private void sendEmail(GeneralSettingsVO settings, SystemAlertVO alert, String content) throws AddressException {
+    private boolean sendEmail(GeneralSettingsVO settings, SystemAlertVO alert, String content,
+            BooleanSupplier sendAllowed) throws AddressException {
         if (settings == null || !StringUtils.hasText(settings.getEmailRecipients())) {
             throw new IllegalStateException("No configured email recipients");
         }
@@ -493,7 +507,12 @@ public class NotificationOutboxService {
         message.setTo(parseRecipients(settings.getEmailRecipients()));
         message.setSubject("[RocketMQ Studio] " + alert.getTitle());
         message.setText(content);
+        // Resolve the sender and prepare the message before checking the current claim.
+        if (!sendAllowed.getAsBoolean()) {
+            return false;
+        }
         sender.send(message);
+        return true;
     }
 
     private static String[] parseRecipients(String raw) throws AddressException {
