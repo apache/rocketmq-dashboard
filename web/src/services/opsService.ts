@@ -46,11 +46,13 @@ const alertRulesState: Record<AlertRuleDomain, AlertRule[]> = {
 };
 let alertSilencesState: AlertSilence[] = [];
 
+let lastAlertRuleId = Object.values(alertRulesState)
+  .flat()
+  .reduce((maxId, rule) => Math.max(maxId, rule.id), 0);
+
 function nextAlertRuleId(): number {
-  const highestId = Object.values(alertRulesState)
-    .flat()
-    .reduce((maxId, rule) => Math.max(maxId, rule.id), 0);
-  return Math.max(Date.now(), highestId + 1);
+  lastAlertRuleId = Math.max(Date.now(), lastAlertRuleId + 1);
+  return lastAlertRuleId;
 }
 
 function copyAlertRule(rule: AlertRule): AlertRule {
