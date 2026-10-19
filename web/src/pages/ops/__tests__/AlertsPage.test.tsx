@@ -15,10 +15,11 @@
  * limitations under the License.
  */
 
+import { StrictMode } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { App } from 'antd';
+import { App, message } from 'antd';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import type {
   AlertRule,
@@ -142,7 +143,7 @@ function renderPage(domain?: 'BUSINESS' | 'CLUSTER') {
   );
 }
 
-function renderAlertHistory() {
+function renderAlertHistory(strict = false) {
   const HistoryControls = () => {
     const navigate = useNavigate();
     return (
@@ -153,7 +154,7 @@ function renderAlertHistory() {
       </>
     );
   };
-  return render(
+  const tree = (
     <App>
       <LangProvider>
         <MemoryRouter initialEntries={['/ops/business-alerts', '/ops/alerts']} initialIndex={1}>
@@ -164,8 +165,9 @@ function renderAlertHistory() {
           </Routes>
         </MemoryRouter>
       </LangProvider>
-    </App>,
+    </App>
   );
+  return render(strict ? <StrictMode>{tree}</StrictMode> : tree);
 }
 
 function mockDomainRules() {
@@ -1051,6 +1053,156 @@ describe('AlertsPage', () => {
       'aria-checked',
       'false',
     );
+  });
+
+  describe('import page ownership', () => {
+    const document = JSON.stringify({
+      version: 1,
+      domain: 'CLUSTER',
+      rules: [
+        {
+          name: 'Imported disk rule',
+          metric: 'broker.disk.usage_ratio',
+          operator: '>',
+          threshold: 85,
+          thresholdUnit: '%',
+          duration: '1m',
+          channels: ['email'],
+          enabled: true,
+          instanceId: 'local',
+        },
+      ],
+    });
+
+    function pending<T>() {
+      let resolve!: (value: T) => void;
+      let reject!: (reason: Error) => void;
+      const promise = new Promise<T>((ok, fail) => {
+        resolve = ok;
+        reject = fail;
+      });
+      return { promise, resolve, reject };
+    }
+
+    async function startImport(text: Promise<string>, strict = false) {
+      const user = userEvent.setup();
+      mockDomainRules();
+      const page = renderAlertHistory(strict);
+      await screen.findByText('Cluster rule');
+      const input = page.container.querySelector<HTMLInputElement>('input[type="file"]');
+      if (!input) throw new Error('Alert rule import input not found');
+      const file = new File([document], 'rules.json', { type: 'application/json' });
+      Object.defineProperty(file, 'text', { value: () => text });
+      await user.upload(input, file);
+      return { ...page, user, input, file };
+    }
+
+    for (const departure of ['domain', 'unmount'] as const) {
+      it(`does not submit a file read after ${departure} departure`, async () => {
+        const read = pending<string>();
+        const page = await startImport(read.promise);
+        vi.mocked(importAlertRulesTransfer).mockResolvedValue([]);
+        if (departure === 'domain') {
+          await page.user.click(screen.getByRole('button', { name: 'Browser back' }));
+          await screen.findByText('Business rule');
+        } else page.unmount();
+        await act(async () => {
+          read.resolve(document);
+        });
+        expect(importAlertRulesTransfer).not.toHaveBeenCalled();
+      });
+
+      it(`does not show a file read error after ${departure} departure`, async () => {
+        const read = pending<string>();
+        const page = await startImport(read.promise);
+        if (departure === 'domain') {
+          await page.user.click(screen.getByRole('button', { name: 'Browser back' }));
+          await screen.findByText('Business rule');
+        } else page.unmount();
+        const error = vi.spyOn(message, 'error').mockImplementation(() => (() => {}) as never);
+        try {
+          await act(async () => {
+            read.reject(new Error('read failed'));
+          });
+          expect(error).not.toHaveBeenCalled();
+        } finally {
+          error.mockRestore();
+        }
+      });
+    }
+
+    for (const departure of ['domain', 'unmount'] as const) {
+      for (const outcome of ['success', 'failure'] as const) {
+        it(`ignores an import ${outcome} after ${departure} departure`, async () => {
+          const request = pending<AlertRule[]>();
+          vi.mocked(importAlertRulesTransfer).mockReturnValue(request.promise);
+          const page = await startImport(Promise.resolve(document));
+          await waitFor(() => expect(importAlertRulesTransfer).toHaveBeenCalledTimes(1));
+          if (departure === 'domain') {
+            await page.user.click(screen.getByRole('button', { name: 'Browser back' }));
+            await screen.findByText('Business rule');
+          } else page.unmount();
+          const requests = vi.mocked(listAlertRulesPage).mock.calls.length;
+          const success = vi
+            .spyOn(message, 'success')
+            .mockImplementation(() => (() => {}) as never);
+          const error = vi.spyOn(message, 'error').mockImplementation(() => (() => {}) as never);
+          try {
+            await act(async () => {
+              if (outcome === 'success') request.resolve([]);
+              else request.reject(new Error('request failed'));
+            });
+            expect(success).not.toHaveBeenCalled();
+            expect(error).not.toHaveBeenCalled();
+            expect(listAlertRulesPage).toHaveBeenCalledTimes(requests);
+            if (departure === 'domain')
+              expect(screen.getByText('Business rule')).toBeInTheDocument();
+          } finally {
+            success.mockRestore();
+            error.mockRestore();
+          }
+        });
+      }
+    }
+
+    it('does not revive an old file read after leaving and returning to the same domain', async () => {
+      const read = pending<string>();
+      vi.mocked(importAlertRulesTransfer).mockResolvedValue([]);
+      const page = await startImport(read.promise);
+      await page.user.click(screen.getByRole('button', { name: 'Browser back' }));
+      await screen.findByText('Business rule');
+      await page.user.click(screen.getByRole('button', { name: 'Browser forward' }));
+      await screen.findByText('Cluster rule');
+      await act(async () => {
+        read.resolve(document);
+      });
+      expect(importAlertRulesTransfer).not.toHaveBeenCalled();
+    });
+
+    it('imports in StrictMode and accepts the same file again after completion', async () => {
+      vi.mocked(importAlertRulesTransfer).mockResolvedValue([]);
+      const page = await startImport(Promise.resolve(document), true);
+      await waitFor(() => expect(importAlertRulesTransfer).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(screen.getByRole('button', { name: /导入/ })).toBeEnabled());
+      await page.user.upload(page.input, page.file);
+      await waitFor(() => expect(importAlertRulesTransfer).toHaveBeenCalledTimes(2));
+      expect(vi.mocked(importAlertRulesTransfer).mock.calls).toEqual([
+        [JSON.parse(document), 'CLUSTER'],
+        [JSON.parse(document), 'CLUSTER'],
+      ]);
+    });
+
+    it('still imports a pending file after same-domain navigation', async () => {
+      const read = pending<string>();
+      vi.mocked(importAlertRulesTransfer).mockResolvedValue([]);
+      const page = await startImport(read.promise);
+      await page.user.click(screen.getByRole('button', { name: 'Same domain query' }));
+      await act(async () => {
+        read.resolve(document);
+      });
+      expect(importAlertRulesTransfer).toHaveBeenCalledWith(JSON.parse(document), 'CLUSTER');
+      expect(await screen.findByText('已导入 0 条告警规则')).toBeInTheDocument();
+    });
   });
 
   it('shows an actionable server error when alert rule import conflicts', async () => {
