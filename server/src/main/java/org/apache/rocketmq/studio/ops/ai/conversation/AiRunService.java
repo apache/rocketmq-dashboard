@@ -230,6 +230,7 @@ public class AiRunService {
         AiRunExecutor.RunContext context = new AiRunExecutor.RunContext(conversation, run, sink, handle,
                 config, engine, message, resumeSessionId, request.enhance(),
                 Duration.ofMillis(timeoutMillis), preparation);
+        context.setHttpHistoryEnabled(!Boolean.FALSE.equals(request.resume()));
         registry.register(run.getId(), handle);
         try {
             // enhancedPrompt stays null on this row: the rewrite happens on the worker, after the turn

@@ -74,6 +74,20 @@ public class MybatisPlusAiEventRepository implements AiEventRepository {
     }
 
     @Override
+    public List<RmqAiEvent> findRecentBeforeSeq(Long conversationId, int beforeSeq, int limit) {
+        if (conversationId == null || beforeSeq <= 0 || limit <= 0) return List.of();
+        // Sort only seq keys on the unique index; fetch payloads by those bounded keys, never filesort text.
+        List<Object> keys = eventMapper.selectObjs(new QueryWrapper<RmqAiEvent>()
+                .select("seq").eq("conversation_id", conversationId).lt("seq", beforeSeq)
+                .orderByDesc("seq").last("LIMIT " + Math.min(limit, MAX_LIMIT)));
+        if (keys.isEmpty()) return List.of();
+        List<RmqAiEvent> rows = new ArrayList<>(eventMapper.selectList(new QueryWrapper<RmqAiEvent>()
+                .eq("conversation_id", conversationId).in("seq", keys)));
+        rows.sort(Comparator.comparing(RmqAiEvent::getSeq));
+        return rows;
+    }
+
+    @Override
     public int deleteByConversationId(Long conversationId) {
         if (conversationId == null) {
             return 0;

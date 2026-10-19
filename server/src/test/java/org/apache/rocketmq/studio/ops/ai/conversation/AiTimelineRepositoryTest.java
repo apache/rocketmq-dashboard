@@ -172,6 +172,32 @@ class AiTimelineRepositoryTest {
     // --- the cursor the caller derives -------------------------------------------
 
     @Test
+    void recentHistoryShouldSortOnlyBoundedIndexKeysNotPayloadsTest() {
+        when(eventMapper.<Object>selectObjs(any())).thenReturn(List.of(9, 8));
+        when(eventMapper.selectList(any())).thenReturn(List.of(row(909L, 9), row(908L, 8)));
+
+        assertThat(repository.findRecentBeforeSeq(CONVERSATION_ID, 10, 9999))
+                .extracting(RmqAiEvent::getSeq).containsExactly(8, 9);
+        QueryWrapper<RmqAiEvent> keys = capturedEventAggregate();
+        assertThat(keys.getSqlSelect()).isEqualTo("seq");
+        assertThat(keys.getTargetSql()).contains("conversation_id = ? AND seq < ?")
+                .contains("ORDER BY seq DESC LIMIT 500");
+        assertThat(keys.getParamNameValuePairs().values())
+                .containsExactlyInAnyOrder(CONVERSATION_ID, 10);
+        assertThat(capturedQuery().getTargetSql()).contains("conversation_id = ? AND seq IN (?,?)")
+                .doesNotContain("ORDER BY");
+    }
+
+    @Test
+    void recentHistoryShouldSkipSqlWithoutAConversationRangeTest() {
+        assertThat(repository.findRecentBeforeSeq(null, 10, 10)).isEmpty();
+        assertThat(repository.findRecentBeforeSeq(CONVERSATION_ID, 0, 10)).isEmpty();
+        assertThat(repository.findRecentBeforeSeq(CONVERSATION_ID, 10, 0)).isEmpty();
+        verify(eventMapper, never()).selectObjs(any());
+        verify(eventMapper, never()).selectList(any());
+    }
+
+    @Test
     void theCursorShouldBeTheLastRowOfThePageWithTheProbeRowDroppedTest() {
         AiConversationService service = serviceOverTheRealRepository();
         when(eventMapper.selectList(any())).thenReturn(rows(1, 201));
