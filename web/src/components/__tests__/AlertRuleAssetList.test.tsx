@@ -52,6 +52,29 @@ const renderWithProviders = (ui: React.ReactElement) =>
   );
 
 describe('AlertRuleAssetList', () => {
+  it.each([
+    ['en', 'Search alert name or group', 'Severity'],
+    ['zh', '搜索告警名称或规则组', '级别'],
+  ] as const)(
+    'keepsFilterControlsNamedAfterInputTest (%s)',
+    async (lang, searchName, facetName) => {
+      localStorage.setItem('rocketmq-studio-language', lang);
+      vi.mocked(alertRuleAssetService.listAlertRuleAssets).mockResolvedValue(sampleAssets);
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      renderWithProviders(<AlertRuleAssetList />);
+      await screen.findByText('rocketmq-broker-down');
+
+      const search = screen.getByRole('searchbox');
+      const facet = screen.getByRole('combobox');
+      expect.soft(search).toHaveAccessibleName(searchName);
+      expect.soft(facet).toHaveAccessibleName(facetName);
+      await user.type(search, 'consumer');
+      expect(search).toHaveValue('consumer');
+      expect.soft(search).toHaveAccessibleName(searchName);
+      expect.soft(facet).toHaveAccessibleName(facetName);
+    },
+  );
+
   beforeAll(() => {
     window.matchMedia =
       window.matchMedia ||

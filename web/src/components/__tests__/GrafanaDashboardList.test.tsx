@@ -93,9 +93,32 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  localStorage.removeItem('rocketmq-studio-language');
 });
 
 describe('GrafanaDashboardList', () => {
+  it.each([
+    ['en', 'Search dashboard title, UID, description or tag', 'Tags'],
+    ['zh', '搜索看板标题、UID、说明或标签', '标签'],
+  ] as const)(
+    'keepsFilterControlsNamedAfterInputTest (%s)',
+    async (lang, searchName, facetName) => {
+      localStorage.setItem('rocketmq-studio-language', lang);
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      renderDashboardList();
+      await screen.findByText('RocketMQ Cluster Overview');
+
+      const search = screen.getByRole('searchbox');
+      const facet = screen.getByRole('combobox');
+      expect.soft(search).toHaveAccessibleName(searchName);
+      expect.soft(facet).toHaveAccessibleName(facetName);
+      await user.type(search, 'broker');
+      expect(search).toHaveValue('broker');
+      expect.soft(search).toHaveAccessibleName(searchName);
+      expect.soft(facet).toHaveAccessibleName(facetName);
+    },
+  );
+
   it('lists the configured dashboards', async () => {
     render(
       <App>

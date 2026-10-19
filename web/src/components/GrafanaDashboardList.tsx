@@ -222,6 +222,7 @@ export const GrafanaDashboardList: React.FC = () => {
       <Space style={{ marginBottom: 12 }}>
         <Input.Search
           allowClear
+          aria-label={t('grafana.searchPlaceholder')}
           placeholder={t('grafana.searchPlaceholder')}
           value={searchText}
           onChange={(event) => setSearchText(event.target.value)}
@@ -231,6 +232,7 @@ export const GrafanaDashboardList: React.FC = () => {
         <Select
           allowClear
           mode="multiple"
+          aria-label={t('grafana.tags')}
           maxTagCount="responsive"
           options={tagOptions}
           placeholder={t('grafana.allTags')}
