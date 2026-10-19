@@ -1777,8 +1777,13 @@ const TopicPageContent = ({
                         </Form.Item>
                       </Col>
                       <Col span={4}>
-                        <MinusCircleOutlined
-                          style={{ color: '#ff4d4f', fontSize: 18, cursor: 'pointer' }}
+                        <Button
+                          type="text"
+                          htmlType="button"
+                          size="small"
+                          danger
+                          icon={<MinusCircleOutlined style={{ fontSize: 18 }} />}
+                          aria-label={t('topic.removeProp', { index: name + 1 })}
                           onClick={() => remove(name)}
                         />
                       </Col>

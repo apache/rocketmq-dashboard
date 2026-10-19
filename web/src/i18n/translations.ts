@@ -2980,6 +2980,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.propName': { zh: '属性名', en: 'Property Name' },
   'topic.propValue': { zh: '属性值', en: 'Property Value' },
   'topic.addProp': { zh: '添加属性', en: 'Add Property' },
+  'topic.removeProp': { zh: '删除第 {index} 个属性', en: 'Remove property {index}' },
   'topic.confirmBatchDelete': { zh: '确认批量删除', en: 'Confirm Batch Delete' },
   'topic.batchDeleteConfirm': {
     zh: '确定要删除选中的 {count} 个 Topic 吗？此操作不可撤销。',

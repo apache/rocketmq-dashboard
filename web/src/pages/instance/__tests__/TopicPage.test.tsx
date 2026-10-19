@@ -1394,6 +1394,86 @@ describe('TopicPage', () => {
     });
   });
 
+  it.each([
+    { lang: 'zh', key: '{Enter}', removeLabel: '删除第 2 个属性' },
+    { lang: 'zh', key: ' ', removeLabel: '删除第 2 个属性' },
+    { lang: 'en', key: '{Enter}', removeLabel: 'Remove property 2' },
+    { lang: 'en', key: ' ', removeLabel: 'Remove property 2' },
+  ])(
+    'removes the intended property with $key in $lang without sending Test',
+    async ({ lang, key, removeLabel }) => {
+      localStorage.setItem('rocketmq-studio-language', lang);
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      mockTopicsList([buildTopics(1)[0]]);
+      renderWithProviders();
+
+      await user.click(await screen.findByRole('button', { name: /发送/ }));
+      const dialog = await getSendDialog();
+      fireEvent.change(within(dialog).getByLabelText('消息体 Body'), {
+        target: { value: '{"event":"created"}' },
+      });
+      for (let index = 0; index < 3; index += 1) {
+        await user.click(within(dialog).getByRole('button', { name: /添加属性/ }));
+      }
+      const propertyKeys = within(dialog).getAllByPlaceholderText('属性名');
+      const propertyValues = within(dialog).getAllByPlaceholderText('属性值');
+      ['traceId', 'traceId', 'route'].forEach((value, index) => {
+        fireEvent.change(propertyKeys[index], { target: { value } });
+      });
+      ['keep-first', 'remove-middle', 'keep-last'].forEach((value, index) => {
+        fireEvent.change(propertyValues[index], { target: { value } });
+      });
+
+      const submit = vi.fn((event: Event) => event.preventDefault());
+      dialog.querySelector('form')!.addEventListener('submit', submit);
+      act(() => propertyValues[1].focus());
+      await user.tab();
+      const removeButton = within(dialog).getByRole('button', { name: removeLabel });
+      expect(removeButton).toHaveFocus();
+      expect(removeButton).toHaveAttribute('type', 'button');
+      expect(topicServiceMocks.sendTopicMessage).not.toHaveBeenCalled();
+      await user.keyboard(key);
+
+      expect(within(dialog).queryByDisplayValue('remove-middle')).not.toBeInTheDocument();
+      expect(within(dialog).getAllByPlaceholderText('属性名')).toHaveLength(2);
+      expect(within(dialog).getByDisplayValue('keep-first')).toBeInTheDocument();
+      expect(within(dialog).getByDisplayValue('keep-last')).toBeInTheDocument();
+      expect(within(dialog).getByRole('button', { name: removeLabel })).toBeInTheDocument();
+      expect(submit).not.toHaveBeenCalled();
+      expect(topicServiceMocks.sendTopicMessage).not.toHaveBeenCalled();
+
+      await user.click(within(dialog).getByRole('button', { name: /发\s*送/ }));
+      await waitFor(() => expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledTimes(1));
+      expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledWith({
+        topic: 'topic-01',
+        instanceId: 'instance-proxy-1',
+        body: '{"event":"created"}',
+        properties: { traceId: 'keep-first', route: 'keep-last' },
+      });
+    },
+  );
+
+  it('keeps pointer removal from sending the message Test', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    mockTopicsList([buildTopics(1)[0]]);
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /发送/ }));
+    const dialog = await getSendDialog();
+    await user.click(within(dialog).getByRole('button', { name: /添加属性/ }));
+    await user.click(within(dialog).getByRole('button', { name: /添加属性/ }));
+    const propertyValues = within(dialog).getAllByPlaceholderText('属性值');
+    fireEvent.change(propertyValues[0], { target: { value: 'keep' } });
+    fireEvent.change(propertyValues[1], { target: { value: 'remove' } });
+
+    await user.click(within(dialog).getAllByRole('img', { name: 'minus-circle' })[1]);
+
+    expect(within(dialog).getAllByPlaceholderText('属性值')).toHaveLength(1);
+    expect(within(dialog).getByDisplayValue('keep')).toBeInTheDocument();
+    expect(within(dialog).queryByDisplayValue('remove')).not.toBeInTheDocument();
+    expect(topicServiceMocks.sendTopicMessage).not.toHaveBeenCalled();
+  });
+
   it('blocks duplicate form properties when sending', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     mockTopicsList([buildTopics(1)[0]]);
