@@ -1256,6 +1256,14 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '未配置邮件收件人',
     en: 'No configured email recipients',
   },
+  'deliveries.errInvalidEmailRecipients': {
+    zh: '邮件收件人地址无效',
+    en: 'No valid email recipients',
+  },
+  'deliveries.errSmtpNotConfigured': {
+    zh: '未配置 SMTP 邮件服务器，请在设置中填写 SMTP 主机与端口',
+    en: 'SMTP is not configured; set the SMTP host and port in Settings',
+  },
   'deliveries.errNoWebhook': {
     zh: '未配置 {channel} Webhook',
     en: 'No configured {channel} webhook',
