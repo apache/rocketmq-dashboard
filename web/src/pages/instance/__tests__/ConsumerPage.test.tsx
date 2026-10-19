@@ -926,6 +926,70 @@ describe('Consumer page', () => {
     );
   });
 
+  it('doesNotRetainExcludedQueuesWhenTopicAndBrokerNamesShareADelimiterKeyTest', async () => {
+    vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([
+      {
+        topic: 'orders-west',
+        broker: 'a',
+        queueId: 0,
+        brokerOffset: 110,
+        consumerOffset: 100,
+        diffTotal: 10,
+      },
+      {
+        topic: 'orders',
+        broker: 'west-a',
+        queueId: 0,
+        brokerOffset: 220,
+        consumerOffset: 200,
+        diffTotal: 20,
+      },
+      {
+        topic: 'payments',
+        broker: 'b',
+        queueId: 0,
+        brokerOffset: 330,
+        consumerOffset: 300,
+        diffTotal: 30,
+      },
+    ]);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    await user.click(await screen.findByRole('tab', { name: /消费进度/ }));
+    const panel = await screen.findByRole('tabpanel', { name: /消费进度/ });
+    await waitFor(() => expect(panel.querySelectorAll('tbody tr.ant-table-row')).toHaveLength(3));
+    await user.click(within(panel).getByRole('combobox'));
+    const paymentOption = await waitFor(() => {
+      const option = document.querySelector<HTMLElement>(
+        '.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option[title="payments"]',
+      );
+      expect(option).not.toBeNull();
+      return option as HTMLElement;
+    });
+    await user.click(paymentOption);
+    const renderedQueues = () =>
+      Array.from(panel.querySelectorAll('tbody tr.ant-table-row')).map((row) =>
+        Array.from(row.querySelectorAll('td')).map((cell) => cell.textContent),
+      );
+    await waitFor(() =>
+      expect(renderedQueues()).toEqual([['payments', 'b', 'Queue 0', '330', '300', '30']]),
+    );
+    expect(within(panel).queryByText('orders-west')).not.toBeInTheDocument();
+    expect(within(panel).queryByText('orders')).not.toBeInTheDocument();
+
+    const clearFilter = panel.querySelector<HTMLElement>('.ant-select-clear');
+    expect(clearFilter).not.toBeNull();
+    await user.click(clearFilter as HTMLElement);
+    await waitFor(() =>
+      expect(renderedQueues()).toEqual([
+        ['orders', 'west-a', 'Queue 0', '220', '200', '20'],
+        ['orders-west', 'a', 'Queue 0', '110', '100', '10'],
+        ['payments', 'b', 'Queue 0', '330', '300', '30'],
+      ]),
+    );
+  });
+
   it('filters queue progress to the topic of the clicked distribution button', async () => {
     vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
       {

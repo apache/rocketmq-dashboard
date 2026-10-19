@@ -2197,7 +2197,7 @@ const ConsumerPageContent = ({
                     <Table
                       columns={queueColumns}
                       dataSource={visibleProgress}
-                      rowKey={(r) => `${r.topic}-${r.broker}-${r.queueId}`}
+                      rowKey={(row) => JSON.stringify([row.topic, row.broker, row.queueId])}
                       pagination={false}
                       size="small"
                       tableLayout="fixed"
