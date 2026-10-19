@@ -33,7 +33,7 @@ CATALOG_GENERATOR := ./internal/catalog/generate
 CATALOG_MARKDOWN := ../docs/generated/rmq-tools.md
 CATALOG_SDK := ../docs/generated/rmq-tools.json
 
-.PHONY: build build-all package checksum release clean catalog-generate catalog-verify test test-race vet lint fmt verify ci completion install license-binary
+.PHONY: build build-all package prepare-package-dir checksum release clean catalog-generate catalog-verify test test-race vet lint fmt verify ci completion install license-binary
 
 catalog-generate:
 	$(GO) run $(CATALOG_GENERATOR) -input-dir $(CATALOG_SOURCE) -output $(CATALOG_GENERATED) \
@@ -91,9 +91,13 @@ build-all: catalog-verify
 
 license-binary: build-all
 
-package: license-binary completion
-	@rm -rf $(PACKAGE_DIR)
-	@mkdir -p $(PACKAGE_DIR)
+prepare-package-dir:
+	@if [ -d "$(PACKAGE_DIR)" ] && [ -n "$$(ls -A "$(PACKAGE_DIR)")" ]; then \
+		echo "Package directory already contains files: $(PACKAGE_DIR)" >&2; exit 1; \
+	fi
+	@mkdir -p "$(PACKAGE_DIR)"
+
+package: license-binary completion prepare-package-dir
 	@set -e; for target in $(TARGETS); do \
 		os=$${target%%_*}; arch=$${target##*_}; \
 		if [ "$$os" = "windows" ]; then \
