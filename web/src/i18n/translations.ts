@@ -1430,6 +1430,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '删除完成：成功 {success}，失败 {failed}',
     en: 'Delete completed: {success} succeeded, {failed} failed',
   },
+  'alerts.bulkDeleteFailed': {
+    zh: '{count} 条告警规则删除失败',
+    en: '{count} alert rules failed to delete',
+  },
   'alerts.bulkEnableSuccess': {
     zh: '已启用 {count} 条告警规则',
     en: 'Enabled {count} alert rules',

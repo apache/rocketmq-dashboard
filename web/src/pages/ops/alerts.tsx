@@ -678,6 +678,11 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
                 failed: failedIds.length,
               }),
             );
+        } catch {
+          // A request-level failure (network error, 5xx) deletes nothing, so the selection
+          // stays armed for a retry. Without this branch the rejected onOk is swallowed by
+          // antd and the dialog just stays open with no outcome at all.
+          message.error(t('alerts.bulkDeleteFailed', { count: targetIds.length }));
         } finally {
           setBulkAction(null);
         }
