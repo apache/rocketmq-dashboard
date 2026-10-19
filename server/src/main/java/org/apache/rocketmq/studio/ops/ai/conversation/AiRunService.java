@@ -193,15 +193,17 @@ public class AiRunService {
                     "Pick a model in the AI settings.");
         }
 
-        // Admission: one active run per conversation, which is what makes a single writer per timeline
-        // a guarantee rather than a hope.
+        // Choose the candidate turn BEFORE checking for an active run. If another request is admitted
+        // after this read, it claims this same turn and the unique key below rejects one of us. Reading
+        // MAX(turn) after an idle check would instead let that stale check admit a different turn while
+        // the other request is still active, bypassing the single-writer guarantee.
+        int turn = runRepository.maxTurn(conversationId) + 1;
         runRepository.findActiveByConversationId(conversationId).ifPresent(active -> {
             log.info("refusing a second run for conversation {}: run {} is {}",
                     conversationId, active.getId(), active.getStatus());
             throw busy();
         });
 
-        int turn = runRepository.maxTurn(conversationId) + 1;
         // MAX(seq) and never rmq_ai_conversation.last_seq: that column is a cache for the reconnect fast
         // path and a run that died mid-flush leaves it low, which would reuse timeline positions.
         int seedSeq = eventRepository.maxSeq(conversationId);
