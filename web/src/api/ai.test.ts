@@ -18,6 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
+import { clearAuthSession, persistAuthSession, readAuthSession } from '../stores/authStorage';
 import {
   AiStreamError,
   attachRunStream,
@@ -71,6 +72,21 @@ function jsonResponse(payload: unknown, status: number, statusText = ''): Respon
   });
 }
 
+/** Observe hard navigation without asking jsdom to load another document. */
+function observeLoginRedirect() {
+  const originalWindow = window;
+  const redirect = vi.fn();
+  vi.stubGlobal('window', {
+    location: {
+      origin: originalWindow.location.origin,
+      set href(path: string) {
+        redirect(path);
+      },
+    },
+  });
+  return { redirect, restore: () => vi.stubGlobal('window', originalWindow) };
+}
+
 describe('AI API', () => {
   beforeEach(() => {
     mock.reset();
@@ -82,6 +98,60 @@ describe('AI API', () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
+
+  it.each(['send', 'attach'])(
+    'clearsAndRedirectsTheSessionThatOwnsAnUnauthorizedStreamTest: %s',
+    async (operation) => {
+      persistAuthSession('admin', 7, true);
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(jsonResponse({ code: 401, message: 'expired' }, 401)),
+      );
+      const navigation = observeLoginRedirect();
+      try {
+        const handlers = { onEvent: vi.fn() };
+        const request =
+          operation === 'send'
+            ? openRunStream(7, { message: 'test' }, handlers)
+            : attachRunStream(41, 0, handlers);
+        await expect(request).rejects.toMatchObject({ status: 401 });
+        expect(readAuthSession()).toEqual({ user: null, userId: null, admin: null });
+        expect(navigation.redirect).toHaveBeenCalledExactlyOnceWith('/login');
+      } finally {
+        navigation.restore();
+      }
+    },
+  );
+
+  it.each(['send', 'attach'])(
+    'preservesANewerLoginWhenAnOlderStreamReturns401Test: %s',
+    async (operation) => {
+      persistAuthSession('admin', 7, true);
+      let release!: (response: Response) => void;
+      const response = new Promise<Response>((resolve) => {
+        release = resolve;
+      });
+      vi.stubGlobal('fetch', vi.fn().mockReturnValue(response));
+      const handlers = { onEvent: vi.fn() };
+      const request =
+        operation === 'send'
+          ? openRunStream(7, { message: 'test' }, handlers)
+          : attachRunStream(41, 0, handlers);
+
+      // A new login of the SAME user is a new session too, despite identical display metadata.
+      clearAuthSession();
+      persistAuthSession('admin', 7, true);
+      const navigation = observeLoginRedirect();
+      try {
+        release(jsonResponse({ code: 401, message: 'old session expired', data: null }, 401));
+        await expect(request).rejects.toMatchObject({ status: 401 });
+        expect(navigation.redirect).not.toHaveBeenCalled();
+        expect(readAuthSession()).toEqual({ user: 'admin', userId: 7, admin: true });
+      } finally {
+        navigation.restore();
+      }
+    },
+  );
 
   describe('openRunStream / attachRunStream (SSE)', () => {
     const body = { message: '列出 topic', model: 'claude-sonnet-4-5' };

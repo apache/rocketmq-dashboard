@@ -16,6 +16,7 @@
  */
 
 import { API_BASE_URL } from '../config';
+import { getAuthSessionRevision } from '../stores/authStorage';
 import client, { handleSessionUnauthorized } from './client';
 import { conversationMessagesPath, runStreamPath, type AiMessageRequest } from './aiConversations';
 import { LIVE_EVENT_TYPES, type ChatSseEvent } from './aiEvents';
@@ -349,9 +350,10 @@ async function consumeRunStream(
   response: Response,
   handlers: RunStreamHandlers,
   label: string,
+  sessionRevision: number,
 ): Promise<void> {
   if (response.status === 401) {
-    handleSessionUnauthorized();
+    handleSessionUnauthorized(sessionRevision);
   }
   // A non-2xx body is a JSON `Result` envelope, not an event stream, so it is parsed before the
   // content-type guard gets a chance to complain about it.
@@ -384,6 +386,7 @@ export async function openRunStream(
   handlers: RunStreamHandlers,
   signal?: AbortSignal,
 ): Promise<void> {
+  const sessionRevision = getAuthSessionRevision();
   const response = await fetch(`${API_BASE_URL}${conversationMessagesPath(conversationId)}`, {
     method: 'POST',
     credentials: 'include',
@@ -395,7 +398,7 @@ export async function openRunStream(
     signal,
   });
 
-  await consumeRunStream(response, handlers, 'AI message stream failed');
+  await consumeRunStream(response, handlers, 'AI message stream failed', sessionRevision);
 }
 
 /**
@@ -411,6 +414,7 @@ export async function attachRunStream(
   handlers: RunStreamHandlers,
   signal?: AbortSignal,
 ): Promise<void> {
+  const sessionRevision = getAuthSessionRevision();
   const query = new URLSearchParams({ after: String(after) });
   const response = await fetch(`${API_BASE_URL}${runStreamPath(runId)}?${query.toString()}`, {
     method: 'GET',
@@ -421,7 +425,7 @@ export async function attachRunStream(
     signal,
   });
 
-  await consumeRunStream(response, handlers, 'AI run stream failed');
+  await consumeRunStream(response, handlers, 'AI run stream failed', sessionRevision);
 }
 
 export async function listTools(instanceId?: string) {
