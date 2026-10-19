@@ -129,6 +129,41 @@ describe('ACL risk diagnostics', () => {
     );
   });
 
+  it.each(['10.0.0.0/0', '2001:db8::/0', '0.0.0.0/00'])(
+    'classifies a zero-prefix whitelist as open: %s',
+    (address) => {
+      const diagnostics = analyzeAclRisk(
+        config({
+          globalWhiteRemoteAddresses: [address],
+          accounts: [account({ whiteRemoteAddress: address })],
+        }),
+      );
+
+      expect(diagnostics.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: 'BROAD_GLOBAL_WHITELIST', severity: 'critical' }),
+          expect.objectContaining({ code: 'BROAD_ACCOUNT_WHITELIST', severity: 'critical' }),
+        ]),
+      );
+    },
+  );
+
+  it('keeps a broad nonzero CIDR at warning severity', () => {
+    const diagnostics = analyzeAclRisk(
+      config({
+        globalWhiteRemoteAddresses: ['10.0.0.0/8'],
+        accounts: [account({ whiteRemoteAddress: '10.0.0.0/8' })],
+      }),
+    );
+
+    expect(diagnostics.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'BROAD_GLOBAL_WHITELIST', severity: 'warning' }),
+        expect.objectContaining({ code: 'BROAD_ACCOUNT_WHITELIST', severity: 'warning' }),
+      ]),
+    );
+  });
+
   it('reports wildcard permissions and malformed permission entries', () => {
     const diagnostics = analyzeAclRisk(
       config({

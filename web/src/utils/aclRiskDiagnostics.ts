@@ -139,6 +139,7 @@ const classifyWhitelistAddress = (address: string): WhitelistClass => {
 
   const prefix = cidrPrefix(normalized);
   if (prefix === null) return 'scoped';
+  if (prefix === 0) return 'open';
   if (normalized.includes(':')) {
     return prefix <= 16 ? 'broad' : 'scoped';
   }
