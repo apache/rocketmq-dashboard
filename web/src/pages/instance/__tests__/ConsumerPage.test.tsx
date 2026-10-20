@@ -1230,6 +1230,8 @@ describe('Consumer page', () => {
   });
 
   it('keeps the latest client stack when an older request resolves last', async () => {
+    // Keep the selected clients stable while exercising out-of-order manual requests.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const firstStack = {
       groupName: 'remote-cg',
       clientId: 'client-1',
