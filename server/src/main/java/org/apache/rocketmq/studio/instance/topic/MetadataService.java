@@ -812,10 +812,10 @@ public class MetadataService {
                 .build();
     }
 
-    public String exportConsumerGroups(String instanceId, String search, String subscriptionMode,
+    public String exportConsumerGroups(String instanceId, String clusterId, String search, String subscriptionMode,
                                        List<String> names) {
         instanceId = normalizeInstanceId(instanceId);
-        List<ConsumerGroupVO> groups = new ArrayList<>(listConsumerGroups(instanceId, null, search));
+        List<ConsumerGroupVO> groups = new ArrayList<>(listConsumerGroups(instanceId, clusterId, search));
         Set<String> selectedNames = new HashSet<>(names == null ? List.of() : names);
         if (!selectedNames.isEmpty()) {
             groups.removeIf(group -> !selectedNames.contains(group.getName()));
