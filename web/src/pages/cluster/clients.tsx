@@ -44,7 +44,6 @@ import type { ClientConnection } from '../../api/connections';
 import { listConnections } from '../../services/connectionsService';
 import { listRegistryClusters } from '../../services/clusterService';
 import type { ClusterInfo } from '../../api/cluster';
-import { formatDateTime } from '../../utils/format';
 import { buildCsv, downloadCsv, localExportDateStamp, type CsvColumn } from '../../utils/download';
 import { describeThrownMessage } from '../../utils/apiError';
 import { tableScrollX } from '../../utils/table';
@@ -128,7 +127,6 @@ const CLIENT_CONNECTION_EXPORT_COLUMNS: CsvColumn<ClientConnection>[] = [
   { header: 'Address', value: (connection) => connection.address },
   { header: 'Language', value: (connection) => connection.language },
   { header: 'Version', value: (connection) => connection.version },
-  { header: 'Connected At', value: (connection) => connection.connectedAt },
   { header: 'Partial', value: (connection) => (connection.partial ? 'true' : 'false') },
 ];
 
@@ -509,18 +507,6 @@ const ClientsPage = () => {
       key: 'version',
       width: 90,
       render: displayMetadata,
-    },
-    {
-      title: t('cluster.heartbeat'),
-      dataIndex: 'connectedAt',
-      key: 'connectedAt',
-      width: 170,
-      sorter: (a, b) => (a.connectedAt ?? '').localeCompare(b.connectedAt ?? ''),
-      render: (d?: string | null) => (
-        <Text type="secondary" style={{ fontSize: 14 }}>
-          {d ? formatDateTime(d) : '-'}
-        </Text>
-      ),
     },
     {
       title: t('common.actions'),
@@ -1038,9 +1024,6 @@ const ClientsPage = () => {
             </Descriptions.Item>
             <Descriptions.Item label={t('common.version')}>
               {displayMetadata(selectedConnection.version)}
-            </Descriptions.Item>
-            <Descriptions.Item label={t('cluster.heartbeat')}>
-              {selectedConnection.connectedAt ?? '-'}
             </Descriptions.Item>
           </Descriptions>
         )}
