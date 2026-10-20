@@ -21,10 +21,16 @@ import (
 	"errors"
 	"net"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/types"
 )
+
+// unavailableHint pins the net-error hint: no command carries a runtime --server flag
+// (the server URL lives in the context, set via `config set-context --server`), so the
+// hint has to point at the context instead of a flag that would be rejected.
+const unavailableHint = "Check the context's Studio Server URL with 'config get-contexts', network connectivity, and Studio Server status."
 
 func TestNormalizeCLIError(t *testing.T) {
 	tests := []struct {
@@ -80,8 +86,19 @@ func TestNormalizeCLIError(t *testing.T) {
 				t.Fatalf("normalizeCLIError(%v).Code = %q, want %q", tt.err, got.Code, tt.want)
 			}
 			if got.Code == types.CodeCanceled {
-				if got.Hint == "" || got.Hint == "Check --server, network connectivity, and Studio Server status." {
+				if got.Hint == "" || got.Hint == unavailableHint {
 					t.Fatalf("canceled hint must point at the interrupt, got %q", got.Hint)
+				}
+			}
+			if got.Code == types.CodeUnavailable {
+				if strings.Contains(got.Hint, "--server") {
+					t.Fatalf("unavailable hint points at a flag no command has: %q", got.Hint)
+				}
+				if !strings.Contains(got.Hint, "config get-contexts") {
+					t.Fatalf("unavailable hint must point at the context server URL: %q", got.Hint)
+				}
+				if got.Hint != unavailableHint {
+					t.Fatalf("unavailable hint = %q, want %q", got.Hint, unavailableHint)
 				}
 			}
 		})

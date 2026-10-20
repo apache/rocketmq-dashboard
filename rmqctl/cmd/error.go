@@ -113,10 +113,12 @@ func matchNetError(err error) (*types.CLIError, bool) {
 	if _, ok := errors.AsType[net.Error](err); !ok {
 		return nil, false
 	}
+	// No command carries a runtime --server flag: the server URL lives in the context
+	// (config set-context --server), so point the operator at `config get-contexts`.
 	return types.NewCLIError(
 		types.CodeUnavailable,
 		err.Error(),
-		"Check --server, network connectivity, and Studio Server status."), true
+		"Check the context's Studio Server URL with 'config get-contexts', network connectivity, and Studio Server status."), true
 }
 
 func normalizeCLIError(err error) *types.CLIError {
