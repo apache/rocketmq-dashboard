@@ -57,8 +57,8 @@ class AuthSessionActivityIntegrationTest {
     private PasswordHasher passwordHasher;
 
     @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void delayedRefreshCannotOverwriteNewerSessionActivityTest(boolean missingLastSeen) throws Exception {
+    @ValueSource(ints = {300, 600})
+    void delayedRefreshCannotOverwriteNewerSessionActivityTest(int activityAgeSeconds) throws Exception {
         Instant earlier = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         Instant later = earlier.plusSeconds(60);
         RmqStudioUser user = new RmqStudioUser();
@@ -73,10 +73,12 @@ class AuthSessionActivityIntegrationTest {
         session.setTokenHash(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                 .digest(token.getBytes(StandardCharsets.UTF_8))));
         session.setExpiresAt(LocalDateTime.ofInstant(later.plusSeconds(3600), ZoneOffset.UTC));
-        session.setLastSeenAt(missingLastSeen ? null
-                : LocalDateTime.ofInstant(earlier.minusSeconds(600), ZoneOffset.UTC));
+        LocalDateTime initialActivity = LocalDateTime.ofInstant(earlier.minusSeconds(activityAgeSeconds),
+                ZoneOffset.UTC);
+        session.setLastSeenAt(initialActivity);
         sessionMapper.insert(session);
         try {
+            assertThat(sessionMapper.selectById(session.getId()).getLastSeenAt()).isEqualTo(initialActivity);
             RmqStudioSessionMapper delayedMapper = mock(RmqStudioSessionMapper.class, delegatesTo(sessionMapper));
             AuthService olderRequest = serviceAtTest(earlier, delayedMapper);
             AuthService newerRequest = serviceAtTest(later, sessionMapper);
