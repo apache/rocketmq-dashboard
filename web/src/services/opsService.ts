@@ -236,6 +236,53 @@ export async function listNativeAlertMetrics(
   return opsApi.listNativeAlertMetrics(instanceId, domain);
 }
 
+// Mirror of the server's AlertRuleSemanticFingerprint for the fields this model keeps.
+// AlertService#rejectDuplicateSemanticRule answers 409 when a second rule carries the same
+// evaluation fingerprint, so a different display name does not make a rule distinct. The server's
+// brokerName and clusterName are absent from this model and normalize to an empty string there as
+// well.
+const RATIO_ALERT_METRICS = new Set([
+  'broker.disk.usage_ratio',
+  'broker.jvm.heap.usage_ratio',
+  'broker.send_queue.usage_ratio',
+]);
+
+function normalizeAlertField(value: string | null | undefined): string {
+  return (value ?? '').trim();
+}
+
+// The server prints the normalized threshold with
+// BigDecimal.valueOf(threshold).stripTrailingZeros().toPlainString(); String() keeps the same
+// digits for the thresholds a rule uses.
+function normalizedAlertThreshold(rule: AlertRule): string {
+  const threshold =
+    rule.thresholdUnit === '%' && RATIO_ALERT_METRICS.has(normalizeAlertField(rule.metric))
+      ? rule.threshold / 100
+      : rule.threshold;
+  return String(threshold);
+}
+
+function alertRuleSemanticKey(domain: AlertRuleDomain, rule: AlertRule): string {
+  return JSON.stringify([
+    domain,
+    normalizeAlertField(rule.instanceId),
+    normalizeAlertField(rule.metric),
+    normalizeAlertField(rule.operator).toUpperCase(),
+    normalizedAlertThreshold(rule),
+    normalizeAlertField(rule.duration).toLowerCase(),
+    (normalizeAlertField(rule.aggregation) || 'LAST').toUpperCase(),
+    Math.max(0, rule.windowSeconds ?? 0),
+    normalizeAlertField(rule.consumerGroup),
+    normalizeAlertField(rule.topic),
+    Math.max(1, rule.consecutiveSamples ?? 1),
+  ]);
+}
+
+function duplicateAlertRuleError(existing: AlertRule): Error {
+  const suffix = normalizeAlertField(existing.name) ? `: ${existing.name}` : '';
+  return new Error(`An alert rule with the same evaluation conditions already exists${suffix}`);
+}
+
 export async function createAlertRule(
   data: Partial<AlertRule>,
   domain: AlertRuleDomain = 'CLUSTER',
@@ -255,6 +302,10 @@ export async function createAlertRule(
       ...data,
       channels: [...(data.channels ?? [])],
     };
+    const duplicate = alertRulesState[domain].find(
+      (existing) => alertRuleSemanticKey(domain, existing) === alertRuleSemanticKey(domain, rule),
+    );
+    if (duplicate) throw duplicateAlertRuleError(duplicate);
     alertRulesState[domain].push(rule);
     return copyAlertRule(rule);
   }
