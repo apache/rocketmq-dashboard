@@ -4,7 +4,7 @@ tools:
     cli:
       resource: user
       verb: list
-    description: List RocketMQ ACL users without exposing access or secret keys.
+    description: List RocketMQ ACL users in a Studio Instance without exposing access or secret keys.
     riskLevel: L1
     permission: acl:read
     requiredCapabilities: [ACL_MANAGEMENT]
@@ -18,12 +18,31 @@ tools:
           type: string
           description: Studio Instance identifier.
           minLength: 1
+        keyword:
+          type: string
+          description: Optional literal search text for username or access key.
+        page:
+          type: object
+          additionalProperties: false
+          properties:
+            page:
+              type: integer
+              minimum: 1
+            pageSize:
+              type: integer
+              minimum: 1
     outputSchema:
       type: object
       required:
         - items
       additionalProperties: false
       properties:
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
         items:
           type: array
           items:
@@ -43,7 +62,9 @@ tools:
               admin:
                 type: boolean
               clusters:
-                type: array
+                type:
+                  - array
+                  - 'null'
                 items:
                   type: string
     viewHint: table
