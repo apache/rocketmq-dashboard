@@ -90,6 +90,7 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -846,6 +847,9 @@ public class TencentInstanceProvider implements InstanceProvider {
         Map<String, String> properties = parseProperties(response.getProperties());
         // DescribeMessage carries the tag and key inside Properties (TAGS / KEYS), not as
         // top-level fields, so surface them onto the record for the message list/detail page.
+        // The API reports no size field, but the detail body is available, so derive the size
+        // from its UTF-8 encoding the way the console renders it.
+        String body = response.getBody();
         return MessageRecordVO.builder()
                 .msgId(defaultIfBlank(response.getMessageId(), ""))
                 .topic(defaultIfBlank(response.getShowTopicName(), ""))
@@ -858,7 +862,7 @@ public class TencentInstanceProvider implements InstanceProvider {
                 .bornHost(response.getProducerAddr())
                 .properties(properties)
                 .propertiesTruncated(false)
-                .size(0)
+                .size(body == null ? 0 : body.getBytes(StandardCharsets.UTF_8).length)
                 .build();
     }
 
@@ -878,7 +882,9 @@ public class TencentInstanceProvider implements InstanceProvider {
                 .bornHost(item.getProducerAddr())
                 .properties(Collections.emptyMap())
                 .propertiesTruncated(false)
-                .size(0)
+                // DescribeMessageList returns neither a body nor a size field, so the row cannot
+                // know its size; report the unknown sentinel instead of a "0 B" measurement.
+                .size(MessageRecordVO.UNKNOWN_SIZE)
                 .build();
     }
 

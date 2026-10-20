@@ -176,6 +176,16 @@ export function formatTimeOfDay(timestamp: number): string {
 }
 
 /**
+ * Sentinel the backend (MessageRecordVO.UNKNOWN_SIZE) reports when a message size cannot be
+ * determined, e.g. Tencent cloud list queries that return neither a body nor a size field.
+ */
+export const UNKNOWN_SIZE = -1;
+
+/** Size gate mirroring isLagAvailable: only a non-negative finite size is a measurement. */
+export const isSizeAvailable = (size: number | null | undefined): size is number =>
+  typeof size === 'number' && Number.isFinite(size) && size >= 0;
+
+/**
  * Format bytes into human-readable string (1024-based).
  * e.g. 1536 → '1.5 KB', 1048576 → '1 MB'
  */

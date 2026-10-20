@@ -28,6 +28,10 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class MessageRecordVO {
+
+    /** Sentinel meaning "message size cannot be determined" (cloud list APIs without a body). */
+    public static final int UNKNOWN_SIZE = -1;
+
     private String msgId;
     private String topic;
     private String tag;
