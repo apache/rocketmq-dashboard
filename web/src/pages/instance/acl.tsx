@@ -170,6 +170,14 @@ const AclPageContent = ({
   const [userKeyword, setUserKeyword] = useState('');
   const [ruleSubmitting, setRuleSubmitting] = useState(false);
   const [userSubmitting, setUserSubmitting] = useState(false);
+  // `ruleSubmitting`/`userSubmitting` only render after validateFields resolves and React
+  // re-renders, so a second OK click inside that window would put the same rule or user
+  // write on the wire twice. The refs lock the dialogs synchronously, before any await.
+  const ruleSubmittingRef = useRef(false);
+  const userSubmittingRef = useRef(false);
+  // Same shape for the plain-access dialog: `plainSubmitting` also flips only after
+  // `plainForm.validateFields()` resolves, so the ref locks the OK button synchronously.
+  const plainSubmittingRef = useRef(false);
   const [activeTab, setActiveTab] = useState('users');
   const [ruleRefreshKey, setRuleRefreshKey] = useState(0);
   const [userRefreshKey, setUserRefreshKey] = useState(0);
@@ -374,6 +382,9 @@ const AclPageContent = ({
   };
 
   const handleRuleSubmit = async () => {
+    if (ruleSubmittingRef.current) return;
+    ruleSubmittingRef.current = true;
+    setRuleSubmitting(true);
     try {
       const values = (await ruleForm.validateFields()) as AclRuleFormValues;
       const normalizedValues = tencentRoleMode
@@ -386,7 +397,6 @@ const AclPageContent = ({
             scope: 'cluster',
           }
         : values;
-      setRuleSubmitting(true);
       if (editingRule) {
         await updateAclRule({
           ...editingRule,
@@ -409,6 +419,7 @@ const AclPageContent = ({
       if (isFormValidationError(error)) return;
       message.error(t('common.operationFailed'));
     } finally {
+      ruleSubmittingRef.current = false;
       setRuleSubmitting(false);
     }
   };
@@ -478,9 +489,11 @@ const AclPageContent = ({
   };
 
   const handleUserSubmit = async () => {
+    if (userSubmittingRef.current) return;
+    userSubmittingRef.current = true;
+    setUserSubmitting(true);
     try {
       const values = (await userForm.validateFields()) as AclUserFormValues;
-      setUserSubmitting(true);
       if (editingUser) {
         const updated = await updateAclUser({
           id: editingUser.id,
@@ -510,6 +523,7 @@ const AclPageContent = ({
       if (isFormValidationError(error)) return;
       message.error(t('common.operationFailed'));
     } finally {
+      userSubmittingRef.current = false;
       setUserSubmitting(false);
     }
   };
@@ -704,9 +718,11 @@ const AclPageContent = ({
   };
 
   const handlePlainSubmit = async () => {
+    if (plainSubmittingRef.current) return;
+    plainSubmittingRef.current = true;
+    setPlainSubmitting(true);
     try {
       const values = (await plainForm.validateFields()) as Partial<PlainAccessConfig>;
-      setPlainSubmitting(true);
       const saved = await createAndUpdatePlainAccessConfig({
         ...values,
         accessKey: (values.accessKey ?? '').trim(),
@@ -731,6 +747,7 @@ const AclPageContent = ({
       if (isFormValidationError(error)) return;
       message.error(t('common.operationFailed'));
     } finally {
+      plainSubmittingRef.current = false;
       setPlainSubmitting(false);
     }
   };
