@@ -358,6 +358,117 @@ describe('LiteTopic Page', () => {
     );
   });
 
+  it('keepsTheCurrentQueryWhenAnEarlierTtlUpdateCompletesTest', async () => {
+    const update = createDeferred<void>();
+    apiMocks.extendLiteTopicTTL.mockReturnValueOnce(update.promise);
+    instanceApiMocks.listInstances.mockResolvedValue([
+      { id: 1, name: 'apache-main', vendor: 'APACHE' },
+    ] as unknown as Instance[]);
+    apiMocks.queryLiteTopicList.mockImplementation(async (pattern?: string) => [
+      { namespace: 'default', topicPattern: pattern === 'payment' ? 'payment-*' : 'order-*' },
+    ]);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByText('延长 TTL'));
+    await waitFor(() =>
+      expect(document.querySelector('.ant-modal .ant-select-selection-item')?.textContent).toBe(
+        'apache-main',
+      ),
+    );
+    await user.type(screen.getByRole('spinbutton'), '7200');
+    await user.click(screen.getByRole('button', { name: /确\s*认/ }));
+    await waitFor(() => expect(apiMocks.extendLiteTopicTTL).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: /取\s*消/ }));
+
+    await user.type(screen.getByPlaceholderText('按 Topic 模式筛选...'), 'payment');
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+    expect(await screen.findByText('payment-*')).toBeInTheDocument();
+
+    await act(async () => update.resolve());
+
+    expect(apiMocks.queryLiteTopicList).toHaveBeenLastCalledWith('payment', undefined);
+    expect(screen.getByText('payment-*')).toBeInTheDocument();
+    expect(screen.queryByText('order-*')).not.toBeInTheDocument();
+  });
+
+  it('refreshesTheSubmittedQueryWithoutApplyingUnsentFilterTextAfterTtlUpdateTest', async () => {
+    instanceApiMocks.listInstances.mockResolvedValue([
+      { id: 1, name: 'apache-main', vendor: 'APACHE' },
+    ] as unknown as Instance[]);
+    apiMocks.extendLiteTopicTTL.mockResolvedValueOnce(undefined);
+    apiMocks.queryLiteTopicList.mockImplementation(async (pattern?: string) => [
+      { namespace: 'default', topicPattern: pattern === 'payment' ? 'payment-*' : 'order-*' },
+    ]);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('order-*');
+    const filter = screen.getByPlaceholderText('按 Topic 模式筛选...');
+    await user.type(filter, 'order');
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+    await waitFor(() =>
+      expect(apiMocks.queryLiteTopicList).toHaveBeenCalledWith('order', undefined),
+    );
+    await user.clear(filter);
+    await user.type(filter, 'payment');
+
+    await user.click(screen.getByText('延长 TTL'));
+    await waitFor(() =>
+      expect(document.querySelector('.ant-modal .ant-select-selection-item')?.textContent).toBe(
+        'apache-main',
+      ),
+    );
+    await user.type(screen.getByRole('spinbutton'), '7200');
+    await user.click(screen.getByRole('button', { name: /确\s*认/ }));
+
+    await waitFor(() => expect(apiMocks.queryLiteTopicList).toHaveBeenCalledTimes(3));
+    expect(apiMocks.queryLiteTopicList).toHaveBeenLastCalledWith('order', undefined);
+    expect(filter).toHaveValue('payment');
+    expect(screen.getByText('order-*')).toBeInTheDocument();
+    expect(screen.queryByText('payment-*')).not.toBeInTheDocument();
+  });
+
+  it('refreshesThePendingNamespaceQueryWhenAnEarlierTtlUpdateCompletesTest', async () => {
+    const update = createDeferred<void>();
+    const namespaceQuery = createDeferred<LiteTopicItem[]>();
+    apiMocks.extendLiteTopicTTL.mockReturnValueOnce(update.promise);
+    instanceApiMocks.listInstances.mockResolvedValue([
+      { id: 1, name: 'apache-main', vendor: 'APACHE' },
+    ] as unknown as Instance[]);
+    apiMocks.queryLiteTopicList
+      .mockResolvedValueOnce([
+        { namespace: 'default', topicPattern: 'order-*' },
+        { namespace: 'Other', topicPattern: 'other-*' },
+      ])
+      .mockReturnValueOnce(namespaceQuery.promise)
+      .mockResolvedValueOnce([{ namespace: 'Other', topicPattern: 'refreshed-other-*' }]);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click((await screen.findAllByText('延长 TTL'))[0]);
+    await waitFor(() =>
+      expect(document.querySelector('.ant-modal .ant-select-selection-item')?.textContent).toBe(
+        'apache-main',
+      ),
+    );
+    await user.type(screen.getByRole('spinbutton'), '7200');
+    await user.click(screen.getByRole('button', { name: /确\s*认/ }));
+    await waitFor(() => expect(apiMocks.extendLiteTopicTTL).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: /取\s*消/ }));
+    await selectNamespace('Other');
+    expect(apiMocks.queryLiteTopicList).toHaveBeenLastCalledWith(undefined, 'Other');
+
+    await act(async () => update.resolve());
+
+    expect(apiMocks.queryLiteTopicList).toHaveBeenLastCalledWith(undefined, 'Other');
+    expect(apiMocks.queryLiteTopicQuota).toHaveBeenLastCalledWith('Other');
+    expect(await screen.findByText('refreshed-other-*')).toBeInTheDocument();
+    await act(async () =>
+      namespaceQuery.resolve([{ namespace: 'Other', topicPattern: 'obsolete-other-*' }]),
+    );
+    expect(screen.getByText('refreshed-other-*')).toBeInTheDocument();
+    expect(screen.queryByText('obsolete-other-*')).not.toBeInTheDocument();
+    expect(screen.queryByText('order-*')).not.toBeInTheDocument();
+  });
+
   it('returns to the first page when the local TTL filter changes', async () => {
     apiMocks.queryLiteTopicList.mockResolvedValue([
       ...Array.from({ length: 11 }, (_, index) => ({

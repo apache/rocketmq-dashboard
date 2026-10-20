@@ -394,7 +394,10 @@ const LiteTopicPage: React.FC = () => {
       );
       message.success(t('liteTopic.extendTtlSuccess'));
       closeExtendTTL();
-      void fetchData(patternFilter || undefined, namespaceFilter || undefined);
+      // The operator may have submitted another query while this write was pending.
+      // Refresh that query, without applying filter text that has not been searched.
+      const query = displayQueryRef.current;
+      void fetchData(query.pattern, query.namespace);
     } catch {
       message.error(t('liteTopic.extendTtlFailed'));
     } finally {
