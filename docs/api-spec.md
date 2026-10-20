@@ -162,6 +162,8 @@
 | 118 | GET | `/api/liteTopic/capability` | LiteTopic 能力检查 |
 | 119 | GET | `/api/auth/status` | 登录策略与当前用户 |
 | 120 | POST | `/api/auth/password` | 修改当前用户密码 |
+| 121 | GET | `/api/metrics/profiles` | RocketMQ 指标语义 PromQL 配置 |
+| 122 | POST | `/api/metrics/query/datasource` | 使用已配置数据源查询监控指标 |
 
 ## 通用响应格式
 
@@ -3361,6 +3363,31 @@ studio:
 | `502` | 无法连接 Prometheus，或 Prometheus 返回非法响应 |
 | `503` | Prometheus 未配置或暂时不可用 |
 | `504` | Prometheus 查询超时 |
+
+### 16.1.1 使用已配置数据源查询指标
+
+```
+POST /api/metrics/query/datasource?key={dataSourceKey}
+```
+
+该接口从 Studio 已保存的数据源配置中解析后端类型、地址和认证信息，并向对应的
+Prometheus-compatible 服务执行同样的 PromQL range query。数据源由 `key` 精确指定；
+请求体使用与 `POST /api/metrics/query` 相同的 `metric`、`start`、`end` 和 `step` 字段，
+响应 `data` 仍为 `MetricData`。数据源凭证由服务端按请求使用，不在响应中返回。
+
+**Request Body:**
+
+```json
+{
+  "metric": "sum(rate(rocketmq_messages_in_total[1m])) by (node_id)",
+  "start": 1784112606,
+  "end": 1784114406,
+  "step": "30s"
+}
+```
+
+当 `key` 为空、未知或数据源不可用时，接口分别返回 `400`、`400` 或对应的 `503`/`502`/`504`
+错误；PromQL 无法执行时返回 `422`。该接口适用于实例绑定或共享的数据源，具体选择规则由数据源配置决定。
 
 ### 16.2 Grafana 看板列表
 
