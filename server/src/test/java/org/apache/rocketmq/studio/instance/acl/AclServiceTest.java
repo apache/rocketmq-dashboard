@@ -611,9 +611,11 @@ class AclServiceTest {
     }
 
     @Test
-    void updateUserShouldEchoTheStoredCreationStampUnshiftedTest() {
-        // The write paths echo the stored row (masked) so create and update agree: an update
-        // response must not carry a UTC stamp next to a create response's server-local one.
+    void updateUserShouldEchoTheStoredCreationStampOnTheUtcWireTest() {
+        // The update response is patched straight into the visible table row before the read-path
+        // reload lands, so it has to carry the same wire shape the read path serves: a masked copy
+        // whose creation stamp is UTC. An unshifted server-local stamp would render shifted by the
+        // server zone (parseUtcDateTime reads it as UTC) and visibly jump when the reload arrives.
         TimeZone original = TimeZone.getDefault();
         TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
         try {
@@ -634,7 +636,9 @@ class AclServiceTest {
             AclUserVO result = aclService.updateUser(command, null);
 
             assertThat(result.getAccessKey()).isEqualTo("acce****3456");
-            assertThat(result.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 10, 0, 0));
+            assertThat(result.getSecretKey()).isEqualTo("secr****7654");
+            assertThat(result.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 2, 0, 0));
+            assertThat(saved.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 10, 0, 0));
         } finally {
             TimeZone.setDefault(original);
         }
