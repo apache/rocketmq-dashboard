@@ -494,7 +494,7 @@ class AlertServiceTest {
     }
 
     @Test
-    void exportPrometheusRulesYamlShouldReplaceInvalidPrometheusFieldsTest() {
+    void exportPrometheusRulesYamlShouldSkipRulesWithInvalidPrometheusFieldsTest() {
         AlertRuleVO rule = AlertRuleVO.builder()
                 .name("Malformed rule")
                 .metric("up) or vector(1")
@@ -507,10 +507,80 @@ class AlertServiceTest {
 
         String result = alertService.exportPrometheusRulesYaml();
 
+        // The metric guard trips first, so the operator and duration never reach the export; the
+        // rule must be skipped with a comment instead of rewritten to a different rule.
         assertThat(result)
-                .contains("expr: rocketmq_consumer_lag_messages > 10")
-                .contains("for: 5m")
-                .doesNotContain("vector(1", "> 0 or", "5xyz");
+                .contains("groups: []")
+                .contains("# Skipped \"Malformed rule\": metric 'up) or vector(1' "
+                        + "is not a valid Prometheus metric name")
+                .doesNotContain("expr:")
+                .doesNotContain("> 0 or", "5xyz");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldOmitForWhenTheStoredDurationIsBlankTest() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("Immediate Lag")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(5000)
+                .duration(" ")
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        // A blank duration evaluates as Duration.ZERO on screen, so the export must let the alert
+        // fire immediately instead of inventing a 5-minute `for` delay the rule never had.
+        assertThat(result)
+                .contains("- alert: ImmediateLag")
+                .contains("expr: rocketmq_consumer_lag_messages > 5000")
+                .doesNotContain("for:");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldSkipRulesWithAnUnsupportedOperatorTest() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("Unicode Operator")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator("≥")
+                .threshold(5000)
+                .duration("3m")
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result)
+                .contains("groups: []")
+                .contains("# Skipped \"Unicode Operator\": operator '≥' "
+                        + "is not supported by the Prometheus export")
+                .doesNotContain("expr:")
+                .doesNotContain("UnicodeOperator");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldSkipRulesWithoutAValidMetricNameTest() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("Injection Metric")
+                .metric("up) or vector(1")
+                .operator(">")
+                .threshold(10)
+                .duration("3m")
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result)
+                .contains("groups: []")
+                .contains("# Skipped \"Injection Metric\": metric 'up) or vector(1' "
+                        + "is not a valid Prometheus metric name")
+                .doesNotContain("expr:")
+                .doesNotContain("rocketmq_consumer_lag_messages");
     }
 
     @Test
