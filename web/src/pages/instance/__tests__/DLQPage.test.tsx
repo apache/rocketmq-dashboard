@@ -755,10 +755,32 @@ describe('DLQ page', () => {
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     const blob = createObjectURL.mock.calls[0][0] as Blob;
     const csv = await blob.text();
-    expect(csv).toContain('"cg-order","%DLQ%cg-order","7","3","ACTIVE"');
-    expect(csv).toContain('"\'-cg-""payment""","%DLQ%cg-payment","2","1","ACTIVE"');
+    expect(csv).toContain('"cg-order","%DLQ%cg-order","7","ACTIVE"');
+    expect(csv).toContain('"\'-cg-""payment""","%DLQ%cg-payment","2","ACTIVE"');
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:dlq');
+  });
+
+  it('drops the always-zero retry count from the CSV summary export', async () => {
+    // The Apache DLQ provider hardcodes retryCount to 0 for every group (a real count needs
+    // per-message reconsumeTimes it never fetches), so the exported column is misleading
+    // triage data. The export must not carry it at all.
+    vi.mocked(messageService.listDLQGroups).mockResolvedValue(
+      pageOf([{ ...dlqGroup, retryCount: 999 }]),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    const row = (await screen.findByText('cg-order')).closest('tr');
+    if (!row) throw new Error('DLQ group row not found');
+    await user.click(within(row).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: /批量导出/ }));
+
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    const csv = await blob.text();
+    expect(csv).not.toContain('Retry Count');
+    expect(csv).not.toContain('999');
+    expect(csv).toContain('"Group Name","DLQ Topic","Message Count","Status"');
   });
 
   it('exports the last enqueue time through the UTC formatter instead of the raw wire value', async () => {
