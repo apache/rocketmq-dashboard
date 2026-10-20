@@ -1794,6 +1794,37 @@ class RocketMQAdminClientImplTest {
         assertThat(result.getMsgId()).isEqualTo("msg-1");
     }
 
+    @ParameterizedTest
+    @NullAndEmptySource
+    void emptyBodyIsRejectedBeforeOwnershipOrClientResolutionTest(String body) {
+        SendMessageDTO request = SendMessageDTO.builder().instanceId("instance-a").topic("TopicA")
+                .body(body).build();
+
+        assertThatThrownBy(() -> adminClient.sendMessage(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Message body must not be empty")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(ownershipGuard, runtimeAdminClientResolver, adminExt, sendProducer, clientPool);
+    }
+
+    @Test
+    void whitespaceBodyIsSentWithoutTrimmingTest() throws Exception {
+        SendResult sent = new SendResult();
+        sent.setSendStatus(SendStatus.SEND_OK);
+        sent.setMsgId("whitespace-message");
+        when(sendProducer.send(any(Message.class))).thenReturn(sent);
+        String body = " \t\n";
+        SendMessageDTO request = SendMessageDTO.builder().instanceId("instance-a").topic("TopicA")
+                .body(body).build();
+
+        assertThat(adminClient.sendMessage(request).getMsgId()).isEqualTo("whitespace-message");
+
+        ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
+        verify(sendProducer).send(captor.capture());
+        assertThat(captor.getValue().getBody()).isEqualTo(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
     @Test
     void sendMessageShouldRejectOversizedUtf8BodyBeforeResolvingEndpointOrCreatingProducer() {
         SendMessageDTO request = new SendMessageDTO();

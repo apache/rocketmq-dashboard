@@ -625,6 +625,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     private void validateMessageSize(SendMessageDTO request) {
         int size = request.getBody() == null ? 0 : request.getBody().getBytes(StandardCharsets.UTF_8).length;
+        if (size == 0) {
+            String message = "Message body must not be empty";
+            recordAudit("SEND_MESSAGE", request.getTopic(), message, "FAILED");
+            throw new BusinessException(400, message);
+        }
         if (size > MAX_MESSAGE_SIZE) {
             String message = "Message body size " + size
                     + " exceeds the maximum of " + MAX_MESSAGE_SIZE + " bytes";
