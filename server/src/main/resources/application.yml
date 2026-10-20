@@ -106,6 +106,7 @@ studio:
       bearer-token: ${STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN:}
   rocketmq:
     namesrv-addr: ${STUDIO_ROCKETMQ_NAMESRV_ADDR:localhost:9876}
+    proxy-remoting-start-retry-cooldown: ${STUDIO_ROCKETMQ_PROXY_REMOTING_START_RETRY_COOLDOWN:30s}
   query-history:
     retention-days: 90
     cleanup-interval: PT24H

@@ -28,22 +28,45 @@ import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.MockedConstruction;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ProxyConsumerResolverTest {
+
+    private static final String PROXY_ADDR = "192.0.2.10:8080";
+    private static final String CONSUMER_GROUP = "cg-orders";
+    private static final String PROXY_START_FAILURE = "proxy remoting client start failed";
+    private static final String QUERY_BEFORE_START_FINISHED =
+            "proxy query reached the client before startup finished";
 
     @Mock
     private MqAdminExtFactory adminFactory;
@@ -55,6 +78,7 @@ class ProxyConsumerResolverTest {
     private MQAdminExt adminExt;
 
     private ProxyConsumerResolver resolver;
+    private RocketMQProperties properties;
 
     @BeforeEach
     void setUp() {
@@ -64,7 +88,8 @@ class ProxyConsumerResolverTest {
         lenient().when(adminFactory.execute(any(), any(), any()))
                 .thenAnswer(invocation ->
                         invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
-        resolver = new ProxyConsumerResolver(adminFactory, runtimeAdminClientResolver, new RocketMQProperties());
+        properties = new RocketMQProperties();
+        resolver = new ProxyConsumerResolver(adminFactory, runtimeAdminClientResolver, properties);
     }
 
     @Test
@@ -167,4 +192,157 @@ class ProxyConsumerResolverTest {
         assertThat(unavailable.connection()).isNull();
     }
 
+    @Test
+    void firstStartFailureShouldNotBeCachedAndTheNextQueryShouldStartAFreshClientTest() throws Exception {
+        properties.setProxyRemotingStartRetryCooldown(Duration.ZERO);
+        AtomicInteger constructions = new AtomicInteger();
+        try (MockedConstruction<NettyRemotingClient> construction = mockConstruction(NettyRemotingClient.class,
+                (client, context) -> {
+                    if (constructions.getAndIncrement() == 0) {
+                        doThrow(new IllegalStateException(PROXY_START_FAILURE)).when(client).start();
+                    } else {
+                        when(client.invokeSync(anyString(), any(RemotingCommand.class), anyLong()))
+                                .thenReturn(RemotingCommand.createResponseCommand(
+                                        ResponseCode.CONSUMER_NOT_ONLINE, "not online"));
+                    }
+                })) {
+            assertThatThrownBy(() -> resolver.queryProxy(PROXY_ADDR, CONSUMER_GROUP))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage(PROXY_START_FAILURE);
+
+            // A client whose start failed must not be published, so it has to be disposed of instead
+            // of being reused by the next proxy query.
+            assertThat(construction.constructed()).hasSize(1);
+            NettyRemotingClient failed = construction.constructed().get(0);
+            verify(failed).start();
+            verify(failed).shutdown();
+
+            assertThat(resolver.queryProxy(PROXY_ADDR, CONSUMER_GROUP)).isNull();
+
+            // The next query retries with a freshly created client and starts it.
+            assertThat(construction.constructed()).hasSize(2);
+            NettyRemotingClient replacement = construction.constructed().get(1);
+            verify(replacement).start();
+            verify(replacement).invokeSync(anyString(), any(RemotingCommand.class), anyLong());
+        }
+    }
+
+    @Test
+    void failedStartShouldRespectConfiguredRetryCooldownTest() throws Exception {
+        properties.setProxyRemotingStartRetryCooldown(Duration.ofMinutes(1));
+        AtomicInteger constructions = new AtomicInteger();
+        try (MockedConstruction<NettyRemotingClient> construction = mockConstruction(NettyRemotingClient.class,
+                (client, context) -> {
+                    if (constructions.getAndIncrement() == 0) {
+                        doThrow(new IllegalStateException(PROXY_START_FAILURE)).when(client).start();
+                    } else {
+                        when(client.invokeSync(anyString(), any(RemotingCommand.class), anyLong()))
+                                .thenReturn(RemotingCommand.createResponseCommand(
+                                        ResponseCode.CONSUMER_NOT_ONLINE, "not online"));
+                    }
+                })) {
+            assertThatThrownBy(() -> resolver.queryProxy(PROXY_ADDR, CONSUMER_GROUP))
+                    .isInstanceOf(IllegalStateException.class).hasMessage(PROXY_START_FAILURE);
+            assertThatThrownBy(() -> resolver.queryProxy(PROXY_ADDR, CONSUMER_GROUP))
+                    .isInstanceOf(IllegalStateException.class).hasMessage(PROXY_START_FAILURE);
+            assertThat(construction.constructed()).hasSize(1);
+
+            properties.setProxyRemotingStartRetryCooldown(Duration.ZERO);
+            assertThat(resolver.queryProxy(PROXY_ADDR, CONSUMER_GROUP)).isNull();
+            assertThat(construction.constructed()).hasSize(2);
+        }
+    }
+
+    @Test
+    void failedStartShouldPreserveShutdownFailureTest() {
+        try (MockedConstruction<NettyRemotingClient> construction = mockConstruction(NettyRemotingClient.class,
+                (client, context) -> {
+                    doThrow(new IllegalStateException(PROXY_START_FAILURE)).when(client).start();
+                    doThrow(new IllegalStateException("shutdown failed")).when(client).shutdown();
+                })) {
+            assertThatThrownBy(() -> resolver.queryProxy(PROXY_ADDR, CONSUMER_GROUP))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage(PROXY_START_FAILURE)
+                    .satisfies(failure -> {
+                        assertThat(failure.getSuppressed()).hasSize(1);
+                        assertThat(failure.getSuppressed()[0]).hasMessage("shutdown failed");
+                    });
+        }
+    }
+
+    @Test
+    void shutdownDuringStartupShouldNotWaitForTheInitializationMonitorTest() {
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try (MockedConstruction<NettyRemotingClient> construction = mockConstruction(NettyRemotingClient.class,
+                (client, context) -> doAnswer(invocation -> {
+                    Future<?> shutdown = pool.submit(resolver::shutdownRemotingClient);
+                    shutdown.get(2, TimeUnit.SECONDS);
+                    return null;
+                }).when(client).start())) {
+            assertThatThrownBy(() -> resolver.queryProxy(PROXY_ADDR, CONSUMER_GROUP))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("Proxy remoting client shut down during startup");
+            assertThat(construction.constructed()).hasSize(1);
+            verify(construction.constructed().get(0)).shutdown();
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void concurrentFirstUseShouldWaitUntilTheRemotingClientStartupFinishedTest() throws Exception {
+        CountDownLatch startEntered = new CountDownLatch(1);
+        CountDownLatch concurrentAttempt = new CountDownLatch(1);
+        AtomicBoolean startupFinished = new AtomicBoolean(false);
+        AtomicReference<Throwable> concurrentFailure = new AtomicReference<>();
+        List<String> events = Collections.synchronizedList(new ArrayList<>());
+        try (MockedConstruction<NettyRemotingClient> construction = mockConstruction(NettyRemotingClient.class,
+                (client, context) -> {
+                    doAnswer(invocation -> {
+                        events.add("start-entered");
+                        startEntered.countDown();
+                        // Let the concurrent caller reach the resolver while this startup is pending,
+                        // then give it a bounded allowance to act.
+                        assertThat(concurrentAttempt.await(5, TimeUnit.SECONDS))
+                                .as("the concurrent caller reached the resolver").isTrue();
+                        Thread.sleep(500L);
+                        startupFinished.set(true);
+                        events.add("start-finished");
+                        return null;
+                    }).when(client).start();
+                    when(client.invokeSync(anyString(), any(RemotingCommand.class), anyLong()))
+                            .thenAnswer(invocation -> {
+                                if (!startupFinished.get()) {
+                                    throw new IllegalStateException(QUERY_BEFORE_START_FINISHED);
+                                }
+                                events.add("invokeSync");
+                                return RemotingCommand.createResponseCommand(
+                                        ResponseCode.CONSUMER_NOT_ONLINE, "not online");
+                            });
+                })) {
+            ExecutorService pool = Executors.newSingleThreadExecutor();
+            try {
+                Future<?> concurrent = pool.submit(() -> {
+                    try {
+                        assertThat(startEntered.await(5, TimeUnit.SECONDS))
+                                .as("the first caller entered start()").isTrue();
+                        concurrentAttempt.countDown();
+                        resolver.queryProxy(PROXY_ADDR, CONSUMER_GROUP);
+                    } catch (Throwable t) {
+                        concurrentFailure.set(t);
+                    }
+                });
+
+                assertThat(resolver.queryProxy(PROXY_ADDR, CONSUMER_GROUP)).isNull();
+                concurrent.get(5, TimeUnit.SECONDS);
+
+                assertThat(concurrentFailure.get()).isNull();
+                assertThat(construction.constructed()).hasSize(1);
+                // Either caller may win the post-start race; both labels intentionally match.
+                assertThat(events).containsExactly("start-entered", "start-finished", "invokeSync", "invokeSync");
+            } finally {
+                pool.shutdownNow();
+            }
+        }
+    }
 }
