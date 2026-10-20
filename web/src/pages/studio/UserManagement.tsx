@@ -137,7 +137,9 @@ const UserManagementPage = () => {
   const [sessionDetailsLoading, setSessionDetailsLoading] = useState(false);
   const [sessionDetailsFailed, setSessionDetailsFailed] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState<StudioUser | null>(null);
+  const [savingPassword, setSavingPassword] = useState(false);
   const [userExporting, setUserExporting] = useState(false);
   const [mutatingUserIds, setMutatingUserIds] = useState<Set<number>>(() => new Set());
   const [refreshVersion, setRefreshVersion] = useState(0);
@@ -147,6 +149,8 @@ const UserManagementPage = () => {
   const sessionDetailsRequestSeqRef = useRef(0);
   const sessionModalUserIdRef = useRef<number | null>(null);
   const mutatingUserIdsRef = useRef(new Set<number>());
+  const createInFlightRef = useRef(false);
+  const passwordInFlightRef = useRef(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -196,7 +200,11 @@ const UserManagementPage = () => {
       setUsers(result.items);
       setTotal(result.total);
     } catch {
-      if (requestId === requestSeqRef.current) message.error(t('userMgmt.loadFailed'));
+      if (requestId === requestSeqRef.current) {
+        setUsers([]);
+        setTotal(0);
+        message.error(t('userMgmt.loadFailed'));
+      }
     } finally {
       if (requestId === requestSeqRef.current) setLoading(false);
     }
@@ -269,6 +277,9 @@ const UserManagementPage = () => {
   };
 
   const createUser = async () => {
+    if (createInFlightRef.current) return;
+    createInFlightRef.current = true;
+    setCreating(true);
     try {
       const values = await createForm.validateFields();
       await createStudioUser(values);
@@ -283,6 +294,9 @@ const UserManagementPage = () => {
       // handler, since the modal wiring calls it fire-and-forget.
       if (error && typeof error === 'object' && 'errorFields' in error) return;
       message.error(t('userMgmt.createFailed'));
+    } finally {
+      createInFlightRef.current = false;
+      setCreating(false);
     }
   };
 
@@ -322,6 +336,9 @@ const UserManagementPage = () => {
 
   const updatePassword = async () => {
     if (!passwordTarget) return;
+    if (passwordInFlightRef.current) return;
+    passwordInFlightRef.current = true;
+    setSavingPassword(true);
     try {
       const values = await passwordForm.validateFields();
       if (passwordTarget.id === userId) {
@@ -339,6 +356,9 @@ const UserManagementPage = () => {
       // See createUser: validation rejections must stay handled here.
       if (error && typeof error === 'object' && 'errorFields' in error) return;
       message.error(t('userMgmt.changePasswordFailed'));
+    } finally {
+      passwordInFlightRef.current = false;
+      setSavingPassword(false);
     }
   };
 
@@ -832,9 +852,11 @@ const UserManagementPage = () => {
         open={createOpen}
         onOk={() => void createUser()}
         onCancel={() => {
+          if (createInFlightRef.current) return;
           setCreateOpen(false);
           createForm.resetFields();
         }}
+        confirmLoading={creating}
         destroyOnHidden
       >
         <Form form={createForm} layout="vertical" initialValues={{ admin: false }} preserve={false}>
@@ -870,9 +892,11 @@ const UserManagementPage = () => {
         open={passwordTarget !== null}
         onOk={() => void updatePassword()}
         onCancel={() => {
+          if (passwordInFlightRef.current) return;
           setPasswordTarget(null);
           passwordForm.resetFields();
         }}
+        confirmLoading={savingPassword}
       >
         <Form form={passwordForm} layout="vertical">
           {passwordTarget?.id === userId && (
