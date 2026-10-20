@@ -55,7 +55,7 @@ export function listInstances(query: InstanceQuery = {}): Promise<Instance[]> {
 async function fetchInstances(query: InstanceQuery, mockMode: boolean): Promise<Instance[]> {
   if (mockMode) {
     const search = query.search?.trim().toLowerCase();
-    return mockInstances
+    const matches = mockInstances
       .filter((instance) => matchesType(instance, query.type))
       .filter(
         (instance) =>
@@ -65,6 +65,16 @@ async function fetchInstances(query: InstanceQuery, mockMode: boolean): Promise<
           ),
       )
       .map(copyInstance);
+    return matches.map((instance) =>
+      query.withCounts
+        ? { ...instance, resourceCountsAvailable: true }
+        : {
+            ...instance,
+            topicCount: 0,
+            consumerGroupCount: 0,
+            resourceCountsAvailable: false,
+          },
+    );
   }
   return instanceApi.listInstances(query);
 }
