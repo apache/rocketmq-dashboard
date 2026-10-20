@@ -152,7 +152,7 @@ class TopicControllerTest extends WebMvcAuthTestSupport {
 
     @Test
     void exportTopicsShouldPassFiltersAndSelectedNames() throws Exception {
-        when(metadataService.exportTopics("instance-a", "FIFO", "orders", List.of("topic-a", "topic-b")))
+        when(metadataService.exportTopics("instance-a", null, "FIFO", "orders", List.of("topic-a", "topic-b")))
                 .thenReturn("\"Name\"\n\"topic-a\"");
 
         mockMvc.perform(get("/api/topics/export")
@@ -163,7 +163,26 @@ class TopicControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").value("\"Name\"\n\"topic-a\""));
 
-        verify(metadataService).exportTopics("instance-a", "FIFO", "orders", List.of("topic-a", "topic-b"));
+        verify(metadataService).exportTopics("instance-a", null, "FIFO", "orders", List.of("topic-a", "topic-b"));
+    }
+
+    @Test
+    void topicExportShouldHonorClusterFilter() throws Exception {
+        when(metadataService.exportTopics("instance-a", "cluster-a", "FIFO", "orders",
+                List.of("topic-a", "topic-b")))
+                .thenReturn("\"Name\"\n\"topic-a\"");
+
+        mockMvc.perform(get("/api/topics/export")
+                        .param("instanceId", "instance-a")
+                        .param("clusterId", "cluster-a")
+                        .param("type", "FIFO")
+                        .param("search", "orders")
+                        .param("names", "topic-a,topic-b"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value("\"Name\"\n\"topic-a\""));
+
+        verify(metadataService).exportTopics("instance-a", "cluster-a", "FIFO", "orders",
+                List.of("topic-a", "topic-b"));
     }
 
     @Test
