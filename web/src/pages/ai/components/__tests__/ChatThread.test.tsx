@@ -270,6 +270,49 @@ describe('ChatThread', () => {
     expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
+  it('countsPendingQuestionAndWaitingAnswerOnceThroughPersistenceTest', () => {
+    const existing = [userBubble('earlier question'), assistantBubble('earlier answer')];
+    const { rerender } = renderThread({ bubbles: existing });
+    placeReader(600);
+    fireEvent.scroll(screen.getByTestId('ai-thread-scroll'));
+    scrollIntoView.mockClear();
+
+    rerender(
+      <LangProvider>
+        <ChatThread bubbles={existing} pendingUserText="new question" liveBlocks={[]} streaming />
+      </LangProvider>,
+    );
+    expect(screen.getByText('new question')).toBeInTheDocument();
+    expect(screen.getAllByTestId('ai-bubble-user-avatar')).toHaveLength(2);
+    expect(screen.getAllByTestId('ai-bubble-default-avatar')).toHaveLength(2);
+    expect(screen.getByTestId('ai-thread-unread')).toHaveTextContent('2');
+
+    rerender(
+      <LangProvider>
+        <ChatThread
+          bubbles={existing}
+          pendingUserText="new question"
+          liveBlocks={appendText([], 'new answer')}
+          streaming
+        />
+      </LangProvider>,
+    );
+    expect(screen.getByText('new answer')).toBeInTheDocument();
+    expect(screen.getByTestId('ai-thread-unread')).toHaveTextContent('2');
+
+    rerender(
+      <LangProvider>
+        <ChatThread
+          bubbles={[...existing, userBubble('new question'), assistantBubble('new answer')]}
+        />
+      </LangProvider>,
+    );
+    expect(screen.getAllByText('new question')).toHaveLength(1);
+    expect(screen.getAllByText('new answer')).toHaveLength(1);
+    expect(screen.getByTestId('ai-thread-unread')).toHaveTextContent('2');
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
   it('jumpsBackToTheLatestAndClearsTheBadgeTest', async () => {
     const user = userEvent.setup();
     renderThread({ bubbles: [userBubble('检查集群状态')] });

@@ -347,6 +347,72 @@ describe('AiPage', () => {
     expect(screen.getByTestId('ai-send-stop-button')).toHaveAttribute('data-state', 'send');
   });
 
+  it('doesNotCountPersistedCopiesOfVisibleLiveMessagesAsUnreadTest', async () => {
+    const existing = [
+      { ...item(1, { type: 'user', text: 'earlier question' }, 40), turn: 1 },
+      { ...item(2, { type: 'text', text: 'earlier answer' }, 40), turn: 1 },
+      { ...item(3, { type: 'run_status', status: 'COMPLETED' }, 40), turn: 1 },
+    ];
+    vi.mocked(getConversationTimeline).mockResolvedValue(timelinePage(existing));
+    let finishRun!: () => void;
+    const active = new Promise<void>((resolve) => {
+      finishRun = resolve;
+    });
+    vi.mocked(openRunStream).mockImplementation(async (_cid, _request, handlers) => {
+      handlers.onEvent({
+        type: 'run_started',
+        runId: 41,
+        conversationId: 7,
+        title: 'current question',
+        turn: 2,
+      });
+      handlers.onEvent({ type: 'text_delta', content: 'current answer' });
+      await active;
+      handlers.onEvent({ type: 'run_finished', runId: 41, status: 'COMPLETED', durationMs: 12 });
+    });
+    renderRouted('/ai/c/7');
+    expect(await screen.findByText('earlier answer')).toBeInTheDocument();
+    const input = await typeAndWaitForReady('current question');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(await screen.findByText('current answer')).toBeInTheDocument();
+    expect(screen.getByText('current question')).toBeInTheDocument();
+
+    // Read earlier history after both live messages have already been seen.
+    const scroller = screen.getByTestId('ai-thread-scroll');
+    Object.defineProperties(scroller, {
+      scrollHeight: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 200 },
+      scrollTop: { configurable: true, writable: true, value: 200 },
+    });
+    fireEvent.scroll(scroller);
+    expect(screen.getByTestId('ai-thread-jump-to-latest')).toBeInTheDocument();
+    expect(screen.queryByTestId('ai-thread-unread')).not.toBeInTheDocument();
+
+    let finishHistory!: (page: AiTimelineVO) => void;
+    vi.mocked(getConversationTimeline).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishHistory = resolve;
+      }),
+    );
+    await act(async () => finishRun());
+    await waitFor(() => expect(getConversationTimeline).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId('ai-thread-unread')).not.toBeInTheDocument();
+    await act(async () =>
+      finishHistory(
+        timelinePage([
+          ...existing,
+          { ...item(4, { type: 'user', text: 'current question' }), turn: 2 },
+          { ...item(5, { type: 'text', text: 'current answer' }), turn: 2 },
+          { ...item(6, { type: 'run_status', status: 'COMPLETED' }), turn: 2 },
+        ]),
+      ),
+    );
+    await waitFor(() => expect(screen.getAllByText('current answer')).toHaveLength(1));
+    expect(screen.getAllByText('current question')).toHaveLength(1);
+    expect(screen.getByTestId('ai-send-stop-button')).toHaveAttribute('data-state', 'send');
+    expect(screen.queryByTestId('ai-thread-unread')).not.toBeInTheDocument();
+  });
+
   it('attachesToTheStillRunningRunAfterNavigatingAwayAndBackTest', async () => {
     const user = userEvent.setup();
     vi.mocked(openRunStream).mockImplementation(

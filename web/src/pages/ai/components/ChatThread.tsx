@@ -109,7 +109,12 @@ const ChatThread = ({
   const [unread, setUnread] = useState(0);
   const prevBubbleCountRef = useRef(bubbles.length);
 
-  const bubbleCount = bubbles.length + (liveBlocks && liveBlocks.length > 0 ? 1 : 0);
+  // Match BubbleList's optimistic question and waiting/streaming answer so
+  // persisting the same messages does not look like a new arrival.
+  const bubbleCount =
+    bubbles.length +
+    (pendingUserText?.trim() ? 1 : 0) +
+    (liveBlocks && (streaming || liveBlocks.length > 0) ? 1 : 0);
 
   const followToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     sentinelRef.current?.scrollIntoView({ behavior });
