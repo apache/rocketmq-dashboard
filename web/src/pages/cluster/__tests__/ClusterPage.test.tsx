@@ -24,6 +24,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type {
   BrokerConfigDiffResult,
   ClusterConfigPreviewResult,
+  ClusterConfigUpdateResult,
   ClusterInfo,
   ClusterProbeResult,
   NameServerConfigDiffResult,
@@ -427,6 +428,78 @@ describe('Cluster page', () => {
     expect(within(dialog).getByText('10.101.2.11:10911')).toBeInTheDocument();
     expect(within(dialog).getByText('defaultTopicQueueNums=16')).toBeInTheDocument();
     expect(within(dialog).getByRole('row', { name: /写队列数/ })).toHaveTextContent('16');
+  });
+
+  it('submits a broker config update once per confirmation', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const pendingUpdate = deferred<ClusterConfigUpdateResult>();
+    clusterServiceMocks.updateClusterConfig.mockReset().mockReturnValue(pendingUpdate.promise);
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    const retentionInput = within(dialog).getByLabelText('文件保留时长 (小时)');
+    await user.clear(retentionInput);
+    await user.type(retentionInput, '96');
+
+    const confirmButton = within(dialog).getByRole('button', { name: /^OK$/ });
+    fireEvent.click(confirmButton);
+    // The dialog must lock with the first click: `configSubmitting` alone flips only after
+    // validateFields resolves and React re-renders, so a second confirmation in that window
+    // would put the same broker-config write on the wire twice.
+    expect(confirmButton).toHaveClass('ant-btn-loading');
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => expect(clusterServiceMocks.updateClusterConfig).toHaveBeenCalledTimes(1));
+    expect(clusterServiceMocks.updateClusterConfig).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pendingUpdate.resolve({
+        cluster: buildCluster(),
+        status: 'SUCCESS',
+        successfulBrokers: buildCluster().brokers.map((broker) => broker.addr),
+        failedBrokers: [],
+      });
+      await pendingUpdate.promise;
+    });
+  });
+
+  it('keeps the config preview button inert while an update is in flight', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const pendingUpdate = deferred<ClusterConfigUpdateResult>();
+    clusterServiceMocks.updateClusterConfig.mockReset().mockReturnValue(pendingUpdate.promise);
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    const retentionInput = within(dialog).getByLabelText('文件保留时长 (小时)');
+    await user.clear(retentionInput);
+    await user.type(retentionInput, '96');
+    const previewButton = within(dialog).getByRole('button', { name: /预\s*览/ });
+
+    // Positive control: the preview runs while no write is in flight.
+    await user.click(previewButton);
+    await waitFor(() => expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalledTimes(1));
+
+    // A write in flight means a preview response would describe the cluster mid-write, so the
+    // preview button must not start another read while the update is on the wire.
+    fireEvent.click(within(dialog).getByRole('button', { name: /^OK$/ }));
+    await waitFor(() => expect(clusterServiceMocks.updateClusterConfig).toHaveBeenCalledTimes(1));
+    fireEvent.click(previewButton);
+    await act(async () => {});
+    expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pendingUpdate.resolve({
+        cluster: buildCluster(),
+        status: 'SUCCESS',
+        successfulBrokers: buildCluster().brokers.map((broker) => broker.addr),
+        failedBrokers: [],
+      });
+      await pendingUpdate.promise;
+    });
   });
 
   it('preservesUntouchedMessageSizeBytesInPreviewAndSaveTest', async () => {

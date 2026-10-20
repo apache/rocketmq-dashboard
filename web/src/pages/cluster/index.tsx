@@ -169,6 +169,10 @@ const ClusterPage = () => {
   const [configPreview, setConfigPreview] = useState<ClusterConfigPreviewResult | null>(null);
   const [configPreviewLoading, setConfigPreviewLoading] = useState(false);
   const [configSubmitting, setConfigSubmitting] = useState(false);
+  // `configSubmitting` only flips after React re-renders, so a second confirmation click
+  // during the validateFields await would start a duplicate broker-config write. The ref
+  // locks the submit synchronously, before any await.
+  const configSubmittingRef = useRef(false);
   const [nsRegistry, setNsRegistry] = useState<NameserverRegistryEntry[]>([]);
   const [selectedProxy, setSelectedProxy] = useState<ProxyDetail | null>(null);
   const [nsConfigDiffState, setNsConfigDiffState] = useState<{
@@ -765,22 +769,27 @@ const ClusterPage = () => {
   };
 
   const handleConfigSubmit = async () => {
-    // A write can change only some Brokers. Any preview from before the write,
-    // including one still in flight, no longer describes the cluster afterward.
-    configPreviewRequest.invalidate();
-    setConfigPreview(null);
-    setConfigPreviewLoading(false);
-    let values: ClusterConfigFormValues;
-    try {
-      values = await configForm.validateFields();
-    } catch {
-      return;
-    }
-    const request = buildConfigUpdateRequest(values);
-    if (!request) return;
-
+    if (configSubmittingRef.current) return;
+    configSubmittingRef.current = true;
+    // Following the nsSubmittingRef convention from the nameserver dialog: the spinner on the
+    // OK button does not stop a click fired before React re-renders, and the preview must not
+    // read the cluster while a write is changing it.
     setConfigSubmitting(true);
     try {
+      // A write can change only some Brokers. Any preview from before the write,
+      // including one still in flight, no longer describes the cluster afterward.
+      configPreviewRequest.invalidate();
+      setConfigPreview(null);
+      setConfigPreviewLoading(false);
+      let values: ClusterConfigFormValues;
+      try {
+        values = await configForm.validateFields();
+      } catch {
+        return;
+      }
+      const request = buildConfigUpdateRequest(values);
+      if (!request) return;
+
       const result = await updateClusterConfig(request);
       if (result.status === 'SUCCESS') {
         await requestRefresh('operation');
@@ -800,6 +809,7 @@ const ClusterPage = () => {
     } catch {
       message.error(t('cluster.configUpdateFailed', { brokers: '' }));
     } finally {
+      configSubmittingRef.current = false;
       setConfigSubmitting(false);
     }
   };
@@ -1416,6 +1426,7 @@ const ClusterPage = () => {
                 size="small"
                 icon={<EyeOutlined />}
                 loading={configPreviewLoading}
+                disabled={configSubmitting}
                 onClick={() => void handleConfigPreview()}
               >
                 {t('cluster.configPreview')}
