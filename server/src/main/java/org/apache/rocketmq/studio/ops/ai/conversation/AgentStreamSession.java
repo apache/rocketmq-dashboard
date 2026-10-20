@@ -24,6 +24,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.Iterator;
 import java.util.Objects;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -93,9 +94,11 @@ final class AgentStreamSession {
     /**
      * Cap on frames buffered while a replay is in flight. A replay is a bounded database read, so
      * reaching this means something is pathologically slow; dropping the newest frames is the safe
-     * failure because the client re-reads the persisted timeline when the run finishes.
+     * failure because the client re-reads the persisted timeline when the run finishes. Only
+     * frames with a persisted twin (seq &gt; 0) are ever dropped for the bound - a frame with no
+     * counterpart cannot be re-read either, so it is always buffered.
      */
-    private static final int MAX_BUFFERED_DURING_REPLAY = 1024;
+    static final int MAX_BUFFERED_DURING_REPLAY = 1024;
 
     private enum State {
         REPLAYING, LIVE, CLOSED
@@ -200,12 +203,16 @@ final class AgentStreamSession {
         synchronized (sendLock) {
             if (state.get() == State.REPLAYING) {
                 if (buffered.size() >= MAX_BUFFERED_DURING_REPLAY) {
-                    if (!overflowLogged) {
-                        overflowLogged = true;
-                        log.warn("run {} replay buffered {} live frames; dropping the rest",
-                                runId, MAX_BUFFERED_DURING_REPLAY);
+                    // The bound may only ever cost frames the client can re-read from the persisted
+                    // timeline when the run finishes. A frame with no persisted counterpart (seq 0)
+                    // has no such fallback, so it is always buffered: the oldest replayable frame is
+                    // evicted to make room, or the buffer grows past the bound when every buffered
+                    // frame is already unreplayable.
+                    if (seq > 0) {
+                        warnReplayOverflowOnce();
+                        return true;
                     }
-                    return true;
+                    evictOldestReplayableFrame();
                 }
                 buffered.addLast(new LiveFrame(seq, event));
                 return true;
@@ -299,6 +306,30 @@ final class AgentStreamSession {
     private boolean beginTerminal() {
         State previous = state.getAndUpdate(current -> current == State.CLOSED ? current : State.CLOSED);
         return previous != State.CLOSED;
+    }
+
+    private void warnReplayOverflowOnce() {
+        if (!overflowLogged) {
+            overflowLogged = true;
+            log.warn("run {} replay buffered {} live frames; dropping frames the persisted timeline can replay",
+                    runId, MAX_BUFFERED_DURING_REPLAY);
+        }
+    }
+
+    /**
+     * Removes the oldest buffered frame that has a persisted twin, making room for one that has
+     * none. A no-op when every buffered frame is already unreplayable, in which case the caller
+     * grows the buffer past the bound instead.
+     */
+    private void evictOldestReplayableFrame() {
+        Iterator<LiveFrame> frames = buffered.iterator();
+        while (frames.hasNext()) {
+            if (frames.next().seq() > 0) {
+                warnReplayOverflowOnce();
+                frames.remove();
+                return;
+            }
+        }
     }
 
     private boolean sendAgent(LiveEvent event) {
