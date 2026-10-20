@@ -429,7 +429,7 @@ tools:
       resource: group
       verb: reset-offset
     description: Reset consumer offset for a group on a topic to a timestamp.
-    riskLevel: L2
+    riskLevel: L3
     permission: group:write
     requiredCapabilities:
       - CONSUMER_GROUP_MANAGEMENT

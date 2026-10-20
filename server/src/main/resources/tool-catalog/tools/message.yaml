@@ -630,7 +630,7 @@ tools:
       resource: message
       verb: redelivery-dlq
     description: Resend dead-letter messages for a consumer group back to the target topic.
-    riskLevel: L2
+    riskLevel: L3
     permission: dlq:write
     requiredCapabilities:
       - DLQ_MANAGEMENT
