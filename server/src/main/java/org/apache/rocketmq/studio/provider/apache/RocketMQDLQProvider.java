@@ -708,7 +708,12 @@ public class RocketMQDLQProvider implements DLQProvider {
         if (normalized.length() <= MAX_FAILURE_REASON_LENGTH) {
             return normalized;
         }
-        return normalized.substring(0, MAX_FAILURE_REASON_LENGTH - 3) + "...";
+        int keep = MAX_FAILURE_REASON_LENGTH - 3;
+        // Preserve the UTF-16 response budget without keeping half a supplementary character.
+        if (Character.isHighSurrogate(normalized.charAt(keep - 1))) {
+            keep--;
+        }
+        return normalized.substring(0, keep) + "...";
     }
 
     /**

@@ -2065,7 +2065,7 @@ POST /api/dlq/resend
 | `failuresTruncated` | `boolean` | 失败明细是否被截断：失败条数超过 100 时为 `true`，此时 `failed` 仍是真实的失败总数 |
 
 `DLQResendFailure` 的字段：`msgId`（`string`，重投失败的死信消息 ID）、`targetTopic`（`string`，解析出的目标
-Topic，未指定 `targetTopic` 时即原 Topic）、`reason`（`string`，归一化后的简短失败原因，最长 256 字符）。
+Topic，未指定 `targetTopic` 时即原 Topic）、`reason`（`string`，归一化后的简短失败原因，最长 256 个 UTF-16 单元；超长时在完整字符边界截断并以 `...` 结尾）。
 §9.4「重发选中的死信消息」返回同一结构，两条重投路径共用该 VO。
 
 > **跨集群拒绝（`409`）**：显式传入 `targetTopic` 时，若它解析出的集群不是死信 Topic（`%DLQ%{groupName}`）
