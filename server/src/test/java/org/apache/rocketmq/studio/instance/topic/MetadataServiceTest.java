@@ -653,7 +653,7 @@ class MetadataServiceTest {
         TopicVO hidden = topic("users-topic", "=formula", TopicType.NORMAL);
         when(apacheProvider.listTopics("instance-a", "NORMAL", "orders")).thenReturn(List.of(low, hidden, high));
 
-        String csv = metadataService.exportTopics("instance-a", " NORMAL ", " orders ",
+        String csv = metadataService.exportTopics("instance-a", null, " NORMAL ", " orders ",
                 List.of("orders-high", "orders-low"));
 
         assertThat(csv).contains("\"Name\",\"Namespace\",\"Type\"");
@@ -661,6 +661,22 @@ class MetadataServiceTest {
         assertThat(csv).contains("\"orders-low\",\"'\t=orders\",\"NORMAL\"");
         assertThat(csv).doesNotContain("users-topic");
         assertThat(csv.indexOf("\"orders-high\"")).isLessThan(csv.indexOf("\"orders-low\""));
+        verify(apacheProvider).listTopics("instance-a", "NORMAL", "orders");
+    }
+
+    @Test
+    void exportTopicsShouldApplyInstanceClusterFilter() {
+        TopicVO clusterATopic = topic("orders-a", "cluster-a", TopicType.NORMAL);
+        TopicVO clusterBTopic = topic("orders-b", "cluster-b", TopicType.NORMAL);
+        clusterATopic.setClusterId("cluster-a");
+        clusterBTopic.setClusterId("cluster-b");
+        when(apacheProvider.listTopics("instance-a", "NORMAL", "orders"))
+                .thenReturn(List.of(clusterATopic, clusterBTopic));
+
+        String csv = metadataService.exportTopics("instance-a", "cluster-a", "NORMAL", "orders", List.of());
+
+        assertThat(csv).contains("\"orders-a\"");
+        assertThat(csv).doesNotContain("orders-b");
         verify(apacheProvider).listTopics("instance-a", "NORMAL", "orders");
     }
 

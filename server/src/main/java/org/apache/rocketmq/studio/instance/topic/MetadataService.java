@@ -913,9 +913,9 @@ public class MetadataService {
                 .build();
     }
 
-    public String exportTopics(String instanceId, String type, String search, List<String> names) {
+    public String exportTopics(String instanceId, String clusterId, String type, String search, List<String> names) {
         instanceId = normalizeInstanceId(instanceId);
-        List<TopicVO> topics = new ArrayList<>(listTopics(instanceId, null, type, search));
+        List<TopicVO> topics = new ArrayList<>(listTopics(instanceId, clusterId, type, search));
         Set<String> selectedNames = new HashSet<>(names == null ? List.of() : names);
         if (!selectedNames.isEmpty()) {
             topics.removeIf(topic -> !selectedNames.contains(topic.getName()));

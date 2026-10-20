@@ -64,10 +64,11 @@ public class TopicController {
     @GetMapping("/export")
     public Result<String> exportTopics(
             @RequestParam(required = false) String instanceId,
+            @RequestParam(required = false) String clusterId,
             @RequestParam(required = false) String type,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String names) {
-        return Result.ok(metadataService.exportTopics(instanceId, type, search, parseNames(names)));
+        return Result.ok(metadataService.exportTopics(instanceId, clusterId, type, search, parseNames(names)));
     }
 
     @PostMapping("/import")
