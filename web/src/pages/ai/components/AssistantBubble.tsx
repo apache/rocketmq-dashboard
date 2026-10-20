@@ -146,7 +146,9 @@ const AssistantBubble = ({
             width: 36,
             height: 36,
             borderRadius: '50%',
-            background: '#ffffff',
+            // Theme surface instead of a fixed white: the avatar matches the neighbouring bubble
+            // card, which already sits on colorBgElevated (white in light mode, elevated in dark).
+            background: token.colorBgElevated,
             border: `1px solid ${token.colorBorderSecondary}`,
             flexShrink: 0,
             display: 'flex',

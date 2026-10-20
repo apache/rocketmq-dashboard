@@ -84,7 +84,7 @@ import {
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
 import { isLagAvailable } from '../../utils/consumerLag';
-import { downloadCsv } from '../../utils/download';
+import { downloadCsv, localExportDateStamp } from '../../utils/download';
 import { formatDateTime, formatNumber } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import {
@@ -334,6 +334,9 @@ const TopicPageContent = ({
   const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
   const [form] = Form.useForm();
   const createTopicType = Form.useWatch('type', form);
+  // 队列数提示要跟着输入值走（用户约定 2026-10-16：写死的「8 个队列」不随值变化是错的）
+  const createWriteQueues = Form.useWatch('writeQueues', form);
+  const createReadQueues = Form.useWatch('readQueues', form);
   const [sendModalOpen, setSendModalOpen] = useState(false);
   const [sendTopic, setSendTopic] = useState<Topic | null>(null);
   const [sending, setSending] = useState(false);
@@ -681,7 +684,7 @@ const TopicPageContent = ({
       search: searchText.trim() || undefined,
     })
       .then((csv) => {
-        downloadCsv(`rocketmq-topics-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+        downloadCsv(`rocketmq-topics-${localExportDateStamp()}.csv`, csv);
         message.success('Topic 导出完成');
       })
       .catch(() => {
@@ -729,6 +732,7 @@ const TopicPageContent = ({
       key: 'type',
       // 类型标签实测 38px + 左右 padding 16px；余量让给操作列（见该列注释）。
       width: 92,
+      align: 'center',
       sorter: (a, b) => (a.type ?? '').localeCompare(b.type ?? ''),
       render: (type: string) => {
         const cfg = TOPIC_TYPE_MAP[type];
@@ -739,6 +743,7 @@ const TopicPageContent = ({
       title: '状态',
       key: 'status',
       width: 90,
+      align: 'center',
       render: () => <Tag color="green">服务中</Tag>,
     },
     {
@@ -1553,28 +1558,30 @@ const TopicPageContent = ({
           </Form.Item>
 
           {!isCloudInstance && (
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item
-                  label="写队列数"
-                  name="writeQueues"
-                  rules={[{ required: true }]}
-                  extra="每个 Broker 节点 8 个队列"
-                >
-                  <InputNumber min={1} max={256} style={{ width: '100%' }} />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item
-                  label="读队列数"
-                  name="readQueues"
-                  rules={[{ required: true }]}
-                  extra="每个 Broker 节点 8 个队列"
-                >
-                  <InputNumber min={1} max={256} style={{ width: '100%' }} />
-                </Form.Item>
-              </Col>
-            </Row>
+            <>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item label="写队列数" name="writeQueues" rules={[{ required: true }]}>
+                    <InputNumber min={1} max={256} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item label="读队列数" name="readQueues" rules={[{ required: true }]}>
+                    <InputNumber min={1} max={256} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+              </Row>
+              {/* 用户约定 2026-10-16：读写两列各挂一条提示既重复又不随值变化；合并为单条并跟随输入 */}
+              <Text
+                type="secondary"
+                style={{ fontSize: 14, display: 'block', marginTop: -16, marginBottom: 8 }}
+              >
+                {t('topic.queueExtra', {
+                  write: createWriteQueues ?? 8,
+                  read: createReadQueues ?? 8,
+                })}
+              </Text>
+            </>
           )}
 
           {!isCloudInstance && (
@@ -1826,7 +1833,14 @@ const TopicPageContent = ({
               size="small"
               pagination={false}
               columns={[
-                { title: 'Topic', dataIndex: 'name', key: 'name' },
+                {
+                  title: 'Topic',
+                  dataIndex: 'name',
+                  key: 'name',
+                  // 长 Topic 名（实测 48 字符）会把表的 min-content 撑到 727px、溢出 680 弹窗的
+                  // 632px body 右缘；ellipsis 让 antd 切 table-layout: fixed 并截断 + 悬停全名。
+                  ellipsis: { showTitle: true },
+                },
                 {
                   title: '写/读队列数',
                   key: 'queues',

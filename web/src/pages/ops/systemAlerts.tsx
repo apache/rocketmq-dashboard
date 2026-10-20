@@ -37,7 +37,7 @@ import {
   theme,
 } from 'antd';
 import dayjs from 'dayjs';
-import { ArrowClockwise, CheckCircle, DownloadSimple, Trash } from '@phosphor-icons/react';
+import { ArrowClockwise, CheckCircle, Info, DownloadSimple, Trash } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import useAuthStore from '../../stores/authStore';
@@ -62,7 +62,7 @@ import type {
   SystemAlert,
 } from '../../api/ops';
 import { formatUtcDateTime, formatNumber } from '../../utils/format';
-import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { buildCsv, downloadCsv, localExportDateStamp, type CsvColumn } from '../../utils/download';
 import { zonedLocalDateTimeToUtc } from '../../utils/timeZone';
 
 const { Text } = Typography;
@@ -310,13 +310,18 @@ const SystemAlertsPage = () => {
           page: currentPage,
           pageSize: ALERT_EXPORT_PAGE_SIZE,
         });
-        if (result.items.length === 0) break;
-        rows.push(...result.items);
         expectedTotal = Math.min(expectedTotal, result.total);
+        if (result.items.length === 0) {
+          if (rows.length < expectedTotal) {
+            throw new Error('System alert export returned an incomplete page');
+          }
+          break;
+        }
+        rows.push(...result.items);
         currentPage += 1;
       }
       downloadCsv(
-        `rocketmq-system-alerts-${new Date().toISOString().slice(0, 10)}.csv`,
+        `rocketmq-system-alerts-${localExportDateStamp()}.csv`,
         buildCsv(ALERT_EXPORT_COLUMNS, rows),
       );
       message.success(t('sysAlerts.exportSuccess', { count: rows.length }));
@@ -516,8 +521,13 @@ const SystemAlertsPage = () => {
                   background: token.colorBgContainer,
                 }}
               >
-                <CheckCircle size={14} color="#52c41a" weight="fill" />
-                <Text style={{ fontSize: 14 }}>{t('sysAlerts.nativeCollectionEnabled')}</Text>
+                <Info size={14} color={token.colorTextSecondary} aria-hidden="true" />
+                <Text style={{ fontSize: 14 }}>
+                  {t('sysAlerts.collectorImplementations', {
+                    cluster: collectorStatus.clusterCollectorCount,
+                    business: collectorStatus.businessCollectorCount,
+                  })}
+                </Text>
               </Flex>
             )}
             <Button
