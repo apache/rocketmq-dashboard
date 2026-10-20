@@ -243,6 +243,7 @@ export const AiAssistantTab = () => {
     if (!payload) return;
     const confirmed = window.confirm(t('settings.clearApiKeyConfirm'));
     if (!confirmed) return;
+    const submittedApiKey = payload.apiKey;
     setSaving(true);
     try {
       const result = await saveLlmConfig({
@@ -253,7 +254,10 @@ export const AiAssistantTab = () => {
       if (result.status === 0) {
         message.success(t('settings.clearApiKeySucceeded'));
         setApiKeyConfigured(false);
-        form.setFieldValue('apiKey', undefined);
+        const currentApiKey = form.getFieldValue('apiKey') as string | undefined;
+        if (currentApiKey?.trim() === submittedApiKey) {
+          form.setFieldValue('apiKey', undefined);
+        }
       } else {
         message.error(result.errMsg || t('settings.clearApiKeyFailed'));
       }
@@ -314,7 +318,10 @@ export const AiAssistantTab = () => {
         message.success(t('settings.saveSucceeded'));
         if (payload.apiKey) {
           setApiKeyConfigured(true);
-          form.setFieldValue('apiKey', undefined);
+          const currentApiKey = form.getFieldValue('apiKey') as string | undefined;
+          if (currentApiKey?.trim() === payload.apiKey) {
+            form.setFieldValue('apiKey', undefined);
+          }
         }
         try {
           const models = await getLlmModels();
