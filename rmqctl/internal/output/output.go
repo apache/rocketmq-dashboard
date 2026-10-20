@@ -37,6 +37,11 @@ const (
 	formatYAML  = "yaml"
 )
 
+// SupportedFormats returns a fresh list of formats accepted by RequireFormat.
+func SupportedFormats() []string {
+	return []string{FormatTable, formatJSON, formatYAML}
+}
+
 type Column struct {
 	Header string
 	Key    string

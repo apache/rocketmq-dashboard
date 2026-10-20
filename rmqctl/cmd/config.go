@@ -34,9 +34,10 @@ func newConfigSetContextCommand(runtime commandRuntime) *cobra.Command {
 	var accessKeyEnv string
 	var secretKeyEnv string
 	cmd := &cobra.Command{
-		Use:   "set-context <name>",
-		Short: "Create or update a complete Studio access context",
-		Args:  cobra.ExactArgs(1),
+		Use:               "set-context <name>",
+		Short:             "Create or update a complete Studio access context",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: runtime.completeContextArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if cmd.Flags().Changed("server") {
 				parsed, err := url.Parse(server)
@@ -99,10 +100,11 @@ func newConfigSetContextCommand(runtime commandRuntime) *cobra.Command {
 
 func newConfigUseContextCommand(runtime commandRuntime) *cobra.Command {
 	return &cobra.Command{
-		Use:     "use-context <name>",
-		Aliases: []string{"use"},
-		Short:   "Switch the current context",
-		Args:    cobra.ExactArgs(1),
+		Use:               "use-context <name>",
+		Aliases:           []string{"use"},
+		Short:             "Switch the current context",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: runtime.completeContextArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path, cfg, err := runtime.configForWrite()
 			if err != nil {
@@ -127,10 +129,11 @@ func newConfigUseContextCommand(runtime commandRuntime) *cobra.Command {
 
 func newConfigDeleteContextCommand(runtime commandRuntime) *cobra.Command {
 	return &cobra.Command{
-		Use:     "delete-context <name>",
-		Aliases: []string{"delete"},
-		Short:   "Delete a named rmqctl context",
-		Args:    cobra.ExactArgs(1),
+		Use:               "delete-context <name>",
+		Aliases:           []string{"delete"},
+		Short:             "Delete a named rmqctl context",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: runtime.completeContextArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path, cfg, err := runtime.configForWrite()
 			if err != nil {
