@@ -144,7 +144,7 @@ class ToolOutputSchemaContractTest {
         AclUserItem user = new AclUserItem("1", "alice", true, List.of(INSTANCE));
         AclUserItem tencentUser = new AclUserItem(null, "alice", false, List.of("cloud-instance"));
         samples.put("rmq.user.get", List.of(user, tencentUser));
-        samples.put("rmq.user.list", List.of(new ListOutput<>(List.of(user, tencentUser))));
+        samples.put("rmq.user.list", List.of(new PageOutput<>(1, 20, 2L, List.of(user, tencentUser))));
         samples.put("rmq.user.create", List.of(planned(), executed(user), executed(tencentUser)));
         samples.put("rmq.user.delete", List.of(planned(), executedVoid()));
 

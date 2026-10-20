@@ -17,17 +17,19 @@
 package org.apache.rocketmq.studio.ops.ai.tool.handler.acl;
 
 import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.instance.acl.AclService;
+import org.apache.rocketmq.studio.instance.acl.AclUserVO;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.acl.AclUserItem;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.acl.UserListInput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.common.PageOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolHandler;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.common.InstanceInput;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
 import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
-public class UserListToolHandler implements ToolHandler<InstanceInput, ListOutput<AclUserItem>> {
+public class UserListToolHandler implements ToolHandler<UserListInput, PageOutput<AclUserItem>> {
     private final AclService aclService;
 
     @Override
@@ -36,14 +38,15 @@ public class UserListToolHandler implements ToolHandler<InstanceInput, ListOutpu
     }
 
     @Override
-    public Class<InstanceInput> inputType() {
-        return InstanceInput.class;
+    public Class<UserListInput> inputType() {
+        return UserListInput.class;
     }
 
     @Override
-    public ListOutput<AclUserItem> execute(
-            InstanceInput input, ToolExecutionContext context) {
-        return new ListOutput<>(aclService.listUsers(context.instanceId()).stream()
-                .map(AclUserItem::from).toList());
+    public PageOutput<AclUserItem> execute(
+            UserListInput input, ToolExecutionContext context) {
+        PageResult<AclUserVO> result = aclService.pageUsers(
+                context.instanceId(), input.page().page(), input.page().pageSize(), input.keyword());
+        return PageOutput.from(result, AclUserItem::from);
     }
 }
