@@ -46,6 +46,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 
 /**
@@ -190,7 +191,37 @@ public class RocketMQClusterProvider implements ClusterProvider {
     @Override
     public List<ProxyVO> discoverProxies(String instanceId) {
         if (!StringUtils.hasText(instanceId)) throw new BusinessException(400, "Instance is required");
-        return runtimeAdminClientResolver.execute(instanceId, this::discoverProxiesViaHeartbeatSyncer);
+        String configuredCluster = runtimeAdminClientResolver.configuredClusterName(instanceId);
+        return runtimeAdminClientResolver.execute(instanceId, admin -> {
+            if (configuredCluster == null) {
+                return discoverProxiesViaHeartbeatSyncer(admin, null);
+            }
+            ClusterInfo info = admin.examineBrokerClusterInfo();
+            if (info == null || info.getBrokerAddrTable() == null) {
+                throw new BusinessException(503, "Broker topology is unavailable");
+            }
+            Map<String, Set<String>> clusters = info.getClusterAddrTable();
+            if (clusters == null || clusters.containsKey(configuredCluster)
+                    && clusters.get(configuredCluster) == null) {
+                throw new BusinessException(503, "Broker cluster membership is unavailable");
+            }
+            // A NameServer may serve several physical clusters. Query only the selected
+            // cluster's brokers instead of letting the global group lookup choose one.
+            Map<String, ProxyVO> proxies = new TreeMap<>();
+            for (String brokerName : new TreeSet<>(clusters.getOrDefault(configuredCluster, Set.of()))) {
+                BrokerData broker = info.getBrokerAddrTable().get(brokerName);
+                if (broker == null || broker.getBrokerAddrs() == null || broker.getBrokerAddrs().isEmpty()) {
+                    continue;
+                }
+                String address = broker.selectBrokerAddr();
+                if (StringUtils.hasText(address)) {
+                    for (ProxyVO proxy : discoverProxiesViaHeartbeatSyncer(admin, address)) {
+                        proxies.putIfAbsent(proxy.getAddr(), proxy);
+                    }
+                }
+            }
+            return new ArrayList<>(proxies.values());
+        });
     }
 
     @Override
@@ -392,10 +423,11 @@ public class RocketMQClusterProvider implements ClusterProvider {
         return adminFactory.execute(namesrvAddr, null, action);
     }
 
-    private List<ProxyVO> discoverProxiesViaHeartbeatSyncer(MQAdminExt admin) {
+    private List<ProxyVO> discoverProxiesViaHeartbeatSyncer(MQAdminExt admin, String brokerAddress) {
         try {
-            ConsumerConnection connection =
-                    admin.examineConsumerConnectionInfo(HEARTBEAT_SYNCER_CONSUMER_GROUP);
+            ConsumerConnection connection = brokerAddress == null
+                    ? admin.examineConsumerConnectionInfo(HEARTBEAT_SYNCER_CONSUMER_GROUP)
+                    : admin.examineConsumerConnectionInfo(HEARTBEAT_SYNCER_CONSUMER_GROUP, brokerAddress);
             if (connection == null || connection.getConnectionSet() == null) {
                 return Collections.emptyList();
             }
