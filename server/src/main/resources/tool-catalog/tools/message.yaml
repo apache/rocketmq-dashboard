@@ -280,16 +280,20 @@ tools:
           minLength: 1
         groupName:
           type: string
+          description: Dead-letter group whose messages are listed; omit it to list the dead-letter groups instead.
         search:
           type: string
+          description: Group name filter for the group listing; it has no effect once groupName is given.
         time:
           type: object
           additionalProperties: false
           properties:
             startTime:
               type: integer
+              description: Epoch milliseconds. Message listing only; defaults to one hour before endTime, so an omitted window returns the last hour of dead letters.
             endTime:
               type: integer
+              description: Epoch milliseconds. Message listing only; defaults to now.
         page:
           type: object
           additionalProperties: false

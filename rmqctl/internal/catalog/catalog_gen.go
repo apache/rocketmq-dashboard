@@ -21,7 +21,7 @@ package catalog
 var defaultDocument = Document{
 	Version:              "2.0.0",
 	MinimumClientVersion: "2.0.0",
-	Digest:               "e07c4c4a447545da57697f9e333a717c4bff6b660cefdaf6acfe4c1074791b39",
+	Digest:               "edb288928206dc829381cedadcb13ea523b86fbb75a883a27a4e025edd92c2b8",
 	Tools: []Tool{
 		{
 			Name:                 "rmq.acl.list",
@@ -504,12 +504,12 @@ var defaultDocument = Document{
 			InputSchema: InputSchema{
 				Fields: []Field{
 					{Name: "instanceId", Flag: "instance-id", Description: "Studio Instance identifier.", Kind: StringField, Required: true, MinLength: 1},
-					{Name: "groupName", Flag: "group-name", Kind: StringField},
-					{Name: "search", Flag: "search", Kind: StringField},
+					{Name: "groupName", Flag: "group-name", Description: "Dead-letter group whose messages are listed; omit it to list the dead-letter groups instead.", Kind: StringField},
+					{Name: "search", Flag: "search", Description: "Group name filter for the group listing; it has no effect once groupName is given.", Kind: StringField},
 					{Name: "time", Kind: ObjectField, Object: &InputSchema{
 						Fields: []Field{
-							{Name: "startTime", Flag: "start-time", Kind: IntegerField},
-							{Name: "endTime", Flag: "end-time", Kind: IntegerField},
+							{Name: "startTime", Flag: "start-time", Description: "Epoch milliseconds. Message listing only; defaults to one hour before endTime, so an omitted window returns the last hour of dead letters.", Kind: IntegerField},
+							{Name: "endTime", Flag: "end-time", Description: "Epoch milliseconds. Message listing only; defaults to now.", Kind: IntegerField},
 						},
 					}},
 					{Name: "page", Kind: ObjectField, Object: &InputSchema{
