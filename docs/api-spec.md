@@ -1107,7 +1107,7 @@ POST /api/topics/send
 | `topic` | `string` | 是 | Topic 名称 |
 | `tag` | `string` | 否 | 消息 Tag |
 | `key` | `string` | 否 | 消息 Key（用于消息查询） |
-| `body` | `string` | 是 | 消息体内容 |
+| `body` | `string` | 是 | 非空消息体；缺失、`null` 或空字符串返回 `400`，消息体按原文发送（包括空白字符） |
 | `properties` | `Record<string, string>` | 否 | 消息自定义属性键值对 |
 
 **Response `data`:**
