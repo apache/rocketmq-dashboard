@@ -576,6 +576,29 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void getTopicConsumersShouldFlagTpsUnavailableWhileKeepingRealLagTest() throws Exception {
+        SubscriptionData subscription = new SubscriptionData();
+        subscription.setConsumerGroup("GID_orders");
+        subscription.setConsumeType("CLUSTERING");
+        subscription.setMessageModel("CLUSTERING");
+        subscription.setConsumerLag(42L);
+        DescribeTopicResponse response = new DescribeTopicResponse();
+        response.setSubscriptionData(new SubscriptionData[]{subscription});
+        when(client.DescribeTopic(any())).thenReturn(response);
+
+        List<TopicConsumerVO> consumers = provider.getTopicConsumers(STUDIO_INSTANCE_ID, "orders");
+
+        // DescribeTopic's SubscriptionData carries the real ConsumerLag but no TPS field, so the
+        // row must keep the measured backlog (metricsAvailable stays true) while flagging the
+        // TPS column unavailable instead of letting the VO default render a measured "0 TPS".
+        assertThat(consumers).singleElement().satisfies(consumer -> {
+            assertThat(consumer.getDiffTotal()).isEqualTo(42L);
+            assertThat(consumer.isMetricsAvailable()).isTrue();
+            assertThat(consumer.isTpsAvailable()).isFalse();
+        });
+    }
+
+    @Test
     void getTopicConsumersShouldReadEverySubscriptionPageTest() throws Exception {
         DescribeTopicResponse firstPage = new DescribeTopicResponse();
         firstPage.setSubscriptionCount(101L);
