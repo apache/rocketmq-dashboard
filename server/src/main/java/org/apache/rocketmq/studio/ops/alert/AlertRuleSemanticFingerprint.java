@@ -79,10 +79,25 @@ final class AlertRuleSemanticFingerprint {
     }
 
     static double normalizedThreshold(AlertRuleVO rule) {
-        if ("%".equals(rule.getThresholdUnit()) && RATIO_METRICS.contains(normalize(rule.getMetric()))) {
-            return rule.getThreshold() / 100D;
+        return isPercentRatioRule(rule) ? rule.getThreshold() / 100D : rule.getThreshold();
+    }
+
+    /** True when the rule compares a stored ratio fraction against a percent-unit threshold. */
+    static boolean isPercentRatioRule(AlertRuleVO rule) {
+        return "%".equals(rule.getThresholdUnit()) && RATIO_METRICS.contains(normalize(rule.getMetric()));
+    }
+
+    /**
+     * Scales a stored ratio fraction to the rule's percent unit, so the currentValue written onto
+     * alert events and rule-test samples reads in the same unit as the configured threshold.
+     * Scaling through BigDecimal keeps the exact decimal form: plain double arithmetic turns a
+     * stored 0.29 into 28.999999999999996.
+     */
+    static Double displayValue(AlertRuleVO rule, Double value) {
+        if (value == null || !isPercentRatioRule(rule) || !Double.isFinite(value)) {
+            return value;
         }
-        return rule.getThreshold();
+        return BigDecimal.valueOf(value).movePointRight(2).doubleValue();
     }
 
     private static String normalizeThreshold(AlertRuleVO rule) {
