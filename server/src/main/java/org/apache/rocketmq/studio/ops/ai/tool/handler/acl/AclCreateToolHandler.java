@@ -56,7 +56,7 @@ public class AclCreateToolHandler extends MutationToolHandler<AclMutationInput, 
 
     @Override
     public AclRuleVO execute(AclMutationInput input, ToolExecutionContext context) {
-        return aclService.createRule(input.toRule(null), context.instanceId());
+        return AclService.utcWire(aclService.createRule(input.toRule(null), context.instanceId()));
     }
 
 }
