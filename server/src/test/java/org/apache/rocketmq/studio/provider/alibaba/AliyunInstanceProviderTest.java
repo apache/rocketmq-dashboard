@@ -408,6 +408,25 @@ class AliyunInstanceProviderTest {
     }
 
     @Test
+    void listConsumerGroupsShouldMarkLagAndDelayUnknownInsteadOfZeroTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listConsumerGroups(any()))
+                .thenReturn(CompletableFuture.completedFuture(groupsResponse(1L, "GID_lag")));
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups(STUDIO_INSTANCE_ID, null);
+
+        // ListConsumerGroups carries no lag or delay fields, so the VO primitives would default
+        // to 0 and render a measured "0 backlog / 0s delay" for every group. The list must
+        // report the -1 unknown sentinel (ConsumerLagResolver.UNKNOWN) instead; the real
+        // backlog stays reachable through getGroupProgress.
+        assertThat(groups).singleElement().satisfies(group -> {
+            assertThat(group.getTotalLag()).isEqualTo(-1L);
+            assertThat(group.getDelaySeconds()).isEqualTo(-1);
+        });
+    }
+
+    @Test
     void listConsumerGroupsShouldPreserveLiteConsumerTopicTest() {
         stubInstance();
         stubCallThrough();

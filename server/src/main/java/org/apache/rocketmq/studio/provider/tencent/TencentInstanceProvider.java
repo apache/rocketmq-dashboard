@@ -77,6 +77,7 @@ import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceCapability;
+import org.apache.rocketmq.studio.provider.apache.ConsumerLagResolver;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
@@ -1043,6 +1044,12 @@ public class TencentInstanceProvider implements InstanceProvider {
         group.setDeliveryOrderType(item.getConsumeMessageOrderly() == null || !item.getConsumeMessageOrderly()
                 ? "Concurrently" : "Orderly");
         group.setRetryMaxTimes(toInt(item.getMaxRetryTimes()));
+        // DescribeConsumerGroupList carries no lag or delay fields, so the VO primitives would
+        // default to 0 and render a measured "0 backlog / 0s delay" for every group. Report the
+        // -1 unknown sentinel, the same one the Apache provider documents in ConsumerLagResolver;
+        // the real backlog stays reachable through getGroupProgress.
+        group.setTotalLag(ConsumerLagResolver.UNKNOWN);
+        group.setDelaySeconds((int) ConsumerLagResolver.UNKNOWN);
         group.setSubscribedTopics(java.util.List.of());
         group.setInstances(java.util.List.of());
         return group;
