@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.ai.tool.handler.audit;
 
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.ops.ai.tool.catalog.ToolCatalog;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.PageOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.PageRequest;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.ops.AuditItem;
@@ -28,14 +29,15 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.io.DefaultResourceLoader;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import static org.apache.rocketmq.studio.ops.ai.tool.TestToolExecutionContexts.context;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -47,6 +49,16 @@ class AuditListToolHandlerTest {
 
     @InjectMocks
     private AuditListToolHandler handler;
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void catalogShouldExposeAuditAttributionFiltersTest() {
+        ToolCatalog catalog = new ToolCatalog(new DefaultResourceLoader());
+        Map<String, Object> properties = (Map<String, Object>) catalog
+                .getDefinition("rmq.audit.list").inputSchema().get("properties");
+
+        assertThat(properties).containsKeys("target", "clusterId", "clusterIdMissing");
+    }
 
     @Test
     void executeShouldQueryTheWholeDeploymentAndKeepTheInstanceAttributionTest() {
@@ -62,12 +74,12 @@ class AuditListToolHandlerTest {
                 .build();
         record.setId(42L);
         when(auditService.queryLogs(eq(1), eq(20), eq("topic"), eq("DELETE"), eq("TOPIC"),
-                isNull(), isNull(), eq(false), eq("2026-09-01"), eq("2026-09-14"), eq("SUCCESS")))
+                eq("orders"), eq("cluster-a"), eq(true), eq("2026-09-01"), eq("2026-09-14"), eq("SUCCESS")))
                 .thenReturn(PageResult.of(List.of(record), 1, 1, 20));
 
         PageOutput<AuditItem> result = handler.execute(new AuditListInput(
-                        "topic", "DELETE", "TOPIC", "2026-09-01", "2026-09-14", "SUCCESS",
-                        new PageRequest(1, 20)),
+                        "topic", "DELETE", "TOPIC", "orders", "cluster-a", true,
+                        "2026-09-01", "2026-09-14", "SUCCESS", new PageRequest(1, 20)),
                 context("instance-a"));
 
         assertThat(result.total()).isEqualTo(1L);
@@ -77,6 +89,6 @@ class AuditListToolHandlerTest {
         // Rows written by another Instance stay visible: cluster_id carries the attribution.
         assertThat(item.clusterId()).isEqualTo("instance-b");
         verify(auditService).queryLogs(eq(1), eq(20), eq("topic"), eq("DELETE"), eq("TOPIC"),
-                isNull(), isNull(), eq(false), eq("2026-09-01"), eq("2026-09-14"), eq("SUCCESS"));
+                eq("orders"), eq("cluster-a"), eq(true), eq("2026-09-01"), eq("2026-09-14"), eq("SUCCESS"));
     }
 }
