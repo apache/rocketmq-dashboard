@@ -71,7 +71,9 @@ const DLQ_EXPORT_COLUMNS: CsvColumn<DLQGroup>[] = [
   { header: 'Group Name', value: (group) => group.groupName },
   { header: 'DLQ Topic', value: (group) => group.dlqTopic },
   { header: 'Message Count', value: (group) => group.messageCount },
-  { header: 'Retry Count', value: (group) => group.retryCount },
+  // No 'Retry Count' column: the Apache provider hardcodes retryCount to 0 for every group
+  // (a real count needs per-message reconsumeTimes it never fetches), so exporting it
+  // would hand the operator misleading triage data.
   { header: 'Status', value: (group) => group.status },
   { header: 'Last Enqueue Time', value: (group) => formatUtcDateTime(group.lastEnqueueTime) },
 ];
