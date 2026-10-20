@@ -258,5 +258,14 @@ tools:
                 type: string
         result:
           type: object
+          properties:
+            topicPattern:
+              type: string
+            newTtlMillis:
+              type: integer
+              description: Requested TTL in milliseconds.
+            appliedTtlMillis:
+              type: integer
+              description: Broker-normalized TTL in milliseconds after minute rounding and the 30-day cap.
     viewHint: object
     deprecated: false

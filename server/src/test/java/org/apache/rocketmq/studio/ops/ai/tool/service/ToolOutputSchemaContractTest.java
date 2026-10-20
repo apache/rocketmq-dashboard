@@ -168,7 +168,7 @@ class ToolOutputSchemaContractTest {
         samples.put("rmq.litetopic.quota", List.of(new LiteTopicQuotaOutput(
                 120, 1000, 30, 100, 5, 50, 0.12, 0.3, 3600L, 86400L, 880, 2.5)));
         samples.put("rmq.litetopic.extend_ttl", List.of(planned(), executed(
-                new LiteTopicExtendTtlOutput("orders", 86400000L))));
+                new LiteTopicExtendTtlOutput("orders", 86400000L, 86400000L))));
 
         samples.put("rmq.audit.list", List.of(new PageOutput<>(1, 20, 1L, List.of(
                 new AuditItem(1L, "2026-08-22T08:00:00", "admin", "CREATE_TOPIC", "TOPIC",

@@ -398,7 +398,9 @@ class RocketMQLiteTopicProviderTest {
         when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
         when(admin.examineTopicConfig(BROKER_A, PARENT)).thenReturn(liteTopicConfig(PARENT, 30));
 
-        provider.extendTTL("cluster-a", PARENT, TimeUnit.MINUTES.toMillis(120));
+        long applied = provider.extendTTL("cluster-a", PARENT, TimeUnit.MINUTES.toMillis(120));
+
+        assertThat(applied).isEqualTo(TimeUnit.MINUTES.toMillis(120));
 
         ArgumentCaptor<TopicConfig> captor = ArgumentCaptor.forClass(TopicConfig.class);
         verify(admin).createAndUpdateTopicConfig(eq(BROKER_A), captor.capture());
@@ -414,8 +416,9 @@ class RocketMQLiteTopicProviderTest {
         when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
         when(admin.examineTopicConfig(BROKER_A, PARENT)).thenReturn(liteTopicConfig(PARENT, 30));
 
-        provider.extendTTL("cluster-a", PARENT, TimeUnit.DAYS.toMillis(90));
+        long applied = provider.extendTTL("cluster-a", PARENT, TimeUnit.DAYS.toMillis(90));
 
+        assertThat(applied).isEqualTo(TimeUnit.DAYS.toMillis(30));
         ArgumentCaptor<TopicConfig> captor = ArgumentCaptor.forClass(TopicConfig.class);
         verify(admin).createAndUpdateTopicConfig(eq(BROKER_A), captor.capture());
         assertThat(captor.getValue().getAttributes())

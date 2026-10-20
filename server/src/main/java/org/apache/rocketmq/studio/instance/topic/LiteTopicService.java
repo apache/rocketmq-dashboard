@@ -59,7 +59,7 @@ public class LiteTopicService {
         return toSessionVO(liteTopicProvider.getSession(sessionId));
     }
 
-    public void extendTTL(String instanceId, String topicPattern, Long newTTL) {
+    public long extendTTL(String instanceId, String topicPattern, Long newTTL) {
         String identifier = ResourceOwnershipGuard.requireText(instanceId, "instanceId");
         if (topicPattern == null || topicPattern.isBlank()) {
             throw new BusinessException(400, "topicPattern is required");
@@ -77,7 +77,7 @@ public class LiteTopicService {
         if (resource.kind() != ResourceOwnershipGuard.Kind.TOPIC) {
             throw new BusinessException(409, "TTL can only be updated on a registered Lite parent topic");
         }
-        liteTopicProvider.extendTTL(instance.getName(), resource.name(), newTTL);
+        return liteTopicProvider.extendTTL(instance.getName(), resource.name(), newTTL);
     }
 
     public LiteTopicQuotaVO getQuota(String namespace) {
