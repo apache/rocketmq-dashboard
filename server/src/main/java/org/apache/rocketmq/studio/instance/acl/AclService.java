@@ -195,13 +195,24 @@ public class AclService {
 
 
     public List<AclUserVO> listUsers(String instanceId) {
+        return listUsers(instanceId, null);
+    }
+
+    public List<AclUserVO> listUsers(String instanceId, String keyword) {
+        String query = keyword == null ? "" : keyword.trim();
         if (isTencentInstance(instanceId)) {
             return tencentAclService.listUsers(instanceId).stream()
+                    .filter(user -> query.isEmpty()
+                            || containsIgnoreCase(user.getUsername(), query)
+                            || containsIgnoreCase(user.getAccessKey(), query))
                     .map(this::forWire)
                     .toList();
         }
         log.info("Listing ACL users");
         return aclRepository.findUsers().stream()
+                .filter(user -> query.isEmpty()
+                        || containsIgnoreCase(user.getUsername(), query)
+                        || containsIgnoreCase(user.getAccessKey(), query))
                 .map(this::forWire)
                 .toList();
     }

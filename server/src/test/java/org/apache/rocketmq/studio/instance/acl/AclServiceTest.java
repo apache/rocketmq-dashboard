@@ -427,6 +427,19 @@ class AclServiceTest {
     }
 
     @Test
+    void listUsersShouldApplyKeywordToTheUnpagedDirectory() {
+        when(aclRepository.findUsers()).thenReturn(List.of(
+                AclUserVO.builder().username("orders-admin").accessKey("ak-orders").build(),
+                AclUserVO.builder().username("billing-reader").accessKey("ak-billing").build()));
+
+        List<AclUserVO> result = aclService.listUsers(null, " BILLING ");
+
+        assertThat(result).singleElement().satisfies(user ->
+                assertThat(user.getUsername()).isEqualTo("billing-reader"));
+        verify(aclRepository).findUsers();
+    }
+
+    @Test
     void listUsersShouldSerializeGmtCreateAsUtcWallTimeTest() {
         // gmtCreate is stored as a zone-less server-local wall clock and the page renders it in
         // the viewer's zone, so the wire carries UTC — the same convention the audit page uses.

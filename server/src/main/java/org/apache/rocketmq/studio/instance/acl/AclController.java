@@ -88,8 +88,11 @@ public class AclController {
 
     @GetMapping("/users")
     public Result<List<AclUserVO>> listUsers(
-            @RequestParam(required = false) String instanceId) {
-        return Result.ok(aclService.listUsers(instanceId));
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(required = false) String keyword) {
+        return Result.ok(keyword == null || keyword.isBlank()
+                ? aclService.listUsers(instanceId)
+                : aclService.listUsers(instanceId, keyword));
     }
 
     @GetMapping("/users/page")

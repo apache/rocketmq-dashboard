@@ -344,6 +344,17 @@ class AclControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void listUsersShouldForwardKeywordToTheDirectoryService() throws Exception {
+        when(aclService.listUsers(isNull(), eq(" billing "))).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/acl/users").param("keyword", " billing "))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isEmpty());
+
+        verify(aclService).listUsers(isNull(), eq(" billing "));
+    }
+
+    @Test
     void getUserCredentialsShouldDisableResponseCaching() throws Exception {
         AclUserVO credentials = AclUserVO.builder()
                 .id(1L)
