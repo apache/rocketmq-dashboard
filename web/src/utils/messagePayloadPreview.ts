@@ -171,7 +171,8 @@ export const buildMessagePropertiesFromRows = (
     const rawKey = row.key ?? '';
     const rawValue = row.value ?? '';
     const key = rawKey.trim();
-    const value = rawValue.trim();
+    const trimmedValue = rawValue.trim();
+    const value = trimmedValue.length === 0 ? trimmedValue : rawValue;
 
     if (!key && !value) return;
     if (!key) {
