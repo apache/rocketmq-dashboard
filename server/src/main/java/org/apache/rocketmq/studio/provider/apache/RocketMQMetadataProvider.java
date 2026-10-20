@@ -658,6 +658,8 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                             .consumeTps(0)
                             .diffTotal(0)
                             .metricsAvailable(false)
+                            // stats were not read, so the TPS placeholder is unmeasured too
+                            .tpsAvailable(false)
                             .build());
                 }
             }

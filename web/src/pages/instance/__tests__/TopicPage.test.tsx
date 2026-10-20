@@ -1452,6 +1452,40 @@ describe('TopicPage', () => {
     expect(await screen.findAllByText('不可用')).not.toHaveLength(0);
   });
 
+  it('marks only the TPS cell unavailable for a consumer row with a real backlog', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    mockTopicsList([buildTopics(1)[0]]);
+    topicServiceMocks.getTopicConsumerPage.mockResolvedValue({
+      items: [
+        {
+          group: 'cg-tencent',
+          consumeType: 'CLUSTERING',
+          messageModel: 'CLUSTERING',
+          // Tencent reports the real per-group backlog (ConsumerLag) but no TPS: the 堆积量
+          // cell keeps the measured number while the 消费 TPS cell must not show a "0".
+          consumeTps: 0,
+          diffTotal: 4200,
+          tpsAvailable: false,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    const row = await waitFor(() => {
+      const found = screen.getByText('cg-tencent').closest('tr');
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    expect(within(row).getByText('不可用')).toBeInTheDocument();
+    expect(within(row).getByText('4,200')).toBeInTheDocument();
+    expect(within(row).queryByText('0')).toBeNull();
+  });
+
   it('renders an unresolvable Topic consumer lag as unavailable instead of -1', async () => {
     const user = userEvent.setup();
     mockTopicsList([buildTopics(1)[0]]);

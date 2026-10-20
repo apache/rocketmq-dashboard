@@ -880,8 +880,15 @@ const TopicPageContent = ({
       title: '消费 TPS',
       dataIndex: 'consumeTps',
       key: 'consumeTps',
+      // metricsAvailable=false means no stats at all (Aliyun, Apache stats failure);
+      // tpsAvailable=false means the provider reported the real backlog but no TPS (Tencent),
+      // so the 堆积量 cell keeps its measured number while this cell reads 不可用.
       render: (n: number, record) =>
-        record.metricsAvailable === false ? <Text type="secondary">不可用</Text> : formatNumber(n),
+        record.metricsAvailable === false || record.tpsAvailable === false ? (
+          <Text type="secondary">不可用</Text>
+        ) : (
+          formatNumber(n)
+        ),
     },
     {
       title: '堆积量',

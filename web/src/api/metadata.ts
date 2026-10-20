@@ -57,6 +57,8 @@ export interface ConsumerGroupInfo {
   consumeTps: number;
   diffTotal: number;
   metricsAvailable?: boolean;
+  /** False when the provider did not measure consumeTps (e.g. Tencent reports lag but no TPS). */
+  tpsAvailable?: boolean;
 }
 
 export interface TopicConsumerPage {
