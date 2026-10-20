@@ -71,6 +71,7 @@ import {
   saveMetricsQueryHistory,
   summarizeMetricData,
   toMetricSeriesSamples,
+  toMetricSeriesChartSegments,
   type MetricCsvContext,
   type MetricResultSummary,
   type MetricSeriesDetailRow,
@@ -101,8 +102,28 @@ const PROFILE_STORAGE_KEY = 'rocketmq-studio.metric-profile';
 const CUSTOM_HISTORY_PROFILE_ID = '__custom__';
 const CUSTOM_HISTORY_METRIC_ID = 'custom';
 
-const formatMetricValue = (value: number) =>
-  new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
+const formatMetricValue = (value: number, significantDigits?: number) => {
+  const magnitude = Math.abs(value);
+  // Keep normal values compact, but never round an available small measurement to zero.
+  const options: Intl.NumberFormatOptions =
+    significantDigits !== undefined || (magnitude > 0 && magnitude < 0.01)
+      ? {
+          maximumSignificantDigits: significantDigits ?? 3,
+          ...(magnitude > 0 && magnitude < 0.0001 ? { notation: 'scientific' } : {}),
+        }
+      : { maximumFractionDigits: 2 };
+  return new Intl.NumberFormat(undefined, options).format(value === 0 ? 0 : value);
+};
+
+const formatMetricAxisValues = (values: number[]) => {
+  let labels = values.map((value) => formatMetricValue(value));
+  const distinctValues = new Set(values).size;
+  // A narrow range can need more precision than its magnitude alone suggests.
+  for (let digits = 3; new Set(labels).size < distinctValues && digits <= 17; digits += 1) {
+    labels = values.map((value) => formatMetricValue(value, digits));
+  }
+  return labels;
+};
 
 interface MetricChartProps {
   data: MetricData;
@@ -143,6 +164,7 @@ const MetricChart = ({
           label: isMixed ? `${baseLabel} (${kindSuffix})` : baseLabel,
           tooltip: isMixed ? `${baseTooltip} (${kindSuffix})` : baseTooltip,
           samples: samples.filter((sample) => sample.kind === kind),
+          segments: toMetricSeriesChartSegments(series, kind),
           fromHistogram: kind === 'histogram',
         };
       });
@@ -198,6 +220,10 @@ const MetricChart = ({
     CHART_PADDING.left + ((timestamp - minTime) / (maxTime - minTime)) * plotWidth;
   const y = (value: number) =>
     CHART_PADDING.top + (1 - (value - minValue) / (maxValue - minValue)) * plotHeight;
+  const gridRatios = [0, 0.5, 1];
+  const gridLabels = formatMetricAxisValues(
+    gridRatios.map((ratio) => maxValue - ratio * (maxValue - minValue)),
+  );
   const formatTime = (timestamp: number) =>
     new Date(timestamp * 1000).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
 
@@ -210,9 +236,8 @@ const MetricChart = ({
         preserveAspectRatio="xMidYMid meet"
         style={{ width: '100%', minHeight: 220, display: 'block' }}
       >
-        {[0, 0.5, 1].map((ratio) => {
+        {gridRatios.map((ratio, index) => {
           const gridY = CHART_PADDING.top + ratio * plotHeight;
-          const gridValue = maxValue - ratio * (maxValue - minValue);
           return (
             <g key={ratio}>
               <line
@@ -230,24 +255,36 @@ const MetricChart = ({
                 fontSize="20"
                 fill="#8c8c8c"
               >
-                {formatMetricValue(gridValue)}
+                {gridLabels[index]}
               </text>
             </g>
           );
         })}
-        {chartSeries.map((series) => (
-          <polyline
-            key={series.key}
-            fill="none"
-            stroke={series.color}
-            strokeWidth="2.5"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-            points={series.samples
-              .map((sample) => `${x(sample.timestamp)},${y(sample.value)}`)
-              .join(' ')}
-          />
-        ))}
+        {chartSeries.flatMap((series) =>
+          series.segments.map((segment, index) =>
+            segment.length === 1 ? (
+              <circle
+                key={`${series.key}-${index}`}
+                cx={x(segment[0].timestamp)}
+                cy={y(segment[0].value)}
+                r="3"
+                fill={series.color}
+              />
+            ) : (
+              <polyline
+                key={`${series.key}-${index}`}
+                fill="none"
+                stroke={series.color}
+                strokeWidth="2.5"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                points={segment
+                  .map((sample) => `${x(sample.timestamp)},${y(sample.value)}`)
+                  .join(' ')}
+              />
+            ),
+          ),
+        )}
         <text
           x={CHART_PADDING.left}
           y={CHART_HEIGHT - 8}

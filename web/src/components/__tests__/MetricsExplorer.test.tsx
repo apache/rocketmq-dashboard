@@ -889,11 +889,13 @@ describe('MetricsExplorer', () => {
 
     expect(await screen.findByText('42 messages/s')).toBeInTheDocument();
     // The mixed broker-a line is split into a scalar and a histogram trend; the broker-b
-    // line follows. Every drawn polyline must keep its own stroke so legend swatches
-    // stay matchable.
+    // line follows. Lines and singleton markers must keep distinct colors so legend
+    // swatches stay matchable.
     const strokes = Array.from(
-      screen.getByRole('img', { name: 'Message In TPS time series' }).querySelectorAll('polyline'),
-    ).map((line) => line.getAttribute('stroke'));
+      screen
+        .getByRole('img', { name: 'Message In TPS time series' })
+        .querySelectorAll('polyline, circle'),
+    ).map((shape) => shape.getAttribute(shape.tagName === 'circle' ? 'fill' : 'stroke'));
     expect(strokes.length).toBe(3);
     expect(new Set(strokes).size).toBe(strokes.length);
   });
@@ -1878,5 +1880,154 @@ describe('custom PromQL keyboard submission', () => {
     await user.click(screen.getByRole('button', { name: '查询' }));
     await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(queryCount + 2));
     expect(queryMetrics).toHaveBeenLastCalledWith(expect.objectContaining({ metric: 'sum(up)' }));
+  });
+});
+
+describe('metrics chart availability regressions', () => {
+  it('doesNotJoinAcrossExplicitUnavailableScalarSamplesTest', async () => {
+    vi.mocked(queryMetrics).mockResolvedValue({
+      ...metricData,
+      series: [
+        {
+          ...metricData.series[0],
+          values: [
+            { timestamp: 1_799_996_400, value: '10' },
+            { timestamp: 1_799_996_430, value: '11' },
+            { timestamp: 1_799_996_460, value: 'NaN' },
+            { timestamp: 1_799_996_490, value: '12' },
+            { timestamp: 1_799_996_520, value: '13' },
+          ],
+        },
+      ],
+    });
+    renderWithProviders(<MetricsExplorer />);
+    const chart = await screen.findByRole('img', { name: 'Message In TPS time series' });
+    const lines = [...chart.querySelectorAll('polyline')];
+    // Both valid runs remain visible, but no line crosses the known NaN at mid-window.
+    expect(lines).toHaveLength(2);
+    const midpoint = (76 + 822) / 2;
+    for (const line of lines) {
+      const xs = (line.getAttribute('points') ?? '')
+        .split(' ')
+        .map((point) => Number(point.split(',')[0]));
+      expect(Math.min(...xs) < midpoint && Math.max(...xs) > midpoint).toBe(false);
+    }
+    expect(await screen.findByText('13 messages/s')).toBeInTheDocument();
+  });
+
+  it.each(['scalar', 'histogram'] as const)(
+    'rendersAnIsolatedSampleAsAVisiblePointTest (%s)',
+    async (kind) => {
+      vi.mocked(queryMetrics).mockResolvedValue({
+        ...metricData,
+        series: [
+          {
+            ...metricData.series[0],
+            values: kind === 'scalar' ? [{ timestamp: 1_800_000_000, value: '42' }] : [],
+            histograms:
+              kind === 'histogram'
+                ? [{ timestamp: 1_800_000_000, histogram: { count: '4', sum: '42', buckets: [] } }]
+                : [],
+          },
+        ],
+      });
+      renderWithProviders(<MetricsExplorer />);
+      const chart = await screen.findByRole('img', { name: 'Message In TPS time series' });
+      // A one-coordinate polyline is only an SVG moveto and draws no stroke.
+      expect(chart.querySelectorAll('circle')).toHaveLength(1);
+      expect(chart.querySelector('circle')).toHaveAttribute('cx', '449');
+      expect(chart.querySelector('circle')).toHaveAttribute('cy', '111');
+      expect(chart.querySelectorAll('polyline')).toHaveLength(0);
+      expect(screen.getByText('42 messages/s')).toBeInTheDocument();
+    },
+  );
+});
+
+describe('metrics small-value presentation regressions', () => {
+  it.each([
+    { values: ['0.001', '0.004'], labels: ['0.004', '0.0025', '0.001'] },
+    { values: ['-0.004', '-0.001'], labels: ['-0.001', '-0.0025', '-0.004'] },
+    { values: ['1e-30', '4e-30'], labels: ['4E-30', '2.5E-30', '1E-30'] },
+    { values: ['0.001001', '0.001002'], labels: ['0.001002', '0.0010015', '0.001001'] },
+  ])('keepsSmallAxisTicksDistinctTest ($values)', async ({ values, labels }) => {
+    vi.mocked(queryMetrics).mockResolvedValue({
+      ...metricData,
+      series: [
+        {
+          ...metricData.series[0],
+          values: [
+            { timestamp: 1_799_996_400, value: values[0] },
+            { timestamp: 1_800_000_000, value: values[1] },
+          ],
+        },
+      ],
+    });
+    renderWithProviders(<MetricsExplorer />);
+    const chart = await screen.findByRole('img', { name: 'Message In TPS time series' });
+    expect([...chart.querySelectorAll('g text')].map((node) => node.textContent)).toEqual(labels);
+  });
+
+  it('preservesSmallSignedMagnitudesAndTrueZeroInLegendsAndDetailsTest', async () => {
+    const user = userEvent.setup();
+    const cases = [
+      ['positive', '0.004', '0.004'],
+      ['negative', '-0.004', '-0.004'],
+      ['tiny-positive', '1e-30', '1E-30'],
+      ['tiny-negative', '-1e-30', '-1E-30'],
+      ['zero', '0', '0'],
+      ['negative-zero', '-0', '0'],
+      ['ordinary', '1234.567', '1,234.57'],
+    ];
+    vi.mocked(queryMetrics).mockResolvedValue({
+      ...metricData,
+      series: cases.map(([name, value]) => ({
+        labels: { sample: name },
+        histograms: [],
+        values: [
+          { timestamp: 1_799_996_400, value },
+          { timestamp: 1_800_000_000, value },
+        ],
+      })),
+    });
+    renderWithProviders(<MetricsExplorer />);
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    for (const [, , expected] of cases) {
+      expect(screen.getAllByText(`${expected} messages/s`).length).toBeGreaterThan(0);
+    }
+    expect(screen.queryByText('-0 messages/s')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Message In TPS 序列明细' }));
+    const dialog = await screen.findByRole('dialog', { name: /指标序列明细/ });
+    for (const [name, , expected] of cases) {
+      const row = within(dialog).getByText(`sample=${name}`).closest('tr');
+      expect(row).not.toBeNull();
+      expect(within(row as HTMLElement).getByText(expected)).toBeInTheDocument();
+    }
+  });
+
+  it('keepsTheBrowserNumberLocaleForSmallValuesTest', async () => {
+    const OriginalNumberFormat = Intl.NumberFormat;
+    vi.spyOn(Intl, 'NumberFormat').mockImplementation(function (locale, options) {
+      return new OriginalNumberFormat(locale ?? 'de-DE', options);
+    } as typeof Intl.NumberFormat);
+    vi.mocked(queryMetrics).mockResolvedValue({
+      ...metricData,
+      series: [
+        {
+          ...metricData.series[0],
+          values: [
+            { timestamp: 1_799_996_400, value: '0.001' },
+            { timestamp: 1_800_000_000, value: '0.004' },
+          ],
+        },
+      ],
+    });
+    renderWithProviders(<MetricsExplorer />);
+    expect(await screen.findByText('0,004 messages/s')).toBeInTheDocument();
+    const chart = screen.getByRole('img', { name: 'Message In TPS time series' });
+    expect([...chart.querySelectorAll('g text')].map((node) => node.textContent)).toEqual([
+      '0,004',
+      '0,0025',
+      '0,001',
+    ]);
   });
 });
