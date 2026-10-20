@@ -21,6 +21,8 @@ import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { getGeneralSettings, saveGeneralSettings } from '../../../api/settings';
 import { ThemeProvider } from '../../../theme/ThemeProvider';
+import { useTheme } from '../../../theme/useTheme';
+import { COMPACT_STORAGE_KEY, THEME_STORAGE_KEY } from '../../../theme/themePreference';
 import { LangProvider } from '../../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { GeneralSettingsTab } from '../GeneralSettingsTab';
@@ -51,11 +53,17 @@ vi.mock('../../../api/settings', () => ({
   updateDataSource: vi.fn(),
 }));
 
+const ThemeShortcut = () => {
+  const { toggleTheme } = useTheme();
+  return <button onClick={toggleTheme}>Toggle theme</button>;
+};
+
 const renderTab = () =>
   render(
     <App>
       <LangProvider>
         <ThemeProvider>
+          <ThemeShortcut />
           <GeneralSettingsTab />
         </ThemeProvider>
       </LangProvider>
@@ -156,6 +164,41 @@ describe('GeneralSettingsTab', () => {
         'ant-segmented-item-selected',
       ),
     );
+  });
+
+  it('displays restored local appearance preferences instead of server defaultsTest', async () => {
+    localStorage.setItem(THEME_STORAGE_KEY, 'dark');
+    localStorage.setItem(COMPACT_STORAGE_KEY, 'true');
+    renderTab();
+
+    await screen.findByDisplayValue('30');
+
+    expect(screen.getByRole('radio', { name: '深色' })).toBeChecked();
+    expect(screen.getByRole('switch')).toBeChecked();
+    expect(saveGeneralSettings).not.toHaveBeenCalled();
+  });
+
+  it('follows global theme changes and allows returning to system modeTest', async () => {
+    vi.mocked(saveGeneralSettings).mockResolvedValue();
+    const user = userEvent.setup();
+    renderTab();
+    await screen.findByDisplayValue('30');
+
+    await user.click(screen.getByRole('button', { name: 'Toggle theme' }));
+
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
+    expect(screen.getByRole('radio', { name: '深色' })).toBeChecked();
+    expect(saveGeneralSettings).not.toHaveBeenCalled();
+
+    await user.click(screen.getByText('跟随系统'));
+
+    await waitFor(() =>
+      expect(saveGeneralSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ theme: 'system' }),
+      ),
+    );
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('system');
+    expect(screen.getByRole('radio', { name: '跟随系统' })).toBeChecked();
   });
 
   it('saves llm fields from a fresh read instead of the mount-time snapshot', async () => {
