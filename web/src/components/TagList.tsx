@@ -69,11 +69,18 @@ const TagList = ({ items, max, tagMaxWidth, gap = 4, style }: TagListProps) => {
       ))}
       {hidden.length > 0 && (
         <Tooltip
+          trigger={['hover', 'focus']}
           title={hidden.map((item) => (
             <div key={item.key}>{item.label}</div>
           ))}
         >
-          <Tag style={TAG_STYLE}>+{hidden.length}</Tag>
+          <Tag
+            style={TAG_STYLE}
+            tabIndex={0}
+            aria-label={`+${hidden.length}: ${hidden.map((item) => item.label).join(', ')}`}
+          >
+            +{hidden.length}
+          </Tag>
         </Tooltip>
       )}
     </Flex>

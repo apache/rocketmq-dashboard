@@ -55,6 +55,7 @@ import type { MetricData, MetricMapping, MetricProfile } from '../api/metrics';
 import { useLang } from '../i18n/LangContext';
 import { downloadCsv } from '../utils/download';
 import { tableScrollX } from '../utils/table';
+import { readLocalStorage, removeLocalStorage, writeLocalStorage } from '../utils/browserStorage';
 import {
   buildMetricCsvFilename,
   buildMetricCsvFromRows,
@@ -101,8 +102,28 @@ const PROFILE_STORAGE_KEY = 'rocketmq-studio.metric-profile';
 const CUSTOM_HISTORY_PROFILE_ID = '__custom__';
 const CUSTOM_HISTORY_METRIC_ID = 'custom';
 
-const formatMetricValue = (value: number) =>
-  new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
+const formatMetricValue = (value: number, significantDigits?: number) => {
+  const magnitude = Math.abs(value);
+  // Keep normal values compact, but never round an available small measurement to zero.
+  const options: Intl.NumberFormatOptions =
+    significantDigits !== undefined || (magnitude > 0 && magnitude < 0.01)
+      ? {
+          maximumSignificantDigits: significantDigits ?? 3,
+          ...(magnitude > 0 && magnitude < 0.0001 ? { notation: 'scientific' } : {}),
+        }
+      : { maximumFractionDigits: 2 };
+  return new Intl.NumberFormat(undefined, options).format(value === 0 ? 0 : value);
+};
+
+const formatMetricAxisValues = (values: number[]) => {
+  let labels = values.map((value) => formatMetricValue(value));
+  const distinctValues = new Set(values).size;
+  // A narrow range can need more precision than its magnitude alone suggests.
+  for (let digits = 3; new Set(labels).size < distinctValues && digits <= 17; digits += 1) {
+    labels = values.map((value) => formatMetricValue(value, digits));
+  }
+  return labels;
+};
 
 interface MetricChartProps {
   data: MetricData;
@@ -199,6 +220,10 @@ const MetricChart = ({
     CHART_PADDING.left + ((timestamp - minTime) / (maxTime - minTime)) * plotWidth;
   const y = (value: number) =>
     CHART_PADDING.top + (1 - (value - minValue) / (maxValue - minValue)) * plotHeight;
+  const gridRatios = [0, 0.5, 1];
+  const gridLabels = formatMetricAxisValues(
+    gridRatios.map((ratio) => maxValue - ratio * (maxValue - minValue)),
+  );
   const formatTime = (timestamp: number) =>
     new Date(timestamp * 1000).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
 
@@ -211,9 +236,8 @@ const MetricChart = ({
         preserveAspectRatio="xMidYMid meet"
         style={{ width: '100%', minHeight: 220, display: 'block' }}
       >
-        {[0, 0.5, 1].map((ratio) => {
+        {gridRatios.map((ratio, index) => {
           const gridY = CHART_PADDING.top + ratio * plotHeight;
-          const gridValue = maxValue - ratio * (maxValue - minValue);
           return (
             <g key={ratio}>
               <line
@@ -231,7 +255,7 @@ const MetricChart = ({
                 fontSize="20"
                 fill="#8c8c8c"
               >
-                {formatMetricValue(gridValue)}
+                {gridLabels[index]}
               </text>
             </g>
           );
@@ -740,7 +764,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         // A re-run after an earlier failure must clear the error banner, or the recovered
         // panels below would stay hidden behind it until the component is remounted.
         setProfileError(false);
-        const storedProfileId = localStorage.getItem(PROFILE_STORAGE_KEY);
+        const storedProfileId = readLocalStorage(PROFILE_STORAGE_KEY);
         const initialProfile =
           nextProfiles.find((profile) => profile.id === storedProfileId) ?? nextProfiles[0];
         setProfileId(initialProfile?.id ?? '');
@@ -766,7 +790,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
 
   const handleProfileChange = (nextProfileId: string) => {
     const nextProfile = profiles.find((profile) => profile.id === nextProfileId);
-    localStorage.setItem(PROFILE_STORAGE_KEY, nextProfileId);
+    writeLocalStorage(PROFILE_STORAGE_KEY, nextProfileId);
     setProfileId(nextProfileId);
     void loadAll(nextProfile, selectedRange);
   };
@@ -912,9 +936,9 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       rangeIdRef.current = replay.checkpoint.rangeId;
       setCustomPromql(replay.checkpoint.customPromql);
       if (replay.checkpoint.storedProfileId === null) {
-        localStorage.removeItem(PROFILE_STORAGE_KEY);
+        removeLocalStorage(PROFILE_STORAGE_KEY);
       } else {
-        localStorage.setItem(PROFILE_STORAGE_KEY, replay.checkpoint.storedProfileId);
+        writeLocalStorage(PROFILE_STORAGE_KEY, replay.checkpoint.storedProfileId);
       }
     }
     setPendingDataSource(null);
@@ -951,7 +975,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
 
   useEffect(() => {
     if (dataSourceKey && !availableDataSources.some((source) => source.key === dataSourceKey)) {
-      window.setTimeout(() => {
+      const timeoutId = window.setTimeout(() => {
         // Keep the ref in sync with the state; queries read the ref, so a stale key would
         // keep hitting the de-registered data source while the UI shows the default.
         dataSourceCredentialsRef.current = null;
@@ -963,6 +987,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           void runCustomQuery(appliedCustomPromql, selectedRange);
         }
       }, 0);
+      return () => window.clearTimeout(timeoutId);
     }
   }, [
     availableDataSources,
@@ -1189,7 +1214,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       profileId,
       rangeId,
       customPromql,
-      storedProfileId: localStorage.getItem(PROFILE_STORAGE_KEY),
+      storedProfileId: readLocalStorage(PROFILE_STORAGE_KEY),
     };
     if (entry.profileId === CUSTOM_HISTORY_PROFILE_ID) {
       setRangeId(nextRange.value);
@@ -1217,7 +1242,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
 
     setRangeId(nextRange.value);
     setHistoryOpen(false);
-    localStorage.setItem(PROFILE_STORAGE_KEY, nextProfile.id);
+    writeLocalStorage(PROFILE_STORAGE_KEY, nextProfile.id);
     setProfileId(nextProfile.id);
     if (nextDataSource && getDataSourceAuthMode(nextDataSource.auth) !== 'none') {
       restoreProtectedDataSource(

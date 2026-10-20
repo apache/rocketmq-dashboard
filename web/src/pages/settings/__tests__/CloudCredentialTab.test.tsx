@@ -40,7 +40,8 @@ vi.mock('../../../api/cloudCredential', () => ({
   updateCloudCredential: vi.fn(),
 }));
 
-vi.mock('../../../utils/download', () => ({
+vi.mock('../../../utils/download', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../utils/download')>()),
   downloadBlob: vi.fn(),
 }));
 

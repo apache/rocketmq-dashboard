@@ -386,6 +386,20 @@ describe('Cluster page', () => {
     expect(within(dialog).getByText('8080')).toBeInTheDocument();
   });
 
+  it('centers the broker status column', async () => {
+    renderWithProviders(<ClusterPage />);
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+
+    // 用户约定 2026-10-16：Broker 管理的「状态」列居中（自 2026-08-18 起即是），别改回左对齐。
+    const headers = Array.from(brokerRow.closest('table')!.querySelectorAll('thead th')).map((th) =>
+      th.textContent?.trim(),
+    );
+    const cells = within(brokerRow).getAllByRole('cell');
+    const index = headers.indexOf('状态');
+    expect(index).toBeGreaterThan(-1);
+    expect(cells[index].style.textAlign).toBe('center');
+  });
+
   it('previews broker config changes before submitting the update', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ClusterPage />);
