@@ -15,7 +15,8 @@
  * limitations under the License.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import useAuthStore from '../stores/authStore';
 
 const dataModeMock = vi.hoisted(() => ({ isMockMode: vi.fn(() => true) }));
 vi.mock('./dataMode', () => dataModeMock);
@@ -204,6 +205,100 @@ describe('instanceService list request dedupe', () => {
     instanceApiMock.listInstances.mockResolvedValue(fixture);
     await listInstances({});
     expect(instanceApiMock.listInstances).toHaveBeenCalledTimes(2);
+  });
+
+  describe('authentication session isolation', () => {
+    afterEach(() => {
+      useAuthStore.getState().logout();
+    });
+
+    it.each(['success', 'failure'] as const)(
+      'keepsTheNewSessionRequestSharedWhenAnOldRequestSettlesTest (%s)',
+      async (oldOutcome) => {
+        dataModeMock.isMockMode.mockReturnValue(false);
+        useAuthStore.getState().login('operator', 7, true);
+        let resolveOld!: (value: Instance[]) => void;
+        let rejectOld!: (error: Error) => void;
+        let resolveFresh!: (value: Instance[]) => void;
+        const stale = new Promise<Instance[]>((resolve, reject) => {
+          resolveOld = resolve;
+          rejectOld = reject;
+        });
+        const fresh = new Promise<Instance[]>((resolve) => {
+          resolveFresh = resolve;
+        });
+        instanceApiMock.listInstances.mockReturnValueOnce(stale).mockReturnValueOnce(fresh);
+        const oldRequest = listInstances().catch(() => undefined);
+        useAuthStore.getState().logout();
+        useAuthStore.getState().login('operator', 7, true);
+        const first = listInstances();
+        const second = listInstances({ search: '   ' });
+        // Observe every promise before settling an old failure, even on the broken baseline.
+        const results = Promise.allSettled([first, second]);
+        if (oldOutcome === 'failure') rejectOld(new Error('old session request failed'));
+        else resolveOld([]);
+        await oldRequest;
+        const third = listInstances();
+        resolveFresh([]);
+        expect(await results).toEqual([
+          { status: 'fulfilled', value: [] },
+          { status: 'fulfilled', value: [] },
+        ]);
+        await expect(third).resolves.toEqual([]);
+        expect(instanceApiMock.listInstances).toHaveBeenCalledTimes(2);
+      },
+    );
+
+    it.each([
+      ['different user', 'success'],
+      ['different user', 'failure'],
+      ['same user', 'success'],
+      ['same user', 'failure'],
+    ] as const)(
+      'startsAFreshListRequestAfterLoginTest (%s, old %s)',
+      async (nextUser, oldOutcome) => {
+        dataModeMock.isMockMode.mockReturnValue(false);
+        useAuthStore.getState().login('operator-a', 7, true);
+        let resolveOld!: (value: Instance[]) => void;
+        let rejectOld!: (error: Error) => void;
+        const stale = new Promise<Instance[]>((resolve, reject) => {
+          resolveOld = resolve;
+          rejectOld = reject;
+        });
+        instanceApiMock.listInstances.mockReturnValueOnce(stale).mockResolvedValueOnce([]);
+        const oldRequest = listInstances();
+        useAuthStore.getState().logout();
+        useAuthStore
+          .getState()
+          .login(
+            nextUser === 'same user' ? 'operator-a' : 'operator-b',
+            nextUser === 'same user' ? 7 : 8,
+            true,
+          );
+        const currentRequest = listInstances();
+        const outcomes = Promise.allSettled([oldRequest, currentRequest]);
+        if (oldOutcome === 'failure') rejectOld(new Error('old session request failed'));
+        else {
+          resolveOld([
+            {
+              id: 1,
+              name: 'stale-instance',
+              remark: null,
+              type: 'PROXY_CLUSTER',
+              endpoint: '10.0.0.1:8080',
+              topicCount: 0,
+              consumerGroupCount: 0,
+              gmtCreate: '2026-01-01T00:00:00Z',
+              gmtModified: '2026-01-01T00:00:00Z',
+            },
+          ]);
+        }
+        const [oldResult, currentResult] = await outcomes;
+        expect.soft(instanceApiMock.listInstances).toHaveBeenCalledTimes(2);
+        expect.soft(currentResult).toEqual({ status: 'fulfilled', value: [] });
+        expect(oldResult.status).toBe(oldOutcome === 'failure' ? 'rejected' : 'fulfilled');
+      },
+    );
   });
 
   it('does not share inflight requests across data modes', async () => {
