@@ -371,6 +371,29 @@ describe('consumer service mock data', () => {
     expect(secondSubscriptions[0]).not.toBe(firstSubscriptions[0]);
   });
 
+  it('does not show another instance fixture for a same-named mock group', async () => {
+    const name = 'cg-order-notify';
+    const otherInstance = 'instance-proxy-2';
+    expect((await getConsumerProgress(name, 'instance-proxy-1')).length).toBeGreaterThan(0);
+    expect((await getConsumerSubscriptions(name, 'instance-proxy-1')).length).toBeGreaterThan(0);
+
+    await createConsumerGroup({ name, instanceId: otherInstance });
+    try {
+      expect(await getConsumerProgress(name, otherInstance)).toEqual([]);
+      expect(await getConsumerSubscriptions(name, otherInstance)).toEqual([]);
+      const preview = await previewConsumerOffsetReset({
+        name,
+        instanceId: otherInstance,
+        topic: 'order-create',
+        timestamp: 1784246400000,
+      });
+      expect(preview.queueCount).toBe(0);
+      expect(preview.allowReset).toBe(false);
+    } finally {
+      await deleteConsumerGroup(name, otherInstance);
+    }
+  });
+
   it('builds copied reset offset previews in mock mode', async () => {
     const firstPreview = await previewConsumerOffsetReset({
       name: 'cg-order-notify',
