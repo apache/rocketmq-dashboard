@@ -21,6 +21,7 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.ops.ai.conversation.event.RunStatus;
 import org.apache.rocketmq.studio.persistence.entity.RmqAiConversation;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAiConversationMapper;
 import org.springframework.stereotype.Repository;
@@ -104,6 +105,12 @@ public class MybatisPlusAiConversationRepository implements AiConversationReposi
         return conversationMapper.selectObjs(new QueryWrapper<RmqAiConversation>()
                         .select("id")
                         .lt("gmt_create", cutoff)
+                        // Exclude busy conversations before LIMIT, or a full busy page starves
+                        // every idle expired conversation behind it on every cleanup iteration.
+                        .notExists("SELECT 1 FROM rmq_ai_run active_run "
+                                + "WHERE active_run.conversation_id = rmq_ai_conversation.id "
+                                + "AND active_run.status IN ({0}, {1})",
+                                RunStatus.QUEUED.name(), RunStatus.RUNNING.name())
                         .orderByAsc("gmt_create", "id")
                         .last("LIMIT " + limit))
                 .stream()
