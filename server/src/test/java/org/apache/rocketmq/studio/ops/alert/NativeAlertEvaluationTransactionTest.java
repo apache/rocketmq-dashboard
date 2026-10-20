@@ -34,6 +34,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @SpringBootTest
@@ -72,6 +73,25 @@ class NativeAlertEvaluationTransactionTest {
             return true;
         });
         when(suppression.findSuppressingClusterAlert(any())).thenReturn(Optional.empty());
+    }
+
+    @Test
+    void scalesRatioEventValuesToTheRulePercentUnitTest() {
+        when(alertRepository.saveAlert(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(stateMachine.advance(any(), any(), any(Integer.class), any(), any(), any()))
+                .thenReturn(new AlertStateUpdate(new AlertRuleState(AlertStateStatus.FIRING, 1, 0.91D, null,
+                        Instant.now(), Instant.now(), null), AlertStateTransition.FIRING));
+        AlertRuleVO rule = AlertRuleVO.builder().id(2L).domain(AlertDomain.CLUSTER).name("Disk")
+                .metric("broker.disk.usage_ratio").operator(">").threshold(85).thresholdUnit("%")
+                .enabled(true).instanceId("local").build();
+        MetricSample sample = new MetricSample("broker.disk.usage_ratio", AlertDomain.CLUSTER, "local", "cluster-a",
+                Map.of("brokerName", "broker-a"), 0.91D, MetricAvailability.AVAILABLE, Instant.now());
+
+        evaluationService.evaluate(rule, sample);
+
+        org.mockito.ArgumentCaptor<SystemAlertVO> alert = org.mockito.ArgumentCaptor.forClass(SystemAlertVO.class);
+        verify(alertRepository).saveAlert(alert.capture());
+        assertThat(alert.getValue().getCurrentValue()).isEqualTo(91D);
     }
 
     @Test

@@ -81,7 +81,7 @@ public class NativeAlertEvaluationService {
                 .fingerprint(key.fingerprint())
                 .transition(update.transition().name())
                 .instanceId(sample.instanceId())
-                .currentValue(update.state().currentValue())
+                .currentValue(AlertRuleSemanticFingerprint.displayValue(rule, update.state().currentValue()))
                 .labels(Map.copyOf(eventLabels))
                 .build();
         applyNotificationSuppression(event, sample.domain(), update.transition());

@@ -83,7 +83,8 @@ public class NativeAlertRuleTestService {
                     MetricSample evaluatedSample = NativeAlertSampleAggregator.aggregate(rule, sample, snapshotRepository);
                     AlertEvaluationResult evaluation = evaluator.evaluate(rule, evaluatedSample);
                     return AlertRuleTestResultVO.Sample.builder().labels(evaluatedSample.labels())
-                            .availability(evaluatedSample.availability().name()).currentValue(evaluation.currentValue())
+                            .availability(evaluatedSample.availability().name())
+                            .currentValue(AlertRuleSemanticFingerprint.displayValue(rule, evaluation.currentValue()))
                             .conditionMet(evaluation.conditionMet())
                             .unavailableReason(evaluatedSample.unavailableReason()).build();
                 }).toList()).build();

@@ -9,17 +9,12 @@ package org.apache.rocketmq.studio.ops.alert;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /** Renders the fixed, documented placeholders allowed in an alert notification. */
 final class AlertNotificationTemplate {
     static final String DEFAULT_TEMPLATE = "[${level}] ${title} - ${description}\nLabels: ${labels}";
-    private static final Set<String> RATIO_METRICS = Set.of(
-            "broker.disk.usage_ratio",
-            "broker.jvm.heap.usage_ratio",
-            "broker.send_queue.usage_ratio");
     private static final Pattern PLACEHOLDER = Pattern.compile("\\$\\{([A-Za-z][A-Za-z0-9]*)}");
 
     private AlertNotificationTemplate() {
@@ -64,13 +59,11 @@ final class AlertNotificationTemplate {
         if (currentValue == null) {
             return "";
         }
-        if (rule != null && "%".equals(rule.getThresholdUnit())
-                && RATIO_METRICS.contains(rule.getMetric() == null ? "" : rule.getMetric().trim())) {
-            // Ratio metrics are stored as fractions of the whole, so the percent rendering scales
-            // them by 100. Scaling through BigDecimal keeps the exact decimal form: plain double
-            // arithmetic renders the stored 0.29 as "28.999999999999996".
+        if (rule != null && AlertRuleSemanticFingerprint.isPercentRatioRule(rule)) {
+            // The event already stores the value scaled to the rule's percent unit; trim the trailing
+            // zero a plain double renders (91.0 -> 91) so the body matches the configured threshold.
             return Double.isFinite(currentValue)
-                    ? BigDecimal.valueOf(currentValue).movePointRight(2).stripTrailingZeros().toPlainString()
+                    ? BigDecimal.valueOf(currentValue).stripTrailingZeros().toPlainString()
                     : String.valueOf(currentValue);
         }
         return String.valueOf(currentValue);
