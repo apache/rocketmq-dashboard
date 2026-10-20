@@ -73,6 +73,9 @@ const MainLayout = () => {
   const [searchText, setSearchText] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia?.('(max-width: 991.98px)').matches,
+  );
   const searchInputRef = useRef<HTMLInputElement>(null);
   const { lang, setLang, t } = useLang();
   const clearAuth = useAuthStore((state) => state.logout);
@@ -444,7 +447,9 @@ const MainLayout = () => {
           collapsed={collapsed}
           onCollapse={setCollapsed}
           width={220}
-          collapsedWidth={64}
+          breakpoint="lg"
+          onBreakpoint={setNarrow}
+          collapsedWidth={narrow ? 0 : 64}
           style={{
             background: siderBg,
             borderRight: `1px solid ${borderColor}`,
@@ -494,17 +499,30 @@ const MainLayout = () => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              padding: '0 24px',
+              padding: narrow ? '0 8px' : '0 24px',
+              gap: narrow ? 8 : 16,
               background: topBarBg,
               backdropFilter: 'blur(8px)',
               borderBottom: `1px solid ${borderColor}`,
             }}
           >
             {/* Left: Breadcrumb */}
-            <Breadcrumb items={breadcrumbItems} style={{ fontSize: 14 }} />
+            <Breadcrumb
+              items={breadcrumbItems}
+              style={{ fontSize: 14, minWidth: 0, flex: '0 1 auto', overflow: 'hidden' }}
+            />
 
             {/* Right: Search + Lang + Theme + User */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: narrow ? 8 : 16,
+                minWidth: 0,
+                flex: '1 1 auto',
+              }}
+            >
               {/* Search button */}
               <button
                 type="button"
@@ -515,6 +533,10 @@ const MainLayout = () => {
                   alignItems: 'center',
                   gap: 8,
                   width: 280,
+                  flex: '1 1 280px',
+                  minWidth: 0,
+                  maxWidth: 280,
+                  overflow: 'hidden',
                   padding: '6px 8px 6px 14px',
                   borderRadius: 999,
                   border: `1px solid ${borderColor}`,
@@ -526,9 +548,13 @@ const MainLayout = () => {
                   transition: 'all 0.2s',
                 }}
               >
-                <MagnifyingGlass size={15} />
-                <span style={{ flex: 1, textAlign: 'left' }}>{t('common.search')}</span>
-                <kbd style={kbdStyle}>⌘K</kbd>
+                <MagnifyingGlass size={15} style={{ flexShrink: 0 }} />
+                <span
+                  style={{ flex: 1, minWidth: 0, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                >
+                  {t('common.search')}
+                </span>
+                {!narrow && <kbd style={kbdStyle}>⌘K</kbd>}
               </button>
 
               {/* Language toggle */}
