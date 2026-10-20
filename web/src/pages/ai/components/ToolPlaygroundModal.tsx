@@ -21,6 +21,7 @@ import { useLang } from '../../../i18n/LangContext';
 import { executeTool, listTools, type McpTool } from '../../../api/ai';
 import InfoBanner from '../../../components/InfoBanner';
 import { listInstances } from '../../../services/instanceService';
+import { RISK_TAG_COLOR } from '../render/blocks';
 
 /**
  * The manual tool playground: pick an instance scope, pick a tool, edit the JSON arguments, run it.
@@ -288,7 +289,7 @@ const ToolPlaygroundModal = ({
             <Space size={8} wrap>
               {selectedTool.riskLevel && (
                 <Tag
-                  color={selectedTool.riskLevel === 'L1' ? 'green' : 'orange'}
+                  color={RISK_TAG_COLOR[selectedTool.riskLevel] ?? 'default'}
                   style={{ fontSize: 14 }}
                 >
                   {selectedTool.riskLevel}
