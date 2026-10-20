@@ -867,4 +867,14 @@ describe('Message page query history', () => {
     expect(await screen.findByText('消息体')).toBeInTheDocument();
     expect(screen.getAllByText('5.0 GB').length).toBeGreaterThanOrEqual(2);
   });
+
+  it('offers no clear control on the query window it always sends', async () => {
+    renderWithProviders(<MessagePage />);
+
+    // The topic query always carries a window: the page initializes the range and every request
+    // sends startTime/endTime from it, so a cleared picker has no state to represent - while the
+    // clear control itself does nothing today.
+    expect(await screen.findByRole('button', { name: /^search查询$/ })).toBeInTheDocument();
+    expect(document.querySelector('.ant-picker-clear')).toBeNull();
+  });
 });
