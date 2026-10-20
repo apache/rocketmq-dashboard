@@ -79,7 +79,7 @@ import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import useAuthStore from '../../stores/authStore';
 import { downloadBlob } from '../../utils/download';
 import { describeThrownMessage } from '../../utils/apiError';
-import { formatBytes, formatTimeMs } from '../../utils/format';
+import { formatBytes, formatTimeMs, isSizeAvailable } from '../../utils/format';
 import {
   readMessageTraceTopic,
   writeMessageTraceTopic,
@@ -904,7 +904,10 @@ const MessagePageContent = ({
       // 「12.3 MB」实测 48px + 左右 padding 16px；原来给 80 是把宽度让给了溢出的操作列。
       width: 68,
       align: 'right',
-      render: (size: number) => formatBytes(size),
+      // Cloud list rows (Tencent) carry the UNKNOWN_SIZE sentinel when the API returns no
+      // size; that must read 不可用, not the "-1 B" formatBytes would produce for it.
+      render: (size: number) =>
+        isSizeAvailable(size) ? formatBytes(size) : <Text type="secondary">不可用</Text>,
     },
     {
       title: t('common.actions'),
@@ -1025,7 +1028,11 @@ const MessagePageContent = ({
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.key}</span>
             </Descriptions.Item>
             <Descriptions.Item label={t('messagePage.size')}>
-              {formatBytes(selectedMsg.size)}
+              {isSizeAvailable(selectedMsg.size) ? (
+                formatBytes(selectedMsg.size)
+              ) : (
+                <Text type="secondary">不可用</Text>
+              )}
             </Descriptions.Item>
             <Descriptions.Item label={t('messagePage.reconsumeTimes')}>
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.reconsumeTimes ?? '-'}</span>

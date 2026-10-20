@@ -1113,6 +1113,41 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void queryMessagesByMsgIdShouldReportTheRealBodySizeTest() throws Exception {
+        DescribeMessageResponse detail = new DescribeMessageResponse();
+        detail.setMessageId("MSG-SIZE");
+        detail.setShowTopicName("orders");
+        // "caf\u00e9" is 5 UTF-8 bytes (the escaped e-acute encodes to two bytes): proves the
+        // size is the encoded body length, not the character count and not a fabricated 0.
+        detail.setBody("caf\u00e9");
+        when(client.DescribeMessage(any())).thenReturn(detail);
+
+        MessageRecordVO record = provider.queryMessages(
+                STUDIO_INSTANCE_ID, "orders", "MSG-SIZE", null, null, null, null).get(0);
+
+        assertThat(record.getSize()).isEqualTo(5);
+    }
+
+    @Test
+    void queryMessagesByTopicShouldMarkListRowSizeUnknownTest() throws Exception {
+        MessageItem one = new MessageItem();
+        one.setMsgId("MSG-A");
+        one.setProduceTime("2024-09-12 14:06:55,591");
+        DescribeMessageListResponse response = new DescribeMessageListResponse();
+        response.setData(new MessageItem[]{one});
+        response.setTotalCount(1L);
+        when(client.DescribeMessageList(any())).thenReturn(response);
+
+        List<MessageRecordVO> messages = provider.queryMessages(STUDIO_INSTANCE_ID, "orders", null,
+                null, null, 1600000000000L, 1600001000000L);
+
+        // DescribeMessageList returns neither a body nor a size field, so the row must carry the
+        // unknown sentinel instead of a "0 B" that reads like a measurement.
+        assertThat(messages).singleElement()
+                .satisfies(record -> assertThat(record.getSize()).isEqualTo(MessageRecordVO.UNKNOWN_SIZE));
+    }
+
+    @Test
     void queryMessagesByTopicShouldPageWithSameTaskRequestIdTest() throws Exception {
         // Page 1 returns a full page (MESSAGE_LIMIT), forcing a second page; page 2 is a short
         // page, which terminates the loop.
