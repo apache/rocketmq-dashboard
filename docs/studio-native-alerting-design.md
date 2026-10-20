@@ -191,6 +191,8 @@ consecutiveSamples=2, severity=CRITICAL
 
 The evaluator runs after a collector writes a new sample. It computes an aggregation over the bounded local snapshot window, then advances an alert state keyed by a stable fingerprint.
 
+A read-only rule test combines its freshly collected observation with the stored window. It does not persist that observation. Scheduled evaluation already includes the saved observation in its snapshot window, so it does not append another copy.
+
 ```text
 OK -- condition met --> PENDING -- consecutive samples met --> FIRING
 FIRING -- condition clear --> RESOLVED

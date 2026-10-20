@@ -162,7 +162,7 @@ class NativeAlertRuleTestServiceTest {
         MetricSample current = sample("orders", 10);
         when(snapshots.findRecent(current, current.collectedAt().minusSeconds(300)))
                 .thenReturn(List.of(sample("orders", 500, current.collectedAt().minusSeconds(120)),
-                        sample("orders", 500, current.collectedAt().minusSeconds(60)), current));
+                        sample("orders", 500, current.collectedAt().minusSeconds(60))));
         AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.BUSINESS).metric("consumer.lag.total")
                 .instanceId("local").consumerGroup("orders").operator(">").threshold(100)
                 .aggregation(aggregation).windowSeconds(300).enabled(false).build();
@@ -194,7 +194,7 @@ class NativeAlertRuleTestServiceTest {
                 current.collectedAt().minusSeconds(60));
         when(collector.collect(instance)).thenReturn(List.of(current));
         when(snapshots.findRecent(current, current.collectedAt().minusSeconds(300)))
-                .thenReturn(List.of(previous, current));
+                .thenReturn(List.of(previous));
         AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.CLUSTER).metric(current.metricKey())
                 .instanceId("local").brokerName("broker-a").operator(">").threshold(0.8)
                 .aggregation("MAX").windowSeconds(300).build();
