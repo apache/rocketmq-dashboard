@@ -358,4 +358,30 @@ describe('ChatThread', () => {
 
     expect(screen.getByText('开始新的对话')).toBeInTheDocument();
   });
+
+  it('offersTheRemainingTailBelowTheTranscriptWhenTheBoundedWalkStoppedTest', async () => {
+    // The timeline's bounded forward walk stops holding the OLDEST rows, so what `loadMore`
+    // fetches is the missing NEWEST tail. The affordance must say that and sit below the
+    // transcript it extends — a "load earlier" button at the top would send the reader the
+    // opposite direction of the data.
+    const user = userEvent.setup();
+    const onLoadMore = vi.fn();
+    render(
+      <LangProvider>
+        <ChatThread
+          bubbles={[userBubble('检查集群状态'), assistantBubble('集群正常')]}
+          hasMore
+          onLoadMore={onLoadMore}
+        />
+      </LangProvider>,
+    );
+
+    const button = screen.getByRole('button', { name: '加载剩余的新消息' });
+    const lastMessage = screen.getByText('集群正常');
+    expect(button.compareDocumentPosition(lastMessage) & Node.DOCUMENT_POSITION_PRECEDING)
+      .toBeTruthy();
+
+    await user.click(button);
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
+  });
 });

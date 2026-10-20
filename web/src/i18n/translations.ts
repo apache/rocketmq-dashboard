@@ -1892,7 +1892,7 @@ const translations: Record<string, Record<Lang, string>> = {
   // ─── AI thread scrolling ───
   'ai.thread.jumpToLatest': { zh: '回到最新', en: 'Jump to latest' },
   'ai.thread.unread': { zh: '{count} 条新消息', en: '{count} new messages' },
-  'ai.thread.loadEarlier': { zh: '加载更早的内容', en: 'Load earlier events' },
+  'ai.thread.loadRemaining': { zh: '加载剩余的新消息', en: 'Load remaining messages' },
 
   // ─── AI render blocks ───
   'ai.thinking.model': { zh: '思考过程', en: 'Reasoning' },

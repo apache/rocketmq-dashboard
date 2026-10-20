@@ -140,6 +140,31 @@ describe('useConversationTimeline', () => {
     expect(result.current.hasMore).toBe(true);
   });
 
+  it('stopsTheBoundedWalkHoldingTheOldestRowsWithTheTailMissingTest', async () => {
+    // A conversation longer than maxPages × limit: the bounded FORWARD walk stops holding the
+    // OLDEST rows, so what is missing is the newest tail a chat view anchors to. `lastSeq` below
+    // the fixture's highest seq is exactly the state the load-remaining affordance must describe.
+    const rows = Array.from({ length: 10 }, (_, index) =>
+      item(index + 1, { type: 'text', text: `第 ${index + 1} 条` }),
+    );
+    timelineMock.mockImplementation(async (_id, params) => {
+      const after = params?.after ?? 0;
+      const limit = params?.limit ?? 200;
+      const next = rows.filter((row) => row.seq > after && row.seq <= after + limit);
+      const highest = next.length > 0 ? next[next.length - 1].seq : after;
+      return page(next, highest < rows[rows.length - 1].seq ? highest : null);
+    });
+
+    const { result } = render(7, 1, 3);
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.items.map((row) => row.seq)).toEqual([1, 2, 3]);
+    expect(result.current.lastSeq).toBe(3);
+    expect(result.current.hasMore).toBe(true);
+    // Rows 4..10 exist in the fixture but never reached the screen.
+    expect(result.current.lastSeq).toBeLessThan(10);
+  });
+
   it('appendsTheNextCursorPageOnLoadMoreTest', async () => {
     timelineMock
       .mockResolvedValueOnce(page([item(1, { type: 'text', text: 'first' })], 1))
