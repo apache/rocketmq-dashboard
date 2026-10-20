@@ -89,6 +89,10 @@ $ldflags = "-s -w -X $pkg.CLIVersion=$Version -X $pkg.GitCommit=$gitCommit -X $p
 $env:CGO_ENABLED = "0"
 
 Write-Host ">> building $Output (VERSION=$Version COMMIT=$gitCommit DATE=$buildDate)"
+$outputDirectory = Split-Path -Parent $Output
+if ($outputDirectory) {
+    New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
+}
 go build -ldflags "$ldflags" -o "$Output" main.go
 if ($LASTEXITCODE -ne 0) { throw "go build failed (exit $LASTEXITCODE)" }
 
