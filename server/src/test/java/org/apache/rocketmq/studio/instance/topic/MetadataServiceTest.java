@@ -1298,4 +1298,27 @@ class MetadataServiceTest {
 
     }
 
+
+    @Test
+    void consumerGroupConfigurationsShouldTrimGroupNameBeforeExactMatchTest() {
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("my-group");
+        when(apacheProvider.listConsumerGroups("instance-a", "my-group")).thenReturn(List.of(group));
+
+        List<ConsumerGroupVO> configurations =
+                metadataService.consumerGroupConfigurations("instance-a", "  my-group  ");
+        ConsumerGroupVO runtimeView = metadataService.consumerGroupRuntimeView("instance-a", "  my-group  ");
+
+        assertThat(configurations).extracting(ConsumerGroupVO::getName).containsExactly("my-group");
+        assertThat(runtimeView.getName()).isEqualTo("my-group");
+    }
+
+    @Test
+    void consumerGroupConfigurationsShouldRejectBlankGroupNameTest() {
+        assertThatThrownBy(() -> metadataService.consumerGroupConfigurations("instance-a", "   "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("consumer group name is required");
+
+        verifyNoInteractions(apacheProvider);
+    }
 }

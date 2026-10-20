@@ -550,9 +550,10 @@ public class MetadataService {
     }
 
     public List<ConsumerGroupVO> consumerGroupConfigurations(String instanceId, String name) {
-        List<ConsumerGroupVO> groups = listConsumerGroups(instanceId, null, name).stream()
-                .filter(group -> name.equals(group.getName())).toList();
-        if (groups.isEmpty()) throw new BusinessException(404, "Consumer group not found: " + name);
+        String groupName = requireName(name, "consumer group name");
+        List<ConsumerGroupVO> groups = listConsumerGroups(instanceId, null, groupName).stream()
+                .filter(group -> groupName.equals(group.getName())).toList();
+        if (groups.isEmpty()) throw new BusinessException(404, "Consumer group not found: " + groupName);
         return groups;
     }
 
