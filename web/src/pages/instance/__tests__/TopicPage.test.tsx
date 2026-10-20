@@ -19,7 +19,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vite
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { App, Modal } from 'antd';
+import { App, ConfigProvider, Modal } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import type { BrokerRoute, Topic } from '../../../api/metadata';
 import { parseMessageProperties } from '../../../utils/messageProperties';
@@ -752,6 +752,148 @@ describe('TopicPage', () => {
     // Those rows never arrived, so an empty table must not read as "nobody consumes this topic".
     expect(await screen.findByText('消费者加载失败，请重试')).toBeInTheDocument();
   });
+
+  it('reportsFailedConsumerPaginationAndRetriesTheRequestedPageTest', async () => {
+    const consumers = (prefix: string) =>
+      Array.from({ length: 20 }, (_, index) => ({
+        group: `${prefix}-${index + 1}`,
+        consumeType: 'CONSUME_PASSIVELY',
+        messageModel: 'CLUSTERING',
+        consumeTps: 0,
+        diffTotal: 0,
+      }));
+    let failNextPage = true;
+    topicServiceMocks.getTopicConsumerPage.mockImplementation(
+      async (_name, _instanceId, page, pageSize) => {
+        if (page === 2 && failNextPage) {
+          failNextPage = false;
+          throw new Error('consumer page timed out');
+        }
+        return {
+          items: consumers(page === 2 ? 'next-page' : 'first-page'),
+          total: 40,
+          page,
+          pageSize,
+        };
+      },
+    );
+    // This regression needs one real Topic row; the default 25-row inventory only
+    // adds unrelated table work while the detail pager is exercised.
+    mockTopicsList(buildTopics(1));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders('/instance/instance-proxy-1/topic');
+    const row = await screen.findByRole('row', { name: /topic-01/ });
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+    const dialog = await screen.findByRole('dialog', { name: /topic-01/ });
+    expect(await within(dialog).findByText('first-page-1')).toBeInTheDocument();
+    const pager = dialog.querySelector('.ant-pagination-item-2') as HTMLElement;
+    expect(pager).not.toBeNull();
+    await user.click(pager);
+
+    expect(await screen.findByText('Topic 详情加载失败，请稍后重试')).toBeInTheDocument();
+    expect(within(dialog).getByText('first-page-1')).toBeInTheDocument();
+    expect(dialog.querySelector('.ant-pagination-item-active')).toHaveTextContent('1');
+
+    await user.click(pager);
+    expect(await within(dialog).findByText('next-page-1')).toBeInTheDocument();
+    expect(within(dialog).queryByText('first-page-1')).not.toBeInTheDocument();
+    expect(dialog.querySelector('.ant-pagination-item-active')).toHaveTextContent('2');
+    expect(topicServiceMocks.getTopicConsumerPage).toHaveBeenLastCalledWith(
+      'topic-01',
+      'instance-proxy-1',
+      2,
+      20,
+    );
+  });
+
+  it.each(['newer page', 'closed detail', 'reopened detail', 'left page'])(
+    'ignoresFailedConsumerPageAfterItIsSupersededTest: %s',
+    async (transition) => {
+      let rejectPage!: (reason: Error) => void;
+      const oldPage = new Promise<never>((_resolve, reject) => {
+        rejectPage = reject;
+      });
+      topicServiceMocks.getTopicConsumerPage.mockImplementation(
+        async (_name, _instanceId, page, pageSize) => {
+          if (page === 2) return oldPage;
+          return {
+            items: Array.from({ length: 20 }, (_, index) => ({
+              group: `page-${page}-group-${index + 1}`,
+              consumeType: 'CONSUME_PASSIVELY',
+              messageModel: 'CLUSTERING',
+              consumeTps: 0,
+              diffTotal: 0,
+            })),
+            total: 60,
+            page,
+            pageSize,
+          };
+        },
+      );
+      mockTopicsList(buildTopics(1));
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      const view = render(
+        <ConfigProvider theme={{ token: { motion: false } }}>
+          <App>
+            <LangProvider>
+              <MemoryRouter initialEntries={['/instance/instance-proxy-1/topic']}>
+                <TopicPage />
+              </MemoryRouter>
+            </LangProvider>
+          </App>
+        </ConfigProvider>,
+      );
+      const row = await screen.findByRole('row', { name: /topic-01/ });
+      await user.click(within(row).getByRole('button', { name: /详情/ }));
+      let dialog = await screen.findByRole('dialog', { name: /topic-01/ });
+      expect(await within(dialog).findByText('page-1-group-1')).toBeInTheDocument();
+      await user.click(dialog.querySelector('.ant-pagination-item-2') as HTMLElement);
+      await waitFor(() =>
+        expect(topicServiceMocks.getTopicConsumerPage).toHaveBeenLastCalledWith(
+          'topic-01',
+          'instance-proxy-1',
+          2,
+          20,
+        ),
+      );
+
+      if (transition === 'newer page') {
+        await user.click(dialog.querySelector('.ant-pagination-item-3') as HTMLElement);
+        expect(await within(dialog).findByText('page-3-group-1')).toBeInTheDocument();
+      } else if (transition === 'left page') {
+        // The application message surface survives ordinary page navigation.
+        view.rerender(
+          <ConfigProvider theme={{ token: { motion: false } }}>
+            <App>
+              <LangProvider>
+                <MemoryRouter initialEntries={['/instance/instance-proxy-1/topic']}>
+                  <div>another page</div>
+                </MemoryRouter>
+              </LangProvider>
+            </App>
+          </ConfigProvider>,
+        );
+        expect(screen.getByText('another page')).toBeInTheDocument();
+      } else {
+        await user.click(dialog.querySelector('.ant-modal-close') as HTMLElement);
+        await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+        if (transition === 'reopened detail') {
+          await user.click(within(row).getByRole('button', { name: /详情/ }));
+          dialog = await screen.findByRole('dialog', { name: /topic-01/ });
+          expect(await within(dialog).findByText('page-1-group-1')).toBeInTheDocument();
+        }
+      }
+      await act(async () => rejectPage(new Error('obsolete consumer page timed out')));
+      expect(screen.queryByText('Topic 详情加载失败，请稍后重试')).not.toBeInTheDocument();
+      if (transition === 'newer page') {
+        expect(within(dialog).getByText('page-3-group-1')).toBeInTheDocument();
+        expect(dialog.querySelector('.ant-pagination-item-active')).toHaveTextContent('3');
+      } else if (transition === 'reopened detail') {
+        expect(within(dialog).getByText('page-1-group-1')).toBeInTheDocument();
+        expect(dialog.querySelector('.ant-pagination-item-active')).toHaveTextContent('1');
+      }
+    },
+  );
 
   it('clamps back to a valid page when the current page becomes empty after a delete', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
