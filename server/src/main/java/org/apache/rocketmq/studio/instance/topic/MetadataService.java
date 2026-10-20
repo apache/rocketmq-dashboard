@@ -849,9 +849,19 @@ public class MetadataService {
         return instance.getName();
     }
 
+    /**
+     * Single funnel for every send and redelivery, ahead of the provider dispatch, so the empty-body
+     * contract holds for cloud vendors too and for DTOs built internally (a stored message may carry a
+     * {@code null} body) rather than only for HTTP requests that bean validation already screens.
+     */
     private void requireSendMessageRequest(SendMessageDTO request) {
         if (request == null) {
             throw new BusinessException(400, "Topic send message request is required");
+        }
+        // isEmpty(), deliberately not requireName/hasText: a whitespace-only body such as " \t\n" is a
+        // legitimate payload and must reach the broker verbatim instead of being rejected or trimmed.
+        if (request.getBody() == null || request.getBody().isEmpty()) {
+            throw new BusinessException(400, "body must not be empty");
         }
     }
 
