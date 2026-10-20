@@ -200,4 +200,19 @@ describe('clusterService mock clusters', () => {
       await deleteK8sCert(created.id);
     }
   });
+
+  it('refreshes mock certificate expiry status and remaining days on each list', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-05-20T00:00:00Z'));
+      const expiring = (await listK8sCerts()).find((cert) => cert.id === 1);
+      expect(expiring).toMatchObject({ status: 'expiring', daysRemaining: 12 });
+
+      vi.setSystemTime(new Date('2026-07-01T00:00:00Z'));
+      const expired = (await listK8sCerts()).find((cert) => cert.id === 1);
+      expect(expired).toMatchObject({ status: 'expired', daysRemaining: -30 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

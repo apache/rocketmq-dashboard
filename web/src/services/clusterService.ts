@@ -18,6 +18,18 @@ const mockCertStore: K8sCertInfo[] = mockK8sCerts.map((cert) => ({
   san: [...cert.san],
 }));
 
+function refreshedMockCert(cert: K8sCertInfo, now: number): K8sCertInfo {
+  const copy = { ...cert, san: cert.san ? [...cert.san] : cert.san };
+  const expiry = Date.parse(cert.notAfter ?? '');
+  if (!Number.isFinite(expiry)) return copy;
+  const daysRemaining = Math.trunc((expiry - now) / 86_400_000);
+  return {
+    ...copy,
+    daysRemaining,
+    status: expiry <= now ? 'expired' : daysRemaining <= 30 ? 'expiring' : 'valid',
+  };
+}
+
 function copyCluster(cluster: ClusterInfo): ClusterInfo {
   return {
     id: cluster.id,
@@ -197,7 +209,8 @@ export async function getBrokerConfigDiff(
 
 export async function listK8sCerts(): Promise<K8sCertInfo[]> {
   if (isMockMode()) {
-    return mockCertStore.map((cert) => ({ ...cert, san: cert.san ? [...cert.san] : cert.san }));
+    const now = Date.now();
+    return mockCertStore.map((cert) => refreshedMockCert(cert, now));
   }
   return clusterApi.listK8sCerts();
 }
