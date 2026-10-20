@@ -33,6 +33,8 @@ import org.apache.rocketmq.studio.persistence.mapper.RmqAiRunMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -385,6 +387,38 @@ class AiConversationPersistenceIntegrationTest {
                 .containsExactly(busy.conversationId);
         assertThat(runRepository.findActiveConversationIds(List.of(idle))).isEmpty();
         assertThat(runRepository.findActiveConversationIds(List.of())).isEmpty();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = RunStatus.class, names = {"QUEUED", "RUNNING"})
+    void retentionShouldReachIdleConversationsBehindAFullBusyPageTest(RunStatus status) {
+        Seeded busy = seed();
+        Seeded idle = seed();
+        RmqAiRun active = new RmqAiRun();
+        active.setId(busy.secondRunId);
+        active.setStatus(status.name());
+        // Fresh activity must not be mistaken for an orphan by the preceding sweep.
+        active.setGmtModified(LocalDateTime.now(java.time.ZoneOffset.UTC));
+        runRepository.update(active);
+        int originalBatchSize = properties.getCleanupBatchSize();
+        int originalMaxBatches = properties.getCleanupMaxBatches();
+        try {
+            properties.setRetentionDays(1);
+            properties.setCleanupBatchSize(1);
+            properties.setCleanupMaxBatches(2);
+
+            conversationService.purgeExpired();
+
+            assertThat(conversationMapper.selectById(busy.conversationId)).isNotNull();
+            assertThat(countRuns(busy.conversationId)).isEqualTo(2);
+            assertThat(countEvents(busy.conversationId)).isEqualTo(EVENT_COUNT);
+            assertThat(conversationMapper.selectById(idle.conversationId)).isNull();
+            assertThat(countRuns(idle.conversationId)).isZero();
+            assertThat(countEvents(idle.conversationId)).isZero();
+        } finally {
+            properties.setCleanupBatchSize(originalBatchSize);
+            properties.setCleanupMaxBatches(originalMaxBatches);
+        }
     }
 
     // --- harness ------------------------------------------------------------------

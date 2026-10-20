@@ -53,7 +53,10 @@ public interface AiConversationRepository {
 
     int deleteById(Long id);
 
-    /** Ids created strictly before the cutoff, oldest first, capped at limit. */
+    /**
+     * Ids created strictly before the cutoff with no active run, oldest first, capped at limit.
+     * Busy conversations are excluded before the limit so they cannot block later idle candidates.
+     */
     List<Long> findIdsCreatedBefore(LocalDateTime cutoff, int limit);
 
     int deleteByIds(List<Long> ids);
