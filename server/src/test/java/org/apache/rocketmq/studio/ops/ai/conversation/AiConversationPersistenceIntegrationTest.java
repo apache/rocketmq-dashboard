@@ -371,6 +371,22 @@ class AiConversationPersistenceIntegrationTest {
         verifyNoCascade();
     }
 
+    @Test
+    void theBatchActiveRunQueryShouldAnswerForAWholeRetentionPageTest() {
+        Seeded busy = seed();
+        markRunning(busy.secondRunId);
+        long idle = seedConversation(OWNER, "an idle conversation of the same age");
+        seedRun(idle, 1, 1, EVENTS_PER_RUN);
+
+        // A hand-written DISTINCT over an IN list, standing in for one findActiveByConversationId per
+        // row on a retention page. Only a real database says whether it answers with the busy subset
+        // and nothing else — which is what the purge then trusts with a cascade delete.
+        assertThat(runRepository.findActiveConversationIds(List.of(busy.conversationId, idle, -1L)))
+                .containsExactly(busy.conversationId);
+        assertThat(runRepository.findActiveConversationIds(List.of(idle))).isEmpty();
+        assertThat(runRepository.findActiveConversationIds(List.of())).isEmpty();
+    }
+
     // --- harness ------------------------------------------------------------------
 
     private void verifyNoCascade() {

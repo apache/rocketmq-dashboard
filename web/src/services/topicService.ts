@@ -97,7 +97,10 @@ export const listAllTopics = async (params: TopicQuery = {}): Promise<Topic[]> =
     const result = await listTopicsPage({ ...params, page, pageSize: EXPORT_PAGE_SIZE });
     topics.push(...result.items);
     const total = result.total ?? topics.length;
-    if (result.items.length === 0 || topics.length >= total) return topics;
+    if (topics.length >= total) return topics;
+    if (result.items.length === 0) {
+      throw new Error(`Incomplete topic list: received ${topics.length} of ${total}`);
+    }
     page += 1;
   }
 

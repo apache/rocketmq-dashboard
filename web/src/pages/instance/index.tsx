@@ -628,7 +628,8 @@ const InstancePage = () => {
       title: 'Topic',
       dataIndex: 'topicCount',
       key: 'topicCount',
-      width: 70,
+      // 表头「Topic」+ 排序图标实测需 ~78，70 会把排序图标挤出列宽
+      width: 84,
       align: 'center' as const,
       sorter: (a, b, sortOrder) => compareResourceCounts(a, b, 'topicCount', sortOrder),
       render: (count: number, record: Instance) =>
@@ -638,7 +639,7 @@ const InstancePage = () => {
       title: 'Group',
       dataIndex: 'consumerGroupCount',
       key: 'consumerGroupCount',
-      width: 70,
+      width: 84,
       align: 'center' as const,
       sorter: (a, b, sortOrder) => compareResourceCounts(a, b, 'consumerGroupCount', sortOrder),
       render: (count: number, record: Instance) =>

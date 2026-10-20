@@ -625,6 +625,39 @@ describe('AlertsPage', () => {
     expect(screen.getByPlaceholderText('搜索规则名称或指标')).toHaveValue('');
   });
 
+  it('centers reminder interval and runtime and right-aligns duration', async () => {
+    renderPage('BUSINESS');
+    const row = (await screen.findByText('Broker disk usage')).closest('tr') as HTMLElement;
+
+    // 用户约定 2026-10-16：重提醒间隔 / 运行态居中，持续时间靠右，别改回默认左对齐。
+    const headers = Array.from(row.closest('table')!.querySelectorAll('thead th')).map((th) =>
+      th.textContent?.trim(),
+    );
+    const cells = within(row).getAllByRole('cell');
+    const alignOf = (title: string) => {
+      const index = headers.indexOf(title);
+      expect(index).toBeGreaterThan(-1);
+      return cells[index].style.textAlign;
+    };
+    expect(alignOf('重提醒间隔')).toBe('center');
+    expect(alignOf('运行态')).toBe('center');
+    expect(alignOf('持续时间')).toBe('right');
+  });
+
+  it('keeps the rule table within the 1600px viewport container', async () => {
+    renderPage('BUSINESS');
+    await screen.findByText('Broker disk usage');
+
+    // 用户约定 2026-10-16 实测：1600 视口下卡片内容宽 1330，而 tableScrollX 把声明宽累加成
+    // scroll.x——总和 1368 时表格横向滚动、操作列删除按钮被裁。列宽调整见 alerts.tsx 列定义注释。
+    const cols = Array.from(document.querySelectorAll('.ant-table-content colgroup col'));
+    const total = cols.reduce(
+      (sum, col) => sum + (parseInt((col as HTMLElement).style.width, 10) || 0),
+      0,
+    );
+    expect(total).toBeLessThanOrEqual(1330);
+  });
+
   it('uses the business rule API and loads only business metrics for the selected instance', async () => {
     vi.mocked(listNativeAlertMetrics).mockResolvedValue([
       {
@@ -1170,6 +1203,29 @@ describe('AlertsPage', () => {
     await screen.findByText('Second page rule 5');
     expect(screen.queryByText('Second page rule 20')).not.toBeInTheDocument();
     expect(screen.queryByText('Page one rule 1')).not.toBeInTheDocument();
+  });
+
+  it('counts the 24h-triggered stat against the UTC timestamp, not the browser zone', async () => {
+    // Pin the viewer zone off UTC so a browser-zone parse is observably wrong, and pin the
+    // clock so the fixture's age is exact. The stat must read the same value the adjacent
+    // Last-Triggered column renders — UTC, per the formatUtcDateTime convention.
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-08-24T12:00:00Z'));
+    try {
+      // 2026-08-23T13:00:00 UTC is 23h before the pinned now. Parsed as Shanghai wall time
+      // it becomes 05:00Z — 31h old — which is what the browser-zone parse wrongly excludes.
+      vi.mocked(listAlertRulesPage).mockResolvedValue(
+        pageResult([{ ...cloneRule(alertRules[0]), lastTriggered: '2026-08-23T13:00:00' }]),
+      );
+
+      renderPage();
+
+      const statLabel = await screen.findByText('本页 24h 触发');
+      expect(statLabel.nextElementSibling).toHaveTextContent('1');
+    } finally {
+      nowSpy.mockRestore();
+      vi.unstubAllEnvs();
+    }
   });
 
   it('clamps to the last valid page when a bulk delete empties the current one', async () => {

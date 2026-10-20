@@ -45,7 +45,7 @@ import { listConnections } from '../../services/connectionsService';
 import { listRegistryClusters } from '../../services/clusterService';
 import type { ClusterInfo } from '../../api/cluster';
 import { formatDateTime } from '../../utils/format';
-import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { buildCsv, downloadCsv, localExportDateStamp, type CsvColumn } from '../../utils/download';
 import { describeThrownMessage } from '../../utils/apiError';
 import { tableScrollX } from '../../utils/table';
 import {
@@ -382,7 +382,7 @@ const ClientsPage = () => {
   const clampedCurrentPage = Math.min(currentPage, lastPage);
 
   const handleExport = () => {
-    const filename = `rocketmq-client-connections-${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename = `rocketmq-client-connections-${localExportDateStamp()}.csv`;
     const csv = buildCsv(CLIENT_CONNECTION_EXPORT_COLUMNS, exportConnections);
     downloadCsv(filename, csv);
   };
@@ -718,7 +718,7 @@ const ClientsPage = () => {
       {/* ─── Header ─── */}
       <PageHeader
         title={t('clients.title')}
-        subtitle={`${t('clients.title')} — ${filtered.length} connections`}
+        subtitle={t('clients.connectionCount', { count: filtered.length })}
       />
 
       {loadError && (
@@ -889,11 +889,14 @@ const ClientsPage = () => {
         <Flex gap={20} align="center" wrap="wrap" style={{ marginBottom: 16 }}>
           <Progress
             type="circle"
-            percent={clientDiagnostics.score}
+            // 健康分被扣到 0 时 antd 圆环不画任何弧线，看起来像「没算出来」的空组件，与旁边
+            // 「存在高风险 / 风险项 N」的结论自相矛盾（用户约定 2026-10-16）。弧线保底 2% 保证
+            // 始终有一段红色可见弧，环内文字仍显示真实分数并带 /100 标明量纲。
+            percent={Math.max(2, clientDiagnostics.score)}
             size={92}
             status={diagnosticProgressStatus}
             strokeColor={diagnosticStrokeColor}
-            format={(percent) => `${percent}`}
+            format={() => `${clientDiagnostics.score}/100`}
           />
           <div style={{ minWidth: 220, flex: '1 1 260px' }}>
             <Typography.Title level={5} style={{ margin: 0 }}>
