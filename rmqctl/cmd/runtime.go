@@ -68,7 +68,8 @@ func (r commandRuntime) resolveTarget() (studio.Target, error) {
 
 // targetServer returns the configured Studio Server URL for the active context
 // without resolving credentials. It is used by confirmation prompts so the user
-// can see where the dangerous request will be sent before approving it.
+// can see where the dangerous request will be sent before approving it. Legacy
+// configs may embed credentials in the URL, so it is redacted for display.
 func (r commandRuntime) targetServer() string {
 	cfg, err := r.loadConfig()
 	if err != nil {
@@ -82,7 +83,7 @@ func (r commandRuntime) targetServer() string {
 	if !ok || contextConfig.Server == "" {
 		return "Studio Server"
 	}
-	return contextConfig.Server
+	return config.RedactServerURL(contextConfig.Server)
 }
 
 func (r commandRuntime) loadConfig() (config.Config, error) {

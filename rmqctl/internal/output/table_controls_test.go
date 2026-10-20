@@ -56,15 +56,29 @@ func TestTableHeadersControlsTest(t *testing.T) {
 
 func TestConfigTableControlsTest(t *testing.T) {
 	name := "dev\nforged\trow"
-	cfg := config.Config{CurrentContext: name, Contexts: map[string]config.Context{name: {Server: "https://studio.example.com/\x1b", Credential: config.CredentialRef{AccessKeyRef: "env:AK", SecretKeyRef: "env:SK"}}}}
+	legacy := "legacy"
+	cfg := config.Config{CurrentContext: name, Contexts: map[string]config.Context{
+		name: {Server: "https://studio.example.com/\x1b", Credential: config.CredentialRef{AccessKeyRef: "env:AK", SecretKeyRef: "env:SK"}},
+		// set-context rejects userinfo server URLs, but configs written by older rmqctl
+		// versions or by hand still load, so the table must redact them for display.
+		legacy: {Server: "https://example-user:example-password@studio.example.com", Credential: config.CredentialRef{AccessKeyRef: "env:AK", SecretKeyRef: "env:SK"}},
+	}}
 	var out bytes.Buffer
 	if err := ConfigTable(&out, cfg); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(out.String(), "\n") != 2 || !strings.Contains(out.String(), `dev\nforged\trow`) || !strings.Contains(out.String(), `https://studio.example.com/\x1b`) {
-		t.Fatalf("unsafe table: %q", out.String())
+	rendered := out.String()
+	if strings.Count(rendered, "\n") != 3 || !strings.Contains(rendered, `dev\nforged\trow`) || !strings.Contains(rendered, `https://studio.example.com/\x1b`) {
+		t.Fatalf("unsafe table: %q", rendered)
 	}
-	if cfg.CurrentContext != name || cfg.Contexts[name].Server != "https://studio.example.com/\x1b" {
+	if strings.Contains(rendered, "example-password") || strings.Contains(rendered, "example-user") {
+		t.Fatalf("table disclosed stored server credentials: %q", rendered)
+	}
+	if !strings.Contains(rendered, "https://***@studio.example.com") {
+		t.Fatalf("table hid the server host: %q", rendered)
+	}
+	if cfg.CurrentContext != name || cfg.Contexts[name].Server != "https://studio.example.com/\x1b" ||
+		cfg.Contexts[legacy].Server != "https://example-user:example-password@studio.example.com" {
 		t.Fatal("rendering modified config")
 	}
 }

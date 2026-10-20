@@ -179,6 +179,63 @@ func TestConfigSetContextCanRemoveStoredServerCredentials(t *testing.T) {
 	}
 }
 
+// TestConfigGetContextsRedactsStoredServerCredentials pins the display-time redaction for
+// userinfo server URLs: set-context rejects them, but configs written by older rmqctl
+// versions or by hand still load, and `config get-contexts` must not print the password.
+// The stored value and the structured --output paths stay verbatim for scripts.
+func TestConfigGetContextsRedactsStoredServerCredentials(t *testing.T) {
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+	app.Store.Getenv = emptyEnv
+	configPath := newTestConfigPath(t)
+	if err := app.Store.Save(configPath, config.Config{CurrentContext: "legacy", Contexts: map[string]config.Context{
+		"legacy": {Server: "https://example-user:example-password@studio.example.com", Credential: config.CredentialRef{
+			AccessKeyRef: "env:RMQ_AK", SecretKeyRef: "env:RMQ_SK",
+		}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if exitCode := app.Execute([]string{"--config", configPath, "config", "get-contexts"}); exitCode != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr=%s", exitCode, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "example-password") || strings.Contains(stdout.String(), "example-user") {
+		t.Fatalf("get-contexts disclosed stored server credentials: stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "***@studio.example.com") {
+		t.Fatalf("get-contexts hid the server host: %q", stdout.String())
+	}
+
+	jsonStdout := &bytes.Buffer{}
+	app = NewApp(jsonStdout, stderr)
+	app.Store.Getenv = emptyEnv
+	if exitCode := app.Execute([]string{"--config", configPath, "config", "get-contexts", "--output", "json"}); exitCode != 0 {
+		t.Fatalf("json exit code = %d, want 0; stderr=%s", exitCode, stderr.String())
+	}
+	if !strings.Contains(jsonStdout.String(), "https://example-user:example-password@studio.example.com") {
+		t.Fatalf("structured output must keep the stored URL verbatim: %q", jsonStdout.String())
+	}
+}
+
+// TestTargetServerRedactsStoredServerCredentials pins the confirmation-prompt path: the
+// L2/L3 prompt echoes the context's server URL, which must not disclose credentials from
+// a legacy userinfo URL either.
+func TestTargetServerRedactsStoredServerCredentials(t *testing.T) {
+	app := NewApp(&bytes.Buffer{}, &bytes.Buffer{})
+	app.Store.Getenv = emptyEnv
+	configPath := newTestConfigPath(t)
+	if err := app.Store.Save(configPath, config.Config{CurrentContext: "legacy", Contexts: map[string]config.Context{
+		"legacy": {Server: "https://example-user:example-password@studio.example.com", Credential: config.CredentialRef{
+			AccessKeyRef: "env:RMQ_AK", SecretKeyRef: "env:RMQ_SK",
+		}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	runtime := commandRuntime{store: app.Store, options: &option{configPath: configPath}}
+	if got := runtime.targetServer(); got != "https://***@studio.example.com" {
+		t.Fatalf("targetServer() = %q, want redacted credentials", got)
+	}
+}
+
 func TestConfigDeleteContextRemovesContextAndClearsCurrent(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
