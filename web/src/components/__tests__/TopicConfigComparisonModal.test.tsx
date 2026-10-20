@@ -22,7 +22,7 @@ import { App } from 'antd';
 import type { Instance } from '../../api/instance';
 import type { Topic } from '../../api/metadata';
 import { LangProvider } from '../../i18n/LangContext';
-import TopicConfigComparisonDrawer from '../TopicConfigComparisonDrawer';
+import TopicConfigComparisonModal from '../TopicConfigComparisonModal';
 import { downloadCsv } from '../../utils/download';
 
 const topicServiceMocks = vi.hoisted(() => ({
@@ -107,13 +107,13 @@ const stagingTopics = [
   topic('target-only-topic', 'staging'),
 ];
 
-const renderDrawer = (
-  overrides: Partial<React.ComponentProps<typeof TopicConfigComparisonDrawer>> = {},
+const renderModal = (
+  overrides: Partial<React.ComponentProps<typeof TopicConfigComparisonModal>> = {},
 ) =>
   render(
     <App>
       <LangProvider>
-        <TopicConfigComparisonDrawer
+        <TopicConfigComparisonModal
           open
           instances={instances}
           currentInstanceId="production"
@@ -124,7 +124,7 @@ const renderDrawer = (
     </App>,
   );
 
-describe('TopicConfigComparisonDrawer', () => {
+describe('TopicConfigComparisonModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     topicServiceMocks.listAllTopics.mockImplementation(({ instanceId }: { instanceId: string }) =>
@@ -132,9 +132,16 @@ describe('TopicConfigComparisonDrawer', () => {
     );
   });
 
+  it('renders as a modal instead of a side drawer', () => {
+    renderModal();
+
+    expect(document.querySelector('.ant-modal')).not.toBeNull();
+    expect(document.querySelector('.ant-drawer')).toBeNull();
+  });
+
   it('loads both complete inventories and summarizes all comparison states', async () => {
     const user = userEvent.setup();
-    renderDrawer();
+    renderModal();
 
     await user.click(screen.getByRole('button', { name: '开始对比' }));
 
@@ -155,7 +162,7 @@ describe('TopicConfigComparisonDrawer', () => {
 
   it('shows field-level values when a drifted row is expanded', async () => {
     const user = userEvent.setup();
-    renderDrawer();
+    renderModal();
     await user.click(screen.getByRole('button', { name: '开始对比' }));
     await screen.findByText('drifted-topic');
 
@@ -169,7 +176,7 @@ describe('TopicConfigComparisonDrawer', () => {
 
   it('filters exported rows by topic search', async () => {
     const user = userEvent.setup();
-    renderDrawer();
+    renderModal();
     await user.click(screen.getByRole('button', { name: '开始对比' }));
     await screen.findByText('source-only-topic');
 
@@ -185,7 +192,7 @@ describe('TopicConfigComparisonDrawer', () => {
 
   it('swaps source and target before comparison', async () => {
     const user = userEvent.setup();
-    renderDrawer();
+    renderModal();
 
     await user.click(screen.getByRole('button', { name: '交换源实例和目标实例' }));
     await user.click(screen.getByRole('button', { name: '开始对比' }));
@@ -199,7 +206,7 @@ describe('TopicConfigComparisonDrawer', () => {
   });
 
   it('shows an actionable empty state when only one instance exists', () => {
-    renderDrawer({ instances: [instances[0]] });
+    renderModal({ instances: [instances[0]] });
 
     expect(screen.getByText('至少需要两个实例才能进行配置对比')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '开始对比' })).toBeDisabled();
@@ -208,7 +215,7 @@ describe('TopicConfigComparisonDrawer', () => {
   it('keeps the previous result empty when inventory loading fails', async () => {
     topicServiceMocks.listAllTopics.mockRejectedValue(new Error('offline'));
     const user = userEvent.setup();
-    renderDrawer();
+    renderModal();
 
     await user.click(screen.getByRole('button', { name: '开始对比' }));
 
@@ -218,7 +225,7 @@ describe('TopicConfigComparisonDrawer', () => {
 
   it('clears a previous comparison when refreshing the same pair fails', async () => {
     const user = userEvent.setup();
-    renderDrawer();
+    renderModal();
     const compareButton = screen.getByRole('button', { name: '开始对比' });
 
     await user.click(compareButton);
@@ -243,7 +250,7 @@ describe('TopicConfigComparisonDrawer', () => {
         }),
     );
     const user = userEvent.setup();
-    renderDrawer({ instances: [...instances, archiveInstance] });
+    renderModal({ instances: [...instances, archiveInstance] });
     // Hold the node: while it is loading, the spinner contributes to its accessible name.
     const compareButton = screen.getByRole('button', { name: '开始对比' });
 
@@ -266,10 +273,30 @@ describe('TopicConfigComparisonDrawer', () => {
     await waitFor(() => expect(compareButton).not.toHaveClass('ant-btn-loading'));
   });
 
-  it('calls onClose from the drawer close control', async () => {
+  it('filters the result when a status card is clicked', async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    // 未开始对比时给可操作的空态，而不是一片空白
+    expect(
+      screen.getByText('选择源实例与目标实例，点「开始对比」后按 Topic 逐条列出配置差异。'),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '开始对比' }));
+    await screen.findByText('matching-topic');
+
+    await user.click(screen.getByRole('button', { name: '按配置漂移筛选' }));
+    expect(screen.getByText('drifted-topic')).toBeInTheDocument();
+    expect(screen.queryByText('matching-topic')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '清除状态筛选' }));
+    expect(await screen.findByText('matching-topic')).toBeInTheDocument();
+  });
+
+  it('calls onClose from the modal close control', async () => {
     const onClose = vi.fn();
     const user = userEvent.setup();
-    renderDrawer({ onClose });
+    renderModal({ onClose });
 
     await user.click(screen.getByRole('button', { name: 'Close' }));
 

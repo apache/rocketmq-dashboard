@@ -67,6 +67,15 @@ if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
 Write-Host ">> $(go version)"
 Write-Host ">> module root: $moduleRoot"
 
+# This entry point builds and optionally tests a native executable. Do not
+# inherit GOOS/GOARCH left over from a previous cross-compilation command.
+$nativeTarget = go env -json GOHOSTOS GOHOSTARCH | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or -not $nativeTarget.GOHOSTOS -or -not $nativeTarget.GOHOSTARCH) {
+    throw "Could not determine the native Go build target"
+}
+$env:GOOS = $nativeTarget.GOHOSTOS
+$env:GOARCH = $nativeTarget.GOHOSTARCH
+
 # Version metadata, mirroring the Makefile LDFLAGS.
 $gitCommit = "unknown"
 try {

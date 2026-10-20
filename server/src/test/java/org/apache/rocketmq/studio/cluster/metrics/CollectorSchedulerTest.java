@@ -191,6 +191,102 @@ class CollectorSchedulerTest {
     }
 
     @Test
+    void discardsLateResultsFromACancelledJobTest() throws Exception {
+        AlertingProperties properties = new AlertingProperties();
+        // Four instances, parallelism 2, staggered by a gated quick job: the
+        // slow job's deadline expires while two later-submitted jobs are
+        // still running, so the pass — and its lease heartbeat — stay alive
+        // when the cancelled job's late result arrives.
+        properties.setCollectionParallelism(2);
+        properties.setCollectionTimeout("PT0.5S");
+        InstanceRepository instances = mock(InstanceRepository.class);
+        InstanceVO slow = InstanceVO.builder().name("slow").endpoint("slow:9876").build();
+        InstanceVO quick = InstanceVO.builder().name("quick").endpoint("quick:9876").build();
+        InstanceVO blocker1 = InstanceVO.builder().name("blocker1").endpoint("blocker1:9876").build();
+        InstanceVO blocker2 = InstanceVO.builder().name("blocker2").endpoint("blocker2:9876").build();
+        when(instances.findAll()).thenReturn(List.of(slow, quick, blocker1, blocker2));
+
+        CountDownLatch releaseQuick = new CountDownLatch(1);
+        CountDownLatch releaseBlocker1 = new CountDownLatch(1);
+        CountDownLatch releaseBlocker2 = new CountDownLatch(1);
+        CountDownLatch releaseSlow = new CountDownLatch(1);
+        MetricSample slowSample = new MetricSample("nameserver.availability", AlertDomain.CLUSTER, "slow", null,
+                null, 1D, MetricAvailability.AVAILABLE, Instant.now());
+        MetricSample blockerSample = new MetricSample("nameserver.availability", AlertDomain.CLUSTER, "blocker1",
+                null, null, 1D, MetricAvailability.AVAILABLE, Instant.now());
+        ClusterMetricsCollector collector = mock(ClusterMetricsCollector.class);
+        when(collector.supports(any())).thenReturn(true);
+        when(collector.metricKeys()).thenReturn(java.util.Set.of("nameserver.availability"));
+        when(collector.collect(slow)).thenAnswer(invocation -> {
+            // Absorbs the cancellation interrupt and keeps waiting, like a
+            // collector that only checks the interrupt at safe points: the
+            // late result must still be discarded. The flag is deliberately
+            // not re-set — re-setting it would make await() spin instead of
+            // parking again.
+            while (true) {
+                try {
+                    releaseSlow.await();
+                    break;
+                } catch (InterruptedException absorbed) {
+                    // swallowed on purpose
+                }
+            }
+            return List.of(slowSample);
+        });
+        when(collector.collect(quick)).thenAnswer(invocation -> {
+            releaseQuick.await();
+            return List.of();
+        });
+        when(collector.collect(blocker1)).thenAnswer(invocation -> {
+            releaseBlocker1.await();
+            return List.of(blockerSample);
+        });
+        when(collector.collect(blocker2)).thenAnswer(invocation -> {
+            releaseBlocker2.await();
+            return List.of();
+        });
+
+        MetricSnapshotRepository snapshots = mock(MetricSnapshotRepository.class);
+        CountDownLatch persisted = new CountDownLatch(1);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            if (invocation.getArgument(0).toString().contains("blocker1")) {
+                persisted.countDown();
+            }
+            return null;
+        }).when(snapshots).saveAll(any());
+        NativeAlertProcessor processor = mock(NativeAlertProcessor.class);
+        AlertCollectionLease lease = mock(AlertCollectionLease.class);
+        when(lease.tryAcquire()).thenReturn(true);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CollectorScheduler scheduler = new CollectorScheduler(properties, instances, List.of(collector), List.of(),
+                snapshots, processor, lease, executor);
+
+        Thread pass = new Thread(scheduler::collect);
+        pass.start();
+        // t=0: slow + quick start. t=400ms: quick finishes, blocker1 starts
+        // with a fresh deadline. t=500ms: slow's deadline cancels it while
+        // blocker1/blocker2 keep the pass alive; blocker2 takes the freed
+        // slot with another fresh deadline.
+        TimeUnit.MILLISECONDS.sleep(400);
+        releaseQuick.countDown();
+        TimeUnit.MILLISECONDS.sleep(200);
+        releaseBlocker1.countDown();
+        assertTrue(persisted.await(1, TimeUnit.SECONDS), "the healthy instance still persists");
+        // The cancelled job's late result lands while the pass is alive and
+        // the lease heartbeat is held; only afterwards is the last blocker
+        // released to let the pass finish.
+        releaseSlow.countDown();
+        TimeUnit.MILLISECONDS.sleep(200);
+        releaseBlocker2.countDown();
+        pass.join(TimeUnit.SECONDS.toMillis(3));
+        assertTrue(!pass.isAlive(), "the collection pass should finish");
+        verify(snapshots, never()).saveAll(List.of(slowSample));
+        verify(processor, never()).processSuccessfulCollection(any(),
+                argThat(list -> list.contains(slowSample)));
+        scheduler.stopCollectionExecutor();
+    }
+
+    @Test
     void appliesCollectionTimeoutToTheWholePassInsteadOfEachInstanceTest() {
         AlertingProperties properties = new AlertingProperties();
         properties.setCollectionTimeout("PT0.25S");

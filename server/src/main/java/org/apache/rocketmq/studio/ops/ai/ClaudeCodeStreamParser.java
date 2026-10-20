@@ -210,11 +210,27 @@ final class ClaudeCodeStreamParser {
     /** Upstream types already reported as unhandled, so each is reported at most once per run. */
     private final Set<String> reportedUnhandled = new LinkedHashSet<>();
 
-    /** True once a {@code text_delta} arrived: the aggregated assistant text is then a duplicate. */
+    /** True once a {@code text_delta} arrived: fallback for captures whose frames carry no
+     *  {@code message.id}, where per-message discrimination is impossible. */
     private boolean textDeltaSeen;
 
     /** Same guard for reasoning. */
     private boolean thinkingDeltaSeen;
+
+    /** {@code message.id}s that streamed a non-empty {@code text_delta}: their aggregated
+     *  assistant text is a duplicate. A different message's aggregate is not. */
+    private final Set<String> streamedTextMessageIds = new LinkedHashSet<>();
+
+    /** Same guard for reasoning blocks. */
+    private final Set<String> streamedThinkingMessageIds = new LinkedHashSet<>();
+
+    /** The message currently being streamed, from the inner {@code message_start}; null between. */
+    private String currentStreamingMessageId;
+
+    /** {@code message.id}s announced by an inner {@code message_start}: only for these can a
+     *  delta be attributed with certainty. Captures that never show a {@code message_start} fall
+     *  back to the run-level flags. */
+    private final Set<String> observedMessageIds = new LinkedHashSet<>();
 
     /** True once any {@link AgentEvent.TextDelta} was emitted, from either source. */
     private boolean textEmitted;
@@ -363,7 +379,18 @@ final class ClaudeCodeStreamParser {
             case "content_block_start" -> onContentBlockStart(event);
             case "content_block_delta" -> onContentBlockDelta(event);
             case "content_block_stop" -> onContentBlockStop(event);
-            case "message_start", "message_delta", "message_stop", "ping" -> List.of();
+            case "message_start" -> {
+                // The boundary of a new message: remember which one is being
+                // streamed so a delta can be attributed to exactly it.
+                currentStreamingMessageId = event.path("message").path("id").asText("");
+                if (StringUtils.hasText(currentStreamingMessageId)) {
+                    observedMessageIds.add(currentStreamingMessageId);
+                } else {
+                    currentStreamingMessageId = null;
+                }
+                yield List.of();
+            }
+            case "message_delta", "message_stop", "ping" -> List.of();
             default -> unhandled(STREAM_EVENT + "/" + eventType);
         };
     }
@@ -393,19 +420,27 @@ final class ClaudeCodeStreamParser {
         String deltaType = delta.path("type").asText("");
         return switch (deltaType) {
             case DELTA_TEXT -> {
-                textDeltaSeen = true;
                 String text = delta.path("text").asText("");
                 if (text.isEmpty()) {
+                    // An empty delta proves nothing was streamed: suppressing
+                    // the aggregate on its account dropped real text.
                     yield List.of();
+                }
+                textDeltaSeen = true;
+                if (currentStreamingMessageId != null) {
+                    streamedTextMessageIds.add(currentStreamingMessageId);
                 }
                 textEmitted = true;
                 yield List.of(new AgentEvent.TextDelta(text));
             }
             case DELTA_THINKING -> {
-                thinkingDeltaSeen = true;
                 String thinking = delta.path("thinking").asText("");
                 if (thinking.isEmpty()) {
                     yield List.of();
+                }
+                thinkingDeltaSeen = true;
+                if (currentStreamingMessageId != null) {
+                    streamedThinkingMessageIds.add(currentStreamingMessageId);
                 }
                 yield List.of(new AgentEvent.ThinkingDelta(thinking, ThinkingSource.MODEL));
             }
@@ -456,7 +491,18 @@ final class ClaudeCodeStreamParser {
             String blockType = block.path("type").asText("");
             switch (blockType) {
                 case BLOCK_TEXT -> {
-                    if (textDeltaSeen) {
+                    // Deduplicate only the same message's streamed text: a
+                    // run-level flag dropped every later message's aggregate
+                    // once any earlier message had streamed. When the capture
+                    // never showed a message_start for this id, attribution
+                    // is impossible and the run-level flag stays the rule.
+                    String messageId = node.path("message").path("id").asText("");
+                    boolean attributionKnown = StringUtils.hasText(messageId)
+                            && observedMessageIds.contains(messageId);
+                    boolean streamedAlready = attributionKnown
+                            ? streamedTextMessageIds.contains(messageId)
+                            : textDeltaSeen;
+                    if (streamedAlready) {
                         continue;
                     }
                     String text = block.path("text").asText("");
@@ -466,7 +512,13 @@ final class ClaudeCodeStreamParser {
                     }
                 }
                 case BLOCK_THINKING -> {
-                    if (thinkingDeltaSeen) {
+                    String messageId = node.path("message").path("id").asText("");
+                    boolean attributionKnown = StringUtils.hasText(messageId)
+                            && observedMessageIds.contains(messageId);
+                    boolean streamedAlready = attributionKnown
+                            ? streamedThinkingMessageIds.contains(messageId)
+                            : thinkingDeltaSeen;
+                    if (streamedAlready) {
                         continue;
                     }
                     String thinking = block.path("thinking").asText("");

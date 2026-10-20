@@ -83,8 +83,11 @@ upload_source() {
   # 任一步失败（备份 .env、清理、解压、恢复 .env）都必须让远端命令以非零退出：
   # 旧写法用 `;` 分隔并以 `|| true` 结尾，tar 解压失败也被吞掉，部署会带着残缺源码继续走到
   # docker build 才在别处报错。解压失败时仍先恢复 .env，再以原退出码终止。
+  # rmqctl 也要清理：源包带 rmqctl（server 镜像的 Go 阶段 COPY 它），tar 解压只覆盖同名文件，
+  # 新提交删除/重命名的旧 Go 文件会留在远端，被 COPY 进镜像后可能重复声明编译失败、
+  # 或编出包含已删实现的 CLI。rmqctl/bin 是远端构建产物，随清理重建。
   run_remote "cd $REMOTE_PATH && { [ ! -f deploy/.env ] || cp deploy/.env /tmp/deploy-env-backup; } && \
-    { rm -rf server web deploy && tar xzf $(basename "$SRC_TAR") && rm $(basename "$SRC_TAR"); \
+    { rm -rf server web deploy rmqctl && tar xzf $(basename "$SRC_TAR") && rm $(basename "$SRC_TAR"); \
       rc=\$?; { [ ! -f /tmp/deploy-env-backup ] || mv /tmp/deploy-env-backup deploy/.env; }; exit \$rc; }"
   run_remote 'docker network inspect rocketmq_net >/dev/null 2>&1 || docker network create rocketmq_net'
   log "源码就位，rocketmq_net 网络就绪"
@@ -147,7 +150,11 @@ verify() {
       [[ "$code" == "200" ]] && break
       sleep 5
     done
-    [[ "$code" == "200" ]] && log "前端响应正常 (HTTP $code)" || warn "前端返回 HTTP $code"
+    # The backend branch above fails the deployment on an unhealthy server;
+    # a web tier that never answers must fail it too, otherwise the run ends
+    # with the success banner pointing at an entrance that returns 503.
+    [[ "$code" == "200" ]] && log "前端响应正常 (HTTP $code)" \
+      || err "前端健康检查未通过（HTTP ${code:-000}，docker logs rocketmq-web 查看原因）"
   fi
   log "🎉 部署完成 → http://$REMOTE_HOST:$PUBLIC_PORT/"
 }

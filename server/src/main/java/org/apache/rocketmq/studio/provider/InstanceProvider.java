@@ -238,6 +238,11 @@ public interface InstanceProvider {
         throw new UnsupportedOperationException("Message sending is not supported");
     }
 
+    /** Redelivers with a source topic resolved and checked by the service, never from the send DTO. */
+    default SendMessageVO redeliverMessage(SendMessageDTO request, String sourceTopic) {
+        return sendMessage(request);
+    }
+
     default DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {
         throw new UnsupportedOperationException("Direct message consumption is not supported");
     }

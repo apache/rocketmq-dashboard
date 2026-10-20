@@ -15,7 +15,8 @@
  * limitations under the License.
  */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { ConfigProvider, theme } from 'antd';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import PromptTemplateModal from '../PromptTemplateModal';
 import {
@@ -24,6 +25,15 @@ import {
   saveCustomPromptTemplate,
   deleteCustomPromptTemplate,
 } from '../../promptTemplates';
+import useAuthStore from '../../../../stores/authStore';
+
+// Comparing raw CSS text would depend on how each side spells a colour, so both the element's
+// value and the expected token go through the same parser before they are compared.
+const normalizeBackground = (value: string): string => {
+  const probe = document.createElement('span');
+  probe.style.background = value;
+  return probe.style.background;
+};
 
 describe('prompt templates with denied storage access', () => {
   beforeAll(() => {
@@ -109,6 +119,88 @@ describe('prompt templates with denied storage access', () => {
     } finally {
       if (original === null) storage.removeItem('rocketmq-studio-ai-prompt-templates');
       else storage.setItem('rocketmq-studio-ai-prompt-templates', original);
+    }
+  });
+
+  it('rendersTheSaveBlockOnThemeTokensInDarkModeTest', async () => {
+    render(
+      <ConfigProvider theme={{ algorithm: theme.darkAlgorithm }}>
+        <PromptTemplateModal
+          open
+          onClose={vi.fn()}
+          inputValue=""
+          mode="chat"
+          enhance={false}
+          onApply={vi.fn()}
+        />
+      </ConfigProvider>,
+    );
+
+    const saveBlock = (await screen.findByText('保存当前输入')).closest('div') as HTMLElement;
+    // Fixed light values leave the dark theme's light text unreadable on them, so the block has
+    // to follow the theme's fill and border tokens instead.
+    const dark = theme.getDesignToken({ algorithm: theme.darkAlgorithm });
+    expect(normalizeBackground(saveBlock.style.background)).toBe(
+      normalizeBackground(dark.colorFillQuaternary),
+    );
+    expect(normalizeBackground(saveBlock.style.background)).not.toBe(
+      normalizeBackground('#fafafa'),
+    );
+    // Same parser trick for the border: jsdom spells the token's hex as rgb(), so both sides of
+    // the comparison go through a probe before they are matched.
+    const borderProbe = document.createElement('span');
+    borderProbe.style.border = `1px solid ${dark.colorBorderSecondary}`;
+    expect(saveBlock.style.border).toBe(borderProbe.style.border);
+  });
+});
+
+describe('prompt templates scoped to the signed-in operator', () => {
+  beforeAll(() => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("does not show another operator's custom template after an account switch", async () => {
+    localStorage.clear();
+    useAuthStore.getState().login('alice', 1, false);
+    saveCustomPromptTemplate(
+      { title: 'Alice private template', body: 'Inspect a private topic' },
+      undefined,
+      100,
+      'id:1',
+    );
+    const view = render(
+      <PromptTemplateModal
+        open
+        onClose={vi.fn()}
+        inputValue=""
+        mode="chat"
+        enhance={false}
+        onApply={vi.fn()}
+      />,
+    );
+    try {
+      expect(await screen.findByText('Alice private template')).toBeInTheDocument();
+      act(() => useAuthStore.getState().login('bob', 2, false));
+      await waitFor(() =>
+        expect(screen.queryByText('Alice private template')).not.toBeInTheDocument(),
+      );
+    } finally {
+      view.unmount();
+      useAuthStore.getState().logout();
+      localStorage.clear();
     }
   });
 });

@@ -211,6 +211,24 @@ class MybatisPlusAlertStateRepositoryTest {
                         org.assertj.core.groups.Tuple.tuple("f4", notifiedAt.plusMinutes(30)));
     }
 
+    @Test
+    void runtimeReminderBeyondTheRepresentableRangeIsNotProjectedTest() {
+        RmqAlertStateMapper mapper = mock(RmqAlertStateMapper.class);
+        LocalDateTime notifiedAt = LocalDateTime.of(2026, 10, 1, 12, 0);
+        RmqAlertState firing = activeState(1L, "f1", AlertStateStatus.FIRING);
+        firing.setLastNotifiedAt(notifiedAt);
+        when(mapper.selectList(any())).thenReturn(List.of(firing));
+        MybatisPlusAlertStateRepository repository = new MybatisPlusAlertStateRepository(mapper,
+                mock(RmqSystemAlertMapper.class));
+
+        List<AlertRuleRuntimeVO> runtimes = repository.findRuntimeByRuleIds(List.of(
+                AlertRuleVO.builder().id(1L).reminderInterval(Long.MAX_VALUE + "s").build()));
+
+        assertThat(runtimes).extracting(AlertRuleRuntimeVO::getFingerprint, AlertRuleRuntimeVO::getNextReminderAt,
+                AlertRuleRuntimeVO::getLastNotifiedAt)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("f1", null, notifiedAt));
+    }
+
     private static RmqAlertState activeState(Long ruleId, String fingerprint, AlertStateStatus status) {
         RmqAlertState state = new RmqAlertState();
         state.setRuleId(ruleId);
