@@ -467,6 +467,51 @@ GET /api/instances/{instanceId}/capabilities
 | `accessType` | `string` | 接入类型: `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT` 等 |
 | `capabilities` | `string[]` | 能力列表: `TOPIC_MANAGEMENT` / `CONSUMER_GROUP_MANAGEMENT` / `MESSAGE_QUERY` / `MESSAGE_TRACE` / `ACL_MANAGEMENT` / `DLQ_MANAGEMENT` |
 
+### 3.6 批量删除实例
+
+```
+POST /api/instances/delete-batch
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `ids` | `string[]` | 是 | 要删除的实例标识；服务端会去除空白项并对重复标识去重 |
+
+**Response `data`:** `BatchDeleteResult`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `deleted` | `number` | 成功删除的实例数量 |
+| `failed` | `string[]` | 未删除条目的标识及失败原因；单个失败不会阻止其他条目继续处理 |
+
+### 3.7 导入云实例
+
+```
+POST /api/instances/import-cloud
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `vendor` | `string` | 是 | 云厂商：`ALIYUN` 或 `TENCENT` |
+| `credentialId` | `number` | 是 | 已保存的对应厂商云凭证 ID |
+
+**Response `data`:** `CloudImportResult`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `discovered` | `number` | 云目录中发现的实例数 |
+| `imported` | `number` | 成功创建的实例数 |
+| `skipped` | `number` | 已存在而跳过的实例数 |
+| `failed` | `string[]` | 失败详情；只保留有界数量的明细 |
+| `failedCount` | `number` | 失败总数，可能大于 `failed.length` |
+| `failureDetailsTruncated` | `boolean` | 是否因明细上限省略了部分失败信息 |
+
+云目录、区域或单个实例失败会汇总到响应中，不会回滚已经成功导入的实例。
+
 ---
 
 ## 4. 集群管理 Cluster / NameServer / Proxy
