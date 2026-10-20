@@ -393,6 +393,7 @@ describe('Consumer page', () => {
       cleanup();
       Modal.destroyAll();
     });
+    vi.useRealTimers();
     // 静态提示由全局清理卸载，避免冷调用 destroy 再创建异步 root。
   });
 
@@ -1406,6 +1407,8 @@ describe('Consumer page', () => {
   });
 
   it('highlights inconsistent subscriptions and refreshes the check result', async () => {
+    // Manual refresh must not race the modal's independent 2s polling test.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     vi.mocked(consumerService.getConsumerSubscriptions)
       .mockResolvedValueOnce([
         {
