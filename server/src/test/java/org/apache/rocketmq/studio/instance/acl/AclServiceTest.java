@@ -48,6 +48,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -1424,6 +1425,55 @@ class AclServiceTest {
         assertThat(entry.getActions()).containsExactly("PUB");
         assertThat(entry.getDecision()).isEqualTo("ALLOW");
         assertThat(entry.getSourceIps()).containsExactly("10.0.0.0/8", "192.168.1.5");
+    }
+
+    @Test
+    void pushAclToBrokerPagesThroughEveryStoredRuleBeyondTheFirstPageTest() throws Exception {
+        // The rules read used a single 200-row page (MAX_RULES_PER_ACCOUNT), so an account with
+        // more stored rules was silently truncated: the last rules never reached the broker and
+        // policyCount reported 200 as if it were the whole account.
+        AclUserVO stored = AclUserVO.builder()
+                .id(7L)
+                .username("orders")
+                .secretKey("secret-1")
+                .admin(false)
+                .build();
+        when(aclRepository.findUsers()).thenReturn(List.of(stored));
+        when(aclRepository.findUserById(7L)).thenReturn(Optional.of(stored));
+        List<AclRuleVO> firstPage = new ArrayList<>();
+        for (int i = 0; i < 200; i++) {
+            firstPage.add(ruleOf("topic-r" + i));
+        }
+        List<AclRuleVO> secondPage = List.of(
+                ruleOf("topic-r200"), ruleOf("topic-r201"), ruleOf("topic-r202"));
+        when(aclRepository.findRulePage("user:orders", null, null, null, null, 1, 200))
+                .thenReturn(PageResult.of(firstPage, 203, 1, 200));
+        when(aclRepository.findRulePage("user:orders", null, null, null, null, 2, 200))
+                .thenReturn(PageResult.of(secondPage, 203, 2, 200));
+        when(clusterProvider.discoverBrokers("instance-a", null)).thenReturn(List.of());
+
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster("10.0.0.1:10911"));
+        when(admin.getUser("10.0.0.1:10911", "orders"))
+                .thenThrow(new MQBrokerException(207, "no such user"));
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(call -> call.getArgument(1, MqAdminExtFactory.AdminAction.class).apply(admin));
+
+        PushAclToBrokerResultVO result = aclService.pushAclToBroker("instance-a");
+
+        assertThat(result.getAccounts()).hasSize(1);
+        PushAclToBrokerResultVO.AccountOutcome account = result.getAccounts().get(0);
+        assertThat(account.getPolicyCount()).isEqualTo(203);
+        assertThat(account.getSkipped()).isEmpty();
+        ArgumentCaptor<AclInfo> aclCaptor = ArgumentCaptor.forClass(AclInfo.class);
+        verify(admin).updateAcl(eq("10.0.0.1:10911"), aclCaptor.capture());
+        assertThat(aclCaptor.getValue().getPolicies().get(0).getEntries()).hasSize(203);
+    }
+
+    private AclRuleVO ruleOf(String topic) {
+        return AclRuleVO.builder().principal("user:orders").resource(topic)
+                .resourceType("Topic").resourcePattern("LITERAL")
+                .actions(List.of("PUB")).decision("ALLOW").build();
     }
 
     @Test
