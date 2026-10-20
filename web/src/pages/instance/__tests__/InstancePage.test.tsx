@@ -351,6 +351,59 @@ describe('InstancePage', () => {
     expect(await screen.findByText('云凭据列表加载失败')).toBeInTheDocument();
     expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledTimes(1);
   });
+  it.each([
+    ['zh', '搜索实例 ID 或地址', '接入方式'],
+    ['en', 'Search instance ID or endpoint', 'Access Type'],
+  ] as const)(
+    'namesAndOperatesInstanceFiltersByKeyboardTest: %s',
+    async (lang, searchName, typeName) => {
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      renderPage();
+      await screen.findByText('production-proxy');
+
+      // Render the real AntD controls: placeholder text and a selected option do not
+      // provide an accessible name for the search input or the filter combobox.
+      const searchInput = screen.getByRole('textbox');
+      const typeFilter = screen.getByRole('combobox');
+      expect.soft(searchInput).toHaveAccessibleName(searchName);
+      expect.soft(typeFilter).toHaveAccessibleName(typeName);
+
+      await user.click(searchInput);
+      await user.type(searchInput, 'production');
+      await waitFor(() =>
+        expect(instanceService.listInstances).toHaveBeenLastCalledWith({
+          search: 'production',
+          withCounts: true,
+        }),
+      );
+      expect(searchInput).toHaveAccessibleName(searchName);
+      await user.tab();
+      expect(typeFilter).toHaveFocus();
+      // rc-select uses the browser keyCode as well as the key string.
+      fireEvent.keyDown(typeFilter, { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 });
+      fireEvent.keyDown(typeFilter, { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 });
+      fireEvent.keyDown(typeFilter, { key: 'Enter', code: 'Enter', keyCode: 13 });
+      await waitFor(() =>
+        expect(instanceService.listInstances).toHaveBeenLastCalledWith({
+          search: 'production',
+          type: 'CLOUD',
+          withCounts: true,
+        }),
+      );
+      expect(typeFilter).toHaveAccessibleName(typeName);
+      await user.clear(searchInput);
+      await waitFor(() =>
+        expect(instanceService.listInstances).toHaveBeenLastCalledWith({
+          type: 'CLOUD',
+          withCounts: true,
+        }),
+      );
+      expect(searchInput).toHaveAccessibleName(searchName);
+      expect(typeFilter).toHaveAccessibleName(typeName);
+    },
+  );
+
   it('loads server-filtered results when the search or type changes', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
