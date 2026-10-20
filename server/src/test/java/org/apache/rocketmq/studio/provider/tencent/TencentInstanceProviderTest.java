@@ -688,6 +688,26 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void listConsumerGroupsShouldMarkLagAndDelayUnknownInsteadOfZeroTest() throws Exception {
+        ConsumeGroupItem item = new ConsumeGroupItem();
+        item.setConsumerGroup("GID_lag");
+        DescribeConsumerGroupListResponse response = new DescribeConsumerGroupListResponse();
+        response.setData(new ConsumeGroupItem[]{item});
+        when(client.DescribeConsumerGroupList(any())).thenReturn(response);
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups(STUDIO_INSTANCE_ID, null);
+
+        // DescribeConsumerGroupList carries no lag or delay fields, so the VO primitives would
+        // default to 0 and render a measured "0 backlog / 0s delay" for every group. The list
+        // must report the -1 unknown sentinel (ConsumerLagResolver.UNKNOWN) instead; the real
+        // backlog stays reachable through getGroupProgress.
+        assertThat(groups).singleElement().satisfies(group -> {
+            assertThat(group.getTotalLag()).isEqualTo(-1L);
+            assertThat(group.getDelaySeconds()).isEqualTo(-1);
+        });
+    }
+
+    @Test
     void listConsumerGroupsShouldContinuePastTenThousandRecordsWhenTotalCountRequiresItTest() throws Exception {
         ConsumeGroupItem item = new ConsumeGroupItem();
         item.setConsumerGroup("GID_page");
