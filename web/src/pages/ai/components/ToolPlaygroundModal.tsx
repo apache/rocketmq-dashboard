@@ -135,24 +135,26 @@ const ToolPlaygroundModal = ({
   );
 
   const loadTools = useCallback(
-    async (instanceId: string) => {
+    async (instanceId: string): Promise<boolean> => {
       const requestId = ++toolLoadRequestRef.current;
       setSelectedToolName('');
       setToolResult(undefined);
       setToolsLoading(true);
       try {
         const availableTools = await listTools(instanceId || undefined);
-        if (requestId !== toolLoadRequestRef.current) return;
+        if (requestId !== toolLoadRequestRef.current) return false;
         setTools(availableTools);
         onToolsLoaded?.(availableTools);
         // Skip deprecated entries: they are listed so an operator can recognise one, not to be run.
         const firstTool = availableTools.find((tool) => !tool.deprecated);
         if (firstTool) selectTool(firstTool.name, availableTools, instanceId);
+        return true;
       } catch {
         if (requestId === toolLoadRequestRef.current) {
           setTools([]);
           message.error(t('ai.toolCatalogLoadFailed'));
         }
+        return false;
       } finally {
         if (requestId === toolLoadRequestRef.current) setToolsLoading(false);
       }
@@ -178,18 +180,32 @@ const ToolPlaygroundModal = ({
       setInstancesLoading(false);
     }
 
-    await loadTools(instanceId);
+    const loaded = await loadTools(instanceId);
+    // "Load once per mount" only holds for a bootstrap that actually produced a catalog:
+    // pinning a failed one would leave the playground empty until a full page reload.
+    if (!loaded) {
+      bootstrappedRef.current = false;
+    }
   }, [loadTools, t]);
 
   // Opening the modal is what loads the catalog, and only the first time: the page may deep-link
   // straight here (the home page's 工具 button navigates with `toolsIntent`), so the load cannot be
   // tied to a click handler on the page any more.
+  // The bootstrap is invoked through a ref and the trigger depends on `open` only: a FAILED load
+  // resets `bootstrappedRef` so the next open retries, and letting the bootstrap's own identity
+  // (rebuilt whenever the state it sets changes) drive the effect would retrigger that retry in a
+  // loop instead of waiting for the modal to be opened again.
+  const bootstrapRef = useRef(bootstrap);
+  useEffect(() => {
+    bootstrapRef.current = bootstrap;
+  }, [bootstrap]);
+
   useEffect(() => {
     if (!open || disabled || bootstrappedRef.current) return;
     bootstrappedRef.current = true;
     // Loading is asynchronous; state updates happen after the catalog API resolves.
-    void bootstrap();
-  }, [bootstrap, disabled, open]);
+    void bootstrapRef.current();
+  }, [disabled, open]);
 
   const handleInstanceChange = useCallback(
     async (scope: string) => {
