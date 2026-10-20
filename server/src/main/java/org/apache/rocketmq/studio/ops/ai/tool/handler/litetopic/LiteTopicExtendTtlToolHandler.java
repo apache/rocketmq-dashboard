@@ -80,6 +80,12 @@ public class LiteTopicExtendTtlToolHandler
     @Override
     public LiteTopicExtendTtlOutput execute(LiteTopicExtendTtlInput input, ToolExecutionContext context) {
         liteTopicService.extendTTL(context.instanceId(), input.topicPattern(), input.newTtlMillis());
-        return new LiteTopicExtendTtlOutput(input.topicPattern(), input.newTtlMillis());
+        return new LiteTopicExtendTtlOutput(input.topicPattern(), effectiveTtlMillis(input.newTtlMillis()));
+    }
+
+    private static long effectiveTtlMillis(long requested) {
+        long minutes = Math.min(Math.max(Math.round(requested / (double) MILLIS_PER_MINUTE), 1),
+                MAX_TTL_MILLIS / MILLIS_PER_MINUTE);
+        return minutes * MILLIS_PER_MINUTE;
     }
 }

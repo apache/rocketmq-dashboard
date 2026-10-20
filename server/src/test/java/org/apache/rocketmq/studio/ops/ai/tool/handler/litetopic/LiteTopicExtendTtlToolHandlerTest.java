@@ -86,6 +86,17 @@ class LiteTopicExtendTtlToolHandlerTest {
         assertThat(output).isEqualTo(new LiteTopicExtendTtlOutput("orders", 86_400_000L));
     }
 
+    @Test
+    void executeReportsTheEffectiveBrokerTtlAfterRoundingAndClampingTest() {
+        long requested = TimeUnit.DAYS.toMillis(31);
+
+        LiteTopicExtendTtlOutput output = handler.execute(
+                new LiteTopicExtendTtlInput("orders", requested), context());
+
+        verify(liteTopicService).extendTTL("instance-a", "orders", requested);
+        assertThat(output.newTtlMillis()).isEqualTo(TimeUnit.DAYS.toMillis(30));
+    }
+
     private static ToolExecutionContext context() {
         return ToolExecutionContext.of("instance-a", null, Map.of("instanceId", "instance-a"));
     }
