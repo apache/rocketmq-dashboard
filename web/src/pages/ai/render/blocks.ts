@@ -129,6 +129,14 @@ export function toolDisplayName(tool: string): string {
     : withoutMcp;
 }
 
+/**
+ * Tag colour of the tool catalog's risk level: L1 reads, L2 previewable changes, L3 destructive
+ * changes. Shared by every surface that renders a level — the transcript's tool card and the
+ * playground's tool header — so one tier reads one colour everywhere; an unknown level falls back
+ * to the neutral default.
+ */
+export const RISK_TAG_COLOR: Record<string, string> = { L1: 'green', L2: 'orange', L3: 'red' };
+
 // ─── Block construction primitives ──────────────────────────────
 //
 // `reduceLive.ts` (live SSE) and `foldTimeline.ts` (persisted replay) must build blocks through
