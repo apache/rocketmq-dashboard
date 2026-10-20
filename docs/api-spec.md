@@ -2067,12 +2067,6 @@ POST /api/dlq/resend
 `DLQResendFailure` 的字段：`msgId`（`string`，重投失败的死信消息 ID）、`targetTopic`（`string`，解析出的目标
 Topic，未指定 `targetTopic` 时即原 Topic）、`reason`（`string`，归一化后的简短失败原因，最长 256 字符）。
 
-AI / CLI 的 `rmq.message.redelivery_dlq` 工具在执行结果中提供相同的有界 `failures` 明细和
-`failuresTruncated` 标记：最多保留 100 条，`failed` 仍为失败总数；`scanIncomplete` 只描述扫描完整性。
-无法解析目的 Topic 时，明细省略 `targetTopic`。新服务总是返回这两个字段（无失败时为 `[]` / `false`），
-它们在工具 schema 中为可选项，以兼容仅返回聚合字段的旧服务。rmqctl 默认摘要以及 JSON / YAML 输出均保留明细，
-不会自动重试。
-
 §9.4「重发选中的死信消息」返回同一结构，两条重投路径共用该 VO。
 
 > **跨集群拒绝（`409`）**：显式传入 `targetTopic` 时，若它解析出的集群不是死信 Topic（`%DLQ%{groupName}`）
@@ -2080,6 +2074,13 @@ AI / CLI 的 `rmq.message.redelivery_dlq` 工具在执行结果中提供相同�
 > （`RocketMQDLQProvider.requireSameClusterAsDlqTopic`）。**省略 `targetTopic` 时同样校验**：服务端先按每条死信
 > 推断目的地（即其原 Topic），对推断出的每一个目的地跑同一次校验，任一跨集群即整批 `409` 拒绝，
 > 不会出现「重投了一半」。§9.4 的按 `msgIds` 重投走同一套校验。
+
+
+AI / CLI 的 `rmq.message.redelivery_dlq` 工具在执行结果中提供相同的有界 `failures` 明细和
+`failuresTruncated` 标记：最多保留 100 条，`failed` 仍为失败总数；`scanIncomplete` 只描述扫描完整性。
+无法解析目的 Topic 时，明细省略 `targetTopic`。新服务总是返回这两个字段（无失败时为 `[]` / `false`），
+它们在工具 schema 中为可选项，以兼容仅返回聚合字段的旧服务。rmqctl 默认摘要以及 JSON / YAML 输出均保留明细，
+不会自动重试。
 
 ### 9.3 分页获取死信消息明细
 
