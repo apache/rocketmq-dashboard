@@ -301,8 +301,9 @@ export const DataSourceTab = () => {
     return instanceIds
       .map(
         (instanceId) =>
-          instances.find(
-            (instance) => instance.name === instanceId || String(instance.id) === instanceId,
+          (
+            instances.find((instance) => instance.name === instanceId) ??
+            instances.find((instance) => String(instance.id) === instanceId)
           )?.name ?? instanceId,
       )
       .join('、');
