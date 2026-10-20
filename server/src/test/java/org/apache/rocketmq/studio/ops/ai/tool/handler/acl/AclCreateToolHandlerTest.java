@@ -21,6 +21,7 @@ import org.apache.rocketmq.studio.instance.acl.AclService;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.acl.AclMutationInput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.plan.ToolPlan;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -29,7 +30,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.ZoneOffset;
+import java.time.LocalDateTime;
+import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.TimeZone;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -50,6 +55,31 @@ class AclCreateToolHandlerTest {
 
     @InjectMocks
     private AclCreateToolHandler handler;
+
+    @Test
+    void executeShouldReturnTheUtcWireStampOtherToolOutputsUseTest() {
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            AclRuleVO created = AclRuleVO.builder()
+                    .id(1L).principal("user-1").resource("TopicA").decision("GRANT")
+                    // The service echoes the stored server-local base; a tool result must not ship it.
+                    .gmtCreate(LocalDateTime.now())
+                    .build();
+            when(aclService.createRule(any(AclRuleVO.class), eq("cluster-1"))).thenReturn(created);
+            ToolExecutionContext execution = context("cluster-1", Map.of("instanceId", "cluster-1",
+                    "principal", "user-1", "resource", "TopicA", "decision", "GRANT"));
+
+            AclRuleVO result = handler.execute(
+                    execution.convertInput(org.apache.rocketmq.studio.ops.ai.tool.contract.acl.AclMutationInput.class),
+                    execution);
+
+            assertThat(Duration.between(result.getGmtCreate(), LocalDateTime.now(ZoneOffset.UTC)).abs())
+                    .isLessThan(Duration.ofMinutes(2));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
 
     @ParameterizedTest
     @MethodSource("configurations")

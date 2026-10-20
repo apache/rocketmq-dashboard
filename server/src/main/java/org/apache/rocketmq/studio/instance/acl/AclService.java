@@ -783,6 +783,21 @@ public class AclService {
                 .withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
     }
 
+    /**
+     * The UTC wire form of a stored rule. The write paths echo the stored server-local base for form
+     * prefill; callers that hand the row to something else - the tool layer returns it as a result,
+     * and every other tool output uses the read path's clock - convert it with this.
+     */
+    public static AclRuleVO utcWire(AclRuleVO rule) {
+        if (rule == null) {
+            return null;
+        }
+        // Convert in place: the echo is the object the service returns, and callers that compare it
+        // by identity keep doing so.
+        rule.setGmtCreate(toUtcWire(rule.getGmtCreate()));
+        return rule;
+    }
+
     private static AclRuleVO toUtcWire(AclRuleVO rule) {
         if (rule == null) {
             return null;
