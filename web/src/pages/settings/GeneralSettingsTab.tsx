@@ -39,9 +39,6 @@ import useAuthStore from '../../stores/authStore';
 
 const { Text } = Typography;
 
-const toThemeMode = (value?: string): ThemeMode =>
-  value === 'light' || value === 'dark' ? value : 'system';
-
 const buildPayload = (settings: GeneralSettings): GeneralSettingsUpdate => ({
   preserveLlmConfig: true,
   theme: settings.theme,
@@ -63,7 +60,7 @@ const buildPayload = (settings: GeneralSettings): GeneralSettingsUpdate => ({
 export const GeneralSettingsTab = () => {
   const { t } = useLang();
   const { message } = App.useApp();
-  const { setThemeMode, setCompact } = useTheme();
+  const { themeMode, compact, setThemeMode, setCompact } = useTheme();
   const [settings, setSettings] = useState<GeneralSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingPreference, setSavingPreference] = useState(false);
@@ -252,7 +249,7 @@ export const GeneralSettingsTab = () => {
               </Text>
             </div>
             <Segmented
-              value={toThemeMode(settings?.theme)}
+              value={themeMode}
               options={[
                 { value: 'light', label: t('settings.lightTheme') },
                 { value: 'dark', label: t('settings.darkTheme') },
@@ -274,7 +271,7 @@ export const GeneralSettingsTab = () => {
               </Text>
             </div>
             <Switch
-              checked={Boolean(settings?.compact)}
+              checked={compact}
               disabled={savingPreference}
               onChange={(checked) => {
                 setCompact(checked);
