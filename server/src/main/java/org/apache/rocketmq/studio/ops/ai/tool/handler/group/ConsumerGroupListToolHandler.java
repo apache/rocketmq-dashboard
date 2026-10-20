@@ -49,7 +49,7 @@ public class ConsumerGroupListToolHandler
     public ListOutput<GroupListItem> execute(
             GroupListInput input, ToolExecutionContext context) {
         List<ConsumerGroupVO> groups = metadataService.listConsumerGroups(
-                context.instanceId(), null, input.groupName());
+                context.instanceId(), input.clusterId(), input.groupName());
         return new ListOutput<>(groups.stream()
                 .map(GroupListItem::from)
                 .toList());

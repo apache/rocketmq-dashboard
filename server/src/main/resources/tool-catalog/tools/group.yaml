@@ -19,6 +19,10 @@ tools:
           type: string
           description: Studio Instance identifier.
           minLength: 1
+        clusterId:
+          type: string
+          description: Optional physical RocketMQ cluster identifier within the Studio Instance.
+          minLength: 1
         groupName:
           type: string
           description: Fuzzy consumer group name filter.
