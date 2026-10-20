@@ -19,6 +19,15 @@ tools:
           type: string
         resourceType:
           type: string
+        target:
+          type: string
+          description: Filter by the audited resource target.
+        clusterId:
+          type: string
+          description: Filter by the physical cluster or instance attribution.
+        clusterIdMissing:
+          type: boolean
+          description: When true, return only entries without a cluster attribution; takes precedence over clusterId.
         startDate:
           type: string
         endDate:
