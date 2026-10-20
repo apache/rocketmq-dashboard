@@ -23,7 +23,7 @@ PUBLIC_PORT=8080
 
 # 可选：自定义宿主机 Maven 缓存和构建镜像
 MAVEN_CACHE_DIR=/home/your-user/.m2
-MAVEN_IMAGE=maven:3.9.9-eclipse-temurin-21
+MAVEN_IMAGE=maven:3.9.16-eclipse-temurin-21
 ```
 
 `MAVEN_CACHE_DIR` 默认为当前用户的 `~/.m2`。如果其中存在 `settings.xml`，构建容器也会自动使用该配置。
