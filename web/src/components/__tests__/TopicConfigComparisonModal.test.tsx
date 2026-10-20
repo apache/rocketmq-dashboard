@@ -15,10 +15,11 @@
  * limitations under the License.
  */
 
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { StrictMode } from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { App } from 'antd';
+import { App, message } from 'antd';
 import type { Instance } from '../../api/instance';
 import type { Topic } from '../../api/metadata';
 import { LangProvider } from '../../i18n/LangContext';
@@ -125,6 +126,7 @@ const renderModal = (
   );
 
 describe('TopicConfigComparisonModal', () => {
+  afterEach(() => vi.restoreAllMocks());
   beforeEach(() => {
     vi.clearAllMocks();
     topicServiceMocks.listAllTopics.mockImplementation(({ instanceId }: { instanceId: string }) =>
@@ -301,5 +303,84 @@ describe('TopicConfigComparisonModal', () => {
     await user.click(screen.getByRole('button', { name: 'Close' }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+  it.each(['production', 'staging'])(
+    'doesNotNotifyAfterComparisonUnmountFrom%sTest',
+    async (failedInstance) => {
+      let rejectSource!: (error: Error) => void;
+      topicServiceMocks.listAllTopics.mockImplementation(
+        ({ instanceId }: { instanceId: string }) =>
+          instanceId === failedInstance
+            ? new Promise<Topic[]>((_resolve, reject) => {
+                rejectSource = reject;
+              })
+            : Promise.resolve(stagingTopics),
+      );
+      const errorMessage = vi
+        .spyOn(message, 'error')
+        .mockImplementation(() => (() => {}) as ReturnType<typeof message.error>);
+      const user = userEvent.setup();
+      const view = renderModal();
+      await user.click(screen.getByRole('button', { name: '开始对比' }));
+      await waitFor(() => expect(topicServiceMocks.listAllTopics).toHaveBeenCalledTimes(2));
+      view.unmount();
+      await act(async () => {
+        rejectSource(new Error('offline'));
+      });
+      expect(errorMessage).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keepsCurrentComparisonFailureNotificationsInStrictModeTest', async () => {
+    const errorMessage = vi
+      .spyOn(message, 'error')
+      .mockImplementation(() => (() => {}) as ReturnType<typeof message.error>);
+    topicServiceMocks.listAllTopics.mockRejectedValue(new Error('offline'));
+    const user = userEvent.setup();
+    render(
+      <StrictMode>
+        <App>
+          <LangProvider>
+            <TopicConfigComparisonModal
+              open
+              instances={instances}
+              currentInstanceId="production"
+              onClose={vi.fn()}
+            />
+          </LangProvider>
+        </App>
+      </StrictMode>,
+    );
+    await user.click(screen.getByRole('button', { name: '开始对比' }));
+    await waitFor(() => expect(errorMessage).toHaveBeenCalledTimes(1));
+    expect(errorMessage).toHaveBeenCalledWith('Topic 配置加载失败，请稍后重试');
+  });
+
+  it('doesNotNotifyFromOldComparisonAfterReopeningTest', async () => {
+    let rejectSource!: (error: Error) => void;
+    topicServiceMocks.listAllTopics
+      .mockImplementationOnce(
+        () =>
+          new Promise<Topic[]>((_resolve, reject) => {
+            rejectSource = reject;
+          }),
+      )
+      .mockResolvedValueOnce(stagingTopics);
+    const errorMessage = vi
+      .spyOn(message, 'error')
+      .mockImplementation(() => (() => {}) as ReturnType<typeof message.error>);
+    const user = userEvent.setup();
+    const oldView = renderModal();
+    await user.click(screen.getByRole('button', { name: '开始对比' }));
+    await waitFor(() => expect(topicServiceMocks.listAllTopics).toHaveBeenCalledTimes(2));
+    oldView.unmount();
+    renderModal();
+    await user.click(screen.getByRole('button', { name: '开始对比' }));
+    expect(await screen.findByText('matching-topic')).toBeInTheDocument();
+    await act(async () => {
+      rejectSource(new Error('old comparison failed'));
+    });
+    expect(errorMessage).not.toHaveBeenCalled();
+    expect(screen.getByText('matching-topic')).toBeInTheDocument();
   });
 });
