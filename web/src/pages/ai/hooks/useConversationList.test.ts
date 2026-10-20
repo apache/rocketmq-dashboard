@@ -168,6 +168,80 @@ describe('useConversationList', () => {
     });
   });
 
+  it('reloadsTheCurrentQueryFromAnEarlierCallbackTest', async () => {
+    listMock.mockImplementation(async (query) => {
+      const page = query?.page ?? 1;
+      const prefix = query?.search ?? '全部';
+      const items = Array.from({ length: 15 }, (_, index) => {
+        const id = (page - 1) * 15 + index + 1;
+        return listItem(id, `${prefix} ${id}`);
+      });
+      return resultPage(items, 30, page);
+    });
+    const { result } = renderHook(() => useConversationList());
+    await waitFor(() => expect(result.current.items).toHaveLength(15));
+    const reloadBeforeQueryChange = result.current.reload;
+    await act(async () => {
+      result.current.setSearch('归档');
+      result.current.setArchived(true);
+      result.current.setPage(2);
+    });
+    await waitFor(() => expect(result.current.items[0]?.title).toBe('归档 16'));
+    const callsBeforeReload = listMock.mock.calls.length;
+    await act(async () => reloadBeforeQueryChange());
+    await waitFor(() => expect(listMock.mock.calls.length).toBeGreaterThan(callsBeforeReload));
+    expect(listMock).toHaveBeenLastCalledWith({
+      page: 2,
+      size: 15,
+      search: '归档',
+      archived: true,
+    });
+    expect(result.current.items[0]?.title).toBe('归档 16');
+    expect(result.current.page).toBe(2);
+    expect(result.current.search).toBe('归档');
+    expect(result.current.archived).toBe(true);
+  });
+
+  it.each(['success', 'failure'])(
+    'keepsTheReloadResultWhenAnEarlierReadSettlesTest: %s',
+    async (outcome) => {
+      let resolveEarlier!: (value: PageResult<AiConversationListItemVO>) => void;
+      let rejectEarlier!: (error: Error) => void;
+      const earlier = new Promise<PageResult<AiConversationListItemVO>>((resolve, reject) => {
+        resolveEarlier = resolve;
+        rejectEarlier = reject;
+      });
+      listMock
+        .mockReturnValueOnce(earlier)
+        .mockResolvedValue(resultPage([listItem(9, '最新会话')], 1, 1));
+      const { result } = renderHook(() => useConversationList());
+      await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
+      await act(async () => result.current.reload());
+      await waitFor(() => expect(result.current.items[0]?.title).toBe('最新会话'));
+      await act(async () => {
+        if (outcome === 'success') {
+          resolveEarlier(resultPage([listItem(7, '旧会话')], 1, 1));
+        } else {
+          rejectEarlier(new Error('旧查询失败'));
+        }
+      });
+      expect(listMock).toHaveBeenCalledTimes(2);
+      expect(result.current.items[0]?.title).toBe('最新会话');
+      expect(result.current.error).toBe('');
+      expect(result.current.loading).toBe(false);
+    },
+  );
+
+  it('doesNotReloadAListAfterItsViewUnmountsTest', async () => {
+    listMock.mockResolvedValue(resultPage([listItem(7, '查看集群状态')], 1, 1));
+    const { result, unmount } = renderHook(() => useConversationList());
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    const reloadBeforeUnmount = result.current.reload;
+    unmount();
+    await act(async () => reloadBeforeUnmount());
+    expect(listMock).toHaveBeenCalledTimes(1);
+  });
+
   it('clampsThePageWhenTheServerTotalShrinksTest', async () => {
     const firstPage = Array.from({ length: 15 }, (_, i) => listItem(i + 1, `会话 ${i + 1}`));
     listMock
