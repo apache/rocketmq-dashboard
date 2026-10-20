@@ -125,6 +125,8 @@ export interface UseAgentRunResult {
    * — otherwise the replayed rows are rendered twice: once from the timeline and once as live blocks.
    */
   attach: (conversationId: number, runId: number, after: number) => Promise<void>;
+  /** Retry loading the timeline and finish a previously failed live-to-persisted handoff. */
+  retryTimeline: () => Promise<void>;
   /** Ask the server to stop the current run. Does NOT abort the stream. */
   stop: () => Promise<void>;
   /**
@@ -167,6 +169,10 @@ export function useAgentRun(
 
   const generationRef = useRef(0);
   const streamRequestIdRef = useRef(0);
+  const retainedHandoffRef = useRef<{ requestId: number; timelineError: string | null } | null>(
+    null,
+  );
+  const timelineRetryIdRef = useRef(0);
   const chatInFlightRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const frameRef = useRef<number | null>(null);
@@ -248,6 +254,15 @@ export function useAgentRun(
     }
   }, []);
 
+  const completeTimelineHandoff = useCallback(() => {
+    retainedHandoffRef.current = null;
+    setLastRunTokensPerSecond(speedTrackerRef.current.tokensPerSecond());
+    // The persisted transcript now owns both rows. Clear their live twins in the same commit.
+    setPendingUserMessage(null);
+    blocksRef.current = [];
+    scheduleTick();
+  }, [scheduleTick]);
+
   const finishStream = useCallback(
     async (requestId: number, controller: AbortController, streamFailure: unknown | null) => {
       if (abortControllerRef.current === controller) abortControllerRef.current = null;
@@ -280,23 +295,39 @@ export function useAgentRun(
         // the stream failed too, that message is the informative one — a dead connection explains
         // the truncated answer, a failed reload only explains why it did not move into history.
         // The optimistic user bubble stays for the same reason: the transcript never got the row.
-        if (streamFailure === null) setError(describeThrownMessage(refetchError));
+        const timelineError = streamFailure === null ? describeThrownMessage(refetchError) : null;
+        retainedHandoffRef.current = { requestId, timelineError };
+        if (timelineError !== null) setError(timelineError);
         scheduleTick();
         return;
       }
 
       if (requestId !== streamRequestIdRef.current) return;
-      // The speed of this run is final the moment the stream closes; persist it before the
-      // refetch swaps the live bubble for its persisted twin, which is what displays it.
-      setLastRunTokensPerSecond(speedTrackerRef.current.tokensPerSecond());
-      // The refetched transcript now renders the persisted user row; drop the optimistic twin in
-      // the same commit so it never paints twice.
-      setPendingUserMessage(null);
-      blocksRef.current = [];
-      scheduleTick();
+      completeTimelineHandoff();
     },
-    [persistRunSpeed, scheduleTick],
+    [completeTimelineHandoff, persistRunSpeed, scheduleTick],
   );
+
+  const retryTimeline = useCallback(async (): Promise<void> => {
+    const handoff = retainedHandoffRef.current;
+    const retryId = ++timelineRetryIdRef.current;
+    await optionsRef.current.refetchTimeline();
+    // A superseded timeline request may resolve without installing its snapshot. Only the latest
+    // retry can finish this handoff, and it must still belong to the same completed stream.
+    if (
+      handoff === null ||
+      retainedHandoffRef.current !== handoff ||
+      handoff.requestId !== streamRequestIdRef.current ||
+      retryId !== timelineRetryIdRef.current
+    ) {
+      return;
+    }
+    completeTimelineHandoff();
+    // Recovering the timeline fixes its reload error, not an independent stream/stop failure.
+    if (handoff.timelineError !== null) {
+      setError((current) => (current === handoff.timelineError ? '' : current));
+    }
+  }, [completeTimelineHandoff]);
 
   const startStream = useCallback(
     async (
@@ -317,6 +348,7 @@ export function useAgentRun(
         return;
       }
       chatInFlightRef.current = true;
+      retainedHandoffRef.current = null;
       // Only `send` carries a prompt; a re-attach finds the user row already in the timeline.
       if (userMessage !== undefined) setPendingUserMessage(userMessage);
 
@@ -415,6 +447,7 @@ export function useAgentRun(
   const abort = useCallback(() => {
     generationRef.current += 1;
     streamRequestIdRef.current += 1;
+    retainedHandoffRef.current = null;
     chatInFlightRef.current = false;
     cancelFrame();
     abortControllerRef.current?.abort();
@@ -427,6 +460,10 @@ export function useAgentRun(
     setStopRequested(false);
     setError('');
     setPendingUserMessage(null);
+    // These measurements belong to the departed conversation, just like its transcript.
+    speedTrackerRef.current = createStreamSpeedTracker();
+    setLiveTokensPerSecond(null);
+    setLastRunTokensPerSecond(null);
     bump();
   }, [cancelFrame]);
 
@@ -472,6 +509,7 @@ export function useAgentRun(
     pendingUserMessage,
     send,
     attach,
+    retryTimeline,
     stop,
     abort,
   };
