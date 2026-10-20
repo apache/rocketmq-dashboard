@@ -89,6 +89,23 @@ describe('consumer group diagnostics', () => {
     expect(diagnostics.issues).toEqual([]);
   });
 
+  it('summarizes large queue inventories without spreading them into function arguments', () => {
+    const progress = Array<QueueProgress>(150_000).fill(queue({ diffTotal: 1 }));
+    progress[0] = queue({ diffTotal: 5 });
+
+    const diagnostics = analyzeConsumerGroupHealth(
+      group({ totalLag: 150_004 }),
+      [subscription()],
+      progress,
+      { now: '2026-08-31T12:01:00Z' },
+    );
+
+    expect(diagnostics.summary.queueCount).toBe(150_000);
+    expect(diagnostics.summary.totalKnownLag).toBe(150_004);
+    expect(diagnostics.summary.maxQueueLag).toBe(5);
+    expect(diagnostics.issues.map((item) => item.code)).toContain('QUEUE_LAG_SKEW');
+  });
+
   it('does not treat unavailable connection data as zero online clients', () => {
     const diagnostics = analyzeConsumerGroupHealth(
       group({ onlineInstances: -1, totalLag: 2400, instances: [] }),
