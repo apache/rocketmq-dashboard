@@ -108,6 +108,23 @@ class ToolCatalogTest {
     }
 
     @Test
+    void rejectsDelaySecondsOnGroupUpdateBecauseNothingAppliesItTest() {
+        // No layer writes a delay: RocketMQAdminClientImpl.updateConsumerGroup forwards only the
+        // retry limit to the broker and persistConsumerGroup stores no delay column, so accepting
+        // the field would report a mutation that never happened. The console reports the delay
+        // read-only; the update tool must not advertise it as writable.
+        ToolCatalog catalog = new ToolCatalog(new DefaultResourceLoader());
+        ToolSchemaValidator validator = new ToolSchemaValidator(catalog,
+                new LegacyJackson2Config().jackson2ObjectMapper(), JsonMapper.builder().build());
+        ToolDefinition definition = catalog.getDefinition("rmq.group.update");
+
+        assertThatThrownBy(() -> validator.validateInput(definition,
+                Map.of("instanceId", "instance-a", "groupName", "orders", "delaySeconds", 60)))
+                .isInstanceOfSatisfying(ToolExecutionException.class,
+                        error -> assertThat(error.getCode()).isEqualTo(400));
+    }
+
+    @Test
     void rejectsCatalogThatDoesNotMatchItsJsonSchema() {
         Resource invalid = utf8Resource("""
                 version: 1.0.0

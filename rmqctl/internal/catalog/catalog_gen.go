@@ -21,7 +21,7 @@ package catalog
 var defaultDocument = Document{
 	Version:              "2.0.0",
 	MinimumClientVersion: "2.0.0",
-	Digest:               "e07c4c4a447545da57697f9e333a717c4bff6b660cefdaf6acfe4c1074791b39",
+	Digest:               "f2ec3940cfebec7315a9d041ac67bc741afb99c05a10a96b8ae218387a3ae436",
 	Tools: []Tool{
 		{
 			Name:                 "rmq.acl.list",
@@ -288,7 +288,6 @@ var defaultDocument = Document{
 					{Name: "subscriptionDataType", Flag: "subscription-data-type", Kind: StringField, MinLength: 1},
 					{Name: "deliveryOrderType", Flag: "delivery-order-type", Kind: StringField, MinLength: 1},
 					{Name: "retryMaxTimes", Flag: "retry-max-times", Kind: IntegerField, Minimum: 0, HasMinimum: true},
-					{Name: "delaySeconds", Flag: "delay-seconds", Kind: IntegerField, Minimum: 0, HasMinimum: true},
 					{Name: "dry_run", Flag: "dry-run", Description: "When true, preview the mutation without executing it; omit to apply with a confirm_token.", Kind: BooleanField},
 					{Name: "confirm_token", Flag: "confirm-token", Kind: StringField, MinLength: 1},
 				},
