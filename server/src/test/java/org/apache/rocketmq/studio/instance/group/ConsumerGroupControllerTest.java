@@ -106,19 +106,36 @@ class ConsumerGroupControllerTest extends WebMvcAuthTestSupport {
 
     @Test
     void exportConsumerGroupsShouldPassViewFiltersAndSelectedNames() throws Exception {
-        when(metadataService.exportConsumerGroups("instance-a", "orders", "Pop",
+        when(metadataService.exportConsumerGroups("instance-a", "cluster-a", "orders", "Pop",
                 List.of("cg-a", "cg-b"))).thenReturn("\"Name\"\n\"cg-a\"");
 
         mockMvc.perform(get("/api/groups/export")
                         .param("instanceId", "instance-a")
+                        .param("clusterId", "cluster-a")
                         .param("search", "orders")
                         .param("subscriptionMode", "Pop")
                         .param("names", "cg-a, cg-b,cg-a"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").value("\"Name\"\n\"cg-a\""));
 
-        verify(metadataService).exportConsumerGroups("instance-a", "orders", "Pop",
+        verify(metadataService).exportConsumerGroups("instance-a", "cluster-a", "orders", "Pop",
                 List.of("cg-a", "cg-b"));
+    }
+
+    @Test
+    void consumerGroupExportShouldHonorClusterFilter() throws Exception {
+        when(metadataService.exportConsumerGroups("instance-a", "cluster-a", "orders", null,
+                List.of())).thenReturn("\"Name\"\n\"group-a\"");
+
+        mockMvc.perform(get("/api/groups/export")
+                        .param("instanceId", "instance-a")
+                        .param("clusterId", "cluster-a")
+                        .param("search", "orders"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value("\"Name\"\n\"group-a\""));
+
+        verify(metadataService).exportConsumerGroups("instance-a", "cluster-a", "orders", null,
+                List.of());
     }
 
     @Test

@@ -94,10 +94,11 @@ public class ConsumerGroupController {
     @GetMapping("/export")
     public Result<String> exportConsumerGroups(
             @RequestParam(required = false) String instanceId,
+            @RequestParam(required = false) String clusterId,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String subscriptionMode,
             @RequestParam(required = false) String names) {
-        return Result.ok(metadataService.exportConsumerGroups(instanceId, search,
+        return Result.ok(metadataService.exportConsumerGroups(instanceId, clusterId, search,
                 subscriptionMode, parseNames(names)));
     }
 
