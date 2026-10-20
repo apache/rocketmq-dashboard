@@ -24,6 +24,7 @@ import org.apache.rocketmq.studio.persistence.entity.RmqNameserver;
 import org.apache.rocketmq.studio.persistence.mapper.RmqNameserverMapper;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -75,6 +76,7 @@ public class NameserverRegistryService {
         return toVO(stored);
     }
 
+    @Transactional
     public NameserverRegistryVO update(UpdateNameserverRegistryDTO command) {
         RmqNameserver entity = nameserverMapper.selectById(command.getId());
         if (entity == null) {
