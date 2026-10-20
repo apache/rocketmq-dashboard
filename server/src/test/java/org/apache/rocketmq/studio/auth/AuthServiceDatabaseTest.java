@@ -251,11 +251,25 @@ class AuthServiceDatabaseTest {
     void passwordChangeRevokesExistingSessions() {
         RmqStudioUser user = user(1L, "operator", false, true, "password-1");
         when(userMapper.selectById(1L)).thenReturn(user);
+        when(userMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
 
         authService.changePassword(1L, "password-1", "password-2", true);
 
         verify(userMapper).update(isNull(), any(Wrapper.class));
         verify(sessionMapper).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void stalePasswordChangeDoesNotRevokeSessionsTest() {
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        when(userMapper.selectById(1L)).thenReturn(user);
+        when(userMapper.update(isNull(), any(Wrapper.class))).thenReturn(0);
+
+        assertThatThrownBy(() -> authService.changePassword(1L, "password-1", "password-2", true))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
+
+        verifyNoInteractions(sessionMapper);
     }
 
     @Test
