@@ -74,7 +74,10 @@ export interface ChatThreadProps {
    * as one document the composer belongs to the end of, not a bar pinned under the viewport.
    */
   footer?: ReactNode;
-  /** Earlier events exist outside the loaded window (`useConversationTimeline().hasMore`). */
+  /**
+   * The bounded timeline walk stopped before the newest events
+   * (`useConversationTimeline().hasMore`); `loadMore` continues it toward the missing tail.
+   */
   hasMore?: boolean;
   onLoadMore?: () => void;
   /** Change this to reset the scroll position and the unread badge, e.g. the conversation id. */
@@ -184,13 +187,6 @@ const ChatThread = ({
             area while the transcript is short; once the transcript overflows, the spacer
             collapses to zero and the composer scrolls with the content like any document. */}
         <div style={{ width: '100%', minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
-          {hasMore && onLoadMore && (
-            <Flex justify="center" style={{ marginBottom: 12 }}>
-              <Button size="small" onClick={() => onLoadMore()} style={{ fontSize: 14 }}>
-                {t('ai.thread.loadEarlier')}
-              </Button>
-            </Flex>
-          )}
           <BubbleList
             bubbles={bubbles}
             liveBlocks={liveBlocks}
@@ -202,6 +198,16 @@ const ChatThread = ({
             model={model}
             empty={empty}
           />
+          {hasMore && onLoadMore && (
+            // The bounded forward walk stops holding the OLDEST rows, so `loadMore` appends the
+            // missing NEWEST tail: the affordance belongs below the transcript it extends, labeled
+            // for the direction the data actually moves.
+            <Flex justify="center" style={{ marginTop: 12 }}>
+              <Button size="small" onClick={() => onLoadMore()} style={{ fontSize: 14 }}>
+                {t('ai.thread.loadRemaining')}
+              </Button>
+            </Flex>
+          )}
           <div ref={sentinelRef} />
           <div style={{ flex: 1 }} />
           {footer}
