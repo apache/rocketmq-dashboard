@@ -383,7 +383,44 @@ POST /api/instances/delete
 
 **Response `data`:** `null`
 
-### 3.5 获取实例能力契约
+### 3.5 批量删除实例
+
+`POST /api/instances/delete-batch`
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `ids` | `string[]` | 是 | 要删除的实例 ID 列表 |
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `deleted` | `number` | 成功删除的实例数量 |
+| `failed` | `string[]` | 删除失败的实例 ID 列表，失败详情可能受限 |
+
+### 3.6 从云厂商导入实例
+
+`POST /api/instances/import-cloud`
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `vendor` | `string` | 是 | 云厂商 |
+| `credentialId` | `number` | 是 | 云厂商凭证 ID |
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `discovered` | `number` | 发现的实例数量 |
+| `imported` | `number` | 成功导入的实例数量 |
+| `skipped` | `number` | 跳过的实例数量 |
+| `failed` | `string[]` | 失败详情列表，可能只包含部分记录 |
+
+### 3.7 获取实例能力契约
 
 ```
 GET /api/instances/{instanceId}/capabilities
