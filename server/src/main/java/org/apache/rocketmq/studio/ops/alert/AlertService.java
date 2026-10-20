@@ -114,6 +114,18 @@ public class AlertService {
                             + rule.getMetric().trim() + "' has no equivalent in the rocketmq-exporter metric set");
                     continue;
                 }
+                if (isUnexportableMetricName(rule.getMetric())) {
+                    skippedRuleNotes.add("Skipped \"" + sanitizeCommentText(rule.getName()) + "\": metric '"
+                            + sanitizeCommentText(hasText(rule.getMetric()) ? rule.getMetric().trim() : "")
+                            + "' is not a valid Prometheus metric name");
+                    continue;
+                }
+                if (isUnexportableOperator(rule.getOperator())) {
+                    skippedRuleNotes.add("Skipped \"" + sanitizeCommentText(rule.getName()) + "\": operator '"
+                            + sanitizeCommentText(hasText(rule.getOperator()) ? rule.getOperator().trim() : "")
+                            + "' is not supported by the Prometheus export");
+                    continue;
+                }
                 prometheusRules.add(toPrometheusRule(rule));
             }
         }
@@ -140,7 +152,11 @@ public class AlertService {
                     yaml.append("      # Rule ").append(index++).append(": ").append(uniqueAlertName).append('\n');
                     yaml.append("      - alert: ").append(uniqueAlertName).append('\n');
                     yaml.append("        expr: ").append(rule.expr()).append('\n');
-                    yaml.append("        for: ").append(rule.duration()).append('\n');
+                    // An absent `for` fires immediately, matching a rule whose blank duration
+                    // evaluates as Duration.ZERO on screen.
+                    if (!rule.duration().isEmpty()) {
+                        yaml.append("        for: ").append(rule.duration()).append('\n');
+                    }
                     yaml.append("        labels:\n");
                     yaml.append("          severity: ").append(rule.severity()).append('\n');
                     yaml.append("          team: ").append(rule.team()).append('\n');
@@ -684,8 +700,8 @@ public class AlertService {
     }
 
     private String expression(AlertRuleVO rule) {
-        String metric = validateMetric(rule.getMetric());
-        String operator = validateOperator(rule.getOperator());
+        String metric = exporterMetric(rule.getMetric());
+        String operator = rule.getOperator().trim();
         if ("UNAVAILABLE".equals(operator)) {
             // Prometheus has no availability enum. Its compatible exporter convention is zero for
             // unavailable targets; native Studio evaluation keeps failed samples value-less.
@@ -694,16 +710,28 @@ public class AlertService {
         return metric + labelSelector(rule) + " " + operator + " " + formatThreshold(rule.getThreshold());
     }
 
-    private String validateMetric(String metric) {
-        String normalized = hasText(metric) ? metric.trim() : "rocketmq_consumer_lag_messages";
+    /**
+     * Exporter metric for a name the export loop already validated: a mapped native metric
+     * resolves through the active metric profile (a 4.x deployment exports
+     * rocketmq_message_accumulation for consumer lag), and anything else is a stored exporter
+     * metric name exported verbatim.
+     */
+    private String exporterMetric(String metric) {
+        String normalized = metric.trim();
         String semantic = NATIVE_METRIC_SEMANTIC.get(normalized);
         if (semantic != null) {
-            // Resolve the exporter name from the active metric profile instead of a hardcoded 5.x
-            // name, so a 4.x deployment exports rocketmq_message_accumulation for consumer lag.
             return metricProfileService.resolveCurrentPrometheusMetric(semantic)
                     .orElse("rocketmq_consumer_lag_messages");
         }
-        return METRIC_NAME_PATTERN.matcher(normalized).matches() ? normalized : "rocketmq_consumer_lag_messages";
+        return normalized;
+    }
+
+    /** True when the stored metric has no name Prometheus accepts, so exporting it would invent one. */
+    private boolean isUnexportableMetricName(String metric) {
+        String normalized = hasText(metric) ? metric.trim() : "";
+        // Mapped native metrics resolve through the profile; unmapped ones are skipped earlier.
+        return !NATIVE_METRIC_SEMANTIC.containsKey(normalized)
+                && !METRIC_NAME_PATTERN.matcher(normalized).matches();
     }
 
     private boolean isUnexportableNativeMetric(String metric) {
@@ -722,9 +750,9 @@ public class AlertService {
         return value == null ? "" : value.replaceAll("[\\r\\n]", " ");
     }
 
-    private String validateOperator(String operator) {
-        String normalized = hasText(operator) ? operator.trim() : ">";
-        return VALID_OPERATORS.contains(normalized) ? normalized : ">";
+    /** True when the stored operator cannot be expressed in a Prometheus comparison. */
+    private boolean isUnexportableOperator(String operator) {
+        return !VALID_OPERATORS.contains(hasText(operator) ? operator.trim() : "");
     }
 
     private String labelSelector(AlertRuleVO rule) {
@@ -809,8 +837,14 @@ public class AlertService {
     }
 
     private String duration(AlertRuleVO rule) {
-        String dur = hasText(rule.getDuration()) ? rule.getDuration().trim() : "5m";
-        return DURATION_PATTERN.matcher(dur).matches() ? dur : "5m";
+        String dur = hasText(rule.getDuration()) ? rule.getDuration().trim() : "";
+        // A blank duration evaluates as Duration.ZERO on screen, so the export omits `for` and
+        // lets the alert fire immediately instead of delaying it by an invented 5 minutes.
+        if (dur.isEmpty() || DURATION_PATTERN.matcher(dur).matches()) {
+            return dur;
+        }
+        // Legacy rows can predate the ordered-duration validation; 5m keeps their historical export.
+        return "5m";
     }
 
     private String inferTeam(String metric) {
