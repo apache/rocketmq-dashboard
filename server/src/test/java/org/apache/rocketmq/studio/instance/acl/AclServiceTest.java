@@ -55,6 +55,8 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.TimeZone;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -1451,6 +1453,66 @@ class AclServiceTest {
         assertThat(broker.isSuccess()).isFalse();
         assertThat(broker.getError()).contains("acl disabled");
         verify(admin, never()).updateAcl(any(), any(AclInfo.class));
+    }
+
+    @Test
+    void pushAclToBrokerTouchesOnlyTheConfiguredClusterOfASharedNameServerTest() throws Exception {
+        AclUserVO stored = AclUserVO.builder().id(11L).username("orders").secretKey("secret-4").build();
+        when(aclRepository.findUsers()).thenReturn(List.of(stored));
+        when(aclRepository.findUserById(11L)).thenReturn(Optional.of(stored));
+        when(aclRepository.findRulePage("user:orders", null, null, null, null, 1, 200))
+                .thenReturn(PageResult.of(List.of(), 0, 1, 200));
+        when(clusterProvider.discoverBrokers("instance-a", null)).thenReturn(List.of());
+
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(sharedNameServerTopology());
+        when(runtimeAdminClientResolver.configuredClusterName("instance-a")).thenReturn("cluster-a");
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(call -> call.getArgument(1, MqAdminExtFactory.AdminAction.class).apply(admin));
+
+        PushAclToBrokerResultVO result = aclService.pushAclToBroker("instance-a");
+
+        // The instance is bound to cluster-a; the other cluster behind the same NameServer must not
+        // receive this instance's accounts, policies or pre-flight config reads.
+        assertThat(result.getBrokers()).containsExactly("10.0.0.1:10911");
+        assertThat(result.getAccounts().get(0).getBrokers())
+                .allSatisfy(broker -> assertThat(broker.getBroker()).isEqualTo("10.0.0.1:10911"));
+        verify(admin).createUser(eq("10.0.0.1:10911"), any());
+        verify(admin, never()).createUser(eq("10.0.0.2:10911"), any());
+        verify(admin, never()).updateUser(eq("10.0.0.2:10911"), any());
+        verify(admin, never()).updateAcl(eq("10.0.0.2:10911"), any(AclInfo.class));
+        verify(admin, never()).getBrokerConfig("10.0.0.2:10911");
+    }
+
+    @Test
+    void pushAclToBrokerKeepsEveryMasterWhenTheInstanceNamesNoClusterTest() throws Exception {
+        AclUserVO stored = AclUserVO.builder().id(12L).username("reader").secretKey("secret-5").build();
+        when(aclRepository.findUsers()).thenReturn(List.of(stored));
+        when(aclRepository.findUserById(12L)).thenReturn(Optional.of(stored));
+        when(aclRepository.findRulePage("user:reader", null, null, null, null, 1, 200))
+                .thenReturn(PageResult.of(List.of(), 0, 1, 200));
+        when(clusterProvider.discoverBrokers("instance-a", null)).thenReturn(List.of());
+
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(sharedNameServerTopology());
+        when(runtimeAdminClientResolver.configuredClusterName("instance-a")).thenReturn(null);
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(call -> call.getArgument(1, MqAdminExtFactory.AdminAction.class).apply(admin));
+
+        PushAclToBrokerResultVO result = aclService.pushAclToBroker("instance-a");
+
+        assertThat(result.getBrokers()).containsExactlyInAnyOrder("10.0.0.1:10911", "10.0.0.2:10911");
+    }
+
+    private ClusterInfo sharedNameServerTopology() {
+        BrokerData first = new BrokerData("cluster-a", "broker-a", new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        BrokerData second = new BrokerData("cluster-b", "broker-b", new HashMap<>(Map.of(0L, "10.0.0.2:10911")));
+        ClusterInfo clusterInfo = new ClusterInfo();
+        clusterInfo.setBrokerAddrTable(new HashMap<>(Map.of("broker-a", first, "broker-b", second)));
+        clusterInfo.setClusterAddrTable(new HashMap<>(Map.of(
+                "cluster-a", new TreeSet<>(Set.of("broker-a")),
+                "cluster-b", new TreeSet<>(Set.of("broker-b")))));
+        return clusterInfo;
     }
 
     private ClusterInfo clusterInfoWithMaster(String address) {

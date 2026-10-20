@@ -369,7 +369,7 @@ public class AclService {
         log.info("Pushing {} ACL account(s) of instance {} to the brokers", plans.size(), instanceId);
         return runtimeAdminClientResolver.execute(instanceId, admin -> {
             DefaultMQAdminExt adminExt = (DefaultMQAdminExt) admin;
-            List<String> masters = masterAddresses(adminExt);
+            List<String> masters = masterAddresses(adminExt, instanceId);
             if (!masters.isEmpty() && !acl2Enabled(adminExt, masters.get(0))) {
                 throw new BusinessException(409, "Broker ACL 2.0 is not enabled on "
                         + masters.get(0) + "; set authenticationEnabled=true and "
@@ -491,12 +491,21 @@ public class AclService {
         }
     }
 
-    private List<String> masterAddresses(DefaultMQAdminExt adminExt) throws Exception {
+    /**
+     * The master brokers this push may write to. The instance's configured cluster decides the set,
+     * through the same scope the ACL read uses ({@link AclBrokerScope}): a NameServer shared by
+     * several clusters must not receive this instance's accounts and policies on the clusters it is
+     * not bound to. An instance that names no cluster keeps every master of the endpoint.
+     */
+    private List<String> masterAddresses(DefaultMQAdminExt adminExt, String instanceId) throws Exception {
         ClusterInfo clusterInfo = adminExt.examineBrokerClusterInfo();
         if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null) {
             return List.of();
         }
-        return clusterInfo.getBrokerAddrTable().values().stream()
+        String configuredCluster = StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
+        return AclBrokerScope.scopedBrokerNames(clusterInfo, configuredCluster).stream()
+                .map(clusterInfo.getBrokerAddrTable()::get)
                 .filter(broker -> broker != null && broker.getBrokerAddrs() != null)
                 .map(broker -> broker.getBrokerAddrs().get(MixAll.MASTER_ID))
                 .filter(Objects::nonNull)

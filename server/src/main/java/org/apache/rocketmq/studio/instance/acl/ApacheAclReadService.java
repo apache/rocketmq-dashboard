@@ -22,7 +22,6 @@ import org.apache.rocketmq.remoting.protocol.body.AclInfo;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
-import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -30,8 +29,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
-import java.util.TreeSet;
 
 @Service
 @RequiredArgsConstructor
@@ -48,7 +45,7 @@ public class ApacheAclReadService {
             if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null) {
                 return result(policies, failures);
             }
-            for (String brokerName : scopedBrokerNames(clusterInfo, configuredCluster)) {
+            for (String brokerName : AclBrokerScope.scopedBrokerNames(clusterInfo, configuredCluster)) {
                 String address = masterAddress(clusterInfo.getBrokerAddrTable().get(brokerName));
                 if (address == null || policies.containsKey(address) || failures.containsKey(address)) {
                     continue;
@@ -61,28 +58,6 @@ public class ApacheAclReadService {
             }
             return result(policies, failures);
         });
-    }
-
-    /**
-     * The broker set this read is allowed to touch. An instance bound to one cluster on a NameServer
-     * shared by several must not surface another cluster's ACL, so the topology is narrowed the same
-     * way {@code RocketMQClusterProvider.discoverBrokers} narrows it; an instance that names no
-     * cluster keeps every broker of the endpoint. A configured cluster whose membership is missing
-     * from the topology cannot be resolved, so the read fails closed instead of reading the whole
-     * cluster table (mirrors the 503 that broker discovery raises for the same condition).
-     */
-    private Set<String> scopedBrokerNames(ClusterInfo clusterInfo, String configuredCluster) {
-        Set<String> names = new TreeSet<>(clusterInfo.getBrokerAddrTable().keySet());
-        if (configuredCluster == null) {
-            return names;
-        }
-        Map<String, Set<String>> clusters = clusterInfo.getClusterAddrTable();
-        if (clusters == null || clusters.containsKey(configuredCluster)
-                && clusters.get(configuredCluster) == null) {
-            throw new BusinessException(503, "Broker cluster membership is unavailable");
-        }
-        names.retainAll(clusters.getOrDefault(configuredCluster, Set.of()));
-        return names;
     }
 
     private List<RemoteAclPolicyVO> mapPolicies(List<AclInfo> brokerPolicies) {
