@@ -107,7 +107,8 @@ class AlertRuleTransferServiceTest {
         AlertRepository repository = mock(AlertRepository.class);
         OperationAuditService auditService = mock(OperationAuditService.class);
         AlertService realService = new AlertService(repository, mock(AlertStateRepository.class),
-                new AlertRuleAssetService(), auditService, new MetricProfileService(new PrometheusProperties()));
+                new AlertRuleAssetService(), auditService, new MetricProfileService(new PrometheusProperties()),
+                org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class));
         AlertRuleTransferService realTransfer = new AlertRuleTransferService(realService, metricCatalogService);
         lenient().when(repository.insertRule(any(AlertRuleVO.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
