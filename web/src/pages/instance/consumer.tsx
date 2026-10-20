@@ -358,6 +358,8 @@ const ConsumerPageContent = ({
         if (requestId === groupRequestIdRef.current) {
           setGroups(result.items);
           setTotalGroups(result.total);
+          // A current successful empty result confirms there are no targets in this query.
+          if (result.total === 0) setSelectedRowKeys([]);
           if (result.items.length === 0 && result.total > 0 && pageToLoad > 1) {
             setPage(Math.max(1, Math.ceil(result.total / pageSizeToLoad)));
           }
