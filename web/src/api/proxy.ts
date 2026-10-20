@@ -28,12 +28,6 @@ export interface ProxyNode {
   key: string;
   address: string;
   status: 'healthy' | 'unhealthy' | 'warning' | 'unknown';
-  version: string | null;
-  connections: number | null;
-  tps: number | null;
-  memory: number | null;
-  cpu: number | null;
-  uptime: string | null;
   isSelected: boolean;
 }
 

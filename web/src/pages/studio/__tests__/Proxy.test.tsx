@@ -190,12 +190,85 @@ describe('ProxyPage', () => {
     expect(screen.queryByText('rocketmq.namesrv.addr')).not.toBeInTheDocument();
   });
 
-  it('marks runtime metrics unavailable when proxy API only returns addresses', async () => {
+  it('renders no unavailable placeholders when the topology has answered', async () => {
+    vi.mocked(getProxyTopology).mockResolvedValueOnce([
+      {
+        proxyAddr: '127.0.0.1:8081',
+        status: 'UP',
+        grpcPort: 8081,
+        remotingPort: 9876,
+        grpcReachable: true,
+        remotingReachable: true,
+        latencyMs: 1,
+      },
+    ]);
     renderPage();
     await screen.findAllByText('127.0.0.1:8081');
 
     expect(screen.queryByText('5.3.0')).not.toBeInTheDocument();
-    expect(screen.getAllByText('N/A').length).toBeGreaterThanOrEqual(5);
+    expect(screen.queryByText('N/A')).not.toBeInTheDocument();
+  });
+
+  it('shows the healthy node count from the topology overlay', async () => {
+    vi.mocked(queryProxyHomePage).mockResolvedValueOnce({
+      proxyAddrList: ['10.0.0.1:8081', '10.0.0.2:8081', '10.0.0.3:8081'],
+      currentProxyAddr: '10.0.0.1:8081',
+    });
+    vi.mocked(getProxyTopology).mockResolvedValueOnce([
+      {
+        proxyAddr: '10.0.0.1:8081',
+        status: 'UP',
+        grpcPort: 8081,
+        remotingPort: 9876,
+        grpcReachable: true,
+        remotingReachable: true,
+        latencyMs: 1,
+      },
+      {
+        proxyAddr: '10.0.0.2:8081',
+        status: 'UP',
+        grpcPort: 8081,
+        remotingPort: 9876,
+        grpcReachable: true,
+        remotingReachable: true,
+        latencyMs: 2,
+      },
+      {
+        proxyAddr: '10.0.0.3:8081',
+        status: 'DOWN',
+        grpcPort: 8081,
+        remotingPort: null,
+        grpcReachable: false,
+        remotingReachable: false,
+        latencyMs: 0,
+      },
+    ]);
+
+    renderPage();
+    await screen.findAllByText('10.0.0.1:8081');
+
+    expect(screen.getByText('健康节点')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
+  });
+
+  it('drops the runtime columns no endpoint fills', async () => {
+    renderPage();
+    await screen.findAllByText('127.0.0.1:8081');
+
+    expect(screen.queryByText('版本')).not.toBeInTheDocument();
+    expect(screen.queryByText('连接数')).not.toBeInTheDocument();
+    expect(screen.queryByText('TPS')).not.toBeInTheDocument();
+    expect(screen.queryByText('内存')).not.toBeInTheDocument();
+    expect(screen.queryByText('CPU')).not.toBeInTheDocument();
+    expect(screen.queryByText('运行时间')).not.toBeInTheDocument();
+  });
+
+  it('drops the aggregate stat cards no endpoint fills', async () => {
+    renderPage();
+    await screen.findAllByText('127.0.0.1:8081');
+
+    expect(screen.queryByText('总连接数')).not.toBeInTheDocument();
+    expect(screen.queryByText('总 TPS')).not.toBeInTheDocument();
   });
   it('calls reloadProxyConfig when the reload button is clicked', async () => {
     const user = userEvent.setup();
