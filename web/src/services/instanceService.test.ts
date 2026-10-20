@@ -57,6 +57,18 @@ describe('instanceService mock instances', () => {
     expect(fresh[0]).not.toBe(instances[0]);
   });
 
+  it('matches the API count availability contract when counts are omitted', async () => {
+    dataModeMock.isMockMode.mockReturnValue(true);
+
+    const instances = await listInstances({ withCounts: false });
+
+    expect(instances[0]).toMatchObject({
+      topicCount: 0,
+      consumerGroupCount: 0,
+      resourceCountsAvailable: false,
+    });
+  });
+
   it('filters mock instances with the same type and search semantics as the API', async () => {
     const byType = await listInstances({ type: 'DIRECT' });
     expect(byType.map((instance) => instance.id)).toEqual([1, 2]);
