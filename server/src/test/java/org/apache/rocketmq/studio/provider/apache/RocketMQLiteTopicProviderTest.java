@@ -205,6 +205,29 @@ class RocketMQLiteTopicProviderTest {
     }
 
     @Test
+    void listLiteTopicsShouldCountOnlyClientsSubscribedToTheParentTopicTest() throws Exception {
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
+        when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(brokerLiteInfo(PARENT, 30, 2, GROUP));
+        when(admin.getParentTopicInfo(BROKER_A, PARENT)).thenReturn(parentTopicInfo(PARENT, 30, 2));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1)).thenReturn(lag(7));
+        when(admin.examineConsumerConnectionInfo(GROUP))
+                .thenReturn(consumerConnection("c1", "10.0.0.1:1234", "c2", "10.0.0.2:1234"));
+        when(admin.getLiteClientInfo(BROKER_A, PARENT, GROUP, "c1"))
+                .thenReturn(clientInfo(1, System.currentTimeMillis(), LiteUtil.toLmqName(PARENT, "bob")));
+        // The group also has a client, but it has no LiteTopic under this parent.
+        when(admin.getLiteClientInfo(BROKER_A, PARENT, GROUP, "c2"))
+                .thenReturn(clientInfo(0, System.currentTimeMillis()));
+
+        List<LiteTopicSummary> summaries = provider.listLiteTopics(null, null);
+
+        assertThat(summaries).singleElement().satisfies(summary -> {
+            assertThat(summary.getConsumerCount()).isEqualTo(1);
+            assertThat(summary.getSessionIds())
+                    .containsExactly(RocketMQLiteTopicProvider.encodeSessionId(PARENT, GROUP, "c1"));
+        });
+    }
+
+    @Test
     void listLiteTopicsFiltersByPatternCaseInsensitively() throws Exception {
         when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
         when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(brokerLiteInfo(PARENT, 30, 1, GROUP));
@@ -591,12 +614,16 @@ class RocketMQLiteTopicProviderTest {
         return body;
     }
 
-    private static ConsumerConnection consumerConnection(String clientId, String clientAddr) {
-        Connection connection = new Connection();
-        connection.setClientId(clientId);
-        connection.setClientAddr(clientAddr);
+    private static ConsumerConnection consumerConnection(String... clientPairs) {
+        HashSet<Connection> connections = new HashSet<>();
+        for (int i = 0; i < clientPairs.length; i += 2) {
+            Connection connection = new Connection();
+            connection.setClientId(clientPairs[i]);
+            connection.setClientAddr(clientPairs[i + 1]);
+            connections.add(connection);
+        }
         ConsumerConnection consumerConnection = new ConsumerConnection();
-        consumerConnection.setConnectionSet(new HashSet<>(Set.of(connection)));
+        consumerConnection.setConnectionSet(connections);
         return consumerConnection;
     }
 
