@@ -27,12 +27,12 @@ import org.apache.rocketmq.studio.ops.ai.conversation.event.StopReason;
  * disconnect — so every cancellation was labelled a user cancel, and a redeploy that drained the
  * executor wrote {@code USER_STOP} into {@code rmq_ai_run.stop_reason} for runs nobody had stopped.
  * Carrying the reason on the handle means the {@code @PreDestroy} drain writes {@code SHUTDOWN}, the
- * orphan sweep writes {@code ORPHANED}, and the stop endpoint writes {@code USER_STOP}, each of which
- * is what actually happened.
+ * orphan sweep writes {@code ORPHANED}, the retention sweep writes {@code RETENTION}, and the stop
+ * endpoint writes {@code USER_STOP}, each of which is what actually happened.
  *
  * <p>Each constant also fixes the terminal {@link RunStatus} it produces, so no caller has to reason
- * about which aborts are "stopped" and which are "failed": the two a human or the server asked for
- * are {@link RunStatus#STOPPED}, the two that mean the run did not get to finish are
+ * about which aborts are "stopped" and which are "failed": the ones a human or the server asked for
+ * are {@link RunStatus#STOPPED}, the ones that mean the run did not get to finish are
  * {@link RunStatus#FAILED}.
  */
 public enum AbortReason {
@@ -51,7 +51,13 @@ public enum AbortReason {
     TIMEOUT(RunStatus.FAILED, StopReason.TIMEOUT, true),
 
     /** The run outlived its owner: the sweep found it non-terminal with no live handle. */
-    ORPHANED(RunStatus.FAILED, StopReason.ORPHANED, true);
+    ORPHANED(RunStatus.FAILED, StopReason.ORPHANED, true),
+
+    /**
+     * The retention sweep purged the run's conversation while the run was still live. Server-asked
+     * like {@link #SHUTDOWN}, so the run is {@link RunStatus#STOPPED} rather than failed.
+     */
+    RETENTION(RunStatus.STOPPED, StopReason.RETENTION, true);
 
     private final RunStatus status;
     private final StopReason stopReason;
