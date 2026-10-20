@@ -196,8 +196,7 @@ public class LlmConfigService {
                     "LLM temperature is out of range",
                     "Set temperature to a value between 0 and 2.");
         }
-        boolean keyRequired = !"ollama".equals(provider)
-                && LlmConfigVO.ENGINE_HTTP.equalsIgnoreCase(normalized.normalizeEngine());
+        boolean keyRequired = requiresApiKey(provider, normalized.normalizeEngine());
         if (keyRequired && !StringUtils.hasText(normalized.getApiKey())) {
             return LlmOperationResultVO.failure(
                     "llm.config.missing_api_key",
@@ -253,15 +252,18 @@ public class LlmConfigService {
         String apiKey = defaultString(envToken(), defaultString(settings.getApiKey(), ""));
         String apiBase = normalizeApiBase(defaultString(settings.getBaseUrl(), defaultApiBase(provider)));
         String model = defaultString(settings.getModel(), defaultModel(provider));
+        String engine = normalizeEngine(settings.getLlmEngine());
         return LlmConfigVO.builder()
                 .provider(provider)
-                .engine(normalizeEngine(settings.getLlmEngine()))
+                .engine(engine)
                 .apiKey(apiKey)
                 .apiBase(apiBase)
                 .model(model)
                 .maxTokens(settings.getMaxTokens() != null ? settings.getMaxTokens() : DEFAULT_MAX_TOKENS)
                 .temperature(settings.getTemperature() != null ? settings.getTemperature() : DEFAULT_TEMPERATURE)
-                .enabled(!requiresApiKey(provider) || !!StringUtils.hasText(apiKey))
+                // Mirror validate(): a CLI engine authenticates through the subprocess environment,
+                // so a config that saved and tested clean must not read back as disabled.
+                .enabled(!requiresApiKey(provider, engine) || StringUtils.hasText(apiKey))
                 .deploymentName(defaultString(settings.getDeploymentName(), ""))
                 .apiVersion(defaultString(settings.getApiVersion(), "2024-02-15-preview"))
                 .awsRegion(defaultString(settings.getAwsRegion(), "us-east-1"))
@@ -329,6 +331,14 @@ public class LlmConfigService {
 
     private boolean requiresApiKey(String provider) {
         return !"ollama".equals(provider);
+    }
+
+    /**
+     * Mirrors {@code validate()}: only an HTTP engine of a non-ollama provider talks to the
+     * gateway with an API key; CLI engines authenticate through the subprocess environment.
+     */
+    private boolean requiresApiKey(String provider, String engine) {
+        return !"ollama".equals(provider) && LlmConfigVO.ENGINE_HTTP.equalsIgnoreCase(engine);
     }
 
     private String normalizeProvider(String provider) {

@@ -171,6 +171,33 @@ class LlmConfigServiceTest {
     }
 
     @Test
+    void getConfigShouldTreatSavedCliEngineAsReadyWithoutApiKey() {
+        when(settingsService.getGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .theme("dark")
+                .compact(true)
+                .desktopNotify(true)
+                .notifySound(false)
+                .sessionTimeout(45)
+                .requireLogin(true)
+                .llmProvider("openai")
+                .llmEngine("claude-code")
+                .apiKey("")
+                .model("claude-sonnet-5")
+                .baseUrl("https://api.openai.com/v1")
+                .build());
+
+        LlmConfigVO config = llmConfigService.getConfig();
+
+        assertThat(config.getProvider()).isEqualTo("openai");
+        assertThat(config.getEngine()).isEqualTo("claude-code");
+        assertThat(config.isApiKeyConfigured()).isFalse();
+        // validate() exempts CLI engines from the key requirement, so a config that saved and
+        // tested clean must not be disabled on read-back: chat would refuse it as incomplete.
+        assertThat(config.isEnabled()).isTrue();
+        assertThat(config.isReady()).isTrue();
+    }
+
+    @Test
     void saveConfigShouldPreserveGeneralSettingsAndStoreLlmFields() {
         LlmConfigVO config = LlmConfigVO.builder()
                 .provider("deepseek")
