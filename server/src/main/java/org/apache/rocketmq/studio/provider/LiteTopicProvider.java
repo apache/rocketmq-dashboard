@@ -75,12 +75,12 @@ public interface LiteTopicProvider {
      * @param topicPattern the parent topic name
      * @param ttlMillis    the new TTL in milliseconds
      */
-    default void extendTTL(String topicPattern, long ttlMillis) {
+    default long extendTTL(String topicPattern, long ttlMillis) {
         throw new BusinessException(400, "instanceId is required");
     }
 
     /** TTL writes must explicitly specify the owning instance; the legacy entry point must not fall back to the default connection. */
-    default void extendTTL(String instanceId, String topicPattern, long ttlMillis) {
+    default long extendTTL(String instanceId, String topicPattern, long ttlMillis) {
         org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.requireText(instanceId, "instanceId");
         throw new BusinessException(NOT_IMPLEMENTED, UNSUPPORTED);
     }

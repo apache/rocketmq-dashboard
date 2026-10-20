@@ -79,7 +79,8 @@ public class LiteTopicExtendTtlToolHandler
 
     @Override
     public LiteTopicExtendTtlOutput execute(LiteTopicExtendTtlInput input, ToolExecutionContext context) {
-        liteTopicService.extendTTL(context.instanceId(), input.topicPattern(), input.newTtlMillis());
-        return new LiteTopicExtendTtlOutput(input.topicPattern(), input.newTtlMillis());
+        long appliedTtlMillis = liteTopicService.extendTTL(
+                context.instanceId(), input.topicPattern(), input.newTtlMillis());
+        return new LiteTopicExtendTtlOutput(input.topicPattern(), input.newTtlMillis(), appliedTtlMillis);
     }
 }

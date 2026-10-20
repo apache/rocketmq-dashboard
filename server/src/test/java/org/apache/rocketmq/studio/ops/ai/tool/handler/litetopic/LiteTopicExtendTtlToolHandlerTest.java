@@ -79,11 +79,25 @@ class LiteTopicExtendTtlToolHandlerTest {
 
     @Test
     void executeDelegatesToTheOwnershipGuardedServiceTest() {
+        org.mockito.Mockito.when(liteTopicService.extendTTL("instance-a", "orders", 86_400_000L))
+                .thenReturn(86_400_000L);
         LiteTopicExtendTtlOutput output = handler.execute(
                 new LiteTopicExtendTtlInput("orders", 86_400_000L), context());
 
         verify(liteTopicService).extendTTL("instance-a", "orders", 86_400_000L);
-        assertThat(output).isEqualTo(new LiteTopicExtendTtlOutput("orders", 86_400_000L));
+        assertThat(output).isEqualTo(new LiteTopicExtendTtlOutput("orders", 86_400_000L, 86_400_000L));
+    }
+
+    @Test
+    void executeReportsTheBrokerNormalizedTtlTest() {
+        org.mockito.Mockito.when(liteTopicService.extendTTL("instance-a", "orders", 31 * 86_400_000L))
+                .thenReturn(30 * 86_400_000L);
+
+        LiteTopicExtendTtlOutput output = handler.execute(
+                new LiteTopicExtendTtlInput("orders", 31 * 86_400_000L), context());
+
+        assertThat(output.newTtlMillis()).isEqualTo(31 * 86_400_000L);
+        assertThat(output.appliedTtlMillis()).isEqualTo(30 * 86_400_000L);
     }
 
     private static ToolExecutionContext context() {

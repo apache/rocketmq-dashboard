@@ -366,7 +366,7 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
     // ─── TTL update ───────────────────────────────────────────────────
 
     @Override
-    public void extendTTL(String instanceId, String rawTopicPattern, long ttlMillis) {
+    public long extendTTL(String instanceId, String rawTopicPattern, long ttlMillis) {
         var instance = ownershipGuard.requireInstance(instanceId);
         String topicPattern = ResourceOwnershipGuard.requireText(rawTopicPattern, "topicPattern");
         var resource = ownershipGuard.topicResource(topicPattern);
@@ -379,7 +379,7 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
             throw new BusinessException(400, "newTTL must be positive");
         }
         long minutes = Math.min(Math.max(Math.round(ttlMillis / 60000.0), 1), MAX_LITE_TTL_MINUTES);
-        ownershipGuard.withOwned(instance, List.of(resource), () -> runtimeAdminClientResolver.execute(instance, admin -> {
+        return ownershipGuard.withOwned(instance, List.of(resource), () -> runtimeAdminClientResolver.execute(instance, admin -> {
             var owner = ownershipGuard.check(instance, resource, true);
             var target = ApacheWriteTargetResolver.resolve(admin, instance, owner.clusterId());
             // Read every master's config before writing any of them: a master that cannot be
@@ -410,7 +410,7 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
             }
             log.info("Extended LiteTopic TTL to {}ms ({} min) for parent topic {} on {} broker(s)",
                     ttlMillis, minutes, topicPattern, pending.size());
-            return null;
+            return TimeUnit.MINUTES.toMillis(minutes);
         }));
     }
 
