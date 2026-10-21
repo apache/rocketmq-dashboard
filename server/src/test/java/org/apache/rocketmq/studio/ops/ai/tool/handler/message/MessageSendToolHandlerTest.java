@@ -41,6 +41,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class MessageSendToolHandlerTest {
@@ -106,6 +107,19 @@ class MessageSendToolHandlerTest {
         assertThat(request.getProperties()).containsExactly(Map.entry("biz", "v"));
         assertThat(request.getMessageGroup()).isNull();
         assertThat(request.getDeliveryTimestamp()).isNull();
+    }
+
+    @Test
+    void rejectsBlankTopicBeforeResolvingOrSendingTest() {
+        givenSendSucceeds();
+        MessageSendInput input = new MessageSendInput(
+                "instance-a", "   ", "hello", null, null, null, null, null);
+
+        assertThatThrownBy(() -> handler.execute(input, context("instance-a")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topic is required")
+                .satisfies(exception -> assertThat(((BusinessException) exception).getCode()).isEqualTo(400));
+        verifyNoInteractions(metadata);
     }
 
     @Test

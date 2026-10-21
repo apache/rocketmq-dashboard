@@ -68,9 +68,10 @@ public class MessageSendToolHandler extends MutationToolHandler<MessageSendInput
     public ToolPlan preview(MessageSendInput input, ToolExecutionContext context) {
         // Validates only: the parsed value is rebuilt by execute(), so the return value is dropped here.
         parseProperties(input.properties());
-        validateForTopicType(resolveTopicType(context.instanceId(), input.topicName()), input);
+        String topicName = requireTopicName(input.topicName());
+        validateForTopicType(resolveTopicType(context.instanceId(), topicName), input);
         Map<String, Object> after = new LinkedHashMap<>();
-        after.put("topic", input.topicName());
+        after.put("topic", topicName);
         after.put("tag", input.tag());
         after.put("key", input.key());
         after.put("bodySize", input.body() == null ? 0 : input.body().length());
@@ -81,17 +82,18 @@ public class MessageSendToolHandler extends MutationToolHandler<MessageSendInput
         if (input.deliveryTimestamp() != null) {
             after.put("deliveryTimestamp", input.deliveryTimestamp());
         }
-        return PLAN_DESCRIPTION.builder(input.topicName(), context.instanceId())
+        return PLAN_DESCRIPTION.builder(topicName, context.instanceId())
                 .after(after)
                 .build();
     }
 
     @Override
     public MessageSendOutput execute(MessageSendInput input, ToolExecutionContext context) {
-        validateForTopicType(resolveTopicType(context.instanceId(), input.topicName()), input);
+        String topicName = requireTopicName(input.topicName());
+        validateForTopicType(resolveTopicType(context.instanceId(), topicName), input);
         SendMessageDTO request = SendMessageDTO.builder()
                 .instanceId(context.instanceId())
-                .topic(input.topicName())
+                .topic(topicName)
                 .tag(input.tag())
                 .key(input.key())
                 .body(input.body())
@@ -101,6 +103,13 @@ public class MessageSendToolHandler extends MutationToolHandler<MessageSendInput
                 .build();
         SendMessageVO sent = metadataService.sendMessage(request);
         return MessageSendOutput.from(sent);
+    }
+
+    private static String requireTopicName(String topicName) {
+        if (!StringUtils.hasText(topicName)) {
+            throw new BusinessException(400, "topic is required");
+        }
+        return topicName;
     }
 
     /** The registered topic type is the single source of truth; unknown topics keep plain-send behavior. */
