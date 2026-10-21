@@ -21,7 +21,7 @@ package catalog
 var defaultDocument = Document{
 	Version:              "2.0.0",
 	MinimumClientVersion: "2.0.0",
-	Digest:               "e07c4c4a447545da57697f9e333a717c4bff6b660cefdaf6acfe4c1074791b39",
+	Digest:               "a13729051cfa468f7510f0a8683bb6ace23da4819d9b28f0a3fd7534289303f4",
 	Tools: []Tool{
 		{
 			Name:                 "rmq.acl.list",
@@ -449,6 +449,11 @@ var defaultDocument = Document{
 					{Name: "endTime", Flag: "end-time", Description: "Epoch milliseconds; only applies to the uniqueKey and key paths.", Kind: IntegerField},
 					{Name: "limit", Flag: "limit", Description: "Maximum rows to return; defaults to 20 and values above 100 are capped at 100.", Kind: IntegerField, Minimum: 1, HasMinimum: true},
 					{Name: "includeBody", Flag: "include-body", Description: "Include body, bodyEncoding and bodyTruncated; defaults to false.", Kind: BooleanField},
+				},
+				AnyOf: []RequiredGroup{
+					{Required: []string{"msgId"}},
+					{Required: []string{"uniqueKey"}},
+					{Required: []string{"key"}},
 				},
 			},
 			ViewHint:     "table",

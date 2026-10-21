@@ -108,6 +108,18 @@ class ToolCatalogTest {
     }
 
     @Test
+    void messageQueryRequiresAnIdentifierInTheRuntimeSchemaTest() {
+        ToolCatalog catalog = new ToolCatalog(new DefaultResourceLoader());
+        ToolSchemaValidator validator = new ToolSchemaValidator(catalog,
+                new LegacyJackson2Config().jackson2ObjectMapper(), JsonMapper.builder().build());
+
+        assertThatThrownBy(() -> validator.validateInput(catalog.getDefinition("rmq.message.query"),
+                Map.of("instanceId", "instance-a", "topicName", "TopicA")))
+                .isInstanceOfSatisfying(ToolExecutionException.class,
+                        error -> assertThat(error.getCode()).isEqualTo(400));
+    }
+
+    @Test
     void rejectsCatalogThatDoesNotMatchItsJsonSchema() {
         Resource invalid = utf8Resource("""
                 version: 1.0.0
