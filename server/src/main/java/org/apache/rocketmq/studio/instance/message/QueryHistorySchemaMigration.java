@@ -64,7 +64,12 @@ public class QueryHistorySchemaMigration implements ApplicationRunner {
                     + " " + column.definition());
         } catch (SQLException failure) {
             if (!hasColumn(metadata, catalog, column.table(), column.name())) {
-                throw failure;
+                // A server that refuses the DDL must not stop the application from booting
+                // (same policy as UsernameColumnWideningSchemaMigration): the column stays
+                // missing until the deployment grants the ALTER, and query-history recording
+                // is already fail-soft at the call site.
+                log.warn("Could not add query history column {}.{}: {}",
+                        column.table(), column.name(), failure.getMessage());
             }
         }
     }
@@ -80,7 +85,11 @@ public class QueryHistorySchemaMigration implements ApplicationRunner {
                     + " (" + index.columns() + ")");
         } catch (SQLException failure) {
             if (!hasIndex(metadata, catalog, index.table(), index.name())) {
-                throw failure;
+                // A refused index is a performance degradation, not a boot failure: the
+                // index stays missing until the deployment grants the CREATE (schema.sql
+                // stays idempotent).
+                log.warn("Could not add query history index {}.{}: {}",
+                        index.table(), index.name(), failure.getMessage());
             }
         }
     }
