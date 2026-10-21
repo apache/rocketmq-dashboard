@@ -74,6 +74,18 @@ class ToolCatalogTest {
     }
 
     @Test
+    void clusterListRejectsUnknownStatusThroughTheRuntimeSchemaTest() {
+        ToolCatalog catalog = new ToolCatalog(new DefaultResourceLoader());
+        ToolSchemaValidator validator = new ToolSchemaValidator(catalog,
+                new LegacyJackson2Config().jackson2ObjectMapper(), JsonMapper.builder().build());
+
+        assertThatThrownBy(() -> validator.validateInput(catalog.getDefinition("rmq.cluster.list"),
+                Map.of("status", "degraded")))
+                .isInstanceOfSatisfying(ToolExecutionException.class,
+                        error -> assertThat(error.getCode()).isEqualTo(400));
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void messageTraceAdvertisesOptionalCustomTraceTopicNameTest() {
         Map<String, Object> inputSchema = new ToolCatalog(new DefaultResourceLoader())

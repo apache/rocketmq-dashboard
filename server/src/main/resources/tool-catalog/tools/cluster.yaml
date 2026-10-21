@@ -17,6 +17,11 @@ tools:
         status:
           type: string
           minLength: 1
+          enum:
+            - healthy
+            - warning
+            - error
+            - offline
     outputSchema:
       type: object
       required:
