@@ -36,6 +36,13 @@ public class RmqStudioUser {
 
     private LocalDateTime passwordChangedAt;
 
+    /**
+     * Set when the current password was chosen by someone other than the account owner (an
+     * administrator's reset or the account's initial password): the owner must rotate it at
+     * the next login before the session can proceed.
+     */
+    private Boolean passwordMustChange;
+
     private LocalDateTime gmtCreate;
 
     private LocalDateTime gmtModified;

@@ -21,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.persistence.entity.RmqStudioUser;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -42,6 +43,11 @@ public class StudioUserController {
     @GetMapping("/sessions/overview")
     public Result<StudioUserSessionOverviewVO> sessionOverview() {
         return Result.ok(authService.getSessionOverview());
+    }
+
+    @GetMapping("/login-lockouts")
+    public Result<List<StudioLoginLockoutVO>> listLoginLockouts() {
+        return Result.ok(authService.listLoginLockouts());
     }
 
     @GetMapping("/{userId}/sessions")
@@ -82,6 +88,12 @@ public class StudioUserController {
         return Result.ok(StudioUserVO.from(authService.setUserEnabled(userId, request.getEnabled())));
     }
 
+    @PostMapping("/{userId}/role")
+    public Result<StudioUserVO> updateRole(@PathVariable Long userId,
+                                           @Valid @RequestBody UpdateStudioUserRoleDTO request) {
+        return Result.ok(StudioUserVO.from(authService.setUserAdmin(userId, request.getAdmin())));
+    }
+
     @PostMapping("/{userId}/password")
     public Result<Void> resetPassword(@PathVariable Long userId,
                                       @Valid @RequestBody ResetPasswordDTO request) {
@@ -96,5 +108,11 @@ public class StudioUserController {
                 .userId(userId)
                 .revokedSessionCount(revokedSessionCount)
                 .build());
+    }
+
+    @DeleteMapping("/{userId}")
+    public Result<Void> deleteUser(@PathVariable Long userId) {
+        authService.deleteUser(userId);
+        return Result.ok();
     }
 }

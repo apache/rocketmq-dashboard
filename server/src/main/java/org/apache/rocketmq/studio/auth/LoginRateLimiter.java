@@ -16,8 +16,11 @@ import org.springframework.stereotype.Component;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
@@ -143,6 +146,32 @@ public class LoginRateLimiter {
 
     synchronized int trackedUsernameCount() {
         return attempts.size();
+    }
+
+    /**
+     * Snapshot of the currently locked usernames and when their locks lift, sorted by
+     * remaining lock time. Only exact-tracker locks are listed: overflow buckets are shared
+     * hash buckets from a saturated tracker and carry no meaningful username. The state is
+     * per-instance, like the limiter itself.
+     */
+    public synchronized List<LoginLockout> activeLockouts() {
+        long now = clock.millis();
+        List<LoginLockout> lockouts = new ArrayList<>();
+        for (Map.Entry<String, AttemptState> entry : attempts.entrySet()) {
+            AttemptState state = entry.getValue();
+            if (state.lockedAt(now)) {
+                lockouts.add(new LoginLockout(entry.getKey(),
+                        (state.lockedUntilMillis() - now + 999) / 1000));
+            }
+        }
+        lockouts.sort(Comparator.comparingLong(LoginLockout::remainingSeconds));
+        return lockouts;
+    }
+
+    /**
+     * A currently locked login: the normalized username and the seconds until its lock lifts.
+     */
+    public record LoginLockout(String username, long remainingSeconds) {
     }
 
     synchronized int activeOverflowBucketCount() {

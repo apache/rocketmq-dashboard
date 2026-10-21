@@ -38,6 +38,7 @@ import java.util.Map;
 
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -136,6 +137,22 @@ class StudioUserControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void loginLockoutsReturnTheCurrentlyLockedUsernames() throws Exception {
+        when(authService.listLoginLockouts()).thenReturn(List.of(
+                StudioLoginLockoutVO.builder().username("operator").remainingSeconds(280).build(),
+                StudioLoginLockoutVO.builder().username("contractor").remainingSeconds(240).build()));
+
+        mockMvc.perform(get("/api/studio-users/login-lockouts"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].username").value("operator"))
+                .andExpect(jsonPath("$.data[0].remainingSeconds").value(280))
+                .andExpect(jsonPath("$.data[1].username").value("contractor"))
+                .andExpect(jsonPath("$.data[1].remainingSeconds").value(240));
+
+        verify(authService).listLoginLockouts();
+    }
+
+    @Test
     void listActiveSessionsReturnsSafeSessionDetails() throws Exception {
         when(authService.listActiveSessionsForUser(7L))
                 .thenReturn(List.of(StudioUserSessionDetailVO.builder()
@@ -176,5 +193,42 @@ class StudioUserControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data.revokedSessionCount").value(3));
 
         verify(authService).revokeSessionsForUser(7L);
+    }
+
+    @Test
+    void updateRolePassesTheAdminFlagAndReturnsTheUser() throws Exception {
+        RmqStudioUser promoted = new RmqStudioUser();
+        promoted.setId(7L);
+        promoted.setUsername("operator");
+        promoted.setAdmin(true);
+        promoted.setEnabled(true);
+        when(authService.setUserAdmin(7L, true)).thenReturn(promoted);
+
+        mockMvc.perform(post("/api/studio-users/7/role")
+                        .contentType("application/json")
+                        .content("{\"admin\": true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(7))
+                .andExpect(jsonPath("$.data.admin").value(true));
+
+        verify(authService).setUserAdmin(7L, true);
+    }
+
+    @Test
+    void updateRoleRejectsAMissingAdminFlag() throws Exception {
+        mockMvc.perform(post("/api/studio-users/7/role")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+
+        verify(authService, org.mockito.Mockito.never()).setUserAdmin(7L, true);
+    }
+
+    @Test
+    void deleteRemovesTheUserAccount() throws Exception {
+        mockMvc.perform(delete("/api/studio-users/7"))
+                .andExpect(status().isOk());
+
+        verify(authService).deleteUser(7L);
     }
 }
