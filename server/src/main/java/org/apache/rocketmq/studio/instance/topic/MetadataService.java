@@ -303,7 +303,22 @@ public class MetadataService {
         request.setInstanceId(requireWriteInstance(request.getInstanceId(),
                 ownershipGuard.topicResource(request.getTopic()), true));
         InstanceProvider provider = resolve(request.getInstanceId());
-        return sourceTopic == null ? provider.sendMessage(request) : provider.redeliverMessage(request, sourceTopic);
+        // The Apache admin client records its own SEND_MESSAGE row (and executeWithAudit skips that
+        // vendor), while no cloud provider audits anything: this wrapper supplies the audit row for
+        // every cloud send, including the redelivery path that funnels through this method. The
+        // operation and resource type are the same literals the Apache client uses.
+        return executeWithAudit(provider, "SEND_MESSAGE", "MESSAGE", request.getTopic(),
+                request.getInstanceId(), sendMessageDetail(request),
+                () -> sourceTopic == null
+                        ? provider.sendMessage(request)
+                        : provider.redeliverMessage(request, sourceTopic));
+    }
+
+    private static String sendMessageDetail(SendMessageDTO request) {
+        // Match the Apache admin client's null handling; msgId exists only after the send.
+        String tag = request.getTag() == null ? "" : request.getTag();
+        String key = request.getKey() == null ? "" : request.getKey();
+        return "tag=" + tag + ", key=" + key;
     }
 
     /**
