@@ -237,6 +237,9 @@ export const diagnosticCacheKey = (instanceId: string | undefined, groupName: st
    ═══════════════════════════════════════════ */
 type ConsumerPageContentProps = ReturnType<typeof useInstanceFilter>;
 
+const isFormValidationFailure = (error: unknown): boolean =>
+  error !== null && typeof error === 'object' && 'errorFields' in error;
+
 const ConsumerPageContent = ({
   selectedInstanceId,
   selectedInstance,
@@ -590,7 +593,15 @@ const ConsumerPageContent = ({
   const saveSettings = async () => {
     if (!settingsGroup || !selectedInstanceId) return;
     const requestId = settingsRequestIdRef.current;
-    const values = await settingsForm.validateFields();
+    let values;
+    try {
+      values = await settingsForm.validateFields();
+    } catch (error) {
+      if (!isFormValidationFailure(error) && requestId === settingsRequestIdRef.current) {
+        message.error('保存消费组配置失败，请稍后重试');
+      }
+      return;
+    }
     if (requestId !== settingsRequestIdRef.current) return;
     const original = originalSettingsRef.current;
     const risks: string[] = [];
@@ -2450,7 +2461,11 @@ const ConsumerPageContent = ({
                 },
               });
             })
-            .catch(() => {});
+            .catch((error: unknown) => {
+              if (!isFormValidationFailure(error)) {
+                message.error(t('consumer.createFailed'));
+              }
+            });
         }}
         confirmLoading={submitting}
         okText="创建"
