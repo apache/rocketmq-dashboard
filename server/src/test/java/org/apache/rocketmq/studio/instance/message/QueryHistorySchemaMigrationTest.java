@@ -79,4 +79,33 @@ class QueryHistorySchemaMigrationTest {
             assertThat(tables.next()).isFalse();
         }
     }
+    @Test
+    void refusedDdlDegradesWithWarningInsteadOfFailingBoot() throws Exception {
+        // DML-only 账号拒绝 CREATE INDEX（索引引用的列不存在）时，迁移必须降级为告警，
+        // 与 UsernameColumnWideningSchemaMigration 的 fail-open 政策一致：拒绝加索引不能
+        // 让整个 dashboard 起不来（历史记录本身已是 fail-soft）。
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:trace-history-schema-refused;MODE=MySQL;"
+                + "DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE");
+        dataSource.setUser("sa");
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            // 两张表都缺索引引用的列：ALTER ADD COLUMN 成功，CREATE INDEX 必然被拒。
+            statement.execute("CREATE TABLE rmq_instance_message (id BIGINT PRIMARY KEY)");
+            statement.execute("CREATE TABLE rmq_instance_trace (id BIGINT PRIMARY KEY)");
+        }
+
+        QueryHistorySchemaMigration migration = new QueryHistorySchemaMigration(dataSource);
+
+        // 修复前：CREATE INDEX 被拒且索引确实不存在 -> rethrow -> ApplicationRunner 异常 -> 启动中止。
+        migration.run(new DefaultApplicationArguments());
+
+        // 列仍然加上（ALTER 成功），索引缺失仅降级。
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            try (ResultSet columns = statement.executeQuery("SELECT COUNT(*) FROM information_schema.columns "
+                    + "WHERE table_name = 'rmq_instance_message' AND column_name = 'result_snapshot'")) {
+                columns.next();
+                assertThat(columns.getInt(1)).isEqualTo(1);
+            }
+        }
+    }
 }
