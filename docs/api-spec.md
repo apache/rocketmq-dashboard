@@ -1192,8 +1192,8 @@ GET /api/liteTopic/session/:sessionId
 | `status` | `string` | 会话状态 |
 | `totalMessages` | `number` | 消息总数 |
 | `consumedMessages` | `number` | 已消费消息数 |
+| `consumedScanTruncated` | `boolean` | 已消费消息数是否为下限：`true` 时消费位点扫描在 lite topic 上限处截断，`consumedMessages` 只是下界 |
 | `pendingMessages` | `number` | 待消费消息数 |
-| `popProgress` | `number` | 消费进度 |
 | `liteTopicCreationCount` | `number` | 会话内创建的 Topic 数 |
 | `liteTopics` | `object[]` | 会话内 Topic：`topicName` / `status` / `ttlRemaining` |
 
