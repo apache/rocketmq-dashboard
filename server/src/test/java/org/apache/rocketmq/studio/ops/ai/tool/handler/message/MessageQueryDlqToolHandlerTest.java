@@ -32,6 +32,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -91,8 +92,12 @@ class MessageQueryDlqToolHandlerTest {
                 .queueId(0)
                 .offset(10)
                 .storeTime(1700000000000L)
+                .reconsumeTimes(7)
                 .keys("key1")
                 .body("hello")
+                .bodyBase64("aGVsbG8=")
+                .properties(Map.of("traceId", "trace-1"))
+                .propertiesTruncated(true)
                 .build();
         when(dlqService.listMessages(eq("instance-a"), eq("group-1"),
                 eq(1000L), eq(2000L), eq(1), eq(20)))
@@ -113,8 +118,12 @@ class MessageQueryDlqToolHandlerTest {
         assertThat(item.queueId()).isEqualTo(0);
         assertThat(item.offset()).isEqualTo(10L);
         assertThat(item.storeTime()).isEqualTo(1700000000000L);
+        assertThat(item.reconsumeTimes()).isEqualTo(7);
         assertThat(item.keys()).isEqualTo("key1");
         assertThat(item.body()).isEqualTo("hello");
+        assertThat(item.bodyBase64()).isEqualTo("aGVsbG8=");
+        assertThat(item.properties()).containsEntry("traceId", "trace-1");
+        assertThat(item.propertiesTruncated()).isTrue();
         verify(dlqService).listMessages(eq("instance-a"), eq("group-1"),
                 eq(1000L), eq(2000L), eq(1), eq(20));
     }

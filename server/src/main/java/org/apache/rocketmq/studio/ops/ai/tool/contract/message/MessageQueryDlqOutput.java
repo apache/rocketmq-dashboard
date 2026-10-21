@@ -21,6 +21,7 @@ import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQMessageVO;
 
 import java.util.List;
+import java.util.Map;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record MessageQueryDlqOutput(
@@ -80,8 +81,12 @@ public record MessageQueryDlqOutput(
             int queueId,
             long offset,
             long storeTime,
+            int reconsumeTimes,
             String keys,
-            String body) {
+            String body,
+            String bodyBase64,
+            Map<String, String> properties,
+            boolean propertiesTruncated) {
 
         public static DlqMessageItem from(DLQMessageVO message) {
             return new DlqMessageItem(
@@ -90,8 +95,12 @@ public record MessageQueryDlqOutput(
                     message.getQueueId(),
                     message.getOffset(),
                     message.getStoreTime(),
+                    message.getReconsumeTimes(),
                     message.getKeys(),
-                    message.getBody());
+                    message.getBody(),
+                    message.getBodyBase64(),
+                    message.getProperties(),
+                    message.isPropertiesTruncated());
         }
     }
 }

@@ -348,10 +348,20 @@ tools:
                 type: integer
               storeTime:
                 type: integer
+              reconsumeTimes:
+                type: integer
               keys:
                 type: string
               body:
                 type: string
+              bodyBase64:
+                type: string
+              properties:
+                type: object
+                additionalProperties:
+                  type: string
+              propertiesTruncated:
+                type: boolean
     viewHint: table
     deprecated: false
   - name: rmq.message.trace
