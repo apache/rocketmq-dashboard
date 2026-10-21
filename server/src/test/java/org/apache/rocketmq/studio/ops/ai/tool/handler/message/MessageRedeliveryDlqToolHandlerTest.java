@@ -128,7 +128,7 @@ class MessageRedeliveryDlqToolHandlerTest {
 
     @ParameterizedTest
     @NullAndEmptySource
-    @ValueSource(strings = {"   ", "TopicA-retry"})
+    @ValueSource(strings = {"   ", "TopicA-retry", " TopicA-retry "})
     void previewPreservesScopeAndRedeliveryEffectTest(String targetTopic) {
         Map<String, Object> input = new LinkedHashMap<>(Map.of(
                 "groupName", "group-1", "time", Map.of("startTime", 1000L, "endTime", 2000L), "dry_run", true));
@@ -142,13 +142,15 @@ class MessageRedeliveryDlqToolHandlerTest {
                 "redeliver DLQ messages for consumer group 'group-1' in instance 'instance-a'.");
         assertThat(plan.impact()).containsExactly(
                 "Republishes matching dead-letter messages for consumer group 'group-1' without deleting the originals.");
+        String expectedTargetTopic = targetTopic == null || targetTopic.isBlank()
+                ? "ORIGINAL_TOPIC" : targetTopic.trim();
         assertThat(plan.before()).containsExactlyInAnyOrderEntriesOf(Map.of(
                 "groupName", "group-1",
-                "targetTopic", targetTopic == null || targetTopic.isBlank() ? "ORIGINAL_TOPIC" : targetTopic,
+                "targetTopic", expectedTargetTopic,
                 "startTime", 1000L, "endTime", 2000L));
         assertThat(plan.after()).containsExactlyInAnyOrderEntriesOf(Map.of(
                 "operation", "REDELIVERY",
-                "targetTopic", targetTopic == null || targetTopic.isBlank() ? "ORIGINAL_TOPIC" : targetTopic));
+                "targetTopic", expectedTargetTopic));
         verifyNoMoreInteractions(dlqService);
     }
 }
