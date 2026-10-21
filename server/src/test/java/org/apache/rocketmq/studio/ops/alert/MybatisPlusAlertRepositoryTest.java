@@ -218,12 +218,15 @@ class MybatisPlusAlertRepositoryTest {
     }
 
     @Test
-    void findAlertsShouldNormalizeStoredLevelValues() {
+    void findAlertsPageShouldNormalizeStoredLevelValues() {
         RmqSystemAlert entity = new RmqSystemAlert();
         entity.setLevel(" WARNING ");
-        when(alertMapper.selectList(any())).thenReturn(List.of(entity));
+        Page<RmqSystemAlert> result = new Page<>(1, 20);
+        result.setRecords(List.of(entity));
+        when(alertMapper.selectPage(any(Page.class), any())).thenReturn(result);
 
-        assertThat(repository.findAlerts(null)).singleElement()
+        assertThat(repository.findAlertsPage(new SystemAlertQuery(null, null, null, null,
+                null, null, null, null, 1, 20)).getItems()).singleElement()
                 .satisfies(alert -> assertThat(alert.getLevel()).isEqualTo(
                         org.apache.rocketmq.studio.common.domain.enums.AlertLevel.warning));
     }
@@ -316,18 +319,20 @@ class MybatisPlusAlertRepositoryTest {
     }
 
     @Test
-    void findAlertsShouldNormalizeLevelIndependentlyOfDefaultLocaleTest() {
-        when(alertMapper.selectList(any())).thenReturn(List.of());
+    void findAlertsPageShouldNormalizeLevelIndependentlyOfDefaultLocaleTest() {
+        when(alertMapper.selectPage(any(Page.class), any())).thenReturn(new Page<RmqSystemAlert>(1, 20));
         Locale originalLocale = Locale.getDefault();
 
         try {
             Locale.setDefault(Locale.forLanguageTag("tr-TR"));
-            repository.findAlerts("INFO");
+            repository.findAlertsPage(new SystemAlertQuery("INFO", null, null, null,
+                    null, null, null, null, 1, 20));
         } finally {
             Locale.setDefault(originalLocale);
         }
 
-        verify(alertMapper).selectList(argThat(MybatisPlusAlertRepositoryTest::hasInfoLevelParameter));
+        verify(alertMapper).selectPage(any(Page.class),
+                argThat(MybatisPlusAlertRepositoryTest::hasInfoLevelParameter));
     }
 
     @Test

@@ -56,6 +56,9 @@ public class AlertService {
             "consumer.lag.total", SemanticMetric.CONSUMER_LAG_MESSAGES.getKey());
     private static final Pattern DURATION_PATTERN = Pattern.compile(
             "^" + AlertRuleRequestDTO.PROMETHEUS_DURATION_REGEXP + "$");
+    // The same ceiling validateAlertPagination enforces for the page endpoints; the legacy
+    // listing reuses it as its result cap.
+    private static final int LIST_ALERTS_MAX = 100;
 
     private final AlertRepository alertRepository;
     private final AlertStateRepository alertStateRepository;
@@ -502,11 +505,6 @@ public class AlertService {
     }
 
 
-    public List<SystemAlertVO> listAlerts(String level) {
-        log.info("Listing system alerts, level={}", level);
-        return alertRepository.findAlerts(level);
-    }
-
     public PageResult<SystemAlertVO> listAlerts(String level, int page, int pageSize) {
         validateAlertPagination(page, pageSize);
         String normalizedLevel = StringUtils.hasText(level) ? level.trim() : level;
@@ -515,12 +513,17 @@ public class AlertService {
         return alertRepository.findAlerts(normalizedLevel, page, pageSize);
     }
 
+    /**
+     * The listing behind {@code GET /api/system-alerts}. It used to load every matching alert
+     * into memory and filter domain/instanceId/transition in Java, but {@code rmq_system_alert}
+     * has no retention sweep, so the table only grows and the unbounded read grew with it.
+     * The paginated query already runs every filter in SQL, so the listing reuses it with the
+     * first page at the pagination ceiling: the response shape stays a plain list, bounded to
+     * the newest {@value #LIST_ALERTS_MAX} matching alerts, and the page endpoint remains the
+     * complete view.
+     */
     public List<SystemAlertVO> listAlerts(String level, AlertDomain domain, String instanceId, String transition) {
-        return listAlerts(level).stream()
-                .filter(alert -> domain == null || domain == alert.getDomain())
-                .filter(alert -> !hasText(instanceId) || instanceId.trim().equals(alert.getInstanceId()))
-                .filter(alert -> !hasText(transition) || transition.trim().equalsIgnoreCase(alert.getTransition()))
-                .toList();
+        return listAlerts(level, domain, instanceId, transition, 1, LIST_ALERTS_MAX).getItems();
     }
 
     public PageResult<SystemAlertVO> listAlerts(String level, AlertDomain domain, String instanceId,
