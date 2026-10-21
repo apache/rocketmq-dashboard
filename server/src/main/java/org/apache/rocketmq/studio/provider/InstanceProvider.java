@@ -127,6 +127,28 @@ public interface InstanceProvider {
         return listConsumerGroupsPage(instanceId, search, page, pageSize);
     }
 
+    /**
+     * Instance-scoped consumer-group pagination with an optional subscription-mode filter
+     * ("Push" / "Pop"; blank or "ALL" means no restriction). Providers without a mode-aware
+     * store filter their full inventory before paginating, so the page and its total describe
+     * the filtered result set instead of one filtered page of an unfiltered count.
+     */
+    default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, String subscriptionMode, int page, int pageSize) {
+        if (subscriptionMode == null || subscriptionMode.isBlank() || "ALL".equals(subscriptionMode)) {
+            return listConsumerGroupsPage(instanceId, clusterId, search, page, pageSize);
+        }
+        List<ConsumerGroupVO> groups = listConsumerGroups(instanceId, search).stream()
+                .filter(group -> group.getSubscriptionMode() != null
+                        && subscriptionMode.equals(group.getSubscriptionMode().name()))
+                .toList();
+        int total = groups.size();
+        long offset = Pagination.pageOffset(page, pageSize);
+        int from = (int) Math.min(offset, total);
+        int to = from + (int) Math.min(pageSize, total - from);
+        return PageResult.of(groups.subList(from, to), total, page, pageSize);
+    }
+
     ConsumerGroupVO createConsumerGroup(String instanceId, ConsumerGroupVO group);
 
     /** Imports an existing consumer group; defaults to creation, providers may override to compare configurations. */
