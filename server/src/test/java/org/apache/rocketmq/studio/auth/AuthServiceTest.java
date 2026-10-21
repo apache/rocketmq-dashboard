@@ -200,6 +200,52 @@ class AuthServiceTest {
     }
 
     @Test
+    void idleExpiredTokensAreRejectedBeforeAbsoluteExpiryTest() {
+        Clock clock = mock(Clock.class);
+        when(clock.millis()).thenReturn(0L);
+        authService = new AuthService(authProperties, settingsRepository, clock);
+        when(settingsRepository.loadGeneralSettings()).thenReturn(sessionSettings(120));
+        AuthProperties.User user = new AuthProperties.User();
+        user.setUsername("testuser");
+        user.setPassword("testpass");
+        authProperties.setUsers(List.of(user));
+        LoginDTO request = new LoginDTO();
+        request.setUsername("testuser");
+        request.setPassword("testpass");
+        LoginVO response = authService.login(request);
+
+        // 31 minutes unused: past the 30-minute default idle window while the two-hour
+        // absolute expiry is still far away, so only the idle deadline can reject it.
+        when(clock.millis()).thenReturn(31 * 60_000L);
+        assertThat(authService.isAuthenticated("Bearer " + response.getToken())).isFalse();
+
+        // The rejected token is dropped, it does not come back on a later presentation.
+        assertThat(authService.isAuthenticated("Bearer " + response.getToken())).isFalse();
+    }
+
+    @Test
+    void zeroIdleTimeoutKeepsUnusedTokensUntilAbsoluteExpiryTest() {
+        Clock clock = mock(Clock.class);
+        when(clock.millis()).thenReturn(0L);
+        authService = new AuthService(authProperties, settingsRepository, clock);
+        when(settingsRepository.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .sessionTimeout(120)
+                .sessionIdleTimeout(0)
+                .build());
+        AuthProperties.User user = new AuthProperties.User();
+        user.setUsername("testuser");
+        user.setPassword("testpass");
+        authProperties.setUsers(List.of(user));
+        LoginDTO request = new LoginDTO();
+        request.setUsername("testuser");
+        request.setPassword("testpass");
+        LoginVO response = authService.login(request);
+
+        when(clock.millis()).thenReturn(60 * 60_000L);
+        assertThat(authService.isAuthenticated("Bearer " + response.getToken())).isTrue();
+    }
+
+    @Test
     void loginShouldUsePersistedSessionTimeout() {
         AuthProperties.User user = new AuthProperties.User();
         user.setUsername("testuser");

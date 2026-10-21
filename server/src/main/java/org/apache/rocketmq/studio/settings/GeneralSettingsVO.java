@@ -34,6 +34,11 @@ public class GeneralSettingsVO {
     private boolean desktopNotify;
     private boolean notifySound;
     private int sessionTimeout;
+    /**
+     * Minutes a session token may stay unused before it is treated as expired; {@code null}
+     * keeps the server default and {@code 0} disables the idle deadline (absolute expiry only).
+     */
+    private Integer sessionIdleTimeout;
     private boolean requireLogin;
     private String llmProvider;
     private String llmEngine;

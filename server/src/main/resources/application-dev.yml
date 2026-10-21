@@ -18,6 +18,13 @@ studio:
   auth:
     # Browsers do not send Secure cookies over local HTTP.
     session-cookie-secure: false
+    # The dev profile backs the integration tests, where a Spring context can stay cached for
+    # the whole suite. The idle-revocation pass inside the scheduled purge issues a session
+    # update, and a purge firing mid-test would pollute the strict invocation-count verifications
+    # in the auth integration tests. The purge itself is covered by direct method calls, so the
+    # schedule only needs to stay out of the way here; a local dev instance still starts a day
+    # behind at worst and the in-memory database resets on restart anyway.
+    session-cleanup-interval: PT24H
 
 logging:
   level:
