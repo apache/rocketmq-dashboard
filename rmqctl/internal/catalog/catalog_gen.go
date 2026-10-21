@@ -224,7 +224,7 @@ var defaultDocument = Document{
 			RequiredCapabilities: []string{"CLUSTER_TOPOLOGY"},
 			InputSchema: InputSchema{
 				Fields: []Field{
-					{Name: "status", Flag: "status", Kind: StringField, MinLength: 1},
+					{Name: "status", Flag: "status", Kind: StringField, MinLength: 1, Enum: []string{"healthy", "warning", "error", "offline"}},
 				},
 			},
 			ViewHint:     "table",
