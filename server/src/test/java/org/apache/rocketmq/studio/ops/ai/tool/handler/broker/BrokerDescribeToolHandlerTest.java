@@ -101,6 +101,21 @@ class BrokerDescribeToolHandlerTest {
         verifyNoInteractions(clusterProvider);
     }
 
+    @Test
+    void trimsBrokerNameBeforeResolvingRuntimeDetailsTest() {
+        stubCluster("broker-a");
+        BrokerVO broker = BrokerVO.builder()
+                .name("broker-a")
+                .addr("10.0.0.1:10911")
+                .build();
+        when(clusterProvider.discoverBrokers("instance-a", "broker-a")).thenReturn(List.of(broker));
+
+        BrokerDescribeOutput output = handler.execute(
+                new BrokerDescribeInput("rmq-a", " broker-a "), context("instance-a"));
+
+        assertThat(output.brokerName()).isEqualTo("broker-a");
+    }
+
     private void stubCluster(String brokerName) {
         when(clusterResolver.require("rmq-a")).thenReturn(new ManagedCluster(
                 "rmq-a", "instance-a", List.of(),
