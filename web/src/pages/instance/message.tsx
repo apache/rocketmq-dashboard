@@ -137,9 +137,25 @@ const formatTimeMs = (value: number | string): string => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
 };
 
-const formatBody = (body: string): string => {
+const NUMBER_TOKEN_RE = /-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
+
+const numberTokens = (text: string): string[] => text.match(NUMBER_TOKEN_RE) ?? [];
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const formatBody = (body: string): string => {
   try {
-    return JSON.stringify(JSON.parse(body), null, 2);
+    const formatted = JSON.stringify(JSON.parse(body), null, 2);
+    // JSON.parse/stringify round-trips every number through an IEEE-754 double,
+    // which silently rewrites tokens the payload never contained (int64 values
+    // beyond Number.MAX_SAFE_INTEGER, high-precision decimals, exponents).
+    // Keep the pretty-printed form only when every numeric token survives the
+    // round trip byte-for-byte; otherwise show the body verbatim.
+    const before = numberTokens(body);
+    const after = numberTokens(formatted);
+    if (before.length !== after.length || !before.every((token, i) => token === after[i])) {
+      return body;
+    }
+    return formatted;
   } catch {
     return body;
   }
