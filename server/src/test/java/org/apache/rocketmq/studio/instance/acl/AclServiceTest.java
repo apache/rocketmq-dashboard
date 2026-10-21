@@ -1022,7 +1022,9 @@ class AclServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"999.999.999.999", "10.0.0.0/8", "192.168.100-1.*", "192.168.1.{}"})
+    @ValueSource(strings = {"999.999.999.999", "10.0.0.0/8", "192.168.100-1.*", "192.168.1.{}",
+        "192.168.1.0-0", "192.168.0-0.*", "192.168.1.000-000", "192.168.000-000.*",
+        "2001:db8::0-0", "2001:db8::0-0:*", "2001:db8::0000-0000", "2001:db8::0000-0000:*"})
     void createAndUpdatePlainAccessConfigShouldRejectInvalidWhiteRemoteAddress(String whiteRemoteAddress) {
         PlainAccessConfigVO config = PlainAccessConfigVO.builder()
                 .accessKey("ak-1")
@@ -1039,7 +1041,9 @@ class AclServiceTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"*", "192.168.*.*", "192.168.1-100.*", "192.168.1.{1,2,3}",
-        "192.168.1.10,192.168.1.11", "2001:db8::1"})
+        "192.168.1.10,192.168.1.11", "2001:db8::1",
+        "192.168.0.*", "192.168.0-1.*", "192.168.1-1.*", "192.168.1.0",
+        "2001:db8::0:*", "2001:db8::0-1:*", "2001:db8::1-1:*", "2001:db8::0"})
     void createAndUpdatePlainAccessConfigShouldAcceptValidWhiteRemoteAddress(String whiteRemoteAddress) {
         PlainAccessConfigVO config = PlainAccessConfigVO.builder()
                 .accessKey("ak-1")
