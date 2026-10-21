@@ -101,6 +101,9 @@ public class QueryHistoryService {
 
     /**
      * Builds a JSON snapshot of query results, excluding message body and properties to save storage.
+     *
+     * @throws IllegalStateException when the results cannot be serialized; a null snapshot would read
+     *         back as "nothing stored" while the row still advertises its result count
      */
     public String buildResultSnapshot(List<MessageRecordVO> results) {
         if (results == null || results.isEmpty()) {
@@ -124,8 +127,7 @@ public class QueryHistoryService {
             }).toList();
             return objectMapper.writeValueAsString(snapshots);
         } catch (JsonProcessingException e) {
-            log.warn("Failed to serialize result snapshot: {}", e.getMessage());
-            return null;
+            throw new IllegalStateException("Failed to serialize the query result snapshot", e);
         }
     }
 
@@ -151,8 +153,11 @@ public class QueryHistoryService {
             return objectMapper.readValue(snapshot,
                     objectMapper.getTypeFactory().constructCollectionType(List.class, MessageRecordVO.class));
         } catch (JsonProcessingException e) {
+            // A snapshot that cannot be parsed is a persistence-level failure: the stored result
+            // rows are lost. Reporting an empty list would present that loss as a query that
+            // legitimately matched nothing.
             log.warn("Failed to deserialize result snapshot for id={}: {}", id, e.getMessage());
-            return List.of();
+            throw new BusinessException(500, "Stored query result snapshot is unreadable");
         }
     }
 
