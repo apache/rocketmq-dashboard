@@ -146,6 +146,29 @@ func TestConfigSetContextRejectsServerCredentialsBeforeSaving(t *testing.T) {
 	}
 }
 
+func TestConfigSetContextRejectsRelativeServerURLBeforeSaving(t *testing.T) {
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+	app.Store.Getenv = emptyEnv
+	configPath := newTestConfigPath(t)
+
+	exitCode := app.Execute([]string{
+		"--config", configPath, "config", "set-context", "prod",
+		"--server", "studio.example.com",
+		"--access-key-env", "RMQ_AK", "--secret-key-env", "RMQ_SK",
+	})
+
+	if exitCode == 0 {
+		t.Fatal("set-context accepted a server value without a URL scheme")
+	}
+	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "INVALID_ARGUMENT") {
+		t.Fatalf("stdout=%q stderr=%q, want an argument error without success output", stdout, stderr)
+	}
+	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
+		t.Fatalf("rejected creation wrote config: %v", err)
+	}
+}
+
 func TestConfigSetContextCanRemoveStoredServerCredentials(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	app := NewApp(stdout, stderr)

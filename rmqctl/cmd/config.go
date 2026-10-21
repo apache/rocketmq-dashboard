@@ -40,7 +40,7 @@ func newConfigSetContextCommand(runtime commandRuntime) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if cmd.Flags().Changed("server") {
 				parsed, err := url.Parse(server)
-				if err != nil {
+				if err != nil || parsed.Scheme == "" || parsed.Hostname() == "" {
 					return invalidArgument("--server must be a valid Studio Server URL")
 				}
 				if parsed.User != nil {
