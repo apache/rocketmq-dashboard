@@ -213,18 +213,20 @@ describe('ACL page', () => {
       },
     ]);
     vi.mocked(aclService.listAclRules).mockResolvedValue({
-      items: [{
-        id: 21,
-        principal: 'directory-only-user',
-        resource: 'orders',
-        resourceType: 'Topic',
-        resourcePattern: 'LITERAL',
-        actions: ['PUB'],
-        decision: 'ALLOW',
-        scope: 'cluster',
-        aclVersion: 2,
-        gmtCreate: '2026-07-23T00:00:00Z',
-      }],
+      items: [
+        {
+          id: 21,
+          principal: 'directory-only-user',
+          resource: 'orders',
+          resourceType: 'Topic',
+          resourcePattern: 'LITERAL',
+          actions: ['PUB'],
+          decision: 'ALLOW',
+          scope: 'cluster',
+          aclVersion: 2,
+          gmtCreate: '2026-07-23T00:00:00Z',
+        },
+      ],
       total: 1,
       page: 1,
       size: 20,
@@ -1100,14 +1102,16 @@ describe('ACL page', () => {
         aclEnabled: true,
         aclVersion: 'ACL 2.0',
         globalWhiteRemoteAddresses: [],
-        accounts: [{
-          accessKey: 'cluster-a-account',
-          admin: false,
-          defaultTopicPerm: 'DENY',
-          defaultGroupPerm: 'DENY',
-          topicPerms: [],
-          groupPerms: [],
-        }],
+        accounts: [
+          {
+            accessKey: 'cluster-a-account',
+            admin: false,
+            defaultTopicPerm: 'DENY',
+            defaultGroupPerm: 'DENY',
+            topicPerms: [],
+            groupPerms: [],
+          },
+        ],
         accountCount: 1,
       })
       .mockRejectedValueOnce(new Error('cluster-b unavailable'));
@@ -1118,7 +1122,7 @@ describe('ACL page', () => {
     const examineButton = screen.getByRole('button', { name: /检\s*查\s*配\s*置/ });
     await user.type(clusterInput, 'cluster-a');
     await user.click(examineButton);
-    expect(await screen.findByText('cluster-a-account')).toBeInTheDocument();
+    expect(await screen.findAllByText('cluster-a-account')).not.toHaveLength(0);
     expect(screen.getByText('集群: cluster-a')).toBeInTheDocument();
 
     await user.clear(clusterInput);
@@ -1127,7 +1131,7 @@ describe('ACL page', () => {
     await waitFor(() => expect(aclService.examineBrokerClusterAclConfig).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(examineButton).not.toHaveClass('ant-btn-loading'));
 
-    expect(screen.queryByText('cluster-a-account')).not.toBeInTheDocument();
+    expect(screen.queryAllByText('cluster-a-account')).toHaveLength(0);
     expect(screen.queryByText('集群: cluster-a')).not.toBeInTheDocument();
   });
 
