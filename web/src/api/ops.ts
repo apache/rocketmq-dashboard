@@ -337,6 +337,15 @@ export async function acknowledgeAlert(id: number) {
   await client.post('/system-alerts/acknowledge', { id });
 }
 
+export async function acknowledgeAllAlerts(params: Omit<SystemAlertQuery, 'page' | 'pageSize'>) {
+  const res = await client.post<{ data: { acknowledged: number } }>(
+    '/system-alerts/acknowledge-all',
+    null,
+    { params },
+  );
+  return res.data.data;
+}
+
 export async function clearAcknowledgedAlerts() {
   const res = await client.post<{ data: { cleared: number } }>('/system-alerts/clear-acknowledged');
   return res.data.data;

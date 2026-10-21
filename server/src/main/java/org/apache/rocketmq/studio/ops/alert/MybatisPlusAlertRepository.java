@@ -259,7 +259,23 @@ public class MybatisPlusAlertRepository implements AlertRepository {
 
     @Override
     public PageResult<SystemAlertVO> findAlertsPage(SystemAlertQuery query) {
-        QueryWrapper<RmqSystemAlert> conditions = new QueryWrapper<RmqSystemAlert>()
+        QueryWrapper<RmqSystemAlert> conditions = alertConditions(query);
+        Page<RmqSystemAlert> result = alertMapper.selectPage(new Page<>(query.page(), query.pageSize()), conditions);
+        return PageResult.of(result.getRecords().stream().map(MybatisPlusAlertRepository::toAlertVO).toList(),
+                result.getTotal(), query.page(), query.pageSize());
+    }
+
+    @Override
+    public List<SystemAlertVO> findUnacknowledgedAlerts(SystemAlertQuery query, int limit) {
+        // The limit is a server-side int, so appending it as SQL is injection-safe; it bounds
+        // the bulk acknowledgement instead of loading an unbounded result set.
+        List<RmqSystemAlert> rows = alertMapper.selectList(
+                alertConditions(query).eq("acknowledged", false).last("LIMIT " + limit));
+        return rows.stream().map(MybatisPlusAlertRepository::toAlertVO).toList();
+    }
+
+    private QueryWrapper<RmqSystemAlert> alertConditions(SystemAlertQuery query) {
+        return new QueryWrapper<RmqSystemAlert>()
                 .eq(StringUtils.hasText(query.level()), "level", normalizeLevel(query.level()))
                 .eq(query.domain() != null, "domain", query.domain() == null ? null : query.domain().name())
                 .eq(StringUtils.hasText(query.instanceId()), "instance_id", trimToNull(query.instanceId()))
@@ -270,9 +286,6 @@ public class MybatisPlusAlertRepository implements AlertRepository {
                 .ge(query.from() != null, "time", query.from())
                 .le(query.to() != null, "time", query.to())
                 .orderByDesc("time", "id");
-        Page<RmqSystemAlert> result = alertMapper.selectPage(new Page<>(query.page(), query.pageSize()), conditions);
-        return PageResult.of(result.getRecords().stream().map(MybatisPlusAlertRepository::toAlertVO).toList(),
-                result.getTotal(), query.page(), query.pageSize());
     }
 
     @Override
