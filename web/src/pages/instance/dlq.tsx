@@ -530,7 +530,6 @@ const DLQPage = () => {
       key: 'groupName',
       minWidth: 200,
       ellipsis: true,
-      sorter: (a, b) => a.groupName.localeCompare(b.groupName),
       render: (name: string) => (
         <Tooltip title={name}>
           <Text strong style={{ fontSize: 14 }}>
@@ -558,7 +557,6 @@ const DLQPage = () => {
       key: 'messageCount',
       width: 100,
       align: 'right',
-      sorter: (a, b) => a.messageCount - b.messageCount,
       render: (count: number, record: DLQGroup) => (
         <Text
           style={{
@@ -582,8 +580,7 @@ const DLQPage = () => {
       title: '最近入队时间',
       dataIndex: 'lastEnqueueTime',
       key: 'lastEnqueueTime',
-      width: 156,
-      sorter: (a, b) => (a.lastEnqueueTime || '').localeCompare(b.lastEnqueueTime || ''),
+      width: 180,
       render: (time?: string | null) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
           {formatUtcDateTime(time)}
