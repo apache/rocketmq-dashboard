@@ -33,8 +33,10 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.TimeZone;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -80,6 +82,29 @@ class TopicControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data[0].name").value("test-topic"))
                 .andExpect(jsonPath("$.data[0].writeQueues").value(8));
+    }
+
+    @Test
+    void listTopicsShouldSerializeTimestampsAsUtcWallTimeTest() throws Exception {
+        // rmq_topic timestamps are stored as zone-less server-local wall clocks and the page
+        // renders them in the viewer's zone, so the JSON wire carries UTC — the conversion
+        // lives on the controller exits because findTopic and the write paths consume the
+        // service methods internally and must keep the server-local base.
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            TopicVO topic = new TopicVO();
+            topic.setName("tz-topic");
+            topic.setGmtCreate(LocalDateTime.of(2026, 8, 1, 10, 0, 0));
+
+            when(metadataService.listTopics(isNull(), isNull(), isNull(), isNull())).thenReturn(List.of(topic));
+
+            mockMvc.perform(get("/api/topics"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data[0].gmtCreate").value("2026-08-01T02:00:00"));
+        } finally {
+            TimeZone.setDefault(original);
+        }
     }
 
     @Test

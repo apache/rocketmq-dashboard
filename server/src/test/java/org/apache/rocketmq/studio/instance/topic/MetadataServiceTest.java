@@ -70,6 +70,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -662,6 +663,20 @@ class MetadataServiceTest {
         assertThat(csv).doesNotContain("users-topic");
         assertThat(csv.indexOf("\"orders-high\"")).isLessThan(csv.indexOf("\"orders-low\""));
         verify(apacheProvider).listTopics("instance-a", "NORMAL", "orders");
+    }
+
+    @Test
+    void exportTopicsShouldNameTheZoneOfTheTimestampColumnsTest() {
+        // The exported timestamps stay server-local wall clocks; the header names the zone they
+        // are written in — the audit CSV's labeling approach — so the file is interpretable
+        // without out-of-band zone knowledge.
+        when(apacheProvider.listTopics(eq("instance-a"), isNull(), isNull()))
+                .thenReturn(List.of(topic("orders", "critical", TopicType.NORMAL)));
+
+        String csv = metadataService.exportTopics("instance-a", null, null, null);
+
+        assertThat(csv).contains("\"Created At " + MetadataService.csvZoneLabel() + "\"");
+        assertThat(csv).contains("\"Updated At " + MetadataService.csvZoneLabel() + "\"");
     }
 
     @Test

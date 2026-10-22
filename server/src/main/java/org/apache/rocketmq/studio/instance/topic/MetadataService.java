@@ -63,6 +63,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -838,7 +842,8 @@ public class MetadataService {
         StringBuilder csv = new StringBuilder();
         CsvUtil.appendRow(csv, "Name", "Namespace", "Cluster ID", "Subscription Mode", "Consume Type",
                 "Online Instances", "Total Lag", "Delay Seconds", "Subscription Data Type",
-                "Delivery Order Type", "Retry Max Times", "Subscribed Topics", "Created At", "Updated At");
+                "Delivery Order Type", "Retry Max Times", "Subscribed Topics",
+                "Created At " + csvZoneLabel(), "Updated At " + csvZoneLabel());
         for (ConsumerGroupVO group : groups) {
             CsvUtil.appendRow(csv, group.getName(), group.getNamespace(), group.getClusterId(),
                     toText(group.getSubscriptionMode()), toText(group.getConsumeType()),
@@ -930,10 +935,60 @@ public class MetadataService {
         return leftName.compareTo(rightName);
     }
 
+    /**
+     * Serializes a topic row for the JSON wire: gmtCreate/gmtModified are stored as zone-less
+     * server-local wall clocks, and the pages render them in the viewer's zone, so the wire
+     * carries a UTC wall clock like the alert / K8s-cert / audit-table family. Applied by the
+     * controllers on their JSON exits only — the service methods stay server-local because
+     * findTopic and the write paths consume them internally. Every provider builds fresh VOs
+     * per request, so the row is converted in place.
+     */
+    public static TopicVO toUtcWire(TopicVO topic) {
+        if (topic == null) {
+            return null;
+        }
+        if (topic.getGmtCreate() != null) {
+            topic.setGmtCreate(toUtcWallTime(topic.getGmtCreate()));
+        }
+        if (topic.getGmtModified() != null) {
+            topic.setGmtModified(toUtcWallTime(topic.getGmtModified()));
+        }
+        return topic;
+    }
+
+    /** The consumer-group counterpart of {@link #toUtcWire(TopicVO)}. */
+    public static ConsumerGroupVO toUtcWire(ConsumerGroupVO group) {
+        if (group == null) {
+            return null;
+        }
+        if (group.getGmtCreate() != null) {
+            group.setGmtCreate(toUtcWallTime(group.getGmtCreate()));
+        }
+        if (group.getGmtModified() != null) {
+            group.setGmtModified(toUtcWallTime(group.getGmtModified()));
+        }
+        return group;
+    }
+
+    private static LocalDateTime toUtcWallTime(LocalDateTime serverLocal) {
+        return serverLocal.atZone(ZoneId.systemDefault())
+                .withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
+    }
+
+    /**
+     * Names the zone the exported timestamps are written in — the audit CSV's labeling approach:
+     * the values stay server-local, the header says which zone that is.
+     */
+    static String csvZoneLabel() {
+        ZoneOffset offset = OffsetDateTime.now().getOffset();
+        return "(UTC" + (offset.getTotalSeconds() == 0 ? "" : offset.getId()) + ")";
+    }
+
     private String buildTopicCsv(List<TopicVO> topics) {
         StringBuilder csv = new StringBuilder();
         CsvUtil.appendRow(csv, "Name", "Namespace", "Type", "Cluster ID", "Write Queues", "Read Queues",
-                "Permission", "Message Count", "TPS", "Consumer Groups", "Remark", "Created At", "Updated At");
+                "Permission", "Message Count", "TPS", "Consumer Groups", "Remark",
+                "Created At " + csvZoneLabel(), "Updated At " + csvZoneLabel());
         for (TopicVO topic : topics) {
             CsvUtil.appendRow(csv, topic.getName(), topic.getNamespace(), toText(topic.getType()), topic.getClusterId(),
                     topic.getWriteQueues(), topic.getReadQueues(), toText(topic.getPerm()), topic.getMessageCount(),
