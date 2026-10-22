@@ -214,35 +214,46 @@ const BrokerClusterPage = () => {
     setProxyData([]);
   }, []);
 
-  const loadData = useCallback(async () => {
-    // A completed snapshot remains useful on refresh, but never under a different instance.
-    if (requestedInstanceRef.current !== selectedInstanceId) {
-      requestedInstanceRef.current = selectedInstanceId;
-      clearData();
-    }
-    if (!selectedInstanceId && !isMockMode()) {
-      clearData();
-      return;
-    }
-    const requestId = ++loadRequestId.current;
-    setLoading(true);
-    try {
-      const clusters = await listClusters(selectedInstanceId);
-      if (!mountedRef.current || requestId !== loadRequestId.current) return;
-      const mapped = mapClusters(clusters);
-      setBrokerData(mapped.brokers);
-      setNameServerData(mapped.nameServers);
-      setProxyData(mapped.proxies);
-    } catch {
-      if (!mountedRef.current || requestId !== loadRequestId.current) return;
-      clearData();
-      message.error(t('common.refreshFailed'));
-    } finally {
-      if (mountedRef.current && requestId === loadRequestId.current) {
-        setLoading(false);
+  // A failing live-refresh tick must neither toast on every interval nor blank the topology the
+  // user is looking at: a transient broker/instance outage would otherwise turn into an error
+  // toast every REFRESH_INTERVAL_MS and an empty table between ticks. Silent ticks keep the last
+  // good data; explicit refreshes keep the loud failure. (Same rationale as the consumer page's
+  // silent auto-refresh.)
+  const loadData = useCallback(
+    async (silent = false) => {
+      // A completed snapshot remains useful on refresh, but never under a different instance.
+      if (requestedInstanceRef.current !== selectedInstanceId) {
+        requestedInstanceRef.current = selectedInstanceId;
+        clearData();
       }
-    }
-  }, [clearData, message, selectedInstanceId, t]);
+      if (!selectedInstanceId && !isMockMode()) {
+        clearData();
+        return;
+      }
+      const requestId = ++loadRequestId.current;
+      if (!silent) setLoading(true);
+      try {
+        const clusters = await listClusters(selectedInstanceId);
+        if (!mountedRef.current || requestId !== loadRequestId.current) return;
+        const mapped = mapClusters(clusters);
+        setBrokerData(mapped.brokers);
+        setNameServerData(mapped.nameServers);
+        setProxyData(mapped.proxies);
+      } catch {
+        if (!mountedRef.current || requestId !== loadRequestId.current) return;
+        if (silent) return;
+        clearData();
+        message.error(t('common.refreshFailed'));
+      } finally {
+        // The latest request clears the spinner even when it is a silent tick: a tick that
+        // supersedes an explicit refresh would otherwise leave that refresh's spinner on forever.
+        if (mountedRef.current && requestId === loadRequestId.current) {
+          setLoading(false);
+        }
+      }
+    },
+    [clearData, message, selectedInstanceId, t],
+  );
 
   useEffect(() => {
     let active = true;
@@ -279,7 +290,7 @@ const BrokerClusterPage = () => {
     };
   }, [loadData]);
 
-  useVisiblePolling(autoRefresh, REFRESH_INTERVAL_MS, loadData);
+  useVisiblePolling(autoRefresh, REFRESH_INTERVAL_MS, () => void loadData(true));
 
   const renderStatus = (status: string) => {
     const config: Record<string, { color: string; label: string }> = {
