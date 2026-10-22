@@ -39,7 +39,7 @@ import InfoBanner from '../../components/InfoBanner';
 import type { K8sCertInfo } from '../../api/cluster';
 import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../services/clusterService';
 import { describeThrownMessage } from '../../utils/apiError';
-import { formatUtcDateTime } from '../../utils/format';
+import { formatUtcDateTime, parseUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import { useLang } from '../../i18n/LangContext';
 
@@ -195,7 +195,11 @@ const K8sCertsPage = () => {
       dataIndex: 'notAfter',
       key: 'notAfter',
       width: 156,
-      sorter: (a, b) => (Date.parse(a.notAfter ?? '') || 0) - (Date.parse(b.notAfter ?? '') || 0),
+      // notAfter is an offset-less UTC wall clock; comparing Date.parse values would read it as
+      // the viewer's local day and can reverse the UTC order across a daylight-saving gap, so
+      // sort the same instants the column renders.
+      sorter: (a, b) =>
+        (parseUtcDateTime(a.notAfter) || 0) - (parseUtcDateTime(b.notAfter) || 0),
       render: (iso: string | null) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
           {formatUtcDateTime(iso)}

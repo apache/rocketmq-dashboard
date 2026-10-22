@@ -50,6 +50,25 @@ export function formatTimeMs(value: number | string | null | undefined): string 
 }
 
 /**
+ * Parse a timestamp the same way `formatUtcDateTime` renders it.
+ *
+ * Alert and certificate APIs serialize UTC LocalDateTime values without an offset,
+ * so an offset-less string is a UTC wall clock rather than the viewer's local one;
+ * plain `Date.parse` would read it as local time and, across a daylight-saving gap,
+ * even reverse the order of two instants. Returns epoch milliseconds, or NaN when
+ * the value is unusable.
+ */
+export function parseUtcDateTime(date: string | Date | null | undefined): number {
+  if (date === null || date === undefined || (typeof date === 'string' && !date.trim()))
+    return Number.NaN;
+  const utcDate =
+    typeof date === 'string' && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(date.trim())
+      ? new Date(`${date}Z`)
+      : new Date(date);
+  return utcDate.getTime();
+}
+
+/**
  * Format a UTC timestamp for alert events in the viewer's timezone. Alert APIs
  * serialize UTC LocalDateTime values without an offset, so normal Date parsing
  * would incorrectly treat them as browser-local timestamps.
@@ -62,12 +81,9 @@ export function formatUtcDateTime(
   date: string | Date | null | undefined,
   timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
 ): string {
-  if (date === null || date === undefined || (typeof date === 'string' && !date.trim())) return '-';
-  const utcDate =
-    typeof date === 'string' && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(date.trim())
-      ? new Date(`${date}Z`)
-      : new Date(date);
-  if (Number.isNaN(utcDate.getTime())) return '-';
+  const timestamp = parseUtcDateTime(date);
+  if (Number.isNaN(timestamp)) return '-';
+  const utcDate = new Date(timestamp);
 
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone,

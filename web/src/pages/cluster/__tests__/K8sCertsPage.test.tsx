@@ -23,6 +23,10 @@ import type { K8sCertInfo } from '../../../api/cluster';
 import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../../services/clusterService';
 import K8sCertsPage from '../certs';
 
+// Pin the viewer to a daylight-saving zone before any timestamp is parsed: the
+// expiry sorter compares wire timestamps whose local reading is ambiguous there.
+process.env.TZ = 'America/New_York';
+
 vi.mock('../../../services/clusterService', () => ({
   listK8sCerts: vi.fn(),
   createK8sCert: vi.fn(),
@@ -146,6 +150,37 @@ describe('K8sCertsPage', () => {
 
     expect(screen.getByText('metadata-only-tls')).toBeInTheDocument();
     expect(screen.getAllByText('-').length).toBeGreaterThan(0);
+  });
+
+  it('sorts expiry by the UTC instant across the viewer daylight-saving gap', async () => {
+    // notAfter is an offset-less UTC wall clock. In America/New_York the 2026-03-08
+    // spring-forward gap normalizes the nonexistent 02:30 local to 03:30, so reading
+    // the stamps as browser-local (Date.parse) ranks the earlier 02:30 UTC cert after
+    // the later 03:00 UTC one; the sorter has to compare the UTC instants rendered.
+    vi.mocked(listK8sCerts).mockResolvedValue([
+      { ...certs[0], id: 1, k8sId: 'cert-dst-late', notAfter: '2026-03-08T03:00:00' },
+      { ...certs[0], id: 2, k8sId: 'cert-dst-early', notAfter: '2026-03-08T02:30:00' },
+    ]);
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('cert-dst-late');
+
+    const rowOrder = () => {
+      const earlyRow = screen.getByText('cert-dst-early').closest('tr');
+      const lateRow = screen.getByText('cert-dst-late').closest('tr');
+      return Boolean(
+        earlyRow &&
+          lateRow &&
+          earlyRow.compareDocumentPosition(lateRow) & Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    };
+
+    await user.click(screen.getByRole('columnheader', { name: /到期时间/ }));
+    await waitFor(() => expect(rowOrder()).toBe(true));
+
+    await user.click(screen.getByRole('columnheader', { name: /到期时间/ }));
+    await waitFor(() => expect(rowOrder()).toBe(false));
   });
 
   it('explains that certificate records are Studio-local metadata', async () => {

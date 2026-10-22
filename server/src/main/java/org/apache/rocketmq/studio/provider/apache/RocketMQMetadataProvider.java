@@ -725,6 +725,13 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
             progress.sort((a, b) -> {
                 int cmp = a.getBroker().compareToIgnoreCase(b.getBroker());
+                if (cmp != 0) {
+                    return cmp;
+                }
+                // Different topics commonly share queue IDs on the same broker, so the topic is
+                // the deterministic case-sensitive tie-breaker before the queue ID; without it
+                // equal queue IDs compare equal and rows interleave or reorder between reads.
+                cmp = a.getTopic().compareTo(b.getTopic());
                 return cmp != 0 ? cmp : Integer.compare(a.getQueueId(), b.getQueueId());
             });
             return progress;

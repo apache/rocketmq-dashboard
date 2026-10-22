@@ -11,6 +11,7 @@ import {
   formatRelativeTime,
   formatTimeOfDay,
   formatTimeMs,
+  parseUtcDateTime,
   ratioToPercent,
   roundPercent,
 } from './format';
@@ -103,6 +104,32 @@ describe('formatBytes', () => {
       '2026-08-23 03:35:38',
     );
     expect(formatUtcDateTime('2026-08-23T10:35:38Z', 'UTC')).toBe('2026-08-23 10:35:38');
+  });
+
+  it('parses timezone-less timestamps as UTC instants so ordering matches the rendering', () => {
+    // A viewer in America/New_York resolves 02:30 on the 2026-03-08 spring-forward day
+    // to 03:30 local, so plain Date.parse ranks the earlier 02:30 UTC stamp after the
+    // later 03:00 UTC one; sorting must read the wire format as UTC instead.
+    expect(parseUtcDateTime('2026-03-08T02:30:00')).toBe(Date.parse('2026-03-08T02:30:00Z'));
+    expect(parseUtcDateTime('2026-03-08T02:30:00')).toBeLessThan(
+      parseUtcDateTime('2026-03-08T03:00:00'),
+    );
+  });
+
+  it('keeps offset-bearing strings and Date objects as absolute instants', () => {
+    expect(parseUtcDateTime('2026-08-23T10:35:38Z')).toBe(Date.parse('2026-08-23T10:35:38Z'));
+    expect(parseUtcDateTime('2026-08-23T10:35:38+02:00')).toBe(
+      Date.parse('2026-08-23T10:35:38+02:00'),
+    );
+    const instant = new Date('2026-08-23T10:35:38Z');
+    expect(parseUtcDateTime(instant)).toBe(instant.getTime());
+  });
+
+  it('yields NaN for missing or unusable timestamps', () => {
+    expect(parseUtcDateTime(null)).toBeNaN();
+    expect(parseUtcDateTime(undefined)).toBeNaN();
+    expect(parseUtcDateTime('  ')).toBeNaN();
+    expect(parseUtcDateTime('not-a-date')).toBeNaN();
   });
 
   it('formats recent timestamps for compact conversation history', () => {

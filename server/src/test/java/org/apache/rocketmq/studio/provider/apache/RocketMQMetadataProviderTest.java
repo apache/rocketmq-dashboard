@@ -611,6 +611,29 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void getGroupProgressKeepsTopicsWithEqualQueueIdsApartTest() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        // Insertion order mirrors the broker's offset map. Broker and queue ID alone leave
+        // TopicB/0 tied with TopicA/0, so the rows used to keep the map order (TopicB first)
+        // and interleave or reorder whenever the map iteration order changed.
+        Map<MessageQueue, OffsetWrapper> offsets = new LinkedHashMap<>();
+        offsets.put(new MessageQueue("TopicB", "broker-a", 0), offset(20, 10));
+        offsets.put(new MessageQueue("TopicA", "broker-a", 1), offset(20, 10));
+        offsets.put(new MessageQueue("TopicA", "broker-a", 0), offset(20, 10));
+        ConsumeStats stats = new ConsumeStats();
+        stats.setOffsetTable(offsets);
+        when(admin.examineConsumeStats("group-a")).thenReturn(stats);
+
+        List<QueueProgressVO> progress = newLiveProvider(admin).getGroupProgress(null, "group-a");
+
+        assertThat(progress).extracting(QueueProgressVO::getTopic, QueueProgressVO::getQueueId)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("TopicA", 0),
+                        org.assertj.core.groups.Tuple.tuple("TopicA", 1),
+                        org.assertj.core.groups.Tuple.tuple("TopicB", 0));
+    }
+
+    @Test
     void getGroupSubscriptionsSurfacesAdminFailure() throws Exception {
         DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
         when(admin.examineConsumerConnectionInfo("group-a"))
