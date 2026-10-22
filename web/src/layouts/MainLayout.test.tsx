@@ -48,9 +48,11 @@ vi.mock('antd', async () => {
     Menu: ({
       items,
       onClick,
+      selectedKeys,
     }: {
       items?: Array<{ key: string; label: React.ReactNode; children?: unknown[] }>;
       onClick?: (info: { key: string }) => void;
+      selectedKeys?: string[];
     }) => {
       const renderItems = (entries: typeof items): React.ReactNode[] =>
         (entries ?? []).flatMap((item) => [
@@ -61,7 +63,11 @@ vi.mock('antd', async () => {
           ),
           ...renderItems(item.children as typeof items),
         ]);
-      return React.createElement('nav', null, renderItems(items));
+      return React.createElement(
+        'nav',
+        { 'data-testid': 'layout-menu', 'data-selected': JSON.stringify(selectedKeys ?? []) },
+        renderItems(items),
+      );
     },
     Breadcrumb: ({ items }: { items: Array<{ key: string; title: React.ReactNode }> }) =>
       React.createElement(
@@ -69,7 +75,7 @@ vi.mock('antd', async () => {
         null,
         React.createElement(
           'nav',
-          null,
+          { 'data-testid': 'layout-breadcrumb' },
           items.map((item) => React.createElement(React.Fragment, { key: item.key }, item.title)),
         ),
       ),
@@ -335,5 +341,39 @@ describe('MainLayout authentication navigation', () => {
     );
     expect(screen.getByText('ACL 管理')).toBeInTheDocument();
     expect(screen.getByText('死信队列')).toBeInTheDocument();
+  });
+
+  it('keeps the section highlighted and named on a trailing-slash instance route', async () => {
+    render(
+      <LangProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={['/instance/apache-1/topic/']}>
+            <Routes>
+              <Route path="/" element={<MainLayout />}>
+                <Route path="instance/:instanceId/topic" element={<div>trailing topic</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </LangProvider>,
+    );
+
+    expect(await screen.findByText('trailing topic')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(instanceServiceMocks.getInstanceCapabilities).toHaveBeenCalledWith('apache-1'),
+    );
+
+    // useInstanceFilter 已接受尾斜杠路由，布局侧的实例维度判定必须同一口径：撤回 MainLayout
+    // 正则末尾的 \/*$ 后，selectedMenuKey 会退回带尾斜杠的完整 pathname、面包屑末级会退回原始
+    // 路径，下面三条断言同时变红。
+    await waitFor(() => expect(screen.getByText('Topic 管理')).toBeInTheDocument());
+    expect(screen.getByTestId('layout-menu')).toHaveAttribute(
+      'data-selected',
+      JSON.stringify(['/instance/topic']),
+    );
+    // 面包屑末级是裸文本节点（antd Breadcrumb 的 mock 不包 span），只能按 textContent 断言。
+    const breadcrumb = screen.getByTestId('layout-breadcrumb');
+    expect(breadcrumb.textContent).toContain('Topic 管理');
+    expect(breadcrumb.textContent).not.toContain('/instance/apache-1/topic');
   });
 });

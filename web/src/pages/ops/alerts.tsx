@@ -40,6 +40,7 @@ import {
 } from 'antd';
 import type { ColumnsType, TableRowSelection } from 'antd/es/table/interface';
 import PageHeader from '../../components/PageHeader';
+import TagList from '../../components/TagList';
 import { useLang } from '../../i18n/LangContext';
 import type {
   AlertRule,
@@ -65,7 +66,7 @@ import {
 } from '../../services/opsService';
 import { attachThresholdUnit, normalizeDuration, normalizeMetric } from './alertRulePayload';
 import { tableScrollX } from '../../utils/table';
-import { formatUtcDateTime } from '../../utils/format';
+import { formatUtcDateTime, parseAlertTimestamp, ratioToPercent } from '../../utils/format';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
 import { downloadBlob } from '../../utils/download';
@@ -87,6 +88,17 @@ const channelColors: Record<string, string> = {
 
 const durationOptions = ['1m', '5m', '15m', '30m'];
 const reminderIntervalOptions = ['5m', '15m', '30m', '1h', '4h'];
+/**
+ * The aggregation values the backend accepts (`AlertRuleRequestDTO` rejects anything else), named
+ * for the console: `LAST` is the newest sample in the window, which the bare code does not say.
+ */
+const aggregationLabelKeys: Record<string, string> = {
+  LAST: 'alerts.aggregation.LAST',
+  MAX: 'alerts.aggregation.MAX',
+  MIN: 'alerts.aggregation.MIN',
+  AVG: 'alerts.aggregation.AVG',
+  SUM: 'alerts.aggregation.SUM',
+};
 const notificationTemplateVariables = ALERT_NOTIFICATION_TEMPLATE_VARIABLES;
 const availabilityMetrics = new Set([
   'nameserver.availability',
@@ -130,7 +142,7 @@ export const formatThresholdCondition = (
     return unavailableLabel;
   }
   if (nativeRatioMetrics.has(rule.metric) && !rule.thresholdUnit) {
-    return `${rule.operator} ${rule.threshold * 100}%`;
+    return `${rule.operator} ${ratioToPercent(rule.threshold)}%`;
   }
   return `${rule.operator} ${rule.threshold}${rule.thresholdUnit ?? ''}`;
 };
@@ -138,7 +150,10 @@ export const formatThresholdCondition = (
 const previewValueForMetric = (metric?: string, threshold?: string | number | null): string => {
   if (metric && nativeRatioMetrics.has(metric)) {
     const value = Number(threshold);
-    return Number.isFinite(value) ? `${Math.min(100, value + 6)}%` : '91%';
+    // The server renders ${value} without a unit (the percent sign lives in
+    // ${thresholdUnit}); embedding it here produced "91%%" in previews of
+    // templates like "${value}${thresholdUnit}".
+    return Number.isFinite(value) ? `${Math.min(100, value + 6)}` : '91';
   }
   if (metric === 'consumer.delay.seconds') return '420';
   if (metric === 'consumer.lag.total' || metric === 'topic.backlog.total') return '12000';
@@ -282,7 +297,9 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
             ? previewDescription.trim()
             : t('alerts.notificationTemplateSampleDescription'),
         transition: 'FIRING',
-        metric: metricText,
+        // The server substitutes the raw metric key; a translated label here
+        // made the preview disagree with what delivery actually sends.
+        metric: metricKey,
         instanceId,
         value: previewValueForMetric(metricKey, threshold),
         threshold,
@@ -398,9 +415,13 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
 
   // eslint-disable-next-line react-hooks/purity
   const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
-  const triggered24h = rules.filter(
-    (r) => r.lastTriggered && new Date(r.lastTriggered).getTime() > dayAgo,
-  ).length;
+  // lastTriggered is a UTC LocalDateTime without an offset suffix (see the column below), so the
+  // comparison must parse it as UTC — the same convention formatUtcDateTime renders it with.
+  const triggered24h = rules.filter((r) => {
+    if (!r.lastTriggered) return false;
+    const triggeredAt = parseAlertTimestamp(r.lastTriggered);
+    return Number.isFinite(triggeredAt) && triggeredAt > dayAgo;
+  }).length;
 
   const openCreateModal = () => {
     setEditingRule(null);
@@ -465,7 +486,7 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
         nativeRatioMetrics.has(form.getFieldValue('metric')) &&
         !form.getFieldValue('thresholdUnit')
       ) {
-        form.setFieldValue('threshold', Number(form.getFieldValue('threshold')) * 100);
+        form.setFieldValue('threshold', ratioToPercent(Number(form.getFieldValue('threshold'))));
       }
       if (metrics.length === 0) message.warning(t('alerts.metricUnavailable'));
     } catch {
@@ -637,26 +658,30 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     }),
   };
 
+  // 列宽预算（用户约定 2026-10-16 实测）：1600 视口下卡片内容宽 1330，`tableScrollX` 把声明宽累加
+  // 成 scroll.x，总和超 1330 就出横向滚动并把操作列裁掉（原 1368）。带排序图标的表头至少需要
+  // 「字数×14 + 22(排序) + 16(padding)」：持续时间/重提醒间隔/状态原先比自己的表头还窄而被截断。
+  // 全列合计（含选择列 32）= 1328 ≤ 1330；AlertsPage.test.tsx 有总和守护用例。
   const columns: ColumnsType<AlertRule> = [
     {
       title: t('alerts.ruleName'),
       dataIndex: 'name',
       // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
-      minWidth: 170,
+      minWidth: 150,
       ellipsis: { showTitle: true },
       sorter: (a, b) => (a.name ?? '').localeCompare(b.name ?? ''),
     },
     {
       title: t('alerts.metric'),
       dataIndex: 'metric',
-      width: 110,
+      width: 96,
       ellipsis: { showTitle: true },
       sorter: (a, b) => (a.metric ?? '').localeCompare(b.metric ?? ''),
       render: (metric: string) => metricLabel(metric),
     },
     {
       title: t('alerts.threshold'),
-      width: 120,
+      width: 96,
       ellipsis: { showTitle: true },
       sorter: (a, b) => (a.threshold ?? 0) - (b.threshold ?? 0),
       render: (_, record) => formatThresholdCondition(record, t('alerts.unavailableCondition')),
@@ -664,31 +689,34 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     {
       title: t('alerts.duration'),
       dataIndex: 'duration',
-      width: 80,
+      width: 94,
+      align: 'right',
       sorter: (a, b) => (a.duration ?? '').localeCompare(b.duration ?? ''),
     },
     {
       title: t('alerts.reminderInterval'),
       dataIndex: 'reminderInterval',
-      width: 96,
+      width: 108,
+      align: 'center',
       render: (value) => value ?? '30m',
     },
     {
       title: t('alerts.channels'),
-      width: 130,
+      // DingTalk + Email + SMS 三个标签并排实测需 201px（TagList 已把标签自带的 8px margin 归零）
+      width: 210,
       render: (_, record) => (
-        <Flex gap={4} wrap="wrap">
-          {(record.channels ?? []).map((ch) => (
-            <Tag key={ch} color={channelColors[ch]}>
-              {channelLabels[ch]}
-            </Tag>
-          ))}
-        </Flex>
+        <TagList
+          items={(record.channels ?? []).map((ch) => ({
+            key: ch,
+            label: channelLabels[ch],
+            color: channelColors[ch],
+          }))}
+        />
       ),
     },
     {
       title: t('common.status'),
-      width: 64,
+      width: 68,
       align: 'center',
       sorter: (a, b) => Number(a.enabled) - Number(b.enabled),
       render: (_, record) => (
@@ -702,7 +730,7 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     },
     {
       title: t('alerts.lastTriggered'),
-      width: 150,
+      width: 156,
       sorter: (a, b) => (a.lastTriggered ?? '').localeCompare(b.lastTriggered ?? ''),
       render: (_, record) =>
         record.lastTriggered ? (
@@ -715,7 +743,8 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     },
     {
       title: t('alerts.runtime'),
-      width: 100,
+      width: 88,
+      align: 'center',
       render: (_, record) => {
         const states = runtime.filter((state) => state.ruleId === record.id);
         if (!states.length)
@@ -1266,9 +1295,9 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
 
             <Form.Item name="aggregation" label={t('alerts.windowAggregation')} initialValue="LAST">
               <Select
-                options={['LAST', 'MAX', 'MIN', 'AVG', 'SUM'].map((value) => ({
-                  label: value,
+                options={Object.entries(aggregationLabelKeys).map(([value, labelKey]) => ({
                   value,
+                  label: t(labelKey),
                 }))}
               />
             </Form.Item>

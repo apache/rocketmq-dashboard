@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.instance.topic;
 
+import org.apache.rocketmq.client.Validators;
+import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageQueue;
@@ -292,11 +294,16 @@ public class MetadataService {
 
 
     public SendMessageVO sendMessage(SendMessageDTO request) {
+        return sendMessage(request, null);
+    }
+
+    private SendMessageVO sendMessage(SendMessageDTO request, String sourceTopic) {
         requireSendMessageRequest(request);
         request.setTopic(requireName(request.getTopic(), "topicName"));
         request.setInstanceId(requireWriteInstance(request.getInstanceId(),
                 ownershipGuard.topicResource(request.getTopic()), true));
-        return resolve(request.getInstanceId()).sendMessage(request);
+        InstanceProvider provider = resolve(request.getInstanceId());
+        return sourceTopic == null ? provider.sendMessage(request) : provider.redeliverMessage(request, sourceTopic);
     }
 
     /**
@@ -304,7 +311,8 @@ public class MetadataService {
      * {@code %RETRY%<groupName>} so only that group re-consumes it; an explicit targetTopic
      * overrides the destination (visible to all its subscribers) while groupName still scopes
      * audit and trace. System-reserved properties are never copied — tag/key travel as
-     * first-class DTO fields instead.
+     * first-class DTO fields instead. Native retry delivery separately restores the checked
+     * original business topic through an internal parameter, not a caller-supplied property.
      */
     public SendMessageVO redeliverMessage(String instanceId, String groupName, String sourceTopic,
                                           String msgId, String targetTopic) {
@@ -337,10 +345,39 @@ public class MetadataService {
                 .properties(redeliveryProperties(original.getProperties()))
                 .build();
         InstanceVO instance = ownershipGuard.requireInstance(target);
-        List<Resource> resources = List.of(new Resource(Kind.GROUP, group),
-                ownershipGuard.topicResource(original.getTopic()), ownershipGuard.topicResource(destination));
+        boolean nativeRetry = (instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE)
+                && destination.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX);
+        String retrySourceTopic = nativeRetry ? retrySourceTopic(original) : null;
+        List<Resource> resources = new ArrayList<>(List.of(new Resource(Kind.GROUP, group),
+                ownershipGuard.topicResource(original.getTopic()), ownershipGuard.topicResource(destination)));
+        if (retrySourceTopic != null && !retrySourceTopic.equals(original.getTopic())) {
+            resources.add(ownershipGuard.topicResource(retrySourceTopic));
+        }
         resources.forEach(resource -> ownershipGuard.check(instance, resource, true));
-        return ownershipGuard.withOwned(instance, resources, () -> sendMessage(request));
+        return ownershipGuard.withOwned(instance, resources, () -> sendMessage(request, retrySourceTopic));
+    }
+
+    private static String retrySourceTopic(MessageRecordVO original) {
+        String sourceTopic = original.getTopic();
+        if (sourceTopic != null && (sourceTopic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)
+                || sourceTopic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX))) {
+            sourceTopic = original.getProperties() == null ? null
+                    : original.getProperties().get(MessageConst.PROPERTY_RETRY_TOPIC);
+        }
+        if (!StringUtils.hasText(sourceTopic) || sourceTopic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)
+                || sourceTopic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)) {
+            throw new BusinessException(409,
+                    "Source message has no original business topic for retry redelivery");
+        }
+        try {
+            // Display-abbreviated values also fail the SDK topic length/character contract.
+            Validators.checkTopic(sourceTopic);
+            Validators.isSystemTopic(sourceTopic);
+        } catch (MQClientException e) {
+            throw new BusinessException(409,
+                    "Source message has an invalid original business topic for retry redelivery");
+        }
+        return sourceTopic;
     }
 
     /**

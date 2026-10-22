@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 /**
  * The composer draft: the ONE piece of AI-page state that stays on the client.
@@ -60,16 +60,34 @@ function writeDraft(value: string): void {
   }
 }
 
-export type ComposerDraft = [value: string, setValue: (value: string) => void];
+export type ComposerDraft = [
+  value: string,
+  setValue: (value: string) => void,
+  captureRestore: (value: string) => () => void,
+];
 
 /** Draft text plus its persistence. `setValue('')` clears both the state and the storage key. */
 export function useComposerDraft(): ComposerDraft {
   const [value, setValueState] = useState<string>(readDraft);
+  const revision = useRef(0);
 
   const setValue = useCallback((next: string) => {
+    revision.current += 1;
     setValueState(next);
     writeDraft(next);
   }, []);
 
-  return [value, setValue];
+  // Capture after the submitted draft is cleared. Even editing back to an empty
+  // value owns a newer draft and must not be overwritten by a failed old send.
+  const captureRestore = useCallback(
+    (submitted: string) => {
+      const submittedRevision = revision.current;
+      return () => {
+        if (revision.current === submittedRevision) setValue(submitted);
+      };
+    },
+    [setValue],
+  );
+
+  return [value, setValue, captureRestore];
 }

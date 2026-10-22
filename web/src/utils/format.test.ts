@@ -11,6 +11,9 @@ import {
   formatRelativeTime,
   formatTimeOfDay,
   formatTimeMs,
+  parseAlertTimestamp,
+  ratioToPercent,
+  roundPercent,
 } from './format';
 
 describe('formatBytes', () => {
@@ -65,6 +68,25 @@ describe('formatBytes', () => {
     expect(formatPercent(12.345, -1)).toBe('12%');
   });
 
+  it('rounds percentages to the tenth the progress bars display', () => {
+    expect(roundPercent(28.999999999999996)).toBe(29);
+    expect(roundPercent(62.5)).toBe(62.5);
+    expect(roundPercent(0)).toBe(0);
+  });
+
+  it('scales a stored ratio to its percent without floating point residue', () => {
+    // The alert pages used to scale with `threshold * 100`, which does not round trip for 8 of
+    // the 99 whole percents: 0.29 * 100 renders as 28.999999999999996.
+    expect(ratioToPercent(0.29)).toBe(29);
+    expect(ratioToPercent(0.07)).toBe(7);
+    expect(ratioToPercent(0.58)).toBe(58);
+    expect(ratioToPercent(0.1234)).toBe(12.34);
+    expect(ratioToPercent(0.295)).toBe(29.5);
+    expect(ratioToPercent(0)).toBe(0);
+    expect(ratioToPercent(1)).toBe(100);
+    expect(ratioToPercent(0.0000001)).toBe(0.00001);
+  });
+
   it('uses a placeholder for invalid dates and numeric values', () => {
     expect(formatDate('not-a-date')).toBe('-');
     expect(formatDateTime(new Date(Number.NaN))).toBe('-');
@@ -79,9 +101,9 @@ describe('formatBytes', () => {
 
   it('treats timezone-less alert timestamps as UTC', () => {
     expect(formatUtcDateTime('2026-08-23T10:35:38.590731', 'America/Los_Angeles')).toBe(
-      '2026-08-23 03:35:38 PDT',
+      '2026-08-23 03:35:38',
     );
-    expect(formatUtcDateTime('2026-08-23T10:35:38Z', 'UTC')).toBe('2026-08-23 10:35:38 UTC');
+    expect(formatUtcDateTime('2026-08-23T10:35:38Z', 'UTC')).toBe('2026-08-23 10:35:38');
   });
 
   it('formats recent timestamps for compact conversation history', () => {
@@ -96,6 +118,33 @@ describe('formatBytes', () => {
     expect(formatRelativeTime(now - 5 * 60_000, 'en', en, now)).toBe('5 min ago');
     expect(formatRelativeTime(now - 2 * 60 * 60_000, 'zh', zh, now)).toBe('13:30');
     expect(formatTimeOfDay(now)).toBe('15:30');
+  });
+});
+
+describe('parseAlertTimestamp', () => {
+  it('parses an offset-less alert timestamp as UTC regardless of the browser zone', () => {
+    // Expressed against Date.parse with an explicit Z so the expectation cannot drift with TZ.
+    expect(parseAlertTimestamp('2026-08-23T10:35:38')).toBe(Date.parse('2026-08-23T10:35:38Z'));
+    expect(parseAlertTimestamp('2026-08-23 10:35:38')).toBe(Date.parse('2026-08-23T10:35:38Z'));
+  });
+
+  it('honors an explicit offset instead of assuming UTC', () => {
+    expect(parseAlertTimestamp('2026-08-23T10:35:38Z')).toBe(Date.parse('2026-08-23T10:35:38Z'));
+    expect(parseAlertTimestamp('2026-08-23T10:35:38+08:00')).toBe(
+      Date.parse('2026-08-23T10:35:38+08:00'),
+    );
+    expect(parseAlertTimestamp('2026-08-23T10:35:38-05:00')).toBe(
+      Date.parse('2026-08-23T10:35:38-05:00'),
+    );
+  });
+
+  it('passes Date objects through and reports unusable values as NaN', () => {
+    const date = new Date(Date.parse('2026-08-23T10:35:38Z'));
+    expect(parseAlertTimestamp(date)).toBe(date.getTime());
+    expect(parseAlertTimestamp('not a timestamp')).toBeNaN();
+    expect(parseAlertTimestamp('')).toBeNaN();
+    expect(parseAlertTimestamp(null)).toBeNaN();
+    expect(parseAlertTimestamp(undefined)).toBeNaN();
   });
 });
 

@@ -16,10 +16,11 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, App, Button, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd';
+import { Alert, App, Button, Input, Modal, Select, Space, Table, Typography, theme } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ArrowClockwise, DownloadSimple, Eye } from '@phosphor-icons/react';
 import { useLang } from '../i18n/LangContext';
+import TagList from './TagList';
 import {
   getGrafanaDashboard,
   exportGrafanaDashboard,
@@ -34,6 +35,7 @@ const { Paragraph, Text } = Typography;
 export const GrafanaDashboardList: React.FC = () => {
   const { t } = useLang();
   const { message } = App.useApp();
+  const { token } = theme.useToken();
   const [dashboards, setDashboards] = useState<GrafanaDashboardInfo[]>([]);
   const [searchText, setSearchText] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -184,15 +186,13 @@ export const GrafanaDashboardList: React.FC = () => {
       title: t('grafana.tags'),
       dataIndex: 'tags',
       key: 'tags',
-      width: 140,
+      width: 200,
       render: (tags: string[]) => (
-        <Space size={[0, 4]} wrap>
-          {(tags || []).map((tag) => (
-            <Tag key={tag} color="blue">
-              {tag}
-            </Tag>
-          ))}
-        </Space>
+        <TagList
+          items={(tags || []).map((tag) => ({ key: tag, label: tag, color: 'blue' }))}
+          max={2}
+          tagMaxWidth={70}
+        />
       ),
     },
     {
@@ -306,7 +306,10 @@ export const GrafanaDashboardList: React.FC = () => {
               style={{
                 maxHeight: 480,
                 overflow: 'auto',
-                background: '#f5f5f5',
+                // Theme fill instead of a fixed light grey: the preview inherits the active
+                // theme's text color, so a hardcoded light background made it unreadable in
+                // dark mode (the panel keeps the light-mode look the token resolves to).
+                background: token.colorFillQuaternary,
                 padding: 16,
                 borderRadius: 6,
                 fontSize: 14,

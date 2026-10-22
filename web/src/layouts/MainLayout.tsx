@@ -139,7 +139,9 @@ const MainLayout = () => {
   }, []);
 
   const instanceScopedMatch = useMemo(
-    () => location.pathname.match(/^\/instance\/[^/]+\/(topic|consumer|message|acl|dlq)$/),
+    // 与 useInstanceFilter 的 INSTANCE_SCOPED_PATH 保持同一口径：尾斜杠路由
+    // （/instance/<id>/topic/）同样算实例维度页，否则菜单高亮与面包屑末级标题会降级。
+    () => location.pathname.match(/^\/instance\/[^/]+\/(topic|consumer|message|acl|dlq)\/*$/),
     [location.pathname],
   );
   const selectedInstanceId = useMemo(() => {
@@ -740,6 +742,8 @@ const MainLayout = () => {
               setActiveIndex(0);
             }}
             onKeyDown={(e) => {
+              // Composition keys select or confirm IME text, not navigation results.
+              if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
               if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 setActiveIndex((i) => Math.min(i + 1, Math.max(searchResults.length - 1, 0)));

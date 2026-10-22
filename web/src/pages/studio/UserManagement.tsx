@@ -20,7 +20,6 @@ import {
   Button,
   Card,
   Descriptions,
-  Drawer,
   Flex,
   Form,
   Input,
@@ -61,7 +60,7 @@ import {
   type StudioUserSessionOverview,
 } from '../../api/studioUsers';
 import useAuthStore from '../../stores/authStore';
-import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { buildCsv, downloadCsv, localExportDateStamp, type CsvColumn } from '../../utils/download';
 import { formatDelay, formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import { useLang } from '../../i18n/LangContext';
@@ -132,7 +131,8 @@ const UserManagementPage = () => {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>();
   const [loading, setLoading] = useState(false);
   const [sessionOverview, setSessionOverview] = useState<StudioUserSessionOverview | null>(null);
-  const [sessionDrawerUser, setSessionDrawerUser] = useState<StudioUser | null>(null);
+  const [sessionOverviewFailed, setSessionOverviewFailed] = useState(false);
+  const [sessionModalUser, setSessionModalUser] = useState<StudioUser | null>(null);
   const [sessionDetails, setSessionDetails] = useState<StudioUserSessionDetail[]>([]);
   const [sessionDetailsLoading, setSessionDetailsLoading] = useState(false);
   const [sessionDetailsFailed, setSessionDetailsFailed] = useState(false);
@@ -140,11 +140,12 @@ const UserManagementPage = () => {
   const [passwordTarget, setPasswordTarget] = useState<StudioUser | null>(null);
   const [userExporting, setUserExporting] = useState(false);
   const [mutatingUserIds, setMutatingUserIds] = useState<Set<number>>(() => new Set());
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const [createForm] = Form.useForm<CreateFormValues>();
   const [passwordForm] = Form.useForm<PasswordFormValues>();
   const requestSeqRef = useRef(0);
   const sessionDetailsRequestSeqRef = useRef(0);
-  const sessionDrawerUserIdRef = useRef<number | null>(null);
+  const sessionModalUserIdRef = useRef<number | null>(null);
   const mutatingUserIdsRef = useRef(new Set<number>());
 
   useEffect(() => {
@@ -158,8 +159,9 @@ const UserManagementPage = () => {
       setUsers([]);
       setTotal(0);
       setSessionOverview(null);
-      sessionDrawerUserIdRef.current = null;
-      setSessionDrawerUser(null);
+      setSessionOverviewFailed(false);
+      sessionModalUserIdRef.current = null;
+      setSessionModalUser(null);
       setSessionDetails([]);
       return;
     }
@@ -176,10 +178,14 @@ const UserManagementPage = () => {
           page,
           pageSize,
         }),
-        getStudioUserSessionOverview().catch(() => null),
+        getStudioUserSessionOverview().then(
+          (value) => ({ value, failed: false }),
+          () => ({ value: null, failed: true }),
+        ),
       ]);
       if (requestId !== requestSeqRef.current) return;
-      setSessionOverview(overview);
+      setSessionOverview(overview.value);
+      setSessionOverviewFailed(overview.failed);
       if (result.items.length === 0 && result.total > 0 && page > 1) {
         const lastPage = Math.max(1, Math.ceil(result.total / result.size));
         if (page > lastPage) {
@@ -196,18 +202,22 @@ const UserManagementPage = () => {
     }
   }, [admin, debouncedSearch, page, pageSize, roleFilter, statusFilter, t]);
 
+  // Mutations refresh through the effect (bumping `refreshVersion`) instead of awaiting the
+  // `loadUsers` captured when the operator confirmed: a row's status switch and the session
+  // revoke popovers leave the list interactive, so the search or the page can change while the
+  // request is on the wire, and the refresh must re-query what is on screen then.
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void loadUsers();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [loadUsers]);
+  }, [loadUsers, refreshVersion]);
 
   useEffect(
     () => () => {
       requestSeqRef.current += 1;
       sessionDetailsRequestSeqRef.current += 1;
-      sessionDrawerUserIdRef.current = null;
+      sessionModalUserIdRef.current = null;
     },
     [],
   );
@@ -221,7 +231,7 @@ const UserManagementPage = () => {
         if (requestId !== sessionDetailsRequestSeqRef.current) return;
         setSessionDetails(details);
         setSessionDetailsFailed(false);
-        setSessionDrawerUser((current) =>
+        setSessionModalUser((current) =>
           current?.id === record.id ? { ...current, activeSessionCount: details.length } : current,
         );
       } catch {
@@ -241,18 +251,18 @@ const UserManagementPage = () => {
     [t],
   );
 
-  const openSessionDrawer = (record: StudioUser) => {
-    sessionDrawerUserIdRef.current = record.id;
-    setSessionDrawerUser(record);
+  const openSessionModal = (record: StudioUser) => {
+    sessionModalUserIdRef.current = record.id;
+    setSessionModalUser(record);
     setSessionDetails([]);
     setSessionDetailsFailed(false);
     void loadSessionDetails(record);
   };
 
-  const closeSessionDrawer = () => {
-    sessionDrawerUserIdRef.current = null;
+  const closeSessionModal = () => {
+    sessionModalUserIdRef.current = null;
     sessionDetailsRequestSeqRef.current += 1;
-    setSessionDrawerUser(null);
+    setSessionModalUser(null);
     setSessionDetails([]);
     setSessionDetailsFailed(false);
     setSessionDetailsLoading(false);
@@ -305,7 +315,7 @@ const UserManagementPage = () => {
       async () => {
         await setStudioUserEnabled(record.id, enabled);
         message.success(enabled ? t('userMgmt.userEnabled') : t('userMgmt.userDisabled'));
-        await loadUsers();
+        setRefreshVersion((version) => version + 1);
       },
       t('userMgmt.updateStatusFailed'),
     );
@@ -349,10 +359,10 @@ const UserManagementPage = () => {
         }
         // The operator may have closed or changed drawers while revocation was pending.
         // Do not let its follow-up read take ownership of another user's session details.
-        if (sessionDrawerUserIdRef.current === record.id) {
+        if (sessionModalUserIdRef.current === record.id) {
           await loadSessionDetails({ ...record, activeSessionCount: 0 });
         }
-        await loadUsers();
+        setRefreshVersion((version) => version + 1);
       },
       t('userMgmt.revokeFailed'),
     );
@@ -369,7 +379,7 @@ const UserManagementPage = () => {
         admin: roleFilter === undefined ? undefined : roleFilter === 'admin',
         enabled: statusFilter === undefined ? undefined : statusFilter === 'enabled',
       });
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localExportDateStamp();
       downloadCsv(
         `rocketmq-studio-users-${today}.csv`,
         buildCsv(STUDIO_USER_EXPORT_COLUMNS, exportedUsers),
@@ -427,7 +437,8 @@ const UserManagementPage = () => {
   // horizontal scrollbar by default. Columns whose text can be longer than that truncate with
   // the full value on hover instead of wrapping.
   const columns: ColumnsType<StudioUser> = [
-    { title: t('userMgmt.username'), dataIndex: 'username', width: 120, ellipsis: true },
+    // 用户名实测最长 50px（`reader1`）+ 32px padding = 82px；96 留有余量，省下的 24px 给操作列。
+    { title: t('userMgmt.username'), dataIndex: 'username', width: 96, ellipsis: true },
     { title: t('userMgmt.userId'), dataIndex: 'id', width: 80 },
     {
       title: t('userMgmt.role'),
@@ -463,28 +474,36 @@ const UserManagementPage = () => {
     {
       title: t('userMgmt.lastActive'),
       dataIndex: 'lastSessionSeenAt',
-      width: 132,
+      // The `YYYY-MM-DD HH:mm:ss` label measures 129px in this table (Chromium with this app's font
+      // stack), so the cell needs 129 + 32px of default-size padding = 161px. 177 keeps that margin
+      // and frees 5px per time column for the action column below, whose buttons did not fit.
+      // The earlier 182 assumed a 149px label; the small-table equivalent used elsewhere is 156.
+      width: 177,
       ellipsis: true,
       render: dateTime,
     },
     {
       title: t('userMgmt.nearestExpiry'),
       dataIndex: 'nearestSessionExpiresAt',
-      width: 132,
+      width: 177,
       ellipsis: true,
       render: dateTime,
     },
     {
       title: t('userMgmt.createdAt'),
       dataIndex: 'gmtCreate',
-      width: 132,
+      width: 177,
       ellipsis: true,
       render: dateTime,
     },
     {
       title: t('common.actions'),
       key: 'actions',
-      width: 264,
+      // 改密 / 会话 / 注销 三个小按钮实测各 66px + 启用禁用开关 57px + 3×4px 间距 = 267px，
+      // 加默认尺寸表格左右各 16px padding = 299px。原来声明 264px（内容盒 235px），开关整体
+      // 右溢 31.6px 冲出表格右缘（实测于本地 Chromium + Noto Sans CJK，1600 视口）。
+      // 多出的 35px 由用户名列（120 → 96，内容实测 50px）与三个时间列（各 -5px）收回。
+      width: 299,
       render: (_, record) => (
         <Space size={4}>
           <Button size="small" icon={<Key size={14} />} onClick={() => setPasswordTarget(record)}>
@@ -493,7 +512,7 @@ const UserManagementPage = () => {
           <Button
             size="small"
             icon={<ListBullets size={14} />}
-            onClick={() => openSessionDrawer(record)}
+            onClick={() => openSessionModal(record)}
           >
             {t('userMgmt.sessions')}
           </Button>
@@ -577,6 +596,23 @@ const UserManagementPage = () => {
           {t('userMgmt.changeMyPassword')}
         </Button>
       </Card>
+      {admin && sessionOverviewFailed && (
+        <Alert
+          type="error"
+          showIcon
+          message={t('userMgmt.sessionOverviewLoadFailed')}
+          action={
+            <Button
+              size="small"
+              loading={loading}
+              onClick={() => setRefreshVersion((version) => version + 1)}
+            >
+              {t('common.retry')}
+            </Button>
+          }
+          style={{ marginBottom: 16 }}
+        />
+      )}
       {admin && sessionOverview && (
         <Card title={t('userMgmt.sessionOverview')} style={{ marginBottom: 16 }}>
           <Flex gap={32} wrap>
@@ -671,60 +707,65 @@ const UserManagementPage = () => {
         </Card>
       )}
 
-      <Drawer
+      <Modal
         title={
-          sessionDrawerUser
-            ? t('userMgmt.sessionsOf', { username: sessionDrawerUser.username })
+          sessionModalUser
+            ? t('userMgmt.sessionsOf', { username: sessionModalUser.username })
             : t('userMgmt.userSessions')
         }
-        width={1040}
-        open={sessionDrawerUser !== null}
-        onClose={closeSessionDrawer}
+        width="min(1040px, calc(100vw - 32px))"
+        open={sessionModalUser !== null}
+        onCancel={closeSessionModal}
         destroyOnHidden
-        extra={
-          sessionDrawerUser ? (
-            <Space>
-              <Button
-                icon={<ArrowClockwise size={16} />}
-                loading={sessionDetailsLoading}
-                onClick={() => void loadSessionDetails(sessionDrawerUser)}
-              >
-                {t('common.refresh')}
-              </Button>
-              <Popconfirm
-                title={t('userMgmt.revokeConfirm', { username: sessionDrawerUser.username })}
-                description={t('userMgmt.revokeDescription')}
-                okText={t('userMgmt.revoke')}
-                cancelText={t('common.cancel')}
-                okButtonProps={{ danger: true }}
-                disabled={sessionDetails.length === 0}
-                onConfirm={() => void revokeSessions(sessionDrawerUser)}
-              >
+        styles={{
+          body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden' },
+        }}
+        footer={
+          sessionModalUser ? (
+            <Flex justify="flex-end">
+              <Space>
                 <Button
-                  danger
-                  icon={<SignOut size={16} />}
-                  disabled={sessionDetails.length === 0}
-                  loading={mutatingUserIds.has(sessionDrawerUser.id)}
+                  icon={<ArrowClockwise size={16} />}
+                  loading={sessionDetailsLoading}
+                  onClick={() => void loadSessionDetails(sessionModalUser)}
                 >
-                  {t('userMgmt.revokeAll')}
+                  {t('common.refresh')}
                 </Button>
-              </Popconfirm>
-            </Space>
-          ) : undefined
+                <Popconfirm
+                  title={t('userMgmt.revokeConfirm', { username: sessionModalUser.username })}
+                  description={t('userMgmt.revokeDescription')}
+                  okText={t('userMgmt.revoke')}
+                  cancelText={t('common.cancel')}
+                  okButtonProps={{ danger: true }}
+                  disabled={sessionDetails.length === 0}
+                  onConfirm={() => void revokeSessions(sessionModalUser)}
+                >
+                  <Button
+                    danger
+                    icon={<SignOut size={16} />}
+                    disabled={sessionDetails.length === 0}
+                    loading={mutatingUserIds.has(sessionModalUser.id)}
+                  >
+                    {t('userMgmt.revokeAll')}
+                  </Button>
+                </Popconfirm>
+              </Space>
+            </Flex>
+          ) : null
         }
       >
-        {sessionDrawerUser && (
+        {sessionModalUser && (
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
             <Descriptions
               bordered
               size="small"
               column={2}
               items={[
-                { key: 'userId', label: t('userMgmt.userId'), children: sessionDrawerUser.id },
+                { key: 'userId', label: t('userMgmt.userId'), children: sessionModalUser.id },
                 {
                   key: 'role',
                   label: t('userMgmt.role'),
-                  children: sessionDrawerUser.admin
+                  children: sessionModalUser.admin
                     ? t('userMgmt.roleAdmin')
                     : t('userMgmt.roleUser'),
                 },
@@ -737,22 +778,22 @@ const UserManagementPage = () => {
                 {
                   key: 'status',
                   label: t('userMgmt.accountStatus'),
-                  children: sessionDrawerUser.enabled ? t('common.enabled') : t('common.disabled'),
+                  children: sessionModalUser.enabled ? t('common.enabled') : t('common.disabled'),
                 },
                 {
                   key: 'lastSessionSeenAt',
                   label: t('userMgmt.lastActive'),
-                  children: dateTime(sessionDrawerUser.lastSessionSeenAt),
+                  children: dateTime(sessionModalUser.lastSessionSeenAt),
                 },
                 {
                   key: 'nearestSessionExpiresAt',
                   label: t('userMgmt.nearestExpiry'),
-                  children: dateTime(sessionDrawerUser.nearestSessionExpiresAt),
+                  children: dateTime(sessionModalUser.nearestSessionExpiresAt),
                 },
                 {
                   key: 'passwordChangedAt',
                   label: t('userMgmt.passwordChangedAt'),
-                  children: dateTime(sessionDrawerUser.passwordChangedAt),
+                  children: dateTime(sessionModalUser.passwordChangedAt),
                 },
               ]}
             />
@@ -764,7 +805,7 @@ const UserManagementPage = () => {
                 action={
                   <Button
                     size="small"
-                    onClick={() => sessionDrawerUser && void loadSessionDetails(sessionDrawerUser)}
+                    onClick={() => sessionModalUser && void loadSessionDetails(sessionModalUser)}
                   >
                     {t('common.retry')}
                   </Button>
@@ -784,7 +825,7 @@ const UserManagementPage = () => {
             )}
           </Space>
         )}
-      </Drawer>
+      </Modal>
 
       <Modal
         title={t('userMgmt.createTitle')}

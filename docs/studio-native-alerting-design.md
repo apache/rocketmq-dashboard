@@ -139,7 +139,7 @@ record MetricSample(
 | Cluster | `proxy.availability` | Proxy | TCP probe of the gRPC listener discovered for the selected instance |
 | Cluster | `cloud.instance.availability` | Managed cloud instance | Aliyun/Tencent control-plane instance status |
 | Business | `consumer.lag.total` | Consumer Group / Topic | Consumer progress (Apache, Aliyun, Tencent) |
-| Business | `consumer.lag.max_queue` | Consumer Group / Queue | Consumer progress (Apache, Aliyun, Tencent) |
+| Business | `consumer.lag.max_queue` | Consumer Group / Queue | Apache consumer progress only: the Aliyun and Tencent progress rows are per-topic aggregates without queue offsets, so the cloud collector publishes this metric as unsupported |
 | Business | `consumer.delay.seconds` | Consumer Group | Apache broker consume stats; emitted only when a consumption timestamp is available |
 | Business | `topic.backlog.total` | Topic / Consumer Group | Topic and consumer offsets; each sample is scoped to one Topic and consumer group to avoid cross-group double counting |
 | Business | `dlq.message.count` | Consumer Group / DLQ | DLQ provider |

@@ -200,7 +200,7 @@ public class AlertService {
         log.info("Updating alert rule: {}", id);
         validateRuleId(id);
         String previousSemanticFingerprint = alertRepository.findRuleById(id)
-                .map(AlertRuleSemanticFingerprint::of)
+                .map(AlertRuleSemanticFingerprint::evaluationIdentity)
                 .orElse(null);
         NativeAlertRulePolicy.validate(rule);
         rejectDuplicateSemanticRule(rule, id);
@@ -209,7 +209,7 @@ public class AlertService {
         }
         // Disabled rules are excluded from evaluation/reconciliation; their runtime must be purged.
         if (!rule.isEnabled() || previousSemanticFingerprint == null
-                || !previousSemanticFingerprint.equals(AlertRuleSemanticFingerprint.of(rule))) {
+                || !previousSemanticFingerprint.equals(AlertRuleSemanticFingerprint.evaluationIdentity(rule))) {
             alertStateRepository.deleteByRuleId(id);
         }
         auditRule("UPDATE_ALERT_RULE", rule, null);
@@ -801,7 +801,8 @@ public class AlertService {
         if (!Double.isFinite(threshold)) {
             return "0";
         }
-        if (threshold == Math.rint(threshold)) {
+        // Long.MAX_VALUE rounds up to 2^63 as a double; the upper cast bound is exclusive.
+        if (threshold == Math.rint(threshold) && threshold >= Long.MIN_VALUE && threshold < 0x1.0p63) {
             return Long.toString((long) threshold);
         }
         return Double.toString(threshold);
