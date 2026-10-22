@@ -364,10 +364,14 @@ public class AuthService {
             throw new BusinessException(400, "Current password is incorrect");
         }
         validatePassword(newPassword);
-        userMapper.update(null, new UpdateWrapper<RmqStudioUser>()
+        int changed = userMapper.update(null, new UpdateWrapper<RmqStudioUser>()
                 .eq("id", user.getId())
+                .eq("password_hash", user.getPasswordHash())
                 .set("password_hash", passwordHasher.hash(newPassword))
                 .set("password_changed_at", now()));
+        if (changed != 1) {
+            throw new BusinessException(409, "Password changed concurrently; please retry");
+        }
         revokeUserSessions(user.getId());
     }
 
