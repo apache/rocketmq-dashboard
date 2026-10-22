@@ -149,6 +149,19 @@
 | 105 | POST | `/api/proxies/addresses` | 添加 Proxy 地址 |
 | 106 | DELETE | `/api/proxies/addresses` | 删除 Proxy 地址 |
 | 107 | POST | `/api/proxies/config/reload` | 热更新 Proxy 配置 |
+| 108 | GET | `/api/groups/page` | 消费组分页列表 |
+| 109 | GET | `/api/groups/:name/settings` | 消费组运行时设置 |
+| 110 | POST | `/api/groups/settings` | 更新消费组运行时设置 |
+| 111 | GET | `/api/groups/:name/refresh` | 刷新单个消费组 |
+| 112 | GET | `/api/groups/:name/instances/:clientId/stack` | 消费者线程栈 |
+| 113 | POST | `/api/groups/reset-offset/preview` | 预览重置消费位点 |
+| 114 | GET | `/api/liteTopic/list` | LiteTopic 会话列表 |
+| 115 | GET | `/api/liteTopic/session/:sessionId` | LiteTopic 会话详情 |
+| 116 | POST | `/api/liteTopic/extendTTL` | 调整 LiteTopic TTL |
+| 117 | GET | `/api/liteTopic/quota` | LiteTopic 配额 |
+| 118 | GET | `/api/liteTopic/capability` | LiteTopic 能力检查 |
+| 119 | GET | `/api/auth/status` | 登录策略与当前用户 |
+| 120 | POST | `/api/auth/password` | 修改当前用户密码 |
 
 ## 通用响应格式
 
@@ -229,6 +242,45 @@ POST /api/auth/logout
 ```
 
 **Response `data`:** `null`
+
+### 1.3 获取登录策略与当前用户
+
+```
+GET /api/auth/status
+```
+
+无需认证即可调用：未登录时 `authenticated` 为 `false`、`user` 为 `null`，调用方据此决定是否显示登录页。
+
+**Response `data`:** `AuthStatus`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `loginRequired` | `boolean` | 是否要求登录：`studio.auth.login-required` 或通用设置中的开关任一开启即为 `true` |
+| `authenticated` | `boolean` | 当前会话是否已认证 |
+| `user` | `object \| null` | 已认证时的用户信息，否则为 `null` |
+| `user.userId` | `number` | 用户 ID（数据库主键）；配置引导用户（未落库）为空 |
+| `user.username` | `string` | 用户名 |
+| `user.admin` | `boolean` | 是否管理员 |
+
+响应带 `Cache-Control: no-store`。
+
+### 1.4 修改当前用户密码
+
+```
+POST /api/auth/password
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `currentPassword` | `string` | 是 | 当前密码 |
+| `newPassword` | `string` | 是 | 新密码，长度 8–256 |
+
+**Response `data`:** `null`
+
+需要已认证会话（否则返回 `401`）；用户管理未初始化时返回 `503`。修改成功后该用户的全部会话都会被
+吊销（包括发起请求的会话），后续请求返回 `401`，需要重新登录。
 
 ---
 
@@ -1091,6 +1143,118 @@ POST /api/topics/send
 
 ---
 
+### 5.9 获取 LiteTopic 会话列表
+
+```
+GET /api/liteTopic/list?pattern={pattern}&namespace={namespace}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `pattern` | `string` | 否 | 按 Topic 模式过滤 |
+| `namespace` | `string` | 否 | 按命名空间过滤 |
+
+**Response `data`:** `LiteTopicItem[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `topicPattern` | `string` | LiteTopic 模式 |
+| `namespace` | `string` | 命名空间 |
+| `topicCount` | `number` | 会话内 Topic 数 |
+| `consumerCount` | `number` | 消费者数 |
+| `totalBacklog` | `number` | 总堆积消息数 |
+| `averageTTL` | `number` | 平均 TTL（毫秒） |
+| `ttlStatus` | `string` | TTL 状态 |
+| `lastActiveTime` | `number` | 最后活跃时间（Unix 毫秒时间戳） |
+| `sessionIds` | `string[]` | 会话 ID 列表 |
+
+### 5.10 获取 LiteTopic 会话详情
+
+```
+GET /api/liteTopic/session/:sessionId
+```
+
+**Response `data`:** `LiteTopicSession`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `sessionId` | `string` | 会话 ID |
+| `clientId` | `string` | 客户端 ID |
+| `clientAddress` | `string` | 客户端地址 |
+| `parentTopic` | `string` | 父 Topic |
+| `consumerGroup` | `string` | 消费组 |
+| `createTime` | `number` | 创建时间（Unix 毫秒时间戳） |
+| `lastActiveTime` | `number` | 最后活跃时间（Unix 毫秒时间戳） |
+| `ttl` | `number` | TTL（毫秒） |
+| `ttlRemaining` | `number` | 剩余 TTL（毫秒） |
+| `status` | `string` | 会话状态 |
+| `totalMessages` | `number` | 消息总数 |
+| `consumedMessages` | `number` | 已消费消息数 |
+| `pendingMessages` | `number` | 待消费消息数 |
+| `popProgress` | `number` | 消费进度 |
+| `liteTopicCreationCount` | `number` | 会话内创建的 Topic 数 |
+| `liteTopics` | `object[]` | 会话内 Topic：`topicName` / `status` / `ttlRemaining` |
+
+### 5.11 调整 LiteTopic TTL
+
+```
+POST /api/liteTopic/extendTTL
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 所属实例 ID |
+| `topicPattern` | `string` | 是 | LiteTopic 模式 |
+| `newTTL` | `number` | 是 | 新的 TTL（毫秒），必须为正数 |
+
+**Response `data`:** `null`
+
+### 5.12 获取 LiteTopic 配额
+
+```
+GET /api/liteTopic/quota?namespace={namespace}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `namespace` | `string` | 否 | 按命名空间过滤 |
+
+**Response `data`:** `LiteTopicQuota`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `currentTopicCount` | `number` | 当前 Topic 数 |
+| `maxTopicCount` | `number` | Topic 数上限 |
+| `currentSessionCount` | `number` | 当前会话数 |
+| `maxSessionCount` | `number` | 会话数上限 |
+| `currentCreationRate` | `number` | 当前创建速率 |
+| `maxCreationRate` | `number` | 创建速率上限 |
+| `usageRate` | `number` | Topic 配额使用率 |
+| `sessionUsageRate` | `number` | 会话配额使用率 |
+| `defaultTTL` | `number` | 默认 TTL（毫秒） |
+| `maxTTL` | `number` | TTL 上限（毫秒） |
+| `remainingQuota` | `number` | 剩余配额 |
+| `consumerDensity` | `number` | 消费者密度 |
+
+### 5.13 检查 LiteTopic 能力
+
+```
+GET /api/liteTopic/capability
+```
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `supported` | `boolean` | 当前集群是否支持 LiteTopic |
+
+
 ## 6. 消费组管理 Consumer Group
 
 ### 6.1 获取消费组列表
@@ -1266,6 +1430,148 @@ GET /api/groups/export?names={name1,name2}
 **Response:** `Content-Type: application/json`, `Content-Disposition: attachment`
 
 ---
+
+### 6.10 分页获取消费组列表
+
+```
+GET /api/groups/page?instanceId={instanceId}&clusterId={clusterId}&search={search}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 否 | 所属实例 ID，不传时按默认平台集群查询 |
+| `clusterId` | `string` | 否 | 按集群过滤 |
+| `search` | `string` | 否 | 按名称模糊搜索 |
+| `page` | `number` | 否 | 页码，默认 `1` |
+| `pageSize` | `number` | 否 | 每页条数，默认 `20` |
+
+**Response `data`:** `PageResult<ConsumerGroup>`（单条定义同 6.1）
+
+### 6.11 获取消费组运行时设置
+
+```
+GET /api/groups/:name/settings?instanceId={instanceId}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 所属实例 ID |
+| `name` | `string` | 是 | 消费组名称（路径参数） |
+
+**Response `data`:** `ConsumerGroupSettings`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `groupName` | `string` | 消费组名称 |
+| `retryQueueNums` | `number` | 重试队列数 |
+| `retryMaxTimes` | `number` | 最大重试次数 |
+| `consumeEnable` | `boolean` | 是否允许消费 |
+| `consumeMessageOrderly` | `boolean` | 是否顺序消费 |
+| `consumeBroadcastEnable` | `boolean` | 是否允许广播消费 |
+
+运行时设置只在 Apache 实例可用；云实例（Aliyun / Tencent）返回 `501`。
+
+### 6.12 更新消费组运行时设置
+
+```
+POST /api/groups/settings
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 所属实例 ID |
+| `name` | `string` | 是 | 消费组名称 |
+| `retryQueueNums` | `number` | 是 | 重试队列数 |
+| `retryMaxTimes` | `number` | 是 | 最大重试次数 |
+| `consumeEnable` | `boolean` | 否 | 是否允许消费 |
+| `consumeMessageOrderly` | `boolean` | 否 | 是否顺序消费 |
+| `consumeBroadcastEnable` | `boolean` | 否 | 是否允许广播消费 |
+
+**Response `data`:** `ConsumerGroupSettings`（同 6.11）
+
+运行时设置只在 Apache 实例可用；云实例返回 `501`。
+
+### 6.13 刷新消费组
+
+```
+GET /api/groups/:name/refresh?instanceId={instanceId}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 否 | 所属实例 ID |
+| `name` | `string` | 是 | 消费组名称（路径参数） |
+
+**Response `data`:** `ConsumerGroup`（单条定义同 6.1）。消费组已不存在时返回 `200` 且 `data` 为
+`null`，调用方据此保留列表中的现有行。
+
+### 6.14 获取消费者线程栈
+
+```
+GET /api/groups/:name/instances/:clientId/stack?instanceId={instanceId}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 否 | 所属实例 ID |
+| `name` | `string` | 是 | 消费组名称（路径参数） |
+| `clientId` | `string` | 是 | 客户端 ID（路径参数） |
+
+**Response `data`:** `ConsumerStackTrace`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `groupName` | `string` | 消费组名称 |
+| `clientId` | `string` | 客户端 ID |
+| `capturedAt` | `string` | 抓取时间 (ISO 8601) |
+| `threadCount` | `number` | 线程数 |
+| `threads` | `object[]` | 线程明细：`threadName` / `threadId` / `state` / `blockedTime` / `waitedTime` / `stackTrace` |
+
+### 6.15 预览重置消费位点
+
+```
+POST /api/groups/reset-offset/preview
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 所属实例 ID |
+| `name` | `string` | 是 | 消费组名称 |
+| `topic` | `string` | 是 | 目标 Topic |
+| `timestamp` | `number` | 是 | 目标时间（Unix 毫秒时间戳） |
+
+**Response `data`:** `ResetConsumerOffsetPreview`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `instanceId` | `string` | 所属实例 ID |
+| `groupName` | `string` | 消费组名称 |
+| `topic` | `string` | Topic 名称 |
+| `timestamp` | `number` | 目标时间（Unix 毫秒时间戳） |
+| `complete` | `boolean` | 是否完整读取全部队列 |
+| `allowReset` | `boolean` | 是否允许重置 |
+| `queueCount` | `number` | 队列总数 |
+| `warningCount` | `number` | 有警告的队列数 |
+| `rewindQueueCount` | `number` | 会回退的队列数 |
+| `fastForwardQueueCount` | `number` | 会前跳的队列数 |
+| `currentTotalLag` | `number` | 当前总堆积 |
+| `projectedTotalLag` | `number` | 重置后的预计总堆积 |
+| `totalOffsetDelta` | `number` | 位点变动总量 |
+| `warnings` | `string[]` | 预览过程中的警告 |
+| `queues` | `object[]` | 队列明细：`topic` / `broker` / `queueId` / `minOffset` / `maxOffset` / `brokerOffset` / `consumerOffset` / `targetOffset` / `currentLag` / `projectedLag` / `offsetDelta` |
+
 
 ## 7. ACL 管理
 
@@ -1690,6 +1996,12 @@ POST /api/messages/direct-consume
 ---
 
 ## 9. 死信队列 Dead Letter Queue
+
+DLQ 消息列表、JSON 导出和 Excel 导出在扫描时共享每次请求 **10 MiB 原始消息体**的累积上限。
+超过上限会返回 `413` 和提示 `DLQ read exceeds the 10 MiB message body limit; narrow the time range`，
+不会返回截断的消息体或部分成功的下载。请缩小时间窗口，或在 JSON 导出中减小 `maxCount`。
+Excel 的 `msgIds` 过滤在扫描后执行，因此扫描本身仍受此上限约束。原有条数上限和重发行为不变。
+此限制不包含消息属性、客户端已解码的单个拉取批次或并发请求；它不是整个 JVM 的内存上限。
 
 ### 9.1 获取 DLQ 列表
 

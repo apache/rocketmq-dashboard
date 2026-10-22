@@ -324,6 +324,12 @@ public class ClusterService {
         ClusterVO cluster = requireSingleCluster(instanceId);
         if (cluster.getBrokers() != null) {
             for (BrokerVO broker : cluster.getBrokers()) {
+                // A discovered broker can lack an address (e.g. a slave-only broker whose
+                // master is down). Skip it like the config update does instead of failing
+                // the whole per-broker config scan on a null map key.
+                if (broker == null || broker.getAddr() == null || broker.getAddr().isEmpty()) {
+                    continue;
+                }
                 configs.put(broker.getAddr(), brokerConfigService.getBrokerConfig(broker.getAddr(), instanceId));
             }
         }

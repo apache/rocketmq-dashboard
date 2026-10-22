@@ -16,7 +16,26 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildCsv, downloadBlob, downloadCsv } from './download';
+import { buildCsv, downloadBlob, downloadCsv, localExportDateStamp } from './download';
+
+describe('localExportDateStamp', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('uses the operator date when UTC is still on the previous day', () => {
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    const now = new Date('2026-10-16T16:30:00Z');
+    expect(now.toISOString().slice(0, 10)).toBe('2026-10-16');
+    expect(localExportDateStamp(now)).toBe('2026-10-17');
+  });
+
+  it('uses the operator date when UTC has already advanced to the next day', () => {
+    vi.stubEnv('TZ', 'America/Los_Angeles');
+    const now = new Date('2026-10-17T03:30:00Z');
+    expect(now.toISOString().slice(0, 10)).toBe('2026-10-17');
+    expect(localExportDateStamp(now)).toBe('2026-10-16');
+  });
+});
+
 describe('buildCsv', () => {
   it('escapes quotes, empty values, and spreadsheet formulas', () => {
     const csv = buildCsv(

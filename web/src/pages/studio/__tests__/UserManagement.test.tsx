@@ -197,6 +197,24 @@ describe('UserManagementPage', () => {
     expect(screen.getByText('未来 5 分钟过期')).toBeInTheDocument();
   });
 
+  it('reports an independent session overview failure and recovers on retry', async () => {
+    vi.mocked(getStudioUserSessionOverview).mockRejectedValueOnce(
+      new Error('overview unavailable'),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    // The user inventory succeeded, so it stays usable while the missing overview is explained.
+    await screen.findByText('operator');
+    expect(screen.getByText('加载会话概览失败')).toBeInTheDocument();
+    expect(screen.queryByText('未来 5 分钟过期')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /重\s*试/ }));
+    await screen.findByText('未来 5 分钟过期');
+    expect(screen.queryByText('加载会话概览失败')).not.toBeInTheDocument();
+    expect(getStudioUserSessionOverview).toHaveBeenCalledTimes(2);
+  });
+
   it('debounces username search and sends role and status filters', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
