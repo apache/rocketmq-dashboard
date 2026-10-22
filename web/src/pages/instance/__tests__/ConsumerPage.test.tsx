@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App, Modal, message } from 'antd';
+import { App, ConfigProvider, Modal, message, theme } from 'antd';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
@@ -124,6 +124,14 @@ const renderWithProviders = (ui: React.ReactElement, initialEntry = '/instance/c
       </LangProvider>
     </App>,
   );
+
+// Comparing raw CSS text would depend on how each side spells a colour, so both the element's
+// value and the expected token go through the same parser before they are compared.
+const normalizeBackground = (value: string): string => {
+  const probe = document.createElement('span');
+  probe.style.background = value;
+  return probe.style.background;
+};
 
 beforeAll(installBrowserMocks);
 
@@ -886,6 +894,36 @@ describe('Consumer page', () => {
     expect(within(panel).getByText('Queue 堆积分布严重倾斜')).toBeInTheDocument();
     expect(within(panel).getAllByText('客户端心跳过期').length).toBeGreaterThan(0);
     expect(within(panel).getByText('处理建议')).toBeInTheDocument();
+  });
+
+  it('renders the health summary card on the theme fill token so dark mode stays readable', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <ConfigProvider theme={{ algorithm: theme.darkAlgorithm }}>
+        <App>
+          <LangProvider>
+            <MemoryRouter initialEntries={['/instance/consumer']}>
+              <ConsumerPage />
+            </MemoryRouter>
+          </LangProvider>
+        </App>
+      </ConfigProvider>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    await user.click(await screen.findByRole('tab', { name: /健康诊断/ }));
+    const panel = await screen.findByRole('tabpanel', { name: /健康诊断/ });
+    const summaryCard = (await within(panel).findByText('健康分:')).closest('.ant-card');
+
+    // A fixed light grey leaves the dark theme's light text unreadable on it, so the summary
+    // card has to follow the theme's fill token instead.
+    const darkFill = theme.getDesignToken({ algorithm: theme.darkAlgorithm }).colorFillQuaternary;
+    expect(normalizeBackground((summaryCard as HTMLElement).style.background)).toBe(
+      normalizeBackground(darkFill),
+    );
+    expect(normalizeBackground((summaryCard as HTMLElement).style.background)).not.toBe(
+      normalizeBackground('#fafafa'),
+    );
   });
 
   it('filters queue progress to the topic of the clicked distribution button', async () => {
@@ -1969,6 +2007,38 @@ describe('Consumer page', () => {
       { timeout: 4000 },
     );
     expect(await within(row).findByText('42')).toBeInTheDocument();
+  });
+
+  it('renders a placeholder for an online instance whose protocol is unknown', async () => {
+    // The Apache provider derives online instances from a broker connection set, which
+    // carries no protocol marker — the API legitimately returns the field absent.
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([
+        {
+          ...group,
+          instances: [{ clientId: 'client-no-proto', address: '10.0.0.9:1234' }],
+        },
+      ]),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    const dialog = await screen.findByRole('dialog', { name: /remote-cg/ });
+    const instanceRow = await within(dialog).findByText('client-no-proto');
+    const row = instanceRow.closest('tr') as HTMLElement;
+
+    // Locate the protocol cell through its header instead of a hardcoded column index, so
+    // the assertion keeps working when the instance columns are reordered.
+    const headers = Array.from(row.closest('table')!.querySelectorAll('thead th')).map((th) =>
+      th.textContent?.trim(),
+    );
+    const protocolIndex = headers.indexOf('协议');
+    expect(protocolIndex).toBeGreaterThan(-1);
+
+    const cells = within(row).getAllByRole('cell');
+    expect(cells[protocolIndex].textContent?.trim()).toBe('-');
+    expect(cells[protocolIndex].querySelector('.ant-tag')).toBeNull();
   });
 
   it('edits retry settings from the detail modal settings tab', async () => {

@@ -322,6 +322,24 @@ describe('metrics explorer diagnostics', () => {
     expect(csv).toContain('"2027-01-15T07:00:00.000Z"');
   });
 
+  it('keeps every epoch column of a CSV row in the same time unit', () => {
+    const rows = buildMetricCsvRows(metricData, metric, {
+      profileName: 'RocketMQ 5.x Native',
+      sourceName: 'Prometheus prod',
+      queryStart: 1_799_996_400,
+      queryEnd: 1_800_000_000,
+      queriedAt: 1_800_000_000_000,
+    });
+
+    // Timestamp / Query Start / Query End are epoch seconds; Queried At arrives from the
+    // caller as epoch milliseconds, but one CSV file must not mix the two units.
+    for (const row of rows) {
+      expect(row.queriedAt).toBe(1_800_000_000);
+      expect(row.queryStart).toBe(1_799_996_400);
+      expect(row.queryEnd).toBe(1_800_000_000);
+    }
+  });
+
   it('creates deterministic CSV filenames from metric identity', () => {
     expect(buildMetricCsvFilename(metric, 1_800_000_000_000)).toBe(
       'rocketmq-studio-metrics-message-in-tps-2027-01-15T08-00-00-000Z.csv',

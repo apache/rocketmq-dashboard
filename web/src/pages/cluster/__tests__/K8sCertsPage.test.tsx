@@ -22,11 +22,19 @@ import { App } from 'antd';
 import type { K8sCertInfo } from '../../../api/cluster';
 import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../../services/clusterService';
 import K8sCertsPage from '../certs';
+import { LangProvider } from '../../../i18n/LangContext';
 
 vi.mock('../../../services/clusterService', () => ({
   listK8sCerts: vi.fn(),
   createK8sCert: vi.fn(),
   deleteK8sCert: vi.fn(),
+}));
+
+const languagePreference = vi.hoisted(() => ({ initial: 'zh' as 'zh' | 'en' }));
+
+vi.mock('../../../i18n/languagePreference', () => ({
+  getInitialLanguage: () => languagePreference.initial,
+  persistLanguage: vi.fn(),
 }));
 
 const certs: K8sCertInfo[] = [
@@ -87,6 +95,7 @@ beforeAll(() => {
 
 describe('K8sCertsPage', () => {
   beforeEach(() => {
+    languagePreference.initial = 'zh';
     vi.clearAllMocks();
     vi.mocked(listK8sCerts).mockResolvedValue(certs);
   });
@@ -94,7 +103,9 @@ describe('K8sCertsPage', () => {
   const renderPage = () =>
     render(
       <App>
-        <K8sCertsPage />
+        <LangProvider>
+          <K8sCertsPage />
+        </LangProvider>
       </App>,
     );
 
@@ -267,5 +278,29 @@ describe('K8sCertsPage', () => {
     await screen.findByText('rocketmq-prod-tls');
     await waitFor(() => expect(screen.queryByText('获取数据失败')).not.toBeInTheDocument());
     expect(screen.getByText('共 3 个证书')).toBeInTheDocument();
+  });
+});
+
+describe('K8sCertsPage English localization', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    languagePreference.initial = 'en';
+    vi.mocked(listK8sCerts).mockResolvedValue(certs);
+  });
+
+  it('renders English labels inside the language provider', async () => {
+    render(
+      <LangProvider>
+        <K8sCertsPage />
+      </LangProvider>,
+    );
+
+    await screen.findByText('rocketmq-prod-tls');
+    expect(screen.getByRole('heading', { name: 'K8s Certificate Config' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Add Certificate/ })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'K8s Cluster Name' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Expiry Time' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Days Remaining' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeInTheDocument();
   });
 });
