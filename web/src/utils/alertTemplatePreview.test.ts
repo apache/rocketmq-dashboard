@@ -116,13 +116,25 @@ describe('alert template preview', () => {
     const preview = previewAlertNotificationTemplate('   ');
 
     expect(preview.status).toBe('ready');
-    expect(preview.rendered).toBe('   ');
+    // An empty configuration still delivers the server-side default, so the
+    // preview renders that content instead of an empty string.
+    expect(preview.rendered).toBe(
+      '[CRITICAL] Broker disk usage is firing'
+        + ' - Broker broker-a disk usage is above the configured threshold.'
+        + '\nLabels: broker=broker-a, cluster=DefaultCluster, instanceId=rocketmq-prod',
+    );
     expect(preview.issues).toEqual([
       expect.objectContaining({
         code: 'EMPTY_TEMPLATE',
         severity: 'info',
       }),
     ]);
+  });
+
+  it('keeps ${value} unit-free so value+thresholdUnit previews match delivery', () => {
+    const preview = previewAlertNotificationTemplate('${value}${thresholdUnit}');
+
+    expect(preview.rendered).toBe('91%');
   });
 
   it('formats label maps in deterministic key order', () => {

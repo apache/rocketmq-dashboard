@@ -92,10 +92,6 @@ public enum ToolError {
             "Tool execution failed unexpectedly.",
             "Retry once; if the failure persists, contact an administrator."),
 
-    ACL_ID_INVALID(HttpStatus.BAD_REQUEST, "INVALID_ARGUMENT",
-            "ACL id must be numeric: %s",
-            "Use the numeric ACL id returned by rmq.acl.list."),
-
     ROLE_NOT_FOUND(HttpStatus.NOT_FOUND, "NOT_FOUND",
             "Role not found: %s",
             "List the roles for the selected Instance and choose an existing role."),

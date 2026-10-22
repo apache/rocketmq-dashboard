@@ -170,6 +170,21 @@ describe('ACL risk diagnostics', () => {
     );
   });
 
+  it('reports malformed wildcard entries without counting them as grants', () => {
+    const diagnostics = analyzeAclRisk(
+      config({
+        accounts: [account({ topicPerms: ['*=INVALID'], groupPerms: ['*'] })],
+      }),
+    );
+
+    expect(diagnostics.summary.wildcardPermissionAccountCount).toBe(0);
+    expect(
+      diagnostics.issues.filter((item) => item.code === 'INVALID_PERMISSION_ENTRY'),
+    ).toHaveLength(2);
+    expect(diagnostics.issues.map((item) => item.code)).not.toContain('WILDCARD_TOPIC_PERMISSION');
+    expect(diagnostics.issues.map((item) => item.code)).not.toContain('WILDCARD_GROUP_PERMISSION');
+  });
+
   it('reads the comma-joined action list the server writes for a multi-action rule', () => {
     const diagnostics = analyzeAclRisk(
       config({

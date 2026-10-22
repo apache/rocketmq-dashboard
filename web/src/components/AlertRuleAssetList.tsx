@@ -16,10 +16,23 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, App, Button, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd';
+import {
+  Alert,
+  App,
+  Button,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Typography,
+  theme,
+} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ArrowClockwise, DownloadSimple, Eye } from '@phosphor-icons/react';
 import { useLang } from '../i18n/LangContext';
+import TagList from './TagList';
 import {
   exportAlertRuleAsset,
   getAlertRuleAsset,
@@ -39,6 +52,7 @@ const SEVERITY_COLORS: Record<string, string> = {
 export const AlertRuleAssetList: React.FC = () => {
   const { t } = useLang();
   const { message } = App.useApp();
+  const { token } = theme.useToken();
   const [assets, setAssets] = useState<AlertRuleAssetInfo[]>([]);
   const [searchText, setSearchText] = useState('');
   const [selectedSeverities, setSelectedSeverities] = useState<string[]>([]);
@@ -177,15 +191,16 @@ export const AlertRuleAssetList: React.FC = () => {
       title: t('alertAssets.severity'),
       dataIndex: 'severities',
       key: 'severities',
-      width: 180,
+      // CRITICAL + WARNING + INFO 三个标签并排实测需 239px
+      width: 240,
       render: (severities: string[]) => (
-        <Space size={[0, 4]} wrap>
-          {(severities || []).map((severity) => (
-            <Tag key={severity} color={SEVERITY_COLORS[severity] || 'default'}>
-              {severity.toUpperCase()}
-            </Tag>
-          ))}
-        </Space>
+        <TagList
+          items={(severities || []).map((severity) => ({
+            key: severity,
+            label: severity.toUpperCase(),
+            color: SEVERITY_COLORS[severity] || 'default',
+          }))}
+        />
       ),
     },
     {
@@ -290,7 +305,10 @@ export const AlertRuleAssetList: React.FC = () => {
             style={{
               maxHeight: 480,
               overflow: 'auto',
-              background: '#f5f5f5',
+              // Theme fill instead of a fixed light grey: the preview inherits the active
+              // theme's text color, so a hardcoded light background made it unreadable in
+              // dark mode (the panel keeps the light-mode look the token resolves to).
+              background: token.colorFillQuaternary,
               padding: 16,
               borderRadius: 6,
               fontSize: 14,

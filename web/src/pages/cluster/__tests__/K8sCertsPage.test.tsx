@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
@@ -23,12 +23,18 @@ import type { K8sCertInfo } from '../../../api/cluster';
 import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../../services/clusterService';
 import K8sCertsPage from '../certs';
 import { LangProvider } from '../../../i18n/LangContext';
-import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 
 vi.mock('../../../services/clusterService', () => ({
   listK8sCerts: vi.fn(),
   createK8sCert: vi.fn(),
   deleteK8sCert: vi.fn(),
+}));
+
+const languagePreference = vi.hoisted(() => ({ initial: 'zh' as 'zh' | 'en' }));
+
+vi.mock('../../../i18n/languagePreference', () => ({
+  getInitialLanguage: () => languagePreference.initial,
+  persistLanguage: vi.fn(),
 }));
 
 const certs: K8sCertInfo[] = [
@@ -89,18 +95,17 @@ beforeAll(() => {
 
 describe('K8sCertsPage', () => {
   beforeEach(() => {
+    languagePreference.initial = 'zh';
     vi.clearAllMocks();
     vi.mocked(listK8sCerts).mockResolvedValue(certs);
-  });
-
-  afterEach(() => {
-    localStorage.removeItem(LANGUAGE_STORAGE_KEY);
   });
 
   const renderPage = () =>
     render(
       <App>
-        <K8sCertsPage />
+        <LangProvider>
+          <K8sCertsPage />
+        </LangProvider>
       </App>,
     );
 
@@ -178,7 +183,7 @@ describe('K8sCertsPage', () => {
     ['zh', ['有效', '即将过期', '已过期', '尚未生效']],
     ['en', ['Valid', 'Expiring', 'Expired', 'Not yet valid']],
   ] as const)('renders all certificate status labels in %s', async (lang, labels) => {
-    localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+    languagePreference.initial = lang;
     vi.mocked(listK8sCerts).mockResolvedValue(
       (['valid', 'expiring', 'expired', 'not_yet_valid'] as const).map((status, index) => ({
         ...certs[0],
@@ -293,5 +298,47 @@ describe('K8sCertsPage', () => {
     renderPage();
 
     expect(await screen.findByText('请求失败，请稍后重试')).toBeInTheDocument();
+  });
+
+  it('reports a failed certificate load with a retry instead of an empty inventory', async () => {
+    vi.mocked(listK8sCerts).mockRejectedValueOnce(new Error('certificate store offline'));
+    const user = userEvent.setup();
+
+    renderPage();
+
+    expect(await screen.findByText('获取数据失败')).toBeInTheDocument();
+    // A failed read must not be presented as a measured zero.
+    expect(screen.getByText('不可用')).toBeInTheDocument();
+    expect(screen.queryByText('共 0 个证书')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /重试/ }));
+
+    await screen.findByText('rocketmq-prod-tls');
+    await waitFor(() => expect(screen.queryByText('获取数据失败')).not.toBeInTheDocument());
+    expect(screen.getByText('共 3 个证书')).toBeInTheDocument();
+  });
+});
+
+describe('K8sCertsPage English localization', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    languagePreference.initial = 'en';
+    vi.mocked(listK8sCerts).mockResolvedValue(certs);
+  });
+
+  it('renders English labels inside the language provider', async () => {
+    render(
+      <LangProvider>
+        <K8sCertsPage />
+      </LangProvider>,
+    );
+
+    await screen.findByText('rocketmq-prod-tls');
+    expect(screen.getByRole('heading', { name: 'K8s Certificate Config' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Add Certificate/ })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'K8s Cluster Name' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Expiry Time' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Days Remaining' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeInTheDocument();
   });
 });

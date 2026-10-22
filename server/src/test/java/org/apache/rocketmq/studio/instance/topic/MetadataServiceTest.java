@@ -163,6 +163,22 @@ class MetadataServiceTest {
         assertThat(request.getValue().getTopic()).isEqualTo("%RETRY%group-a");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"orders", "%DLQ%group-a"})
+    void redeliveryPreservesCloudSendContractTest(String sourceTopic) {
+        MessageRecordVO source = MessageRecordVO.builder().topic(sourceTopic).body("payload")
+                .properties(Map.of("tenant", "alpha")).build();
+        when(cloudProvider.sendMessage(any())).thenReturn(SendMessageVO.builder().msgId("cloud-msg").build());
+
+        SendMessageVO result = metadataService.redeliverMessage("cloud-instance", "group-a", source, null);
+
+        assertThat(result.getMsgId()).isEqualTo("cloud-msg");
+        ArgumentCaptor<SendMessageDTO> request = ArgumentCaptor.forClass(SendMessageDTO.class);
+        verify(cloudProvider).sendMessage(request.capture());
+        assertThat(request.getValue().getTopic()).isEqualTo("%RETRY%group-a");
+        assertThat(request.getValue().getProperties()).containsOnlyKeys("tenant");
+    }
+
     @Test
     void redeliverMessageShouldFilterSystemReservedPropertiesTest() {
         // §15.5.1: copying KEYS/TAGS/UNIQ_KEY verbatim makes putUserProperty reject the send.
@@ -429,7 +445,9 @@ class MetadataServiceTest {
                 call.<java.util.function.Supplier<Object>>getArgument(2).get());
         lenient().when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(apacheProvider);
         lenient().when(apacheProvider.vendor()).thenReturn(InstanceVendor.APACHE);
+        lenient().when(apacheProvider.redeliverMessage(any(), anyString())).thenCallRealMethod();
         lenient().when(cloudProvider.vendor()).thenReturn(InstanceVendor.TENCENT);
+        lenient().when(cloudProvider.redeliverMessage(any(), anyString())).thenCallRealMethod();
         lenient().when(providerRegistry.byInstanceId("instance-a")).thenReturn(java.util.Optional.of(apacheProvider));
         lenient().when(providerRegistry.byInstanceId("cloud-instance")).thenReturn(java.util.Optional.of(cloudProvider));
         lenient().when(instanceResolver.findByIdentifier(org.mockito.ArgumentMatchers.anyString()))
