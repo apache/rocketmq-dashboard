@@ -491,6 +491,61 @@ describe('consumer service mock data', () => {
     }
   });
 
+  it('scopesMockProgressSubscriptionsAndResetPreviewsToTheOwningGroupTest', async () => {
+    const name = 'cg-order-notify';
+    const original = mockConsumerGroups.find(
+      (group) => group.name === name && group.instanceId === 'instance-proxy-1',
+    );
+    const originalIndex = mockConsumerGroups.indexOf(original!);
+    await createConsumerGroup({ name, instanceId: 'instance-proxy-2' });
+    try {
+      // A same-named group in another instance must not see the original
+      // instance's fixture progress, subscriptions, or reset preview.
+      expect(await getConsumerProgress(name, 'instance-proxy-2')).toEqual([]);
+      expect(await getConsumerSubscriptions(name, 'instance-proxy-2')).toEqual([]);
+      const foreignPreview = await previewConsumerOffsetReset({
+        name,
+        instanceId: 'instance-proxy-2',
+        topic: 'order-create',
+        timestamp: 1784246400000,
+      });
+      expect(foreignPreview.complete).toBe(false);
+      expect(foreignPreview.allowReset).toBe(false);
+      expect(foreignPreview.queueCount).toBe(0);
+
+      // The owning instance keeps its round-trip data.
+      expect(await getConsumerProgress(name, 'instance-proxy-1')).toHaveLength(6);
+      expect(await getConsumerSubscriptions(name, 'instance-proxy-1')).toHaveLength(3);
+      const ownedPreview = await previewConsumerOffsetReset({
+        name,
+        instanceId: 'instance-proxy-1',
+        topic: 'order-create',
+        timestamp: 1784246400000,
+      });
+      expect(ownedPreview.complete).toBe(true);
+      expect(ownedPreview.allowReset).toBe(true);
+
+      // The fixture is tied to the active group record: once the owning group
+      // is deleted its preloaded data is no longer visible.
+      await deleteConsumerGroup(name, 'instance-proxy-1');
+      expect(await getConsumerProgress(name, 'instance-proxy-1')).toEqual([]);
+      expect(await getConsumerSubscriptions(name, 'instance-proxy-1')).toEqual([]);
+      const deletedPreview = await previewConsumerOffsetReset({
+        name,
+        instanceId: 'instance-proxy-1',
+        topic: 'order-create',
+        timestamp: 1784246400000,
+      });
+      expect(deletedPreview.allowReset).toBe(false);
+      expect(deletedPreview.queueCount).toBe(0);
+    } finally {
+      await deleteConsumerGroup(name, 'instance-proxy-2');
+      if (original && !mockConsumerGroups.includes(original)) {
+        mockConsumerGroups.splice(originalIndex, 0, original);
+      }
+    }
+  });
+
   it('forwards the selected instance when loading consumer group details in API mode', async () => {
     mode.mock = false;
     const detail = {
