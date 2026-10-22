@@ -353,7 +353,13 @@ export interface AiTimelineVO {
   /** The run still streaming, so a reload can re-attach instead of showing a dead transcript. */
   activeRun: { id: number; status: RunStatus } | null;
   /** Stats of the runs referenced by `items`; `tokensPerSecond` is null when never reported. */
-  runs?: { id: number; tokensPerSecond: number | null }[];
+  runs?: {
+    id: number;
+    tokensPerSecond: number | null;
+    /** Provider-reported usage of the run's terminal call; null when the engine reported none. */
+    inputTokens: number | null;
+    outputTokens: number | null;
+  }[];
 }
 
 export interface AiAgentCapabilitiesVO {

@@ -15,16 +15,34 @@
  * limitations under the License.
  */
 
-import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { LangProvider } from '../../../../i18n/LangContext';
 import type { TimelineEvent } from '../../../../api/aiEvents';
 import { foldTimelineBlocks } from '../../render/foldTimeline';
 import { reduceLiveBlocks } from '../../render/reduceLive';
 import type { ChatSseEvent } from '../../../../api/aiEvents';
-import { runningToolBlock } from '../../render/blocks';
+import { runningToolBlock, withToolResult } from '../../render/blocks';
 import type { ToolBlock as ToolBlockData } from '../../render/blocks';
 import ToolBlock from '../blocks/ToolBlock';
+
+// antd Table subscribes to the responsive observer on mount; jsdom has no matchMedia. Same stub
+// the other Table-rendering suites use.
+beforeAll(() => {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+});
 
 /**
  * `ToolBlock` against the block shapes the event contract can actually produce, built by running the
@@ -127,8 +145,11 @@ describe('ToolBlock', () => {
     expect(card).toHaveAttribute('data-status', 'done');
     expect(screen.getByTestId('ai-tool-name')).toHaveTextContent('topic.list');
     expect(screen.getByTestId('ai-tool-status')).toHaveTextContent('成功');
-    // The output survives even though the call started outside the window.
-    expect(screen.getByTestId('tool-result')).toHaveTextContent('"topics":["TopicA"]');
+    // The output survives even though the call started outside the window, pretty-printed with
+    // the raw transport string one click away.
+    expect(screen.getByTestId('ai-tool-output-json')).toHaveTextContent('TopicA');
+    fireEvent.click(screen.getByTestId('ai-tool-output-raw-toggle'));
+    expect(screen.getByTestId('ai-tool-output-raw')).toHaveTextContent('"topics":["TopicA"]');
     expect(screen.getByTestId('ai-tool-input')).toHaveTextContent('输入参数不在已加载的事件范围内');
     // No `<pre>` for an input we do not have, and no bare `null` anywhere in the card.
     expect(screen.queryByTestId('tool-input')).not.toBeInTheDocument();
@@ -185,5 +206,111 @@ describe('ToolBlock', () => {
 
     expect(screen.getByTestId('ai-tool-status')).toHaveTextContent('失败');
     expect(screen.getByTestId('ai-tool-error')).toHaveTextContent('instance not found: local');
+  });
+});
+
+describe('running stopwatch', () => {
+  // The colours are compared against each other rather than against theme hex values: what the
+  // operator needs is three visibly distinct stages, and pinning #faad14 here would couple the
+  // suite to the antd default theme.
+  it('ticksElapsedAndEscalatesTheColourAtFiveThenTenMinutesTest', () => {
+    vi.useFakeTimers();
+    try {
+      renderBlock(runningToolBlock('toolu_sw', 'rmq.topic.list', NO_ARG_INPUT));
+
+      expect(screen.getByTestId('ai-tool-elapsed')).toHaveTextContent('0s');
+      expect(screen.queryByTestId('ai-tool-may-timeout')).not.toBeInTheDocument();
+      const fresh = screen.getByTestId('ai-tool-elapsed').style.color;
+
+      act(() => {
+        vi.advanceTimersByTime(5 * 60 * 1000 + 1000);
+      });
+      expect(screen.getByTestId('ai-tool-elapsed')).toHaveTextContent('5m');
+      expect(screen.queryByTestId('ai-tool-may-timeout')).not.toBeInTheDocument();
+      const warned = screen.getByTestId('ai-tool-elapsed').style.color;
+
+      act(() => {
+        vi.advanceTimersByTime(5 * 60 * 1000);
+      });
+      expect(screen.getByTestId('ai-tool-elapsed')).toHaveTextContent('10m');
+      expect(screen.getByTestId('ai-tool-may-timeout')).toHaveTextContent('可能超时');
+      const stuck = screen.getByTestId('ai-tool-elapsed').style.color;
+
+      expect(new Set([fresh, warned, stuck]).size).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reportsTheAuthoritativeDurationInsteadOfAStopwatchOnceDoneTest', () => {
+    const block = withToolResult([], {
+      tcId: 'toolu_sw',
+      tool: 'rmq.topic.list',
+      output: '{}',
+      outputBytes: 2,
+      truncated: false,
+      durationMs: 1240,
+      success: true,
+    })[0] as ToolBlockData;
+
+    renderBlock(block);
+
+    expect(screen.queryByTestId('ai-tool-elapsed')).not.toBeInTheDocument();
+    expect(screen.getByTestId('ai-tool-block')).toHaveTextContent('1.2 s');
+  });
+});
+
+describe('structured output', () => {
+  const doneWith = (output: string): ToolBlockData =>
+    (
+      withToolResult([], {
+        tcId: 'toolu_s',
+        tool: 'rmq.topic.list',
+        output,
+        outputBytes: output.length,
+        truncated: false,
+        durationMs: 10,
+        success: true,
+      }) as ToolBlockData[]
+    )[0];
+
+  it('tablesAJsonArrayOfUniformObjectsTest', () => {
+    renderBlock(doneWith('[{"topic":"T1","perm":6},{"topic":"T2","perm":4}]'));
+
+    const table = screen.getByTestId('ai-tool-output-table');
+    expect(table).toHaveTextContent('T1');
+    expect(table).toHaveTextContent('T2');
+    // antd renders the header twice when `scroll` is set (a hidden measure row), so the column
+    // title is asserted as "present", not "unique".
+    expect(within(table).getAllByText('topic').length).toBeGreaterThan(0);
+  });
+
+  it('tablesCsvShapedTextTest', () => {
+    renderBlock(doneWith('topic,perm\nT1,6\nT2,4'));
+
+    expect(screen.getByTestId('ai-tool-output-table')).toHaveTextContent('T2');
+  });
+
+  it('tablesTheSingleRowListInsideAnEnvelopeObjectTest', () => {
+    // The shape most Studio tools actually return: {"items": [...]} plus scalar envelope fields.
+    renderBlock(doneWith('{"total":2,"items":[{"name":"T1","perm":6},{"name":"T2","perm":4}]}'));
+
+    const table = screen.getByTestId('ai-tool-output-table');
+    expect(table).toHaveTextContent('T1');
+    expect(table).toHaveTextContent('T2');
+  });
+
+  it('keepsAnEnvelopeWithTwoRowListsAsJsonTest', () => {
+    renderBlock(doneWith('{"a":[{"x":1}],"b":[{"y":2}]}'));
+
+    expect(screen.queryByTestId('ai-tool-output-table')).not.toBeInTheDocument();
+    expect(screen.getByTestId('ai-tool-output-json')).toBeInTheDocument();
+  });
+
+  it('keepsProseVerbatimWithoutAToggleTest', () => {
+    renderBlock(doneWith('OK: 3 topics, see broker log'));
+
+    expect(screen.getByTestId('ai-tool-output-raw')).toHaveTextContent('OK: 3 topics');
+    expect(screen.queryByTestId('ai-tool-output-raw-toggle')).not.toBeInTheDocument();
   });
 });

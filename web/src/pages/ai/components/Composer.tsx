@@ -20,6 +20,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   type RefObject,
@@ -90,6 +91,17 @@ const ENGINE_OPTIONS: { value: AgentEngine; label: string }[] = [
 
 /** Max height the textarea grows to before it scrolls; matches `.chat-input { max-height }`. */
 const TEXTAREA_MAX_HEIGHT = 180;
+
+/** The queue rows' three text buttons: quiet until hovered by intent, never competing with send. */
+const queueActionButton = (color: string): CSSProperties => ({
+  border: 0,
+  padding: 0,
+  background: 'transparent',
+  color,
+  fontSize: 14,
+  cursor: 'pointer',
+  flexShrink: 0,
+});
 
 /** Context-window budget the progress bar is drawn against; provider models vary, 128k is the
  *  common denominator for the configured gateways. */
@@ -166,6 +178,23 @@ export interface ComposerProps {
   quickActions?: string[];
   /** Estimated tokens of the current conversation, drawn as the context-usage progress bar. */
   contextTokens?: number;
+  /**
+   * Where `contextTokens` came from: the provider's reported usage of the newest run, or this
+   * page's transcript estimate when the engine reports none. The meter says which, because a
+   * measured number and a guessed one must not read the same to the operator.
+   */
+  contextSource?: 'usage' | 'estimate';
+  /**
+   * Messages typed while a run is in flight. Rendered as an editable queue above the textarea;
+   * Enter during a run appends here instead of being refused, and the page drains the queue in
+   * order once the run reaches a terminal state.
+   */
+  queue?: string[];
+  onQueue?: (text: string) => void;
+  onEditQueued?: (index: number) => void;
+  onDropQueued?: (index: number) => void;
+  /** Moves an entry to the head: "send this one first once the run ends". */
+  onPromoteQueued?: (index: number) => void;
   /** Textarea placeholder; defaults to the AI page's copy. */
   placeholder?: string;
   /** Quick-prompt chip row above the selectors; the home page hides it. */
@@ -213,6 +242,12 @@ const Composer = ({
   textareaRef,
   quickActions = DEFAULT_QUICK_ACTIONS,
   contextTokens = 0,
+  contextSource = 'estimate',
+  queue = [],
+  onQueue,
+  onEditQueued,
+  onDropQueued,
+  onPromoteQueued,
   placeholder,
   showQuickActions = true,
   showContextBar = true,
@@ -259,10 +294,21 @@ const Composer = ({
 
   const handleSend = useCallback(() => {
     const text = value.trim();
-    if (!text || !canSend) return;
+    if (!text) return;
+    if (isStreaming) {
+      // A run in flight cannot take a second message, but refusing it loses the thought: with a
+      // queue wired up the text is parked and leaves in order once the run ends. Without one the
+      // old refusal stands, because clearing the draft for a send that silently never happens is
+      // exactly the bug the canSend guard above exists to prevent.
+      if (!onQueue) return;
+      onChange('');
+      onQueue(text);
+      return;
+    }
+    if (!canSend) return;
     onChange('');
     onSend(text);
-  }, [canSend, onChange, onSend, value]);
+  }, [canSend, isStreaming, onChange, onQueue, onSend, value]);
 
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
@@ -473,6 +519,79 @@ const Composer = ({
             </div>
           )}
 
+          {/* Messages parked while a run is in flight. The queue is part of the composer because
+              it is draft state, not transcript state: nothing here has been admitted yet. */}
+          {queue.length > 0 && (
+            <div
+              data-testid="ai-queue"
+              className="px-3 pt-2"
+              style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
+            >
+              <span style={{ fontSize: 14, color: token.colorTextTertiary }}>
+                {t('ai.queue.title', { count: queue.length })}
+              </span>
+              {queue.map((text, index) => (
+                <Flex
+                  key={`${index}-${text.slice(0, 16)}`}
+                  align="center"
+                  gap={8}
+                  data-testid="ai-queue-item"
+                  style={{
+                    padding: '4px 10px',
+                    border: `1px dashed ${token.colorBorderSecondary}`,
+                    borderRadius: 8,
+                    background: token.colorFillQuaternary,
+                  }}
+                >
+                  <span
+                    title={text}
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      fontSize: 14,
+                      color: token.colorText,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {text}
+                  </span>
+                  {index !== 0 && onPromoteQueued && (
+                    <button
+                      type="button"
+                      data-testid="ai-queue-promote"
+                      onClick={() => onPromoteQueued(index)}
+                      style={queueActionButton(token.colorTextTertiary)}
+                    >
+                      {t('ai.queue.first')}
+                    </button>
+                  )}
+                  {onEditQueued && (
+                    <button
+                      type="button"
+                      data-testid="ai-queue-edit"
+                      onClick={() => onEditQueued(index)}
+                      style={queueActionButton(token.colorPrimary)}
+                    >
+                      {t('ai.queue.edit')}
+                    </button>
+                  )}
+                  {onDropQueued && (
+                    <button
+                      type="button"
+                      data-testid="ai-queue-drop"
+                      onClick={() => onDropQueued(index)}
+                      style={queueActionButton(token.colorTextTertiary)}
+                    >
+                      {t('ai.queue.remove')}
+                    </button>
+                  )}
+                </Flex>
+              ))}
+            </div>
+          )}
+
           <div className="relative flex flex-col">
             <textarea
               ref={textarea}
@@ -535,14 +654,24 @@ const Composer = ({
                     <Tooltip
                       title={t('ai.composer.contextUsage', {
                         used: contextTokens.toLocaleString(),
-                        total: `${Math.round(CONTEXT_WINDOW_TOKENS / 1000)}k`,
+                        total: CONTEXT_WINDOW_TOKENS.toLocaleString(),
+                        remaining: Math.max(
+                          0,
+                          CONTEXT_WINDOW_TOKENS - contextTokens,
+                        ).toLocaleString(),
                         percent: contextPercent,
+                        source: t(
+                          contextSource === 'usage'
+                            ? 'ai.composer.contextSourceUsage'
+                            : 'ai.composer.contextSourceEstimate',
+                        ),
                       })}
                     >
                       <Flex
                         align="center"
                         gap={6}
                         data-testid="ai-context-bar"
+                        data-source={contextSource}
                         style={{ cursor: 'default' }}
                       >
                         <Progress
@@ -561,6 +690,21 @@ const Composer = ({
                           }}
                         >
                           {contextPercent}%
+                        </span>
+                        <span
+                          data-testid="ai-context-remaining"
+                          style={{
+                            fontSize: 14,
+                            color: token.colorTextTertiary,
+                            fontVariantNumeric: 'tabular-nums',
+                          }}
+                        >
+                          {t('ai.composer.contextRemaining', {
+                            remaining: `${Math.max(
+                              0,
+                              Math.round((CONTEXT_WINDOW_TOKENS - contextTokens) / 1000),
+                            )}k`,
+                          })}
                         </span>
                       </Flex>
                     </Tooltip>

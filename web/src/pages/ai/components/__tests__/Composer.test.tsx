@@ -365,4 +365,54 @@ describe('Composer', () => {
     );
     expect(tooSmall).toHaveLength(0);
   });
+
+  // A measured number and a guessed one must not read the same to the operator, so the meter
+  // carries its provenance as a data attribute and shows the remaining budget next to the percent.
+  it.each(['usage', 'estimate'] as const)('labelsTheContextMeterWithItsSource_%sTest', (source) => {
+    renderComposer({ contextTokens: 64000, contextSource: source });
+
+    expect(screen.getByTestId('ai-context-bar')).toHaveAttribute('data-source', source);
+    expect(screen.getByTestId('ai-context-remaining')).toHaveTextContent('剩 64k');
+  });
+});
+
+describe('queue while a run is in flight', () => {
+  it('parksEnterDuringARunInTheQueueAndClearsTheDraftTest', () => {
+    const onQueue = vi.fn();
+    const onChange = vi.fn();
+    const { rerenderWith } = renderComposer({ isStreaming: true, onQueue, onChange });
+    // The page owns the draft, so the test drives it the same way: a controlled value update.
+    rerenderWith({ isStreaming: true, onQueue, onChange, value: '再看下消费位点' });
+
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+
+    expect(onQueue).toHaveBeenCalledWith('再看下消费位点');
+    expect(onChange).toHaveBeenLastCalledWith('');
+  });
+
+  it('rendersTheQueueWithEditPromoteAndDropTest', async () => {
+    const user = userEvent.setup();
+    const onEditQueued = vi.fn();
+    const onDropQueued = vi.fn();
+    const onPromoteQueued = vi.fn();
+    renderComposer({
+      queue: ['第一条', '第二条'],
+      onEditQueued,
+      onDropQueued,
+      onPromoteQueued,
+    });
+
+    expect(screen.getAllByTestId('ai-queue-item')).toHaveLength(2);
+    expect(screen.getByTestId('ai-queue')).toHaveTextContent('排队中 2 条');
+    // The head is already next; only the second row can be promoted.
+    expect(screen.getAllByTestId('ai-queue-promote')).toHaveLength(1);
+
+    await user.click(screen.getAllByTestId('ai-queue-edit')[0]);
+    await user.click(screen.getAllByTestId('ai-queue-promote')[0]);
+    await user.click(screen.getAllByTestId('ai-queue-drop')[1]);
+
+    expect(onEditQueued).toHaveBeenCalledWith(0);
+    expect(onPromoteQueued).toHaveBeenCalledWith(1);
+    expect(onDropQueued).toHaveBeenCalledWith(1);
+  });
 });

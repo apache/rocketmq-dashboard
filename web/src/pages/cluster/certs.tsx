@@ -167,8 +167,17 @@ const K8sCertsPage = () => {
       key: 'k8sId',
       width: 240,
       sorter: (a, b) => a.k8sId.localeCompare(b.k8sId),
+      // Cluster IDs are long opaque strings; wrapping them made rows unevenly tall, so the cell
+      // truncates with the full value in a tooltip and copyable keeps it retrievable verbatim.
+      ellipsis: { showTitle: false },
       render: (k8sId: string) => (
-        <Text style={{ fontFamily: 'monospace', fontSize: 14 }}>{k8sId}</Text>
+        <Text
+          copyable={{ text: k8sId }}
+          ellipsis={{ tooltip: k8sId }}
+          style={{ fontFamily: 'monospace', fontSize: 14, display: 'block' }}
+        >
+          {k8sId}
+        </Text>
       ),
     },
     {

@@ -201,7 +201,11 @@ const AssistantBubble = ({
       <Card
         size="small"
         style={{
-          maxWidth: '75%',
+          // A fixed column, not a shrink-to-fit one: capped by maxWidth alone the bubble grew a
+          // character at a time for the whole stream and jumped again on every code block or tool
+          // card, because both contribute their max-content width to the Card's intrinsic size.
+          width: '75%',
+          flexShrink: 0,
           background: token.colorBgElevated,
           borderColor: token.colorBorderSecondary,
           boxShadow: `0 1px 4px ${token.colorTextQuaternary}`,

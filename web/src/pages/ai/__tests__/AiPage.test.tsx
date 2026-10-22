@@ -75,6 +75,9 @@ vi.mock('../../../api/aiConversations', () => ({
   getConversationTimeline: vi.fn(),
   listConversations: vi.fn(),
   stopRun: vi.fn(),
+  // The page asks for follow-up chips once a transcript tail is idle; the suite never asserts on
+  // them, so the default answer is "nothing to suggest".
+  suggestFollowups: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../../../api/llm', () => ({

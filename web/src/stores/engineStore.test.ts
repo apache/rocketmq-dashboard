@@ -46,7 +46,7 @@ describe('engineStore', () => {
       expect(store.getState().engine).toBe(engine);
       expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toEqual({
         state: { engine },
-        version: 1,
+        version: 2,
       });
 
       const reloadedStore = await loadStore();
@@ -56,23 +56,22 @@ describe('engineStore', () => {
     },
   );
 
-  it.each(['qoder', 'stale-engine'])(
-    'migratesVersionZeroPreference_%sToClaudeCodeTest',
-    async (engine) => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ state: { engine }, version: 0 }));
+  it.each([0, 1])('migratesStaleVersion_%s_PreferenceToClaudeCodeTest', async (version) => {
+    // v1 persisted `qoder` preferences are stale on purpose: that engine fails every run with a
+    // bare 「失败」 whenever the CLI has no login state in the server image (2026-10-20, /ai/c/122).
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ state: { engine: 'qoder' }, version }));
 
-      const store = await loadStore();
+    const store = await loadStore();
 
-      expect(store.getState().engine).toBe('claude-code');
-      expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toEqual({
-        state: { engine: 'claude-code' },
-        version: 1,
-      });
+    expect(store.getState().engine).toBe('claude-code');
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toEqual({
+      state: { engine: 'claude-code' },
+      version: 2,
+    });
 
-      const reloadedStore = await loadStore();
+    const reloadedStore = await loadStore();
 
-      expect(reloadedStore).not.toBe(store);
-      expect(reloadedStore.getState().engine).toBe('claude-code');
-    },
-  );
+    expect(reloadedStore).not.toBe(store);
+    expect(reloadedStore.getState().engine).toBe('claude-code');
+  });
 });

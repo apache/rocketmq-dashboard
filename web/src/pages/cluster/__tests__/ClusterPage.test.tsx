@@ -1674,4 +1674,30 @@ describe('Cluster page', () => {
       expect.objectContaining({ name: 'rocketmq9', namesrvAddr: 'rocketmq9-nameserver:9876' }),
     );
   });
+
+  it('warnsThatAFlushDiskChangeOnlyAppliesAfterABrokerRestartTest', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+
+    // The fixture Broker runs SYNC_FLUSH, so the warning must stay hidden until the mode changes.
+    expect(within(dialog).queryByText(/需要重启 Broker/)).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('radio', { name: '异步刷盘' }));
+    expect(within(dialog).getByText(/需要重启 Broker/)).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: /OK|确\s*定/ }));
+    // The write is gated behind a second confirmation that names the change.
+    expect(clusterServiceMocks.updateClusterConfig).not.toHaveBeenCalled();
+    const confirm = await waitFor(() => {
+      const nodes = Array.from(document.querySelectorAll('.ant-modal-confirm')) as HTMLElement[];
+      if (nodes.length === 0) throw new Error('restart confirmation not rendered');
+      return nodes[nodes.length - 1];
+    });
+    expect(within(confirm).getByText(/SYNC_FLUSH → ASYNC_FLUSH/)).toBeInTheDocument();
+    await user.click(within(confirm).getByRole('button', { name: /OK|确\s*定/ }));
+    await waitFor(() => expect(clusterServiceMocks.updateClusterConfig).toHaveBeenCalledTimes(1));
+  });
 });
