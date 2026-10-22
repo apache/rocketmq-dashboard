@@ -228,8 +228,17 @@ const collectDuplicateAccessKeys = (accounts: PlainAccessConfig[]): Set<string> 
   return duplicates;
 };
 
-const accountWhitelistClass = (account: PlainAccessConfig): WhitelistClass =>
-  classifyWhitelist(splitWhitelist(account.whiteRemoteAddress));
+/**
+ * An empty account-level whiteRemoteAddress means no source restriction at all
+ * (AclUserVO documents the empty value; AclService.splitWhiteList returns an empty
+ * list), so grade it as open instead of falling through to the scoped default that
+ * classifyWhitelist gives an empty list.
+ */
+const accountWhitelistClass = (account: PlainAccessConfig): WhitelistClass => {
+  const whitelist = splitWhitelist(account.whiteRemoteAddress);
+  if (whitelist.length === 0) return 'open';
+  return classifyWhitelist(whitelist);
+};
 
 const addDefaultPermissionIssues = (
   issues: AclRiskIssue[],

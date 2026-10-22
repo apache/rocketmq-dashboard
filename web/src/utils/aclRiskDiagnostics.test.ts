@@ -223,6 +223,53 @@ describe('ACL risk diagnostics', () => {
     );
   });
 
+  it('treats an account without a whitelist as unrestricted rather than scoped', () => {
+    // An empty account-level whiteRemoteAddress means no source restriction
+    // (AclUserVO documents the empty value; AclService.splitWhiteList returns an
+    // empty list), so omitted, null, empty and whitespace-only all grade as open.
+    [undefined, null, '', '   '].forEach((whiteRemoteAddress) => {
+      const diagnostics = analyzeAclRisk(
+        config({
+          accounts: [
+            account({
+              accessKey: 'admin-ak',
+              admin: true,
+              whiteRemoteAddress,
+              defaultTopicPerm: 'DENY',
+              defaultGroupPerm: 'DENY',
+            }),
+          ],
+          accountCount: 1,
+        }),
+      );
+
+      expect(diagnostics.status).toBe('critical');
+      expect(diagnostics.summary.broadWhitelistCount).toBe(1);
+      expect(diagnostics.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: 'BROAD_ACCOUNT_WHITELIST',
+            severity: 'critical',
+            account: 'admin-ak',
+            evidence: ['<empty>'],
+          }),
+          expect.objectContaining({
+            code: 'ADMIN_WITH_BROAD_ACCESS',
+            severity: 'critical',
+            account: 'admin-ak',
+            evidence: ['<empty>'],
+          }),
+        ]),
+      );
+    });
+  });
+
+  it('keeps an empty global whitelist free of broad-whitelist findings', () => {
+    const diagnostics = analyzeAclRisk(config({ globalWhiteRemoteAddresses: [] }));
+
+    expect(diagnostics.issues.map((item) => item.code)).not.toContain('BROAD_GLOBAL_WHITELIST');
+  });
+
   it('ranks a publish+subscribe wildcard as full access', () => {
     const diagnostics = analyzeAclRisk(
       config({
