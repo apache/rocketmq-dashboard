@@ -16,7 +16,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import type { K8sCertInfo } from '../../../api/cluster';
@@ -215,6 +215,105 @@ describe('K8sCertsPage', () => {
     );
     expect(await screen.findByText('kubernetes-admin-client')).toBeInTheDocument();
   });
+
+  it('preserves a reopened certificate draft when an earlier creation completes Test', async () => {
+    let resolveCreate!: (certificate: K8sCertInfo) => void;
+    vi.mocked(createK8sCert).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveCreate = resolve;
+        }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('rocketmq-prod-tls');
+    await user.click(screen.getByRole('button', { name: /新增证书/ }));
+    await user.type(screen.getByPlaceholderText('例如：kubernetes-daily'), 'first-cert');
+    await user.type(
+      screen.getByPlaceholderText('例如：kubernetes（120.26.99.191:6443）'),
+      'first-cluster',
+    );
+    await user.click(screen.getByRole('button', { name: /添\s*加/ }));
+    await waitFor(() => expect(createK8sCert).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: /取\s*消/ }));
+    await user.click(screen.getByRole('button', { name: /新增证书/ }));
+    await user.clear(screen.getByPlaceholderText('例如：kubernetes-daily'));
+    await user.clear(screen.getByPlaceholderText('例如：kubernetes（120.26.99.191:6443）'));
+    await user.type(screen.getByPlaceholderText('例如：kubernetes-daily'), 'second-cert');
+    await user.type(
+      screen.getByPlaceholderText('例如：kubernetes（120.26.99.191:6443）'),
+      'second-cluster',
+    );
+
+    await act(async () => resolveCreate({ ...certs[0], id: 4, k8sId: 'first-cert' }));
+
+    expect(screen.getByRole('dialog', { name: '新增证书' })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('例如：kubernetes-daily')).toHaveValue('second-cert');
+    expect(screen.getByPlaceholderText('例如：kubernetes（120.26.99.191:6443）')).toHaveValue(
+      'second-cluster',
+    );
+    expect(screen.getByText('first-cert')).toBeInTheDocument();
+    expect(createK8sCert).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['success', 'failure'])(
+    'keeps a later creation pending after an old %s Test',
+    async (outcome) => {
+      let resolveFirst!: (certificate: K8sCertInfo) => void;
+      let rejectFirst!: (error: Error) => void;
+      let resolveSecond!: (certificate: K8sCertInfo) => void;
+      vi.mocked(createK8sCert)
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve, reject) => {
+              resolveFirst = resolve;
+              rejectFirst = reject;
+            }),
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveSecond = resolve;
+            }),
+        );
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByText('rocketmq-prod-tls');
+      await user.click(screen.getByRole('button', { name: /新增证书/ }));
+      await user.type(screen.getByPlaceholderText('例如：kubernetes-daily'), 'first-cert');
+      await user.type(
+        screen.getByPlaceholderText('例如：kubernetes（120.26.99.191:6443）'),
+        'first-cluster',
+      );
+      await user.click(screen.getByRole('button', { name: /添\s*加/ }));
+      await waitFor(() => expect(createK8sCert).toHaveBeenCalledTimes(1));
+      await user.click(screen.getByRole('button', { name: /取\s*消/ }));
+      await user.click(screen.getByRole('button', { name: /新增证书/ }));
+      await user.clear(screen.getByPlaceholderText('例如：kubernetes-daily'));
+      await user.type(screen.getByPlaceholderText('例如：kubernetes-daily'), 'second-cert');
+      await user.clear(screen.getByPlaceholderText('例如：kubernetes（120.26.99.191:6443）'));
+      await user.type(
+        screen.getByPlaceholderText('例如：kubernetes（120.26.99.191:6443）'),
+        'second-cluster',
+      );
+      await user.click(screen.getByRole('button', { name: /添\s*加/ }));
+      await waitFor(() => expect(createK8sCert).toHaveBeenCalledTimes(2));
+
+      await act(async () => {
+        if (outcome === 'success') resolveFirst({ ...certs[0], id: 4, k8sId: 'first-cert' });
+        else rejectFirst(new Error('first creation failed'));
+      });
+
+      expect(screen.getByRole('button', { name: /添\s*加/ })).toHaveClass('ant-btn-loading');
+      expect(screen.getByPlaceholderText('例如：kubernetes-daily')).toHaveValue('second-cert');
+      await act(async () => resolveSecond({ ...certs[0], id: 5, k8sId: 'second-cert' }));
+      expect(await screen.findByText('second-cert')).toBeInTheDocument();
+      await waitFor(() =>
+        expect(screen.queryByDisplayValue('second-cert')).not.toBeInTheDocument(),
+      );
+      expect(createK8sCert).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it('deletes a certificate after confirmation', async () => {
     vi.mocked(deleteK8sCert).mockResolvedValue();

@@ -618,6 +618,116 @@ describe('InstancePage', () => {
     );
   });
 
+  it.each([
+    { close: 'cancel', outcome: 'success' },
+    { close: 'close', outcome: 'success' },
+    { close: 'cancel', outcome: 'failure' },
+  ] as const)(
+    'preservesANewerAddInstanceDraftAfterCreate($close, $outcome)Test',
+    async ({ close, outcome }) => {
+      const pendingCreate = deferred<Instance>();
+      vi.mocked(instanceService.createInstance).mockReturnValue(pendingCreate.promise);
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      // jsdom does not complete AntD's CSS leave animation.
+      render(
+        <ConfigProvider theme={{ token: { motion: false } }}>
+          <App>
+            <LangProvider>
+              <MemoryRouter>
+                <InstancePage />
+              </MemoryRouter>
+            </LangProvider>
+          </App>
+        </ConfigProvider>,
+      );
+      await screen.findByText('production-proxy');
+      await user.click(screen.getByRole('button', { name: /添加实例/ }));
+      const firstDialog = await screen.findByRole('dialog');
+      await user.type(within(firstDialog).getByLabelText('实例 ID'), 'first-proxy');
+      fireEvent.mouseDown(within(firstDialog).getByRole('combobox').parentElement!);
+      await user.click(
+        await screen.findByText('Proxy Local 模式', {
+          selector: '.ant-select-item-option-content',
+        }),
+      );
+      await user.type(within(firstDialog).getByLabelText('接入地址'), 'first-proxy:8080');
+      await user.click(within(firstDialog).getByRole('button', { name: /连\s*接/ }));
+      await waitFor(() => expect(instanceService.createInstance).toHaveBeenCalledTimes(1));
+      await user.click(
+        within(firstDialog).getByRole('button', { name: close === 'cancel' ? /取\s*消/ : 'Close' }),
+      );
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+      await user.click(screen.getByRole('button', { name: /添加实例/ }));
+      const secondDialog = await screen.findByRole('dialog');
+      await user.type(within(secondDialog).getByLabelText('实例 ID'), 'second-draft');
+      expect(within(secondDialog).getByLabelText('实例 ID')).toHaveValue('second-draft');
+      await act(async () => {
+        if (outcome === 'success') pendingCreate.resolve(instance(3, 'first-proxy', 'PROXY_LOCAL'));
+        else pendingCreate.reject(new Error('create failed'));
+      });
+
+      expect(screen.getByRole('dialog')).toBe(secondDialog);
+      expect(within(secondDialog).getByLabelText('实例 ID')).toHaveValue('second-draft');
+      expect(instanceService.createInstance).toHaveBeenCalledTimes(1);
+      expect(instanceService.listInstances).toHaveBeenCalledTimes(outcome === 'success' ? 2 : 1);
+      await waitFor(() =>
+        expect(within(secondDialog).getByRole('button', { name: /连\s*接/ })).not.toHaveClass(
+          'ant-btn-loading',
+        ),
+      );
+    },
+  );
+
+  it.each([false, true])(
+    'completesCreateAndResetsTheOriginalAddSessionWithCancel%sTest',
+    async (cancel) => {
+      const pendingCreate = deferred<Instance>();
+      vi.mocked(instanceService.createInstance).mockReturnValue(pendingCreate.promise);
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      render(
+        <ConfigProvider theme={{ token: { motion: false } }}>
+          <App>
+            <LangProvider>
+              <MemoryRouter>
+                <InstancePage />
+              </MemoryRouter>
+            </LangProvider>
+          </App>
+        </ConfigProvider>,
+      );
+      await screen.findByText('production-proxy');
+      await user.click(screen.getByRole('button', { name: /添加实例/ }));
+      const dialog = await screen.findByRole('dialog');
+      await user.type(within(dialog).getByLabelText('实例 ID'), 'new-proxy');
+      fireEvent.mouseDown(within(dialog).getByRole('combobox').parentElement!);
+      await user.click(
+        await screen.findByText('Proxy Local 模式', {
+          selector: '.ant-select-item-option-content',
+        }),
+      );
+      await user.type(within(dialog).getByLabelText('接入地址'), 'new-proxy:8080');
+      await user.click(within(dialog).getByRole('button', { name: /连\s*接/ }));
+      await waitFor(() =>
+        expect(instanceService.createInstance).toHaveBeenCalledWith({
+          name: 'new-proxy',
+          type: 'PROXY_LOCAL',
+          endpoint: 'new-proxy:8080',
+        }),
+      );
+      if (cancel) {
+        await user.click(within(dialog).getByRole('button', { name: /取\s*消/ }));
+        await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      }
+      await act(async () => pendingCreate.resolve(instance(3, 'new-proxy', 'PROXY_LOCAL')));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(instanceService.listInstances).toHaveBeenCalledTimes(2);
+      expect(instanceService.createInstance).toHaveBeenCalledTimes(1);
+      await user.click(screen.getByRole('button', { name: /添加实例/ }));
+      expect(within(await screen.findByRole('dialog')).getByLabelText('实例 ID')).toHaveValue('');
+    },
+  );
+
   it('keeps the endpoint editable for Apache instances but read-only for cloud vendors', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.listInstances).mockResolvedValue([

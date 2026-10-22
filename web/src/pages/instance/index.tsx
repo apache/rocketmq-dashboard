@@ -148,6 +148,7 @@ const InstancePage = () => {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const requestIdRef = useRef(0);
   const mutationInFlightRef = useRef(false);
+  const addModalSessionRef = useRef(0);
   const listQueryRef = useRef<InstanceQuery>({});
 
   useEffect(() => {
@@ -363,6 +364,7 @@ const InstancePage = () => {
 
   const handleCreate = async () => {
     if (mutationInFlightRef.current) return;
+    const modalSession = addModalSessionRef.current;
     mutationInFlightRef.current = true;
     try {
       const values = await addForm.validateFields();
@@ -380,9 +382,12 @@ const InstancePage = () => {
       const created = await createInstance(payload);
       await loadInstances();
       message.success(t('instance.added', { name: created.name }));
-      setAddModalOpen(false);
-      addForm.resetFields();
-      setVendor(DEFAULT_VENDOR);
+      // Closing the dialog does not cancel a sent create, but a later draft owns its form.
+      if (modalSession === addModalSessionRef.current) {
+        setAddModalOpen(false);
+        addForm.resetFields();
+        setVendor(DEFAULT_VENDOR);
+      }
     } catch (error) {
       if (error && typeof error === 'object' && 'errorFields' in error) {
         return; // validation failure; antd already shows field-level errors
@@ -763,7 +768,10 @@ const InstancePage = () => {
           <Button
             type="primary"
             icon={<Plus size={14} weight="bold" />}
-            onClick={() => setAddModalOpen(true)}
+            onClick={() => {
+              addModalSessionRef.current += 1;
+              setAddModalOpen(true);
+            }}
           >
             {t('instance.addInstance')}
           </Button>
@@ -794,6 +802,7 @@ const InstancePage = () => {
         title={t('instance.addInstance')}
         open={addModalOpen}
         onCancel={() => {
+          addModalSessionRef.current += 1;
           setAddModalOpen(false);
           addForm.resetFields();
           setVendor(DEFAULT_VENDOR);
@@ -816,6 +825,7 @@ const InstancePage = () => {
             )}
             <Button
               onClick={() => {
+                addModalSessionRef.current += 1;
                 setAddModalOpen(false);
                 addForm.resetFields();
                 setVendor(DEFAULT_VENDOR);
