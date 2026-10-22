@@ -167,6 +167,8 @@ const ClusterPage = () => {
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [selectedCluster, setSelectedCluster] = useState<ClusterInfo | null>(null);
   const [configPreview, setConfigPreview] = useState<ClusterConfigPreviewResult | null>(null);
+  /** The flush mode the Broker actually runs with when the config modal opens. */
+  const [initialFlushDisk, setInitialFlushDisk] = useState<string | null>(null);
   const [configPreviewLoading, setConfigPreviewLoading] = useState(false);
   const [configSubmitting, setConfigSubmitting] = useState(false);
   const [nsRegistry, setNsRegistry] = useState<NameserverRegistryEntry[]>([]);
@@ -198,6 +200,11 @@ const ClusterPage = () => {
     result: null,
   });
   const [configForm] = Form.useForm();
+  const flushDiskValue = Form.useWatch('flushDiskType', configForm);
+  const flushDiskChanged =
+    initialFlushDisk !== null &&
+    flushDiskValue !== undefined &&
+    flushDiskValue !== initialFlushDisk;
 
   const [k8sIdOptions, setK8sIdOptions] = useState<string[]>([]);
 
@@ -704,6 +711,7 @@ const ClusterPage = () => {
     setConfigPreview(null);
     setConfigPreviewLoading(false);
     setConfigSubmitting(false);
+    setInitialFlushDisk(cfg.flushDiskType ?? 'ASYNC_FLUSH');
     configForm.setFieldsValue({
       flushDiskType: cfg.flushDiskType ?? 'ASYNC_FLUSH',
       autoCreateTopicEnable: cfg.autoCreateTopicEnable ?? false,
@@ -765,11 +773,6 @@ const ClusterPage = () => {
   };
 
   const handleConfigSubmit = async () => {
-    // A write can change only some Brokers. Any preview from before the write,
-    // including one still in flight, no longer describes the cluster afterward.
-    configPreviewRequest.invalidate();
-    setConfigPreview(null);
-    setConfigPreviewLoading(false);
     let values: ClusterConfigFormValues;
     try {
       values = await configForm.validateFields();
@@ -779,6 +782,31 @@ const ClusterPage = () => {
     const request = buildConfigUpdateRequest(values);
     if (!request) return;
 
+    // The flush disk type is the one knob here that a running Broker ignores until it restarts,
+    // so applying it gets an explicit second confirmation naming the change — a silent success
+    // toast would leave the operator believing the new mode is already in effect.
+    if (flushDiskChanged) {
+      Modal.confirm({
+        title: t('cluster.flushDiskRestartConfirmTitle'),
+        content: t('cluster.flushDiskRestartConfirmContent', {
+          from: initialFlushDisk ?? '-',
+          to: String(values.flushDiskType),
+        }),
+        onOk: () => applyConfigUpdate(request),
+      });
+      return;
+    }
+    await applyConfigUpdate(request);
+  };
+
+  const applyConfigUpdate = async (
+    request: NonNullable<ReturnType<typeof buildConfigUpdateRequest>>,
+  ) => {
+    // A write can change only some Brokers. Any preview from before the write,
+    // including one still in flight, no longer describes the cluster afterward.
+    configPreviewRequest.invalidate();
+    setConfigPreview(null);
+    setConfigPreviewLoading(false);
     setConfigSubmitting(true);
     try {
       const result = await updateClusterConfig(request);
@@ -787,6 +815,7 @@ const ClusterPage = () => {
         message.success(t('cluster.configUpdated'));
         setConfigModalOpen(false);
         setConfigPreview(null);
+        setInitialFlushDisk(null);
         return;
       }
 
@@ -1406,6 +1435,7 @@ const ClusterPage = () => {
               configPreviewRequest.invalidate();
               setConfigModalOpen(false);
               setConfigPreview(null);
+              setInitialFlushDisk(null);
             }}
             onOk={() => void handleConfigSubmit()}
             confirmLoading={configSubmitting}
@@ -1449,6 +1479,14 @@ const ClusterPage = () => {
                   </Form.Item>
                 </Col>
               </Row>
+              {flushDiskChanged && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  style={{ marginBottom: 12 }}
+                  message={t('cluster.flushDiskRestartWarning')}
+                />
+              )}
               <Row gutter={16}>
                 <Col span={12}>
                   <Form.Item label={t('cluster.maxMessageSize')} name="maxMessageSizeMB">
