@@ -154,7 +154,7 @@ public class AclService {
         if (!StringUtils.hasText(id)) {
             throw new BusinessException(400, "ACL user id is required");
         }
-        return listUsers(instanceId).stream()
+        return listUsers(instanceId, null).stream()
                 .filter(user -> id.equals(user.getUsername())
                         || user.getId() != null && id.equals(user.getId().toString()))
                 .findFirst()
@@ -190,14 +190,19 @@ public class AclService {
     }
 
 
-    public List<AclUserVO> listUsers(String instanceId) {
+    public List<AclUserVO> listUsers(String instanceId, String keyword) {
+        String query = keyword == null ? "" : keyword.trim();
         if (isTencentInstance(instanceId)) {
             return tencentAclService.listUsers(instanceId).stream()
+                    .filter(user -> containsIgnoreCase(user.getUsername(), query)
+                            || containsIgnoreCase(user.getAccessKey(), query))
                     .map(this::maskCredentials)
                     .toList();
         }
         log.info("Listing ACL users");
         return aclRepository.findUsers().stream()
+                .filter(user -> containsIgnoreCase(user.getUsername(), query)
+                        || containsIgnoreCase(user.getAccessKey(), query))
                 .map(this::maskCredentials)
                 .toList();
     }

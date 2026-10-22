@@ -330,7 +330,7 @@ class AclControllerTest extends WebMvcAuthTestSupport {
         user.setId(1L);
         user.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
 
-        when(aclService.listUsers(isNull())).thenReturn(List.of(user));
+        when(aclService.listUsers(isNull(), isNull())).thenReturn(List.of(user));
 
         mockMvc.perform(get("/api/acl/users"))
                 .andExpect(status().isOk())
@@ -341,6 +341,18 @@ class AclControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data[0].accessKey").value("acce****3456"))
                 .andExpect(jsonPath("$.data[0].secretKey").value("secr****7654"))
                 .andExpect(jsonPath("$.data[0].admin").value(true));
+    }
+
+    @Test
+    void listUsersShouldForwardKeywordToTheDirectoryService() throws Exception {
+        when(aclService.listUsers(isNull(), eq("billing"))).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/acl/users").param("keyword", "billing"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data").isArray());
+
+        verify(aclService).listUsers(isNull(), eq("billing"));
     }
 
     @Test

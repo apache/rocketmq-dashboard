@@ -43,7 +43,7 @@ public class UserListToolHandler implements ToolHandler<InstanceInput, ListOutpu
     @Override
     public ListOutput<AclUserItem> execute(
             InstanceInput input, ToolExecutionContext context) {
-        return new ListOutput<>(aclService.listUsers(context.instanceId()).stream()
+        return new ListOutput<>(aclService.listUsers(context.instanceId(), null).stream()
                 .map(AclUserItem::from).toList());
     }
 }

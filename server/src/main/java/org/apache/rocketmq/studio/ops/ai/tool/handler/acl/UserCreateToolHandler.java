@@ -51,7 +51,7 @@ public class UserCreateToolHandler extends MutationToolHandler<UserCreateInput, 
     @Override
     public ToolPlan preview(UserCreateInput input, ToolExecutionContext context) {
         String instanceId = context.instanceId();
-        AclUserItem before = aclService.listUsers(instanceId).stream()
+        AclUserItem before = aclService.listUsers(instanceId, null).stream()
                 .filter(user -> input.username().equals(user.getUsername()))
                 .findFirst().map(AclUserItem::from).orElse(null);
         AclUserItem after = new AclUserItem(

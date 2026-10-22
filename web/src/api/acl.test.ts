@@ -27,6 +27,7 @@ import {
   examineBrokerClusterAclConfig,
   getAclUserCredentials,
   listAclRules,
+  listAclUsers,
   updateAclRule,
   updateAclUser,
 } from './acl';
@@ -65,6 +66,28 @@ describe('ACL API contract', () => {
       page: 2,
       size: 10,
     });
+  });
+
+  it('sends the directory keyword filter to the users endpoint', async () => {
+    const users = [
+      {
+        id: 21,
+        username: 'billing-reader',
+        accessKey: 'ak',
+        secretKey: 'sk',
+        admin: false,
+        clusters: ['cluster-a'],
+        gmtCreate: '2026-07-17T00:00:00Z',
+      },
+    ];
+    mock.onGet('/acl/users').reply((config) => {
+      expect(config.params).toEqual({ instanceId: 'instance-a', keyword: 'billing' });
+      return [200, { code: 200, data: users }];
+    });
+
+    await expect(listAclUsers({ instanceId: 'instance-a', keyword: 'billing' })).resolves.toEqual(
+      users,
+    );
   });
 
   it('returns records created by rule and user APIs', async () => {

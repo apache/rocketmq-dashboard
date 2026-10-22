@@ -413,7 +413,7 @@ class AclServiceTest {
         );
         when(aclRepository.findUsers()).thenReturn(users);
 
-        List<AclUserVO> result = aclService.listUsers(null);
+        List<AclUserVO> result = aclService.listUsers(null, null);
 
         assertThat(result).hasSize(2);
         assertThat(result.get(0).getUsername()).isEqualTo("admin");
@@ -433,7 +433,7 @@ class AclServiceTest {
                 .secretKey(credential)
                 .build()));
 
-        AclUserVO result = aclService.listUsers(null).get(0);
+        AclUserVO result = aclService.listUsers(null, null).get(0);
 
         assertThat(result.getAccessKey()).isEqualTo(expected);
         assertThat(result.getSecretKey()).isEqualTo(expected);
@@ -449,12 +449,41 @@ class AclServiceTest {
                 .clusters(clusters)
                 .build()));
 
-        AclUserVO result = aclService.listUsers(null).get(0);
+        AclUserVO result = aclService.listUsers(null, null).get(0);
 
         assertThat(result.getClusters()).containsExactly("cluster-a");
         assertThatThrownBy(() -> result.getClusters().add("cluster-b"))
                 .isInstanceOf(UnsupportedOperationException.class);
         assertThat(clusters).containsExactly("cluster-a");
+    }
+
+    @Test
+    void listUsersShouldApplyKeywordToTheUnpagedDirectory() {
+        when(aclRepository.findUsers()).thenReturn(List.of(
+                AclUserVO.builder()
+                        .username("orders-admin")
+                        .accessKey("access-key-orders")
+                        .secretKey("secret-key-orders")
+                        .admin(true)
+                        .build(),
+                AclUserVO.builder()
+                        .username("billing-reader")
+                        .accessKey("access-key-billing")
+                        .secretKey("secret-key-billing")
+                        .admin(false)
+                        .build()
+        ));
+
+        List<AclUserVO> byUsername = aclService.listUsers(null, " Billing ");
+        List<AclUserVO> byAccessKey = aclService.listUsers(null, "billing");
+
+        assertThat(byUsername).singleElement().satisfies(listed -> {
+            assertThat(listed.getUsername()).isEqualTo("billing-reader");
+            assertThat(listed.getAccessKey()).isEqualTo("acce****ling");
+        });
+        assertThat(byAccessKey).singleElement()
+                .satisfies(listed -> assertThat(listed.getUsername()).isEqualTo("billing-reader"));
+        assertThat(aclService.listUsers(null, "  ")).hasSize(2);
     }
 
     static Stream<Arguments> credentialMasks() {
@@ -749,7 +778,7 @@ class AclServiceTest {
                 .build(), null);
         String accessKey = created.getAccessKey();
         String secretKey = created.getSecretKey();
-        AclUserVO listed = aclService.listUsers(null).get(0);
+        AclUserVO listed = aclService.listUsers(null, null).get(0);
 
         UpdateAclUserDTO update = new UpdateAclUserDTO();
         update.setId(String.valueOf(listed.getId()));
