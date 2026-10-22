@@ -21,6 +21,7 @@ import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSnapshotRepository;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -30,11 +31,25 @@ final class NativeAlertSampleAggregator {
     }
 
     static MetricSample aggregate(AlertRuleVO rule, MetricSample sample, MetricSnapshotRepository snapshots) {
+        return aggregate(rule, sample, snapshots, false);
+    }
+
+    /** A rule test collects an observation without saving it, unlike the scheduled evaluator. */
+    static MetricSample aggregateFresh(AlertRuleVO rule, MetricSample sample, MetricSnapshotRepository snapshots) {
+        return aggregate(rule, sample, snapshots, true);
+    }
+
+    private static MetricSample aggregate(AlertRuleVO rule, MetricSample sample,
+            MetricSnapshotRepository snapshots, boolean includeCurrent) {
         if (sample.availability() != MetricAvailability.AVAILABLE || rule.getWindowSeconds() <= 0) {
             return sample;
         }
         List<MetricSample> window = snapshots.findRecent(sample,
                 sample.collectedAt().minus(Duration.ofSeconds(rule.getWindowSeconds())));
+        if (includeCurrent) {
+            window = new ArrayList<>(window);
+            window.add(sample);
+        }
         if (window.isEmpty()) {
             return sample;
         }

@@ -80,7 +80,7 @@ public class NativeAlertRuleTestService {
                 .filter(sample -> rule.getMetric().equals(sample.metricKey()))
                 .filter(sample -> NativeAlertRuleScopeMatcher.matches(rule, sample))
                 .map(sample -> {
-                    MetricSample evaluatedSample = NativeAlertSampleAggregator.aggregate(rule, sample, snapshotRepository);
+                    MetricSample evaluatedSample = NativeAlertSampleAggregator.aggregateFresh(rule, sample, snapshotRepository);
                     AlertEvaluationResult evaluation = evaluator.evaluate(rule, evaluatedSample);
                     return AlertRuleTestResultVO.Sample.builder().labels(evaluatedSample.labels())
                             .availability(evaluatedSample.availability().name()).currentValue(evaluation.currentValue())
