@@ -393,6 +393,7 @@ describe('Consumer page', () => {
       cleanup();
       Modal.destroyAll();
     });
+    vi.useRealTimers();
     // 静态提示由全局清理卸载，避免冷调用 destroy 再创建异步 root。
   });
 
@@ -1229,6 +1230,9 @@ describe('Consumer page', () => {
   });
 
   it('keeps the latest client stack when an older request resolves last', async () => {
+    // Keep the modal’s 2s diagnostic poll from consuming the request fixtures while
+    // userEvent is interacting with the modal on a busy CI worker. Timeouts stay real.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const firstStack = {
       groupName: 'remote-cg',
       clientId: 'client-1',
@@ -1406,6 +1410,9 @@ describe('Consumer page', () => {
   });
 
   it('highlights inconsistent subscriptions and refreshes the check result', async () => {
+    // Keep the modal’s 2s diagnostic poll from consuming the request fixtures while
+    // userEvent is interacting with the modal on a busy CI worker. Timeouts stay real.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     vi.mocked(consumerService.getConsumerSubscriptions)
       .mockResolvedValueOnce([
         {
