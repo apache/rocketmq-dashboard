@@ -1117,6 +1117,65 @@ class RocketMQDLQProviderTest {
     }
 
     @Test
+    void resendSelectedMessagesCutsLongFailureReasonsOnCodePointBoundariesTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        String msgId = MessageDecoder.createMessageId(new InetSocketAddress("172.30.10.100", 10911), 12345L);
+        MessageExt deadLetter = new MessageExt();
+        deadLetter.setMsgId(msgId);
+        deadLetter.setTopic(dlqTopic);
+        deadLetter.setBody(new byte[] {1, 2, 3});
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithBrokerAddresses("172.30.10.100:10911"));
+        when(adminExt.viewMessage(dlqTopic, msgId)).thenReturn(deadLetter);
+        stubExistingTarget("target-topic");
+        // U+1F600 is a supplementary character: the "Producer send failed: " prefix puts its
+        // high surrogate exactly on the 253-unit cut, so a char-based substring would split it.
+        String detail = "x".repeat(230) + "\uD83D\uDE00" + "y".repeat(40);
+        when(dlqProducer.send(any(Message.class))).thenThrow(new MQClientException(detail, null));
+
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", List.of(msgId), "target-topic");
+
+        assertThat(result.getFailed()).isEqualTo(1);
+        String reason = result.getFailures().get(0).getReason();
+        // The supplementary character is kept whole right up against the suffix: the reason stays
+        // within the 256 limit while never ending in a lone surrogate, which has no UTF-8 encoding.
+        assertThat(reason).isEqualTo("Producer send failed: " + "x".repeat(230) + "\uD83D\uDE00" + "...");
+        assertThat(reason.codePoints())
+                .noneMatch(codePoint -> codePoint >= 0xD800 && codePoint <= 0xDFFF);
+    }
+
+    @Test
+    void resendMessagesCutsProducerSessionFailureReasonsOnCodePointBoundariesTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        MessageExt deadLetter = new MessageExt();
+        deadLetter.setMsgId("msg-session");
+        deadLetter.setTopic(dlqTopic);
+        deadLetter.setBody(new byte[] {1});
+        deadLetter.setStoreTimestamp(150L);
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+        when(pullConsumer.searchOffset(queue, 100L)).thenReturn(0L);
+        when(pullConsumer.searchOffset(queue, 201L)).thenReturn(1L);
+        when(pullConsumer.pull(queue, "*", 0L, 32))
+                .thenReturn(new PullResult(PullStatus.FOUND, 1L, 0L, 0L, List.of(deadLetter)));
+        stubExistingTarget("target-topic");
+        // A producer that cannot even be pooled fails the whole session; the "Producer session
+        // failed: " prefix again puts U+1F600's high surrogate exactly on the 253-unit cut.
+        String detail = "x".repeat(227) + "\uD83D\uDE00" + "y".repeat(40);
+        when(runtimeAdminClientResolver.executeProducer(eq("instance-a"), any()))
+                .thenThrow(new IllegalStateException(detail));
+
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", 100L, 200L, "target-topic");
+
+        assertThat(result.getFailed()).isEqualTo(1);
+        String reason = result.getFailures().get(0).getReason();
+        assertThat(reason).isEqualTo("Producer session failed: " + "x".repeat(227) + "\uD83D\uDE00" + "...");
+        assertThat(reason.codePoints())
+                .noneMatch(codePoint -> codePoint >= 0xD800 && codePoint <= 0xDFFF);
+    }
+
+    @Test
     void resendMessagesShouldCopyUserPropertiesAndSkipSystemProperties() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
