@@ -41,6 +41,7 @@ import org.apache.rocketmq.studio.common.util.MessagePropertyDisplay;
 import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
+import org.apache.rocketmq.studio.common.util.TextBounds;
 import org.apache.rocketmq.studio.instance.dlq.DLQExcelExportResultVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQExportResultVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
@@ -95,6 +96,9 @@ public class RocketMQDLQProvider implements DLQProvider {
     private static final int MAX_PAGE_SIZE = 100;
     private static final int MAX_CONSECUTIVE_OFFSET_ILLEGAL = 3;
     private static final int MAX_REPORTED_RESEND_FAILURES = 100;
+    // Failure reasons are end-user text, so the cap counts code points and the cut lands on a
+    // code-point boundary: a supplementary character (an emoji, a CJK extension character) is
+    // kept or dropped whole instead of being split into a lone surrogate no UTF-8 store accepts.
     private static final int MAX_FAILURE_REASON_LENGTH = 256;
     private static final String ORIGIN_MESSAGE_ID_PROPERTY = "studio_dlq_origin_message_id";
     private static final String ORIGIN_TOPIC_PROPERTY = "studio_dlq_origin_topic";
@@ -705,10 +709,10 @@ public class RocketMQDLQProvider implements DLQProvider {
         String normalized = StringUtils.hasText(reason)
                 ? reason.replaceAll("\\s+", " ").trim()
                 : "Unknown resend failure";
-        if (normalized.length() <= MAX_FAILURE_REASON_LENGTH) {
+        if (TextBounds.codePointCount(normalized) <= MAX_FAILURE_REASON_LENGTH) {
             return normalized;
         }
-        return normalized.substring(0, MAX_FAILURE_REASON_LENGTH - 3) + "...";
+        return TextBounds.truncate(normalized, MAX_FAILURE_REASON_LENGTH - 3) + "...";
     }
 
     /**
