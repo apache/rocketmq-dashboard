@@ -167,6 +167,44 @@ describe('K8sCertsPage', () => {
     );
   });
 
+  it('shows future-dated certificates as not yet valid', async () => {
+    vi.mocked(listK8sCerts).mockResolvedValue([
+      {
+        ...certs[0],
+        status: 'not_yet_valid',
+      },
+    ]);
+    renderPage();
+
+    expect(await screen.findByText('尚未生效')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['zh', ['有效', '即将过期', '已过期', '尚未生效']],
+    ['en', ['Valid', 'Expiring', 'Expired', 'Not yet valid']],
+  ] as const)('renders all certificate status labels in %s', async (lang, labels) => {
+    languagePreference.initial = lang;
+    vi.mocked(listK8sCerts).mockResolvedValue(
+      (['valid', 'expiring', 'expired', 'not_yet_valid'] as const).map((status, index) => ({
+        ...certs[0],
+        id: index + 10,
+        k8sId: `status-${status}`,
+        status,
+      })),
+    );
+    render(
+      <LangProvider>
+        <App>
+          <K8sCertsPage />
+        </App>
+      </LangProvider>,
+    );
+
+    for (const label of labels) {
+      expect(await screen.findByText(label, { selector: '.ant-tag' })).toBeInTheDocument();
+    }
+  });
+
   it.each([
     ['staging-cluster', 'rocketmq-staging-tls', 'rocketmq-prod-tls'],
     ['prod-tls', 'rocketmq-prod-tls', 'rocketmq-staging-tls'],
