@@ -92,6 +92,33 @@ const normalizeConsumerGroup = <T extends ConsumerGroup>(group: T): T => ({
   instances: group.instances ?? [],
 });
 
+// Mock progress and subscription fixtures are keyed by group name alone, but
+// group names are only unique within an instance. Snapshot which fixture group
+// record owns each entry so reads only serve the active record that owns the
+// data — never a same-named group in another instance, and never a deleted one.
+function buildMockFixtureOwnerIndex(entries: Record<string, unknown>) {
+  const owners = new Map<string, ConsumerGroup>();
+  for (const name of Object.keys(entries)) {
+    const owner = consumerGroupsState.find((group) => group.name === name);
+    if (owner) owners.set(name, owner);
+  }
+  return owners;
+}
+
+const progressFixtureOwners = buildMockFixtureOwnerIndex(mockQueueProgress);
+const subscriptionFixtureOwners = buildMockFixtureOwnerIndex(mockSubscriptions);
+
+function ownsMockFixtureData(
+  owners: Map<string, ConsumerGroup>,
+  name: string,
+  instanceId?: string,
+): boolean {
+  const group = consumerGroupsState.find(
+    (item) => item.name === name && (!instanceId || item.instanceId === instanceId),
+  );
+  return group !== undefined && owners.get(name) === group;
+}
+
 function filterConsumerGroups(params?: ConsumerGroupQuery): ConsumerGroup[] {
   let result = [...consumerGroupsState];
   if (params?.instanceId) {
@@ -182,6 +209,7 @@ export async function getConsumerProgress(
   instanceId?: string,
 ): Promise<QueueProgress[]> {
   if (isMockMode()) {
+    if (!ownsMockFixtureData(progressFixtureOwners, name, instanceId)) return [];
     return ((mockQueueProgress[name] as unknown as QueueProgress[]) ?? []).map(copyQueueProgress);
   }
   return metadataApi.getConsumerProgress(name, instanceId);
@@ -267,6 +295,7 @@ export async function getConsumerSubscriptions(
   instanceId?: string,
 ): Promise<SubscriptionEntry[]> {
   if (isMockMode()) {
+    if (!ownsMockFixtureData(subscriptionFixtureOwners, name, instanceId)) return [];
     return ((mockSubscriptions[name] as unknown as SubscriptionEntry[]) ?? []).map(
       copySubscription,
     );
@@ -382,9 +411,11 @@ export async function previewConsumerOffsetReset(
 }
 
 function buildMockResetOffsetPreview(data: ResetConsumerOffsetRequest): ResetConsumerOffsetPreview {
-  const progressRows = ((mockQueueProgress[data.name] as unknown as QueueProgress[]) ?? []).filter(
-    (progress) => !progress.topic || progress.topic === data.topic,
-  );
+  const progressRows = ownsMockFixtureData(progressFixtureOwners, data.name, data.instanceId)
+    ? ((mockQueueProgress[data.name] as unknown as QueueProgress[]) ?? []).filter(
+        (progress) => !progress.topic || progress.topic === data.topic,
+      )
+    : [];
   const queues = progressRows.map((progress) =>
     buildMockResetOffsetQueuePreview(data.topic, progress),
   );
