@@ -42,16 +42,11 @@ describe('useInstanceFilter', () => {
   it.each(['topic', 'consumer', 'message', 'acl', 'dlq'])(
     'preserves an encoded instance and %s section with trailing slashes Test',
     async (section) => {
-      instanceServiceMocks.listInstances.mockResolvedValue([
-        { name: 'instance-a' },
-        { name: '实例 B' },
-      ]);
+      instanceServiceMocks.listInstances.mockResolvedValue([{ name: 'instance-a' }, { name: '实例 B' }]);
       const path = `/instance/${encodeURIComponent('实例 B')}/${section}/`;
       render(
         <MemoryRouter initialEntries={[path]}>
-          <Routes>
-            <Route path="/instance/:instanceId/:section" element={<InstanceRouteProbe />} />
-          </Routes>
+          <Routes><Route path="/instance/:instanceId/:section" element={<InstanceRouteProbe />} /></Routes>
         </MemoryRouter>,
       );
       expect(await screen.findByText(`${path}|实例 B`)).toBeInTheDocument();
@@ -70,9 +65,7 @@ describe('useInstanceFilter', () => {
           </Routes>
         </MemoryRouter>,
       );
-      expect(
-        await screen.findByText(`/instance/instance-a/${section}|instance-a`),
-      ).toBeInTheDocument();
+      expect(await screen.findByText(`/instance/instance-a/${section}|instance-a`)).toBeInTheDocument();
     },
   );
 
@@ -80,9 +73,7 @@ describe('useInstanceFilter', () => {
     instanceServiceMocks.listInstances.mockResolvedValue([{ name: 'instance-a' }]);
     render(
       <MemoryRouter initialEntries={['/instance/missing/consumer/']}>
-        <Routes>
-          <Route path="/instance/:instanceId/:section" element={<InstanceRouteProbe />} />
-        </Routes>
+        <Routes><Route path="/instance/:instanceId/:section" element={<InstanceRouteProbe />} /></Routes>
       </MemoryRouter>,
     );
     expect(await screen.findByText('/instance/instance-a/consumer|instance-a')).toBeInTheDocument();

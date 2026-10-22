@@ -322,14 +322,13 @@ const AclPageContent = ({
 
   /* ─── Rule helpers ─── */
   const principalDirectory =
-    directoryState.instanceId === selectedInstanceId && directoryState.refreshKey === userRefreshKey
+    directoryState.instanceId === selectedInstanceId &&
+    directoryState.refreshKey === userRefreshKey
       ? directoryState.users
       : [];
   const principalUsers = [
     ...principalDirectory,
-    ...users.filter(
-      (user) => !principalDirectory.some((entry) => entry.username === user.username),
-    ),
+    ...users.filter((user) => !principalDirectory.some((entry) => entry.username === user.username)),
   ];
   const isAdmin = (principal: string) =>
     principalUsers.find((u) => u.username === principal)?.admin ?? false;

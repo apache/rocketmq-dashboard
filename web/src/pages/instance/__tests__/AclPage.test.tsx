@@ -213,20 +213,18 @@ describe('ACL page', () => {
       },
     ]);
     vi.mocked(aclService.listAclRules).mockResolvedValue({
-      items: [
-        {
-          id: 21,
-          principal: 'directory-only-user',
-          resource: 'orders',
-          resourceType: 'Topic',
-          resourcePattern: 'LITERAL',
-          actions: ['PUB'],
-          decision: 'ALLOW',
-          scope: 'cluster',
-          aclVersion: 2,
-          gmtCreate: '2026-07-23T00:00:00Z',
-        },
-      ],
+      items: [{
+        id: 21,
+        principal: 'directory-only-user',
+        resource: 'orders',
+        resourceType: 'Topic',
+        resourcePattern: 'LITERAL',
+        actions: ['PUB'],
+        decision: 'ALLOW',
+        scope: 'cluster',
+        aclVersion: 2,
+        gmtCreate: '2026-07-23T00:00:00Z',
+      }],
       total: 1,
       page: 1,
       size: 20,
@@ -1102,16 +1100,14 @@ describe('ACL page', () => {
         aclEnabled: true,
         aclVersion: 'ACL 2.0',
         globalWhiteRemoteAddresses: [],
-        accounts: [
-          {
-            accessKey: 'cluster-a-account',
-            admin: false,
-            defaultTopicPerm: 'DENY',
-            defaultGroupPerm: 'DENY',
-            topicPerms: [],
-            groupPerms: [],
-          },
-        ],
+        accounts: [{
+          accessKey: 'cluster-a-account',
+          admin: false,
+          defaultTopicPerm: 'DENY',
+          defaultGroupPerm: 'DENY',
+          topicPerms: [],
+          groupPerms: [],
+        }],
         accountCount: 1,
       })
       .mockRejectedValueOnce(new Error('cluster-b unavailable'));
