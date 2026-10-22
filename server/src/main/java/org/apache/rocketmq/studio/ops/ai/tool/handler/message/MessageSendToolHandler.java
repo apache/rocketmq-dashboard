@@ -67,6 +67,7 @@ public class MessageSendToolHandler extends MutationToolHandler<MessageSendInput
     @Override
     public ToolPlan preview(MessageSendInput input, ToolExecutionContext context) {
         // Validates only: the parsed value is rebuilt by execute(), so the return value is dropped here.
+        validateTopic(input);
         parseProperties(input.properties());
         validateForTopicType(resolveTopicType(context.instanceId(), input.topicName()), input);
         Map<String, Object> after = new LinkedHashMap<>();
@@ -88,6 +89,7 @@ public class MessageSendToolHandler extends MutationToolHandler<MessageSendInput
 
     @Override
     public MessageSendOutput execute(MessageSendInput input, ToolExecutionContext context) {
+        validateTopic(input);
         validateForTopicType(resolveTopicType(context.instanceId(), input.topicName()), input);
         SendMessageDTO request = SendMessageDTO.builder()
                 .instanceId(context.instanceId())
@@ -101,6 +103,13 @@ public class MessageSendToolHandler extends MutationToolHandler<MessageSendInput
                 .build();
         SendMessageVO sent = metadataService.sendMessage(request);
         return MessageSendOutput.from(sent);
+    }
+
+    /** Matches the REST send contract (@NotBlank "topic is required"); rejected before any topic lookup. */
+    private static void validateTopic(MessageSendInput input) {
+        if (!StringUtils.hasText(input.topicName())) {
+            throw new BusinessException(400, "topic is required");
+        }
     }
 
     /** The registered topic type is the single source of truth; unknown topics keep plain-send behavior. */

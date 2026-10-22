@@ -62,6 +62,23 @@ class MessageSendToolHandlerTest {
         verify(metadata, never()).sendMessage(any(SendMessageDTO.class));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"", "   "})
+    void blankTopicIsRejectedBeforeTopicLookupTest(String topicName) {
+        MessageSendInput request = new MessageSendInput("instance-a", topicName, "hello", null, null,
+                null, null, null);
+
+        assertThatThrownBy(() -> handler.preview(request, context("instance-a")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topic is required")
+                .satisfies(exception -> assertThat(((BusinessException) exception).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> handler.execute(request, context("instance-a")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topic is required");
+        verify(metadata, never()).findTopic(any(), any(), any());
+        verify(metadata, never()).sendMessage(any(SendMessageDTO.class));
+    }
+
     private void givenTopicType(TopicType type) {
         TopicVO topic = new TopicVO();
         topic.setName("TopicA");
