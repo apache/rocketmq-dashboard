@@ -84,6 +84,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'layout.shortcutNavigate': { zh: '切换', en: 'Navigate' },
   'layout.goHome': { zh: '返回首页', en: 'Go to home' },
   'layout.openSearch': { zh: '打开导航搜索', en: 'Open navigation search' },
+  'layout.openNavigation': { zh: '打开导航菜单', en: 'Open navigation menu' },
   'layout.switchToRealData': { zh: '切换到真实数据', en: 'Switch to real data' },
   'layout.switchToMockData': { zh: '切换到模拟数据', en: 'Switch to mock data' },
   'layout.dataMode': { zh: '数据模式', en: 'Data mode' },
