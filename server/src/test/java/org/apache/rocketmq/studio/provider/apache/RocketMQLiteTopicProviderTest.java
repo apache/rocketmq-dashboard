@@ -151,6 +151,34 @@ class RocketMQLiteTopicProviderTest {
     }
 
     @Test
+    void listLiteTopicsSumsShardedParentsAcrossMasters() throws Exception {
+        String brokerB = "broker-b:10911";
+        String otherGroup = "lite-group-2";
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A, brokerB));
+
+        GetBrokerLiteInfoResponseBody infoA = brokerLiteInfo(PARENT, 30, 1, GROUP);
+        when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(infoA);
+        GetBrokerLiteInfoResponseBody infoB = brokerLiteInfo(PARENT, 40, 1, otherGroup);
+        when(admin.getBrokerLiteInfo(brokerB)).thenReturn(infoB);
+        when(admin.getParentTopicInfo(BROKER_A, PARENT)).thenReturn(parentTopicInfo(PARENT, 30, 1));
+        when(admin.getParentTopicInfo(brokerB, PARENT)).thenReturn(parentTopicInfo(PARENT, 40, 1));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1)).thenReturn(lag(7));
+        when(admin.getLiteGroupInfo(brokerB, otherGroup, null, 1)).thenReturn(lag(5));
+        when(admin.examineConsumerConnectionInfo(GROUP)).thenReturn(new ConsumerConnection());
+        when(admin.examineConsumerConnectionInfo(otherGroup)).thenReturn(new ConsumerConnection());
+
+        List<LiteTopicSummary> summaries = provider.listLiteTopics(null, null);
+
+        assertThat(summaries).singleElement().satisfies(summary -> {
+            // The parent is sharded across both masters, so the lite topic count and the
+            // backlog must be summed per reporting master rather than read from one broker.
+            assertThat(summary.getTopicCount()).isEqualTo(2);
+            assertThat(summary.getTotalBacklog()).isEqualTo(12L);
+            assertThat(summary.getAverageTTL()).isEqualTo(TimeUnit.MINUTES.toMillis(40));
+        });
+    }
+
+    @Test
     void listLiteTopicsFiltersByPatternCaseInsensitively() throws Exception {
         when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
         when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(brokerLiteInfo(PARENT, 30, 1, GROUP));
