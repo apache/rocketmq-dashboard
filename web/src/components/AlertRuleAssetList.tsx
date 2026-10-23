@@ -230,6 +230,7 @@ export const AlertRuleAssetList: React.FC = () => {
       <Space style={{ marginBottom: 12 }}>
         <Input.Search
           allowClear
+          aria-label={t('alertAssets.searchPlaceholder')}
           placeholder={t('alertAssets.searchPlaceholder')}
           value={searchText}
           onChange={(event) => setSearchText(event.target.value)}
@@ -239,6 +240,7 @@ export const AlertRuleAssetList: React.FC = () => {
         <Select
           allowClear
           mode="multiple"
+          aria-label={t('alertAssets.severity')}
           maxTagCount="responsive"
           options={severityOptions}
           placeholder={t('alertAssets.allSeverities')}
