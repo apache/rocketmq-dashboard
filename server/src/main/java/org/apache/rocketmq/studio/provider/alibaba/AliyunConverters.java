@@ -340,7 +340,13 @@ final class AliyunConverters {
             return null;
         }
         try {
-            return java.time.LocalDateTime.parse(value, TIME_FORMATTER);
+            // The unzoned Aliyun wall clock is Asia/Shanghai; anchor it like parseTimeMillis does
+            // so topic/group timestamps render in the server's zone, matching the Tencent
+            // provider's conversion of the same instant.
+            return java.time.LocalDateTime.parse(value, TIME_FORMATTER)
+                    .atZone(ALIYUN_TIME_ZONE)
+                    .withZoneSameInstant(ZoneId.systemDefault())
+                    .toLocalDateTime();
         } catch (RuntimeException ex) {
             return null;
         }
