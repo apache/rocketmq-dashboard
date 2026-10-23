@@ -254,6 +254,34 @@ class NotificationOutboxServiceTest {
     }
 
     @Test
+    void dropsThePendingDeliveryWhenTheAlertWasAlreadyAcknowledgedTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        AlertSilenceService silences = mock(AlertSilenceService.class);
+        AlertRepository alerts = mock(AlertRepository.class);
+        OperationAuditService audit = mock(OperationAuditService.class);
+        RmqAlertNotificationOutbox row = new RmqAlertNotificationOutbox();
+        row.setId(8L);
+        row.setAlertId(9L);
+        row.setChannel("dingtalk");
+        row.setStatus("SENDING");
+        row.setAttemptCount(0);
+        when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
+                .thenReturn(List.of(row));
+        when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
+                any(LocalDateTime.class), anyString())).thenReturn(1);
+        when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
+                .ruleId(4L).domain(AlertDomain.BUSINESS).instanceId("local").acknowledged(true).build()));
+
+        new NotificationOutboxService(mapper, mock(SettingsRepository.class), silences, alerts, audit).dispatch();
+
+        // The queued reminder for an acknowledged alert must never reach the operator's webhook.
+        verify(mapper).deleteById(8L);
+        verify(audit).record("DELIVER_ALERT_NOTIFICATION", "ALERT_NOTIFICATION", "8", null,
+                "alertId=9, channel=dingtalk", "SKIPPED", "alert acknowledged before delivery");
+        verify(mapper, never()).update(any(), any());
+    }
+
+    @Test
     void dispatchesDingTalkDeliveryAndMarksTheOutboxRowDeliveredTest() {
         RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
         SettingsRepository settings = mock(SettingsRepository.class);

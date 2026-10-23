@@ -346,6 +346,17 @@ public class NotificationOutboxService {
             }
             LocalDateTime attemptStartedAt = utcNow();
             SystemAlertVO alert = loadAlert(row.getAlertId());
+            if (alert.isAcknowledged()) {
+                // The alert was acknowledged after this row was enqueued; drop the pending
+                // delivery instead of paging the operator about an alert they already own,
+                // mirroring the deleteForAcknowledgedAlerts semantics of the bulk-clear action.
+                if (heartbeat.isLeaseOwned()) {
+                    mapper.deleteById(row.getId());
+                    recordDeliverySafely(row, "DELIVER_ALERT_NOTIFICATION", "SKIPPED",
+                            "alert acknowledged before delivery");
+                }
+                return;
+            }
             LocalDateTime silenceEndsAt = silenceService.activeUntil(
                     AlertRuleVO.builder().id(alert.getRuleId()).domain(alert.getDomain()).build(),
                     alert.getInstanceId(), alert.getLabels(), attemptStartedAt);
