@@ -186,4 +186,16 @@ class AliyunConvertersTest {
         assertThat(AliyunConverters.parseDateTime("   ")).isNull();
         assertThat(AliyunConverters.parseDateTime("not a date")).isNull();
     }
+    @Test
+    void parseDateTimeShouldAnchorTheUnzonedWallClockToAsiaShanghai() {
+        var parsed = AliyunConverters.parseDateTime("2026-01-01 08:00:00");
+
+        // Aliyun's unzoned timestamps are UTC+8; the parsed value must be that instant expressed
+        // in the server's zone, not the raw Shanghai wall clock. On a UTC server this is midnight.
+        var expected = java.time.LocalDateTime.of(2026, 1, 1, 8, 0)
+                .atZone(java.time.ZoneId.of("Asia/Shanghai"))
+                .withZoneSameInstant(java.time.ZoneId.systemDefault())
+                .toLocalDateTime();
+        assertThat(parsed).isEqualTo(expected);
+    }
 }
