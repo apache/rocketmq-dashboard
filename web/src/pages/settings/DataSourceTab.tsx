@@ -91,7 +91,27 @@ const DATA_SOURCE_EXPORT_COLUMNS: CsvColumn<DataSourceExportRow>[] = [
 ];
 
 const secretFieldNames = ['username', 'password', 'bearerToken'] as const;
-const authNeedsSecret = (auth?: string) => auth === 'Basic Auth' || auth === 'Bearer Token';
+
+// The API accepts case-insensitive modes and retains their spelling in saved metadata.
+const normalizeAuth = (auth?: string) => {
+  switch (auth?.trim().toLowerCase()) {
+    case undefined:
+    case '':
+    case 'none':
+      return 'None';
+    case 'basic auth':
+      return 'Basic Auth';
+    case 'bearer token':
+      return 'Bearer Token';
+    default:
+      return auth;
+  }
+};
+
+const authNeedsSecret = (auth?: string) => {
+  const mode = normalizeAuth(auth);
+  return mode === 'Basic Auth' || mode === 'Bearer Token';
+};
 
 const testFieldNames = (auth?: string) => {
   if (auth === 'Basic Auth') return ['type', 'url', 'auth', 'username', 'password'];
@@ -246,7 +266,7 @@ export const DataSourceTab = () => {
   const openEditModal = (dataSource: DataSource) => {
     if (listActionsDisabled) return;
     setEditingDataSource(dataSource);
-    dsForm.setFieldsValue(dataSource);
+    dsForm.setFieldsValue({ ...dataSource, auth: normalizeAuth(dataSource.auth) });
     setModalOpen(true);
   };
 

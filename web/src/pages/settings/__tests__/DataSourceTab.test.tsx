@@ -78,6 +78,15 @@ const sourcePage: DataSourcePage = {
   size: 20,
 };
 
+const savedAuthModes = [
+  { auth: 'basic auth', mode: 'Basic Auth' },
+  { auth: 'BASIC AUTH', mode: 'Basic Auth' },
+  { auth: 'bearer token', mode: 'Bearer Token' },
+  { auth: 'BEARER TOKEN', mode: 'Bearer Token' },
+  { auth: 'none', mode: 'None' },
+  { auth: 'NONE', mode: 'None' },
+];
+
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -469,6 +478,80 @@ describe('DataSourceTab', () => {
     expect(csv).not.toContain('hidden-password');
     expect(csv).not.toContain('hidden-token');
   });
+
+  it.each(savedAuthModes)(
+    'guardsCredentialFreeRowTestsForSavedAuth($auth)Test',
+    async ({ auth, mode }) => {
+      vi.mocked(listDataSourcesPage).mockResolvedValue({
+        ...sourcePage,
+        items: [{ ...sources[0], auth }],
+        total: 1,
+      });
+      render(
+        <App>
+          <DataSourceTab />
+        </App>,
+      );
+      const row = await screen.findByRole('row', { name: /Prometheus prod/ });
+      await waitFor(() => expect(within(row).getByRole('button', { name: /编辑/ })).toBeEnabled());
+      const testButton = within(row).getByRole('button', { name: /测试连接/ });
+      if (mode === 'None') {
+        expect(testButton).toBeEnabled();
+      } else {
+        expect(testButton).toBeDisabled();
+        fireEvent.click(testButton);
+        expect(testDataSource).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it.each(savedAuthModes)(
+    'testsSavedAuth($auth)WithTheMatchingCredentialFieldsTest',
+    async ({ auth, mode }) => {
+      vi.mocked(listDataSourcesPage).mockResolvedValue({
+        ...sourcePage,
+        items: [{ ...sources[0], auth }],
+        total: 1,
+      });
+      vi.mocked(testDataSource).mockResolvedValue({ success: true, message: 'ok' });
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      render(
+        <App>
+          <DataSourceTab />
+        </App>,
+      );
+      const row = await screen.findByRole('row', { name: /Prometheus prod/ });
+      await user.click(within(row).getByRole('button', { name: /编辑/ }));
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getAllByText(mode).length).toBeGreaterThan(0);
+      const credentials =
+        mode === 'Basic Auth'
+          ? { username: 'prom', password: 'secret' }
+          : mode === 'Bearer Token'
+            ? { bearerToken: 'token-1' }
+            : {};
+      const testButton = within(dialog).getByRole('button', { name: /测试连接/ });
+      if (mode !== 'None') {
+        await user.click(testButton);
+        expect(testDataSource).not.toHaveBeenCalled();
+      }
+      if (mode === 'Basic Auth') {
+        await user.type(within(dialog).getByLabelText('用户名'), 'prom');
+        await user.type(within(dialog).getByLabelText('密码'), 'secret');
+      } else if (mode === 'Bearer Token') {
+        await user.type(within(dialog).getByLabelText('Bearer Token'), 'token-1');
+      }
+      await user.click(testButton);
+      await waitFor(() =>
+        expect(testDataSource).toHaveBeenCalledWith({
+          type: sources[0].type,
+          url: sources[0].url,
+          auth: mode,
+          ...credentials,
+        }),
+      );
+    },
+  );
 
   it('submits basic auth credentials when testing from the modal', async () => {
     vi.mocked(testDataSource).mockResolvedValue({ success: true, message: 'ok' });
