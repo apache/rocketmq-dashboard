@@ -362,15 +362,6 @@ const DLQPage = () => {
         pageSize,
       });
       if (detailRequestIdRef.current !== requestId) return;
-      // A resend removes messages from the DLQ topic, so the reloaded page can end up past the
-      // last page; fall back to the last page instead of showing an emptied one.
-      if (result.items.length === 0 && result.total > 0 && page > 1) {
-        const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
-        if (page > lastPage) {
-          await loadDetailMessages(group, lastPage, pageSize);
-          return;
-        }
-      }
       setDetailMessages(result.items);
       setDetailTotal(result.total);
       setDetailPage(page);
