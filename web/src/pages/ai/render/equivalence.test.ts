@@ -24,7 +24,7 @@ import type {
   TimelineItem,
 } from '../../../api/aiEvents';
 import type { RenderBlock } from './blocks';
-import { toolDisplayName } from './blocks';
+import { continueRunBlocks, toolDisplayName } from './blocks';
 import { reduceLiveBlocks } from './reduceLive';
 import {
   coalesceLiveToTimeline,
@@ -216,6 +216,21 @@ function documentedPerEventLoss(live: RenderBlock[]): RenderBlock[] {
 
 describe('live and replay converge', () => {
   for (const scenario of SCENARIOS) {
+    it(`${scenario.name}ContinuesAcrossEveryAttachBoundaryTest`, () => {
+      const complete = reduceAll(scenario.events);
+      for (let split = 0; split <= scenario.events.length; split += 1) {
+        const prefix = foldTimelineBlocks(coalesceLiveToTimeline(scenario.events.slice(0, split)));
+        const suffix = reduceAll(scenario.events.slice(split));
+        const prefixSnapshot = structuredClone(prefix);
+        const suffixSnapshot = structuredClone(suffix);
+        expect(continueRunBlocks(prefix, suffix), `attach boundary ${split}`).toStrictEqual(
+          complete,
+        );
+        expect(prefix).toStrictEqual(prefixSnapshot);
+        expect(suffix).toStrictEqual(suffixSnapshot);
+      }
+    });
+
     it(`${scenario.name}RendersIdenticallyLiveAndReplayedTest`, () => {
       const live = reduceAll(scenario.events);
       expect(live.length, `scenario ${scenario.name} renders something`).toBeGreaterThan(0);
@@ -254,6 +269,45 @@ describe('live and replay converge', () => {
     const chunked = coalesceLiveToTimeline(events, { maxChars: 64 });
     expect(chunked.filter((event) => event.type === 'text').length).toBeGreaterThan(1);
     expect(foldTimelineBlocks(chunked)).toStrictEqual(live);
+  });
+});
+
+describe('reattached tool continuations', () => {
+  it('retainsToolInputAndClearsAnOldErrorWhenAnOrphanedResultIsUpdatedTest', () => {
+    const prefix = reduceAll([toolStart('call', 'rmq.topic.info', { topic: 'orders' })]);
+    const failedResult = toolDone('call', 'rmq.topic.info', 'denied', {
+      success: false,
+      error: 'request denied',
+    });
+    const failedSuffix = reduceAll([failedResult]);
+    const failed = continueRunBlocks(prefix, failedSuffix);
+    expect(failed).toMatchObject([
+      { input: { topic: 'orders' }, status: 'done', success: false, error: 'request denied' },
+    ]);
+
+    const success = toolDone('call', 'rmq.topic.info', 'recovered');
+    const completed = continueRunBlocks(prefix, reduceLiveBlocks(failedSuffix, success));
+    expect(completed).toStrictEqual(
+      reduceAll([toolStart('call', 'rmq.topic.info', { topic: 'orders' }), failedResult, success]),
+    );
+    expect(completed[0]).not.toHaveProperty('error');
+    expect(failed[0]).toHaveProperty('error', 'request denied');
+    expect(prefix[0]).toMatchObject({ status: 'running', output: null });
+  });
+
+  it('keepsANewToolStartSeparateWhenTheProviderReusesItsIdTest', () => {
+    const first = [
+      toolStart('reused', 'rmq.topic.info', { topic: 'first' }),
+      toolDone('reused', 'rmq.topic.info', 'first result'),
+    ];
+    const retry = [
+      toolStart('reused', 'rmq.topic.info', { topic: 'retry' }),
+      toolDone('reused', 'rmq.topic.info', 'retry result'),
+    ];
+    expect(continueRunBlocks(reduceAll(first), reduceAll(retry))).toStrictEqual(
+      reduceAll([...first, ...retry]),
+    );
+    expect(continueRunBlocks(reduceAll(first), reduceAll(retry))).toHaveLength(2);
   });
 });
 
@@ -674,6 +728,7 @@ describe('groupIntoBubbles', () => {
       },
       {
         role: 'assistant',
+        runId: 41,
         blocks: [
           { kind: 'thinking', text: '先查 topic 路由', source: 'model' },
           DONE_TOOL_CARD,
@@ -691,6 +746,7 @@ describe('groupIntoBubbles', () => {
       },
       {
         role: 'assistant',
+        runId: 41,
         blocks: [
           {
             kind: 'tool',
@@ -722,6 +778,7 @@ describe('groupIntoBubbles', () => {
     expect(bubbles).toStrictEqual([
       {
         role: 'assistant',
+        runId: 41,
         blocks: [{ kind: 'text', text: '集群当前有 2 个 broker。' }],
         turn: 1,
         createdAt: '2026-09-17 10:00:05',
@@ -747,6 +804,7 @@ describe('groupIntoBubbles', () => {
       },
       {
         role: 'assistant',
+        runId: 41,
         blocks: [],
         turn: 1,
         createdAt: '2026-09-17 10:00:02',

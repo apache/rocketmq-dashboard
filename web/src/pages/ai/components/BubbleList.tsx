@@ -18,6 +18,7 @@
 import type { ReactNode } from 'react';
 import type { McpTool } from '../../../api/ai';
 import type { Bubble, RenderBlock, TextBlock } from '../render/blocks';
+import { continueRunBlocks } from '../render/blocks';
 import UserBubble from './UserBubble';
 import AssistantBubble from './AssistantBubble';
 
@@ -28,7 +29,8 @@ import AssistantBubble from './AssistantBubble';
  * It receives the bubbles `useConversationTimeline` folded plus the live blocks `useAgentRun` is
  * filling, and renders them in that order.
  *
- * Appending the live bubble AFTER the persisted ones is what makes the handover invisible: the run's
+ * An attach continues the persisted bubble of the same run, so Markdown and tool start/result
+ * pairs cross the cursor boundary intact. A new run is appended AFTER the persisted ones: the run's
  * finally block refetches the timeline first and only then clears the live blocks, so for one commit
  * the answer exists in both lists. Because the live blocks are cleared in the same tick that the
  * persisted rows arrive, the duplicate never paints — and if the refetch failed, the live bubble is
@@ -37,8 +39,10 @@ import AssistantBubble from './AssistantBubble';
 
 export interface BubbleListProps {
   bubbles: Bubble[];
-  /** Blocks of the run in flight; rendered as a trailing streaming assistant bubble. */
+  /** Blocks after the live cursor; continue the matching run or form a new assistant bubble. */
   liveBlocks?: RenderBlock[];
+  /** Identity of the live run; only its unfinished persisted bubble can be continued. */
+  liveRunId?: number | null;
   /** True while that run is streaming; drives the pending dots and the thinking auto-expand. */
   streaming?: boolean;
   /**
@@ -71,6 +75,7 @@ function bubbleText(blocks: readonly RenderBlock[]): string {
 const BubbleList = ({
   bubbles,
   liveBlocks,
+  liveRunId = null,
   streaming = false,
   pendingUserText = null,
   toolCatalog,
@@ -81,6 +86,15 @@ const BubbleList = ({
 }: BubbleListProps) => {
   const hasLive = liveBlocks !== undefined && (streaming || liveBlocks.length > 0);
   const hasPendingUser = pendingUserText !== null && pendingUserText.trim() !== '';
+  const continuationIndex =
+    hasLive && liveRunId !== null
+      ? bubbles.findIndex(
+          (bubble) =>
+            bubble.role === 'assistant' &&
+            bubble.runId === liveRunId &&
+            bubble.runStatus === undefined,
+        )
+      : -1;
 
   if (bubbles.length === 0 && !hasLive && !hasPendingUser) return <>{empty ?? null}</>;
 
@@ -108,12 +122,19 @@ const BubbleList = ({
         ) : (
           <AssistantBubble
             key={`assistant-${bubble.turn ?? index}-${index}`}
-            bubble={bubble}
+            bubble={
+              index === continuationIndex
+                ? { ...bubble, blocks: continueRunBlocks(bubble.blocks, liveBlocks ?? []) }
+                : bubble
+            }
+            streaming={index === continuationIndex && streaming}
             toolCatalog={toolCatalog}
             model={model}
             tokensPerSecond={
-              bubble.tokensPerSecond ??
-              (index === lastAssistantIndex ? lastRunTokensPerSecond : null)
+              index === continuationIndex
+                ? liveTokensPerSecond
+                : (bubble.tokensPerSecond ??
+                  (index === lastAssistantIndex ? lastRunTokensPerSecond : null))
             }
           />
         ),
@@ -126,7 +147,7 @@ const BubbleList = ({
           text={pendingUserText ?? ''}
         />
       )}
-      {hasLive && (
+      {hasLive && continuationIndex < 0 && (
         <AssistantBubble
           key="assistant-live"
           bubble={{ role: 'assistant', blocks: liveBlocks ?? [] }}

@@ -75,6 +75,7 @@ vi.mock('../../../api/aiConversations', () => ({
   getConversationTimeline: vi.fn(),
   listConversations: vi.fn(),
   stopRun: vi.fn(),
+  reportRunSpeed: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../../api/llm', () => ({
@@ -123,6 +124,9 @@ const NavProbe = () => {
       </button>
       <button type="button" onClick={() => navigate('/ai/c/7')}>
         probe-conversation
+      </button>
+      <button type="button" onClick={() => navigate('/ai/c/8')}>
+        probe-other-conversation
       </button>
       <button type="button" onClick={() => navigate('/')}>
         probe-home
@@ -347,6 +351,113 @@ describe('AiPage', () => {
     expect(screen.getByTestId('ai-send-stop-button')).toHaveAttribute('data-state', 'send');
   });
 
+  it('replacesRetainedAnswerAfterTimelineRetrySucceedsTest', async () => {
+    const question = 'question retained during recovery';
+    const answer = 'answer retained during recovery';
+    vi.mocked(getConversationTimeline)
+      .mockResolvedValueOnce(timelinePage([]))
+      .mockRejectedValueOnce(new Error('timeline temporarily unavailable'));
+    vi.mocked(openRunStream).mockImplementation(async (_cid, _request, handlers) => {
+      handlers.onEvent({
+        type: 'run_started',
+        runId: 41,
+        conversationId: 7,
+        title: question,
+        turn: 1,
+      });
+      handlers.onEvent({ type: 'text_delta', content: answer });
+      handlers.onEvent({ type: 'run_finished', runId: 41, status: 'COMPLETED', durationMs: 12 });
+    });
+    renderRouted('/ai/c/7');
+    const input = await typeAndWaitForReady(question);
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    const retry = await screen.findByRole('button', { name: /重\s*试/ });
+    await flushFrame();
+    expect(screen.getAllByText(question)).toHaveLength(1);
+    expect(screen.getAllByText(answer)).toHaveLength(1);
+    expect(screen.getByTestId('ai-run-error')).toHaveTextContent(
+      'timeline temporarily unavailable',
+    );
+
+    let recover!: (page: AiTimelineVO) => void;
+    vi.mocked(getConversationTimeline).mockReturnValueOnce(
+      new Promise<AiTimelineVO>((resolve) => {
+        recover = resolve;
+      }),
+    );
+    await userEvent.setup().click(retry);
+    await waitFor(() => expect(getConversationTimeline).toHaveBeenCalledTimes(3));
+    // The failed refetch left these as the only copy. Do not erase them while retrying.
+    expect(screen.getAllByText(question)).toHaveLength(1);
+    expect(screen.getAllByText(answer)).toHaveLength(1);
+    await act(async () => {
+      recover(
+        timelinePage([
+          item(1, { type: 'user', text: question }),
+          item(2, { type: 'text', text: answer }),
+          item(3, { type: 'run_status', status: 'COMPLETED' }),
+        ]),
+      );
+    });
+    await flushFrame();
+
+    expect.soft(screen.getAllByText(question)).toHaveLength(1);
+    expect.soft(screen.getAllByText(answer)).toHaveLength(1);
+    expect.soft(screen.queryByTestId('ai-run-error')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /重\s*试/ })).not.toBeInTheDocument();
+    expect(openRunStream).toHaveBeenCalledTimes(1);
+  });
+
+  it('doesNotAttributeThePreviousConversationsSpeedToAnUnmeasuredAnswerTest', async () => {
+    let handlers!: Parameters<typeof openRunStream>[2];
+    let finish!: () => void;
+    vi.mocked(openRunStream).mockImplementation((_id, _request, received) => {
+      handlers = received;
+      return new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+    });
+    renderRouted('/ai/c/7');
+    const input = await typeAndWaitForReady('measured conversation');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(openRunStream).toHaveBeenCalledTimes(1));
+
+    const now = vi.spyOn(Date, 'now');
+    try {
+      act(() => {
+        handlers.onEvent({
+          type: 'run_started',
+          runId: 41,
+          conversationId: 7,
+          title: 'measured conversation',
+          turn: 1,
+        });
+        now.mockReturnValue(1000);
+        handlers.onEvent({ type: 'text_delta', content: 'abcd' });
+        now.mockReturnValue(3000);
+        handlers.onEvent({ type: 'text_delta', content: 'efgh' });
+      });
+    } finally {
+      now.mockRestore();
+    }
+    vi.mocked(getConversationTimeline).mockResolvedValue(
+      timelinePage([item(1, { type: 'text', text: 'abcdefgh' })]),
+    );
+    await act(async () => {
+      handlers.onEvent({ type: 'run_finished', runId: 41, status: 'COMPLETED', durationMs: 2000 });
+      finish();
+    });
+    expect(await screen.findByTestId('ai-bubble-speed')).toHaveTextContent('1.0 token/s');
+
+    vi.mocked(getConversationTimeline).mockResolvedValue(
+      timelinePage([item(1, { type: 'text', text: 'unmeasured answer in conversation 8' }, 51)]),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'probe-other-conversation' }));
+    expect(await screen.findByText('unmeasured answer in conversation 8')).toBeInTheDocument();
+    expect(screen.queryByTestId('ai-bubble-speed')).not.toBeInTheDocument();
+  });
+
   it('attachesToTheStillRunningRunAfterNavigatingAwayAndBackTest', async () => {
     const user = userEvent.setup();
     vi.mocked(openRunStream).mockImplementation(
@@ -399,6 +510,194 @@ describe('AiPage', () => {
       }),
     );
     expect(attachRunStream).toHaveBeenCalledTimes(1);
+  });
+
+  it('continuesAttachedMarkdownInTheSameAssistantAnswerTest', async () => {
+    vi.mocked(getConversationTimeline).mockResolvedValue(
+      timelinePage(
+        [
+          item(1, { type: 'user', text: 'show the command' }),
+          item(2, { type: 'text', text: '```bash\nprintf "hel' }),
+        ],
+        { id: 41, status: 'RUNNING' },
+      ),
+    );
+    let onEvent!: Parameters<typeof attachRunStream>[2]['onEvent'];
+    let finish!: () => void;
+    vi.mocked(attachRunStream).mockImplementation(
+      (_runId, _after, handlers, signal) =>
+        new Promise<void>((resolve) => {
+          onEvent = handlers.onEvent;
+          finish = resolve;
+          signal?.addEventListener('abort', () => resolve());
+        }),
+    );
+    renderRouted('/ai/c/7');
+    await waitFor(() =>
+      expect(attachRunStream).toHaveBeenCalledWith(41, 2, expect.anything(), expect.anything()),
+    );
+    await act(async () => onEvent({ type: 'text_delta', content: 'lo"\n```\nDone.' }));
+    await flushFrame();
+
+    expect(screen.getAllByTestId('ai-text-block')).toHaveLength(1);
+    const answer = screen.getByTestId('ai-text-block');
+    expect(answer.querySelector('pre code')?.textContent).toBe('printf "hello"\n');
+    expect(within(answer).getByText('Done.').tagName).toBe('P');
+
+    // Once this run ends, its complete persisted answer replaces the joined live answer once.
+    vi.mocked(getConversationTimeline).mockResolvedValue(
+      timelinePage([
+        item(1, { type: 'user', text: 'show the command' }),
+        item(2, { type: 'text', text: '```bash\nprintf "hello"\n```\nDone.' }),
+        item(3, { type: 'run_status', status: 'COMPLETED' }),
+      ]),
+    );
+    const committedBlockCounts: number[] = [];
+    const observer = new MutationObserver(() => {
+      committedBlockCounts.push(screen.queryAllByTestId('ai-text-block').length);
+    });
+    observer.observe(screen.getByTestId('ai-thread-scroll'), { childList: true, subtree: true });
+    try {
+      await act(async () => {
+        onEvent({ type: 'run_finished', runId: 41, status: 'COMPLETED', durationMs: 100 });
+        finish();
+      });
+      await waitFor(() =>
+        expect(screen.getByTestId('ai-send-stop-button')).toHaveAttribute('data-state', 'send'),
+      );
+      await flushFrame();
+      expect(committedBlockCounts.length).toBeGreaterThan(0);
+      expect(committedBlockCounts.every((count) => count === 1)).toBe(true);
+    } finally {
+      observer.disconnect();
+    }
+    expect(screen.getAllByTestId('ai-text-block')).toHaveLength(1);
+    expect(screen.getByTestId('ai-text-block').querySelector('pre code')?.textContent).toBe(
+      'printf "hello"\n',
+    );
+  });
+
+  it('recoversAnAttachedContinuationAfterFailedHandoffTest', async () => {
+    vi.mocked(getConversationTimeline).mockResolvedValue(
+      timelinePage(
+        [
+          item(1, { type: 'user', text: 'show the command' }),
+          item(2, { type: 'text', text: '```bash\nprintf "hel' }),
+        ],
+        { id: 41, status: 'RUNNING' },
+      ),
+    );
+    let onEvent!: Parameters<typeof attachRunStream>[2]['onEvent'];
+    let finish!: () => void;
+    vi.mocked(attachRunStream).mockImplementation(
+      (_runId, _after, handlers, signal) =>
+        new Promise<void>((resolve) => {
+          onEvent = handlers.onEvent;
+          finish = resolve;
+          signal?.addEventListener('abort', () => resolve());
+        }),
+    );
+    renderRouted('/ai/c/7');
+    await waitFor(() =>
+      expect(attachRunStream).toHaveBeenCalledWith(41, 2, expect.anything(), expect.anything()),
+    );
+    await act(async () => onEvent({ type: 'text_delta', content: 'lo"\n```\nDone.' }));
+    await flushFrame();
+
+    expect(screen.getAllByTestId('ai-text-block')).toHaveLength(1);
+    const answer = screen.getByTestId('ai-text-block');
+    expect(answer.querySelector('pre code')?.textContent).toBe('printf "hello"\n');
+    expect(within(answer).getByText('Done.').tagName).toBe('P');
+
+    // The retained live suffix must stay joined to its prefix until retry installs the full row.
+    vi.mocked(getConversationTimeline).mockRejectedValueOnce(new Error('reload unavailable'));
+    await act(async () => {
+      onEvent({ type: 'run_finished', runId: 41, status: 'COMPLETED', durationMs: 100 });
+      finish();
+    });
+    const retry = await screen.findByRole('button', { name: /重\s*试/ });
+    await flushFrame();
+    expect(screen.getAllByTestId('ai-text-block')).toHaveLength(1);
+    expect(screen.getByTestId('ai-text-block').querySelector('pre code')?.textContent).toBe(
+      'printf "hello"\n',
+    );
+    vi.mocked(getConversationTimeline).mockResolvedValue(
+      timelinePage([
+        item(1, { type: 'user', text: 'show the command' }),
+        item(2, { type: 'text', text: '```bash\nprintf "hello"\n```\nDone.' }),
+        item(3, { type: 'run_status', status: 'COMPLETED' }),
+      ]),
+    );
+    const committedBlockCounts: number[] = [];
+    const observer = new MutationObserver(() => {
+      committedBlockCounts.push(screen.queryAllByTestId('ai-text-block').length);
+    });
+    observer.observe(screen.getByTestId('ai-thread-scroll'), { childList: true, subtree: true });
+    try {
+      await act(async () => {
+        fireEvent.click(retry);
+      });
+      await waitFor(() =>
+        expect(screen.getByTestId('ai-send-stop-button')).toHaveAttribute('data-state', 'send'),
+      );
+      await flushFrame();
+      expect(committedBlockCounts.length).toBeGreaterThan(0);
+      expect(committedBlockCounts.every((count) => count === 1)).toBe(true);
+    } finally {
+      observer.disconnect();
+    }
+    expect(screen.getAllByTestId('ai-text-block')).toHaveLength(1);
+    expect(screen.getByTestId('ai-text-block').querySelector('pre code')?.textContent).toBe(
+      'printf "hello"\n',
+    );
+    expect(screen.queryByTestId('ai-run-error')).not.toBeInTheDocument();
+    expect(attachRunStream).toHaveBeenCalledTimes(1);
+  });
+
+  it('completesAnAttachedToolInItsOriginalCardTest', async () => {
+    vi.mocked(getConversationTimeline).mockResolvedValue(
+      timelinePage(
+        [
+          item(1, { type: 'user', text: 'inspect orders' }),
+          item(2, {
+            type: 'tool_use',
+            tcId: 'tool-41',
+            tool: 'rmq.topic.info',
+            input: { topic: 'orders' },
+          }),
+        ],
+        { id: 41, status: 'RUNNING' },
+      ),
+    );
+    let onEvent!: Parameters<typeof attachRunStream>[2]['onEvent'];
+    vi.mocked(attachRunStream).mockImplementation(
+      (_runId, _after, handlers, signal) =>
+        new Promise<void>((resolve) => {
+          onEvent = handlers.onEvent;
+          signal?.addEventListener('abort', () => resolve());
+        }),
+    );
+    renderRouted('/ai/c/7');
+    await waitFor(() => expect(attachRunStream).toHaveBeenCalledTimes(1));
+    await act(async () =>
+      onEvent({
+        type: 'tool_done',
+        tcId: 'tool-41',
+        tool: 'rmq.topic.info',
+        output: '{"queues":3}',
+        outputBytes: 12,
+        truncated: false,
+        durationMs: 100,
+        success: true,
+      }),
+    );
+    await flushFrame();
+
+    expect(screen.getAllByTestId('ai-tool-block')).toHaveLength(1);
+    expect(screen.getByTestId('ai-tool-block')).toHaveAttribute('data-status', 'done');
+    expect(screen.getByTestId('tool-input')).toHaveTextContent('"topic": "orders"');
+    expect(screen.getByTestId('tool-result')).toHaveTextContent('{"queues":3}');
+    expect(screen.queryByTestId('ai-tool-progress')).not.toBeInTheDocument();
   });
 
   it.each(['unchanged', 'typed', 'cleared', 'template'])(

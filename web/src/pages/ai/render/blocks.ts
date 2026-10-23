@@ -101,6 +101,8 @@ export type BubbleRole = 'user' | 'assistant';
 export interface Bubble {
   role: BubbleRole;
   blocks: RenderBlock[];
+  /** Run owning an assistant bubble, so a reattached continuation cannot join another run. */
+  runId?: number;
   turn?: number;
   /** Terminal status carried by the persisted `run_status` event, if the run reached one. */
   runStatus?: RunStatus;
@@ -238,4 +240,35 @@ function findToolIndex(blocks: RenderBlock[], tcId: string): number {
     if (block.kind === 'tool' && block.tcId === tcId) return i;
   }
   return -1;
+}
+
+/**
+ * Join the persisted prefix and the live suffix of ONE run. Both inputs remain unchanged.
+ * A suffix result with unknown input may complete a tool started before the attach cursor;
+ * a suffix that contains its own tool start keeps its own card, including retries of a tcId.
+ */
+export function continueRunBlocks(prefix: RenderBlock[], suffix: RenderBlock[]): RenderBlock[] {
+  let merged = prefix;
+  for (const block of suffix) {
+    if (block.kind === 'text') {
+      merged = appendText(merged, block.text);
+    } else if (block.kind === 'thinking') {
+      merged = appendThinking(merged, block.text, block.source);
+    } else if (block.kind === 'tool' && block.status === 'done' && block.input === null) {
+      const index = findToolIndex(merged, block.tcId);
+      if (index < 0) {
+        merged = [...merged, block];
+      } else {
+        const started = merged[index] as ToolBlock;
+        merged = [
+          ...merged.slice(0, index),
+          { ...block, input: started.input },
+          ...merged.slice(index + 1),
+        ];
+      }
+    } else {
+      merged = [...merged, block];
+    }
+  }
+  return merged;
 }

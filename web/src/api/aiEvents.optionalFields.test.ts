@@ -524,6 +524,7 @@ describe('run terminal vocabulary', () => {
             turn: 3,
             createdAt: '2026-09-15T10:21:49',
             runStatus: status,
+            runId: 41,
           },
         ]);
         // `reason` is run metadata: it never becomes a block and never grows a key on the bubble.
@@ -581,6 +582,7 @@ describe('run terminal vocabulary', () => {
         turn: 3,
         createdAt: '2026-09-15T10:21:49',
         runStatus: 'STOPPED',
+        runId: 41,
       },
     ]);
   });

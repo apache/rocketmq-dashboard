@@ -28,6 +28,7 @@ vi.mock('../../../api/ai', () => ({
 
 vi.mock('../../../api/aiConversations', () => ({
   stopRun: vi.fn(),
+  reportRunSpeed: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { attachRunStream, openRunStream, type RunStreamHandlers } from '../../../api/ai';
@@ -236,6 +237,73 @@ describe('useAgentRun', () => {
     expect(result.current.blocksRef.current).toEqual([]);
   });
 
+  it('clearsTheFinishedRunSpeedWhenChangingConversationsTest', async () => {
+    const now = vi.spyOn(Date, 'now');
+    const { result, rerender } = render();
+    let sent!: Promise<void>;
+    try {
+      await act(async () => {
+        sent = result.current.send(7, { message: 'first conversation' });
+        openedStreams[0].emit(runStarted());
+        now.mockReturnValue(1000);
+        openedStreams[0].emit(textDelta('abcd'));
+        now.mockReturnValue(3000);
+        openedStreams[0].emit(textDelta('efgh'));
+        await flushFrame();
+      });
+      expect(result.current.liveTokensPerSecond).toBe(1);
+
+      await act(async () => {
+        openedStreams[0].emit(runFinished());
+        openedStreams[0].finish();
+        await sent;
+      });
+      // The same conversation can use this fallback if the speed report was unavailable.
+      expect(result.current.lastRunTokensPerSecond).toBe(1);
+
+      await act(async () => {
+        rerender({ id: 8 });
+      });
+      // BubbleList must not attribute conversation 7's measurement to an unmeasured answer in 8.
+      expect(result.current.lastRunTokensPerSecond).toBeNull();
+      expect(result.current.liveTokensPerSecond).toBeNull();
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it('clearsLiveRunSpeedWhenReturningToTheNewConversationRouteTest', async () => {
+    const now = vi.spyOn(Date, 'now');
+    const { result, rerender } = render();
+    let sent!: Promise<void>;
+    try {
+      await act(async () => {
+        sent = result.current.send(7, { message: 'first conversation' });
+        now.mockReturnValue(1000);
+        openedStreams[0].emit(textDelta('abcd'));
+        now.mockReturnValue(3000);
+        openedStreams[0].emit(textDelta('efgh'));
+        await flushFrame();
+      });
+      expect(result.current.liveTokensPerSecond).toBe(1);
+
+      await act(async () => {
+        rerender({ id: null });
+      });
+      expect(result.current.liveTokensPerSecond).toBeNull();
+      expect(result.current.lastRunTokensPerSecond).toBeNull();
+
+      await act(async () => {
+        openedStreams[0].finish();
+        await sent;
+      });
+      expect(result.current.liveTokensPerSecond).toBeNull();
+      expect(result.current.lastRunTokensPerSecond).toBeNull();
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it('refetchesTheTimelineBeforeClearingTheLiveBlocksTest', async () => {
     const order: string[] = [];
     let liveBlocksAtRefetch: RenderBlock[] = [];
@@ -306,6 +374,161 @@ describe('useAgentRun', () => {
     expect(result.current.error).toBe('timeline unavailable');
     expect(onError).toHaveBeenCalledTimes(1);
     expect(result.current.isStreaming).toBe(false);
+  });
+
+  describe('timeline retry recovery', () => {
+    async function retainAnswer(streamFailure: Error | null = null) {
+      const refetchTimeline = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('timeline unavailable'))
+        .mockResolvedValue(undefined);
+      const view = render({ refetchTimeline });
+      let sent!: Promise<void>;
+      await act(async () => {
+        sent = view.result.current.send(7, { message: 'retained question' });
+        openedStreams[0].emit(runStarted());
+        openedStreams[0].emit(textDelta('retained answer'));
+        if (streamFailure) openedStreams[0].fail(streamFailure);
+        else openedStreams[0].finish();
+        await sent;
+      });
+      return { ...view, refetchTimeline };
+    }
+
+    it.each([null, new Error('stream disconnected')])(
+      'finishesTheRetainedHandoffWithoutClearingAStreamFailureTest (%s)',
+      async (streamFailure) => {
+        const { result, refetchTimeline } = await retainAnswer(streamFailure);
+        expect(result.current.pendingUserMessage).toBe('retained question');
+        await act(async () => {
+          await result.current.retryTimeline();
+        });
+        expect(refetchTimeline).toHaveBeenCalledTimes(2);
+        expect(result.current.blocksRef.current).toEqual([]);
+        expect(result.current.pendingUserMessage).toBeNull();
+        expect(result.current.error).toBe(streamFailure?.message ?? '');
+        expect(result.current.isStreaming).toBe(false);
+        expect(openRunStream).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it('retainsTheFallbackWhenAnotherTimelineRetryFailsTest', async () => {
+      const { result, refetchTimeline } = await retainAnswer();
+      const answer = result.current.blocksRef.current;
+      refetchTimeline.mockRejectedValueOnce(new Error('still unavailable'));
+      await act(async () => {
+        await expect(result.current.retryTimeline()).rejects.toThrow('still unavailable');
+      });
+      expect(result.current.blocksRef.current).toBe(answer);
+      expect(result.current.pendingUserMessage).toBe('retained question');
+      await act(async () => {
+        await result.current.retryTimeline();
+      });
+      expect(result.current.blocksRef.current).toEqual([]);
+      expect(result.current.pendingUserMessage).toBeNull();
+      expect(result.current.error).toBe('');
+    });
+
+    it.each(['new run', 'navigation', 'unmount'] as const)(
+      'ignoresATimelineRetryThatOutlivesItsOwnerTest (%s)',
+      async (change) => {
+        const { result, refetchTimeline, rerender, unmount } = await retainAnswer();
+        const reload = deferred<void>();
+        refetchTimeline.mockReturnValueOnce(reload.promise);
+        let retried!: Promise<void>;
+        act(() => {
+          retried = result.current.retryTimeline();
+        });
+        if (change === 'navigation') rerender({ id: 8 });
+        if (change === 'unmount') unmount();
+        if (change !== 'unmount') {
+          await act(async () => {
+            void result.current.send(change === 'navigation' ? 8 : 7, {
+              message: 'new question',
+            });
+            openedStreams[1].emit(textDelta('new answer'));
+          });
+        }
+        const blocks = result.current.blocksRef.current;
+        await act(async () => {
+          reload.resolve();
+          await retried;
+        });
+        expect(result.current.blocksRef.current).toBe(blocks);
+        if (change !== 'unmount') {
+          expect(result.current.blocksRef.current).toEqual([{ kind: 'text', text: 'new answer' }]);
+          expect(result.current.pendingUserMessage).toBe('new question');
+          expect(result.current.isStreaming).toBe(true);
+          expect(result.current.error).toBe('');
+        }
+      },
+    );
+
+    it('waitsForTheLatestOverlappingTimelineRetryBeforeClearingFallbackTest', async () => {
+      const { result, refetchTimeline } = await retainAnswer();
+      const first = deferred<void>();
+      const second = deferred<void>();
+      refetchTimeline.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+      let older!: Promise<void>;
+      let newer!: Promise<void>;
+      act(() => {
+        older = result.current.retryTimeline();
+        newer = result.current.retryTimeline();
+      });
+      await act(async () => {
+        // A superseded real timeline request resolves without committing its snapshot.
+        first.resolve();
+        await older;
+      });
+      expect(result.current.blocksRef.current).toEqual([{ kind: 'text', text: 'retained answer' }]);
+      expect(result.current.pendingUserMessage).toBe('retained question');
+      await act(async () => {
+        second.resolve();
+        await newer;
+      });
+      expect(result.current.blocksRef.current).toEqual([]);
+      expect(result.current.pendingUserMessage).toBeNull();
+    });
+
+    it('retainsTheFallbackWhenTheLatestRetryFailsBeforeAnOlderSuccessTest', async () => {
+      const { result, refetchTimeline } = await retainAnswer();
+      const first = deferred<void>();
+      const second = deferred<void>();
+      refetchTimeline.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+      let older!: Promise<void>;
+      let newer!: Promise<void>;
+      act(() => {
+        older = result.current.retryTimeline();
+        newer = result.current.retryTimeline();
+      });
+      await act(async () => {
+        second.reject(new Error('latest retry failed'));
+        await expect(newer).rejects.toThrow('latest retry failed');
+        first.resolve();
+        await older;
+      });
+      expect(result.current.blocksRef.current).toEqual([{ kind: 'text', text: 'retained answer' }]);
+      expect(result.current.pendingUserMessage).toBe('retained question');
+      expect(result.current.error).toBe('timeline unavailable');
+      await act(async () => {
+        await result.current.retryTimeline();
+      });
+      expect(result.current.blocksRef.current).toEqual([]);
+      expect(result.current.pendingUserMessage).toBeNull();
+      expect(result.current.error).toBe('');
+    });
+
+    it('doesNotClearAnActiveRunWhenRetryingAnEarlierTimelineLoadTest', async () => {
+      const { result } = render();
+      await act(async () => {
+        void result.current.send(7, { message: 'active question' });
+        openedStreams[0].emit(textDelta('active answer'));
+        await result.current.retryTimeline();
+      });
+      expect(result.current.blocksRef.current).toEqual([{ kind: 'text', text: 'active answer' }]);
+      expect(result.current.pendingUserMessage).toBe('active question');
+      expect(result.current.isStreaming).toBe(true);
+    });
   });
 
   it('clearsTheStoppingStateWhenTheStreamDiesWithoutTerminalFramesTest', async () => {

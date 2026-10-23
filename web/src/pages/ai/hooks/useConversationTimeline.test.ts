@@ -116,6 +116,7 @@ describe('useConversationTimeline', () => {
       },
       {
         role: 'assistant',
+        runId: 41,
         blocks: [
           { kind: 'thinking', text: '先查 topic 路由', source: 'model' },
           { kind: 'text', text: '集群当前有 2 个 broker。' },

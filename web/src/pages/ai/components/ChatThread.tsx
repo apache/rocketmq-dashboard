@@ -49,8 +49,10 @@ const AT_BOTTOM_THRESHOLD_PX = 40;
 
 export interface ChatThreadProps {
   bubbles: Bubble[];
-  /** Blocks of the run in flight; rendered as a trailing streaming bubble. */
+  /** Blocks after the live cursor; continue the matching run or form a new streaming bubble. */
   liveBlocks?: RenderBlock[];
+  /** The live run may continue its already-rendered persisted assistant prefix. */
+  liveRunId?: number | null;
   /** True while that run is streaming. */
   streaming?: boolean;
   /**
@@ -84,6 +86,7 @@ export interface ChatThreadProps {
 const ChatThread = ({
   bubbles,
   liveBlocks,
+  liveRunId = null,
   streaming = false,
   pendingUserText = null,
   toolCatalog,
@@ -109,7 +112,14 @@ const ChatThread = ({
   const [unread, setUnread] = useState(0);
   const prevBubbleCountRef = useRef(bubbles.length);
 
-  const bubbleCount = bubbles.length + (liveBlocks && liveBlocks.length > 0 ? 1 : 0);
+  const continuesPersistedRun =
+    liveRunId !== null &&
+    bubbles.some(
+      (bubble) =>
+        bubble.role === 'assistant' && bubble.runId === liveRunId && bubble.runStatus === undefined,
+    );
+  const bubbleCount =
+    bubbles.length + (liveBlocks && liveBlocks.length > 0 && !continuesPersistedRun ? 1 : 0);
 
   const followToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     sentinelRef.current?.scrollIntoView({ behavior });
@@ -194,6 +204,7 @@ const ChatThread = ({
           <BubbleList
             bubbles={bubbles}
             liveBlocks={liveBlocks}
+            liveRunId={liveRunId}
             streaming={streaming}
             pendingUserText={pendingUserText}
             toolCatalog={toolCatalog}

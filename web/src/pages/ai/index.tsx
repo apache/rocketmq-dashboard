@@ -162,6 +162,7 @@ const AiPage = () => {
       <ChatThread
         bubbles={timeline.bubbles}
         liveBlocks={run.blocksRef.current}
+        liveRunId={run.runId}
         streaming={run.isStreaming}
         pendingUserText={run.pendingUserMessage}
         toolCatalog={tools}
@@ -196,7 +197,7 @@ const AiPage = () => {
                   <Button
                     size="small"
                     loading={timeline.loading}
-                    onClick={() => void timeline.refetch().catch(() => undefined)}
+                    onClick={() => void run.retryTimeline().catch(() => undefined)}
                   >
                     {t('common.retry')}
                   </Button>
