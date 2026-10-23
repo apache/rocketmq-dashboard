@@ -80,6 +80,19 @@ public class LiteTopicExtendTtlToolHandler
     @Override
     public LiteTopicExtendTtlOutput execute(LiteTopicExtendTtlInput input, ToolExecutionContext context) {
         liteTopicService.extendTTL(context.instanceId(), input.topicPattern(), input.newTtlMillis());
-        return new LiteTopicExtendTtlOutput(input.topicPattern(), input.newTtlMillis());
+        return new LiteTopicExtendTtlOutput(input.topicPattern(), appliedTtlMillis(input.newTtlMillis()));
+    }
+
+    /**
+     * Mirrors the broker normalization the Apache provider applies to the request: whole-minute
+     * granularity clamped to the 30-day maximum. The result must describe the state applied to
+     * the broker, not the requested value, while the original request is still what reaches
+     * {@link LiteTopicService#extendTTL}.
+     */
+    private static long appliedTtlMillis(long requestedTtlMillis) {
+        long minutes = Math.min(
+                Math.max(Math.round(requestedTtlMillis / (double) MILLIS_PER_MINUTE), 1L),
+                MAX_TTL_MILLIS / MILLIS_PER_MINUTE);
+        return minutes * MILLIS_PER_MINUTE;
     }
 }

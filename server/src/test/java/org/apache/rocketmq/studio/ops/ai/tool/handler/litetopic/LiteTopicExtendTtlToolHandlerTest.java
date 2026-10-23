@@ -86,6 +86,33 @@ class LiteTopicExtendTtlToolHandlerTest {
         assertThat(output).isEqualTo(new LiteTopicExtendTtlOutput("orders", 86_400_000L));
     }
 
+    @Test
+    void executeReportsTheEffectiveTtlAppliedByTheBrokerTest() {
+        long requested = TimeUnit.DAYS.toMillis(31);
+
+        LiteTopicExtendTtlOutput output = handler.execute(
+                new LiteTopicExtendTtlInput("orders", requested), context());
+
+        // The original request is still what reaches the ownership-guarded service.
+        verify(liteTopicService).extendTTL("instance-a", "orders", requested);
+        // The provider rounds to whole minutes and clamps to its 30-day maximum, so the
+        // result must describe the applied state (30 days) instead of the request (31 days).
+        assertThat(output).isEqualTo(
+                new LiteTopicExtendTtlOutput("orders", TimeUnit.DAYS.toMillis(30)));
+    }
+
+    @Test
+    void executeRoundsUnnormalizedValuesToTheAppliedGranularityTest() {
+        LiteTopicExtendTtlOutput output = handler.execute(
+                new LiteTopicExtendTtlInput("orders", 90_500L), context());
+
+        // A valid value below the one-minute granularity is still accepted; the result
+        // reports the applied two-minute TTL rather than the raw request.
+        verify(liteTopicService).extendTTL("instance-a", "orders", 90_500L);
+        assertThat(output).isEqualTo(
+                new LiteTopicExtendTtlOutput("orders", TimeUnit.MINUTES.toMillis(2)));
+    }
+
     private static ToolExecutionContext context() {
         return ToolExecutionContext.of("instance-a", null, Map.of("instanceId", "instance-a"));
     }
