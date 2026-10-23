@@ -152,9 +152,9 @@ class ToolOutputSchemaContractTest {
         // so a metric-less rule must still validate against the output schema
         samples.put("rmq.alert.rule.list", List.of(new ListOutput<>(List.of(
                 new AlertRuleListItem(1L, "consumer-lag", "consumer.lag.total", ">",
-                        1000.0, "count", "5m", List.of("dingtalk"), true, "lag alert"),
+                        1000.0, "count", "5m", List.of("dingtalk"), true, "lag alert", INSTANCE),
                 new AlertRuleListItem(2L, "draft-rule", null, null,
-                        0.0, null, null, List.of(), false, null)))));
+                        0.0, null, null, List.of(), false, null, null)))));
 
         samples.put("rmq.litetopic.list", List.of(new ListOutput<>(List.of(
                 new LiteTopicListItem("chat/sess-", "ns-a", 12, 3, 120L, 3600L, "ACTIVE",

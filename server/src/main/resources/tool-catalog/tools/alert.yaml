@@ -61,5 +61,8 @@ tools:
                 type: boolean
               description:
                 type: string
+              instanceId:
+                type: string
+                description: Studio Instance identifier; absent for a global rule.
     viewHint: table
     deprecated: false
