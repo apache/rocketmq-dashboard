@@ -25,6 +25,7 @@ import org.apache.rocketmq.studio.ops.ai.conversation.agent.PromptEnhancer;
 import org.apache.rocketmq.studio.ops.ai.conversation.agent.ResumeRecovery;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEvent;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEventProjector;
+import org.apache.rocketmq.studio.ops.ai.conversation.event.LiveEvent;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.RunStatus;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.StopReason;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.ThinkingSource;
@@ -35,6 +36,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -49,6 +52,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -196,7 +200,7 @@ class AiRunExecutorTest {
     }
 
     @Test
-    void aSuccessfulResultFrameShouldBeTheOnlyTerminalTheProjectorWritesTest() {
+    void aSuccessfulResultShouldProduceOnlyOneTerminalTest() {
         provider.emit(new AgentEvent.TextDelta("done"));
         provider.emit(new AgentEvent.ResultMeta("session-9", 1200L, 30, 90,
                 AgentEventProjector.SUCCESS_SUBTYPE));
@@ -211,21 +215,168 @@ class AiRunExecutorTest {
         assertThat(runRow().getInputTokens()).isEqualTo(30);
         assertThat(runRow().getOutputTokens()).isEqualTo(90);
         assertThat(conversation.getRuntimeSessionId()).isEqualTo("session-9");
-        // Exactly one terminal reached the wire: the projector's, not a second one from finalisation.
+        // Exactly one terminal reaches the wire, after finalisation stores the run row.
         assertThat(emitters.get(0).eventCount("\"type\":\"run_finished\"")).isEqualTo(1);
         assertThat(registry.isLive(RUN_ID)).isFalse();
     }
 
     @Test
+    void successShouldNotReachObserversBeforeTheTerminalRunWriteTest() {
+        List<Long> finishedFramesBeforeTerminalWrite = new ArrayList<>();
+        doAnswer(invocation -> {
+            RmqAiRun updated = invocation.getArgument(0);
+            if (RunStatus.COMPLETED.name().equals(updated.getStatus())) {
+                finishedFramesBeforeTerminalWrite.add(
+                        emitters.get(0).eventCount("\"type\":\"run_finished\""));
+            }
+            runUpdates.add(AiRunTestSupport.copyOf(updated));
+            return null;
+        }).when(runRepository).update(any(RmqAiRun.class));
+        provider.emit(new AgentEvent.TextDelta("done"));
+        provider.emit(new AgentEvent.ResultMeta("session-9", null, 30, 90,
+                AgentEventProjector.SUCCESS_SUBTYPE));
+
+        startAndRun();
+
+        // Read the real observer's frames at the database write boundary, not mutable arguments
+        // after execution: a client that receives success must already be able to read a terminal row.
+        assertThat(finishedFramesBeforeTerminalWrite).containsExactly(0L);
+        assertThat(runRow().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
+        assertThat(types()).containsExactly("user", "text", "run_status");
+        assertThat(emitters.get(0).eventCount("\"type\":\"run_finished\"")).isEqualTo(1);
+        assertThat(emitters.get(0).eventText()).contains("\"durationMs\":" + runRow().getDurationMs());
+        assertThat(emitters.get(0).completed()).isTrue();
+    }
+
+    @Test
+    void failedTerminalRunWriteMustNotHaveBroadcastSuccessTest() {
+        doAnswer(invocation -> {
+            RmqAiRun updated = invocation.getArgument(0);
+            if (RunStatus.COMPLETED.name().equals(updated.getStatus())) {
+                throw new IllegalStateException("terminal update failed");
+            }
+            runUpdates.add(AiRunTestSupport.copyOf(updated));
+            return null;
+        }).when(runRepository).update(any(RmqAiRun.class));
+        provider.emit(new AgentEvent.TextDelta("done"));
+        provider.emit(new AgentEvent.ResultMeta("session-9", 12L, 30, 90,
+                AgentEventProjector.SUCCESS_SUBTYPE));
+
+        startAndRun();
+
+        assertThat(runRow().getStatus()).isEqualTo(RunStatus.RUNNING.name());
+        assertThat(emitters.get(0).eventCount("\"type\":\"run_finished\"")).isZero();
+        assertThat(emitters.get(0).completed()).isTrue();
+        assertThat(registry.isLive(RUN_ID)).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void successfulTerminalPublishShouldDeduplicateAgainstReconnectReplayTest(
+            boolean replayCompleteBeforePublish) {
+        AtomicReference<AgentStreamSession> reconnect = new AtomicReference<>();
+        List<Long> replayedTerminalSeqs = new ArrayList<>();
+        List<Long> publishedTerminalSeqs = new ArrayList<>();
+        List<Long> framesBeforeReplayDrain = new ArrayList<>();
+        AgentRunRegistry replayRegistry = new AgentRunRegistry() {
+            @Override
+            public void publish(long runId, long seq, LiveEvent event) {
+                super.publish(runId, seq, event);
+                if (event instanceof LiveEvent.RunFinished && reconnect.get() != null) {
+                    publishedTerminalSeqs.add(seq);
+                    framesBeforeReplayDrain.add(
+                            emitters.get(1).eventCount("\"type\":\"run_finished\""));
+                    // Drain AFTER the real fan-out but BEFORE registry.finish closes observers.
+                    // Leaving a queued duplicate until close would discard it and falsely pass.
+                    reconnect.get().finishReplay();
+                }
+            }
+        };
+        AiRunExecutor replayExecutor = new AiRunExecutor(
+                new AgentProviderRegistry(List.of(provider)), llmClient, promptEnhancer,
+                replayRegistry, runRepository, conversationRepository, eventRepository,
+                properties(), objectMapper, AiRunTestSupport.directExecutor(),
+                AiRunTestSupport.recordingInto(emitters), scheduler, Clock.systemUTC());
+        doAnswer(invocation -> {
+            RmqAiRun updated = invocation.getArgument(0);
+            if (RunStatus.COMPLETED.name().equals(updated.getStatus())) {
+                // The terminal event is durable, but the terminal run row is not yet committed.
+                // Reproduce attach's noteWatermark -> replay -> finishReplay handoff here.
+                RmqAiEvent terminal = inserted.stream()
+                        .filter(row -> "run_status".equals(row.getType()))
+                        .reduce((earlier, later) -> later).orElseThrow();
+                replayedTerminalSeqs.add(terminal.getSeq().longValue());
+                AgentStreamSession observer = replayExecutor.newSession(RUN_ID,
+                        replayExecutor.streamTimeoutMillis(ENGINE));
+                reconnect.set(observer);
+                replayRegistry.attach(RUN_ID, observer);
+                observer.noteWatermark(terminal.getSeq());
+                AiEventCodec.read(objectMapper, terminal)
+                        .flatMap(event -> new AgentEventProjector(RUN_ID)
+                                .replay(event, runRow().getDurationMs()))
+                        .ifPresent(observer::sendReplayed);
+                if (replayCompleteBeforePublish) {
+                    observer.finishReplay();
+                }
+            }
+            runUpdates.add(AiRunTestSupport.copyOf(updated));
+            calls.add("run:" + updated.getStatus());
+            return null;
+        }).when(runRepository).update(any(RmqAiRun.class));
+        provider.emit(new AgentEvent.TextDelta("done"));
+        provider.emit(new AgentEvent.ResultMeta("session-9", 12L, 30, 90,
+                AgentEventProjector.SUCCESS_SUBTYPE));
+
+        AgentRunHandle handle = replayExecutor.newHandle(RUN_ID);
+        AiEventSink sink = replayExecutor.newSink(CONVERSATION_ID, RUN_ID, 1, 0);
+        replayRegistry.register(RUN_ID, handle);
+        sink.writeUser("hello", null);
+        AgentStreamSession original = replayExecutor.newSession(RUN_ID,
+                replayExecutor.streamTimeoutMillis(ENGINE));
+        replayRegistry.attach(RUN_ID, original);
+        original.finishReplay();
+        replayExecutor.submit(new AiRunExecutor.RunContext(conversation, run, sink, handle,
+                LlmConfigVO.builder().engine(ENGINE).model("qwen3.8-max").enabled(true).build(),
+                ENGINE, "hello", null, false, Duration.ofSeconds(300), null));
+
+        assertThat(reconnect.get()).isNotNull();
+        assertThat(emitters).hasSize(2);
+        assertThat(replayedTerminalSeqs).hasSize(1);
+        // Also proves the final publish actually crossed the reconnect boundary in both cases.
+        assertThat(publishedTerminalSeqs).containsExactlyElementsOf(replayedTerminalSeqs);
+        assertThat(publishedTerminalSeqs.get(0)).isPositive();
+        assertThat(framesBeforeReplayDrain).containsExactly(1L);
+        assertThat(emitters.get(0).eventCount("\"type\":\"run_finished\"")).isEqualTo(1);
+        assertThat(emitters.get(1).eventCount("\"type\":\"run_finished\"")).isEqualTo(1);
+        assertThat(emitters.get(0).completed()).isTrue();
+        assertThat(emitters.get(1).completed()).isTrue();
+        assertThat(runRow().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
+        assertThat(types()).containsExactly("user", "text", "run_status");
+        assertThat(replayRegistry.isLive(RUN_ID)).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void aFailureAfterAcceptedSuccessShouldKeepTheCompletedOutcomeTest(boolean gatewayFailure) {
+        provider.emit(new AgentEvent.ResultMeta("session-9", 12L, 30, 90,
+                AgentEventProjector.SUCCESS_SUBTYPE));
+        provider.failure = gatewayFailure
+                ? new LlmGatewayException(502, "llm.provider.failed", "late provider failure", null)
+                : new IllegalStateException("late provider failure");
+
+        startAndRun();
+
+        assertThat(runRow().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
+        assertThat(runRow().getErrorCode()).isNull();
+        assertThat(types()).containsExactly("user", "run_status");
+        assertThat(emitters.get(0).eventCount("\"type\":\"run_finished\"")).isEqualTo(1);
+    }
+
+    @Test
     void aStopThatLandsAfterTheSuccessFrameMustNotOverwriteTheCompletedRunTest() {
-        // The success frame is projected the moment it arrives - the run_status row, the live
-        // run_finished, everything. A stop that lands after it (the user pressed the button while
-        // the answer was already being finalised) can only find a finished run: writing a second
-        // terminal would corrupt the timeline with two run_status events and rewrite the row to
-        // STOPPED for an answer the user watched complete.
-        // The stop must land between the success frame and the projector's terminal write — inside
-        // the stream, not before the script. The stub's afterEvent hook fires exactly there: one
-        // scripted success frame, then requestStop runs with the frame's own projection already done.
+        // A stop after an accepted success must not change the completed outcome, even though the
+        // terminal timeline event and live frame are deferred until the provider returns.
+        // afterEvent places the stop inside the stream, after the successful result was accepted.
         AiRunTestSupport.StubAgentProvider lateStop = new AiRunTestSupport.StubAgentProvider();
         lateStop.emit(new AgentEvent.ResultMeta("session-7", 10L, 3, 4,
                 AgentEventProjector.SUCCESS_SUBTYPE));
@@ -248,7 +399,7 @@ class AiRunExecutorTest {
 
         assertThat(runRow().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
         assertThat(runRow().getStopReason()).isNull();
-        // Exactly one terminal event, and it is the completed one the projector already wrote.
+        // Exactly one terminal event, preserving the success accepted before the stop.
         assertThat(types()).containsExactly("user", "run_status");
         assertThat(payloads().get(1)).contains(RunStatus.COMPLETED.name());
         assertThat(emitters.get(0).eventCount("\"type\":\"run_finished\"")).isEqualTo(1);

@@ -79,12 +79,14 @@ import java.util.function.LongFunction;
  * all. Left to the projector, a stopped or failed run would keep {@code status = RUNNING} in
  * {@code rmq_ai_run} forever and a reloaded conversation would show an answer that never ends. So
  * {@link #finalizeRun} is the single place a run reaches a terminal state, and it is exactly-once.
+ * Successful result frames are recorded without projection so they follow the same row-before-wire
+ * order as stopped and failed runs.
  *
  * <h2>Finalisation order, which is not interchangeable</h2>
  * <ol>
  *   <li>flush the coalescing buffer and persist what it held — skipping this silently loses the last
  *       chunk of assistant text, i.e. the part the user was waiting for;</li>
- *   <li>persist the terminal {@code run_status}, unless the projector already did for a success frame;</li>
+ *   <li>persist the terminal {@code run_status};</li>
  *   <li>UPDATE {@code rmq_ai_run}: status, stop_reason, finished_at, duration_ms, end_seq, tokens;</li>
  *   <li>refresh the {@code rmq_ai_conversation.last_seq} cache;</li>
  *   <li>emit the live {@code run_finished};</li>
@@ -260,7 +262,7 @@ public class AiRunExecutor {
             log.info("agent run {} was stopped before its worker started", context.getRun().getId());
             AbortReason reason = context.getHandle().abortReason().orElse(AbortReason.USER_STOP);
             finalizeRun(context, new Terminal(reason.status(), reason.stopReason(), null, null,
-                    new Outcome(), false));
+                    new Outcome()));
         }
     }
 
@@ -270,7 +272,7 @@ public class AiRunExecutor {
      */
     void terminate(RunContext context, RunStatus status, StopReason stopReason,
                    String errorCode, String errorMessage) {
-        finalizeRun(context, new Terminal(status, stopReason, errorCode, errorMessage, new Outcome(), false));
+        finalizeRun(context, new Terminal(status, stopReason, errorCode, errorMessage, new Outcome()));
     }
 
     private void execute(RunContext context) {
@@ -422,11 +424,10 @@ public class AiRunExecutor {
             return;
         }
         record(context, outcome, event);
-        if (event instanceof AgentEvent.ResultMeta && outcome.stopRacedSuccess) {
-            // claude flushes its result frame on SIGTERM, so a stop that lands while the agent is
-            // finishing produces a success frame for a run the user stopped. The honest terminal state
-            // is STOPPED, so the projector's COMPLETED terminal is swallowed and finalisation writes it.
-            log.debug("agent run {} was stopped while its provider reported success", context.getRun().getId());
+        if (event instanceof AgentEvent.ResultMeta meta
+                && AgentEventProjector.SUCCESS_SUBTYPE.equals(meta.subtype())) {
+            // Keep the provider outcome, but leave the terminal timeline event and live frame to
+            // finalisation: observers must not see success before the terminal run row is stored.
             return;
         }
         if (event instanceof AgentEvent.UnhandledUpstream unhandled
@@ -464,38 +465,34 @@ public class AiRunExecutor {
             }
             outcome.subtype = meta.subtype();
             if (AgentEventProjector.SUCCESS_SUBTYPE.equals(meta.subtype())) {
-                outcome.stopRacedSuccess = context.getHandle() != null && context.getHandle().isStopRequested();
-                outcome.successTerminalProjected = !outcome.stopRacedSuccess;
+                outcome.successBeforeStop = context.getHandle() == null || !context.getHandle().isStopRequested();
             }
         }
     }
 
     /**
-     * Maps what happened onto the terminal state to write. A success frame that was already projected
-     * wins over everything: the projector persisted the terminal {@code run_status} and published the
-     * live {@code run_finished} at that moment, so any abort that lands afterwards (a user stop that
-     * raced the finalisation, say) must not write a second terminal event over a finished run. An
-     * abort that landed <em>before</em> the success frame still wins - that is the
-     * {@code stopRacedSuccess} case, where the frame was swallowed and nothing terminal was projected.
+     * Maps what happened onto the terminal state to write. An accepted success still wins over a stop
+     * or provider failure that lands afterwards, even though its terminal publication is deferred.
+     * An abort that landed before the success frame wins instead.
      */
     private Terminal decide(RunContext context, Outcome outcome) {
-        if (outcome.successTerminalProjected) {
-            return new Terminal(RunStatus.COMPLETED, null, null, null, outcome, true);
+        if (outcome.successBeforeStop) {
+            return new Terminal(RunStatus.COMPLETED, null, null, null, outcome);
         }
         AbortReason abort = context.getHandle() == null
                 ? null
                 : context.getHandle().abortReason().orElse(null);
         if (abort != null) {
-            return new Terminal(abort.status(), abort.stopReason(), null, null, outcome, false);
+            return new Terminal(abort.status(), abort.stopReason(), null, null, outcome);
         }
         if (outcome.gatewayFailure != null) {
             LlmGatewayException failure = outcome.gatewayFailure;
             return new Terminal(RunStatus.FAILED, stopReasonForCode(failure.getCode()), failure.getCode(),
-                    failure.getMessage(), outcome, false);
+                    failure.getMessage(), outcome);
         }
         if (outcome.unexpected != null) {
             return new Terminal(RunStatus.FAILED, StopReason.PROVIDER_ERROR, ERROR_CODE_INTERNAL,
-                    outcome.unexpected.toString(), outcome, false);
+                    outcome.unexpected.toString(), outcome);
         }
         if (StringUtils.hasText(outcome.subtype)
                 && !AgentEventProjector.SUCCESS_SUBTYPE.equals(outcome.subtype)) {
@@ -503,7 +500,7 @@ public class AiRunExecutor {
             // decide the run's terminal state, which is why this branch exists.
             return new Terminal(RunStatus.FAILED, stopReasonForSubtype(outcome.subtype),
                     "llm.provider." + outcome.subtype,
-                    "agent run ended with subtype: " + outcome.subtype, outcome, false);
+                    "agent run ended with subtype: " + outcome.subtype, outcome);
         }
         if (!isHttpEngine(context.getEngine()) && !StringUtils.hasText(outcome.subtype)) {
             // The agent stream closed without ever delivering a result frame: nothing was projected,
@@ -511,9 +508,9 @@ public class AiRunExecutor {
             // A turn with no answer is not a successful one. HTTP completion turns never carry a result
             // frame at all, so their fall through to COMPLETED stays correct — that is the exclusion here.
             return new Terminal(RunStatus.FAILED, StopReason.PROVIDER_ERROR, ERROR_CODE_NO_RESULT,
-                    "agent stream ended without a result frame", outcome, false);
+                    "agent stream ended without a result frame", outcome);
         }
-        return new Terminal(RunStatus.COMPLETED, null, null, null, outcome, false);
+        return new Terminal(RunStatus.COMPLETED, null, null, null, outcome);
     }
 
     private void finalizeRun(RunContext context, Terminal terminal) {
@@ -530,16 +527,14 @@ public class AiRunExecutor {
         try {
             // 1. The last chunk of assistant text is still in the coalescing buffer.
             sink.flushPending();
-            // 2. The terminal timeline event, unless a success frame already produced one.
-            int endSeq = terminal.terminalAlreadyProjected()
-                    ? sink.highWaterSeq()
-                    : sink.writeTimeline(new TimelineEvent.RunStatus(terminal.status(), terminal.stopReason()));
+            // 2. The terminal timeline event. Keep its seq for replay/live deduplication.
+            int terminalSeq = sink.writeTimeline(new TimelineEvent.RunStatus(terminal.status(), terminal.stopReason()));
             // 3. The run row.
             run.setStatus(terminal.status().name());
             run.setStopReason(terminal.stopReason() == null ? null : terminal.stopReason().name());
             run.setFinishedAt(finishedAt);
             run.setDurationMs(durationMs);
-            run.setEndSeq(endSeq);
+            run.setEndSeq(terminalSeq);
             run.setRuntimeSessionId(terminal.outcome().runtimeSessionId);
             run.setInputTokens(terminal.outcome().inputTokens);
             run.setOutputTokens(terminal.outcome().outputTokens);
@@ -551,15 +546,13 @@ public class AiRunExecutor {
             // 4. The last_seq cache. close() also drains anything the timed flush left behind.
             sink.close();
             // 5. The live terminal frame.
-            if (!terminal.terminalAlreadyProjected()) {
-                registry.publish(run.getId(), 0L,
-                        new LiveEvent.RunFinished(run.getId(), terminal.status(), durationMs));
-            }
+            registry.publish(run.getId(), terminalSeq,
+                    new LiveEvent.RunFinished(run.getId(), terminal.status(), durationMs));
             log.info("agent run {} finished: status={} reason={} durationMs={} providerDurationMs={}"
                             + " tokens={}/{} endSeq={}",
                     run.getId(), terminal.status(), terminal.stopReason(), durationMs,
                     terminal.outcome().providerDurationMs, terminal.outcome().inputTokens,
-                    terminal.outcome().outputTokens, endSeq);
+                    terminal.outcome().outputTokens, terminalSeq);
         } finally {
             context.endTerminal();
             // 6. The observers: done, then close. Also runs when a step above threw, so a browser is
@@ -744,8 +737,7 @@ public class AiRunExecutor {
         private Integer inputTokens;
         private Integer outputTokens;
         private Long providerDurationMs;
-        private boolean successTerminalProjected;
-        private boolean stopRacedSuccess;
+        private boolean successBeforeStop;
         private LlmGatewayException gatewayFailure;
         private Throwable unexpected;
 
@@ -760,13 +752,12 @@ public class AiRunExecutor {
             inputTokens = null;
             outputTokens = null;
             providerDurationMs = null;
-            successTerminalProjected = false;
-            stopRacedSuccess = false;
+            successBeforeStop = false;
         }
     }
 
-    /** The terminal state to write, and whether the projector already wrote one. */
+    /** The terminal state to write together with the provider outcome. */
     private record Terminal(RunStatus status, StopReason stopReason, String errorCode, String errorMessage,
-                            Outcome outcome, boolean terminalAlreadyProjected) {
+                            Outcome outcome) {
     }
 }
