@@ -1065,6 +1065,37 @@ class MetadataServiceTest {
         assertThat(metadataService.refreshConsumerGroup("instance-a", "cg-gone")).isNull();
     }
 
+    @Test
+    void consumerGroupConfigurationsShouldExactMatchTrimmedNameWithinProviderSearchResults() {
+        ConsumerGroupVO similar = new ConsumerGroupVO();
+        similar.setName("cg-order-archive");
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("cg-order");
+        when(apacheProvider.listConsumerGroups("instance-a", "cg-order"))
+                .thenReturn(List.of(similar, group));
+
+        List<ConsumerGroupVO> result = metadataService.consumerGroupConfigurations("instance-a", "  cg-order  ");
+
+        assertThat(result).containsExactly(group);
+        verify(apacheProvider).listConsumerGroups("instance-a", "cg-order");
+    }
+
+    @Test
+    void consumerGroupConfigurationsShouldRejectBlankNameBeforeProviderResolution() {
+        assertCode(() -> metadataService.consumerGroupConfigurations("instance-a", "   "), 400);
+
+        verifyNoInteractions(apacheProvider);
+    }
+
+    @Test
+    void consumerGroupConfigurationsShouldReportNotFoundWhenGroupMissing() {
+        when(apacheProvider.listConsumerGroups("instance-a", "cg-gone")).thenReturn(List.of());
+
+        assertThatThrownBy(() -> metadataService.consumerGroupConfigurations("instance-a", " cg-gone "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Consumer group not found: cg-gone");
+    }
+
 
     @Test
     void resetOffsetShouldRejectBlankTopicBeforeProviderResolution() {
