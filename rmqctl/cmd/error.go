@@ -110,8 +110,17 @@ func matchContextCanceled(err error) (*types.CLIError, bool) {
 }
 
 func matchNetError(err error) (*types.CLIError, bool) {
-	if _, ok := errors.AsType[net.Error](err); !ok {
+	networkError, ok := errors.AsType[net.Error](err)
+	if !ok {
 		return nil, false
+	}
+	// Transport deadlines need not wrap context.DeadlineExceeded (for example,
+	// socket deadlines and DNS timeouts), but still satisfy net.Error.Timeout.
+	if networkError.Timeout() {
+		return types.NewCLIError(
+			types.CodeTimeout,
+			err.Error(),
+			"Check network connectivity or Studio Server responsiveness, then retry."), true
 	}
 	return types.NewCLIError(
 		types.CodeUnavailable,
