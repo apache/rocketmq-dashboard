@@ -1,4 +1,5 @@
 import { isMockMode } from './dataMode';
+import { getAuthSessionRevision } from '../stores/authStorage';
 import * as instanceApi from '../api/instance';
 import type {
   Instance,
@@ -22,6 +23,7 @@ function matchesType(instance: Instance, type?: Instance['type']) {
 }
 
 const inflightListRequests = new Map<string, Promise<Instance[]>>();
+let inflightSessionRevision: number | undefined;
 
 // A mutation that just completed must not be shadowed by a list request that
 // started earlier: callers issuing a read after a write would otherwise join
@@ -31,6 +33,13 @@ function invalidateInflightListRequests(): void {
 }
 
 export function listInstances(query: InstanceQuery = {}): Promise<Instance[]> {
+  const sessionRevision = getAuthSessionRevision();
+  // Use the same ownership boundary as HTTP/stream 401 handling, including same-user relogin
+  // and session clearing that happens outside the auth store.
+  if (sessionRevision !== inflightSessionRevision) {
+    inflightSessionRevision = sessionRevision;
+    invalidateInflightListRequests();
+  }
   const mockMode = isMockMode();
   // withCounts is part of the identity: a counts-free response must never satisfy a caller that
   // renders the counts (it would show zeros), nor the other way round.

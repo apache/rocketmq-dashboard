@@ -19,6 +19,7 @@ import MockAdapter from 'axios-mock-adapter';
 import { message } from 'antd';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
+import { clearAuthSession, persistAuthSession, readAuthSession } from '../stores/authStorage';
 
 vi.mock('antd', () => ({
   message: {
@@ -39,6 +40,21 @@ vi.stubGlobal('localStorage', {
     return storage.size;
   },
 });
+
+/** Observe hard navigation without asking jsdom to load another document. */
+function observeLoginRedirect() {
+  const originalWindow = window;
+  const redirect = vi.fn();
+  vi.stubGlobal('window', {
+    location: {
+      origin: originalWindow.location.origin,
+      set href(path: string) {
+        redirect(path);
+      },
+    },
+  });
+  return { redirect, restore: () => vi.stubGlobal('window', originalWindow) };
+}
 
 describe('API client response contract', () => {
   beforeEach(() => {
@@ -156,6 +172,52 @@ describe('API client response contract', () => {
     expect(localStorage.getItem('rocketmq-studio-user')).toBeNull();
     expect(localStorage.getItem('rocketmq-studio-user-admin')).toBeNull();
     expect(message.error).not.toHaveBeenCalled();
+  });
+
+  it('clearsAndRedirectsTheSessionThatOwnsAnUnauthorizedRequestTest', async () => {
+    persistAuthSession('admin', 7, true);
+    mock.onGet('/clusters').reply(401, { code: 401, message: 'expired', data: null });
+    const navigation = observeLoginRedirect();
+    try {
+      await expect(client.get('/clusters')).rejects.toMatchObject({ response: { status: 401 } });
+      expect(readAuthSession()).toEqual({ user: null, userId: null, admin: null });
+      expect(navigation.redirect).toHaveBeenCalledExactlyOnceWith('/login');
+    } finally {
+      navigation.restore();
+    }
+  });
+
+  it.each([
+    { user: 'second-admin', userId: 8 },
+    { user: 'admin', userId: 7 },
+  ])('preservesANewerLoginWhenAnOlderRequestReturns401Test: $user', async (next) => {
+    persistAuthSession('admin', 7, true);
+    let release!: () => void;
+    let notifyStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      notifyStarted = resolve;
+    });
+    mock.onGet('/clusters').reply(() => {
+      notifyStarted();
+      return new Promise((resolve) => {
+        release = () => resolve([401, { code: 401, message: 'old session expired', data: null }]);
+      });
+    });
+    const request = client.get('/clusters');
+    await started;
+
+    // Logout and login are SPA navigations, so the old HTTP request can still finish afterward.
+    clearAuthSession();
+    persistAuthSession(next.user, next.userId, true);
+    const navigation = observeLoginRedirect();
+    try {
+      release();
+      await expect(request).rejects.toMatchObject({ response: { status: 401 } });
+      expect(navigation.redirect).not.toHaveBeenCalled();
+      expect(readAuthSession()).toEqual({ user: next.user, userId: next.userId, admin: true });
+    } finally {
+      navigation.restore();
+    }
   });
 
   it('preserves the original 401 error when the request URL is malformed', async () => {

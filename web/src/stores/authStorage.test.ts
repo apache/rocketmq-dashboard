@@ -18,6 +18,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   clearAuthSession,
+  getAuthSessionRevision,
   persistAuthSession,
   readAuthSession,
   USER_ADMIN_STORAGE_KEY,
@@ -28,6 +29,29 @@ import {
 describe('auth session storage', () => {
   afterEach(() => {
     localStorage.clear();
+  });
+
+  it('advancesRequestOwnershipOnEveryLoginAndLogoutTest', () => {
+    persistAuthSession('studio-admin', 7, true);
+    const firstLogin = getAuthSessionRevision();
+    persistAuthSession('studio-admin', 7, true);
+    const secondLogin = getAuthSessionRevision();
+    expect(secondLogin).toBeGreaterThan(firstLogin);
+    clearAuthSession();
+    expect(getAuthSessionRevision()).toBeGreaterThan(secondLogin);
+  });
+
+  it('invalidatesRequestOwnershipWhenStorageIsUnavailableTest', () => {
+    const firstSession = getAuthSessionRevision();
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Storage refused', 'SecurityError');
+    });
+    try {
+      persistAuthSession('studio-admin', 7, true);
+      expect(getAuthSessionRevision()).toBeGreaterThan(firstSession);
+    } finally {
+      setItem.mockRestore();
+    }
   });
 
   it('persists display identity without a bearer token', () => {

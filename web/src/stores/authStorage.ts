@@ -21,6 +21,15 @@ export const USER_STORAGE_KEY = 'rocketmq-studio-user';
 export const USER_ID_STORAGE_KEY = 'rocketmq-studio-user-id';
 export const USER_ADMIN_STORAGE_KEY = 'rocketmq-studio-user-admin';
 
+// Requests outlive SPA logout/login navigations. Display identity is not a session id: signing
+// back in as the same user must still invalidate responses belonging to the previous login.
+let authSessionRevision = 0;
+
+/** Request ownership within this page's lifetime; no cookie or credential is exposed. */
+export function getAuthSessionRevision(): number {
+  return authSessionRevision;
+}
+
 export interface AuthSession {
   user: string | null;
   userId: number | null;
@@ -45,6 +54,7 @@ export function readAuthSession(): AuthSession {
 }
 
 export function persistAuthSession(user: string, userId: number | null, admin: boolean): void {
+  authSessionRevision += 1;
   const userWritten = writeLocalStorage(USER_STORAGE_KEY, user);
   const userIdWritten =
     userId != null
@@ -59,6 +69,7 @@ export function persistAuthSession(user: string, userId: number | null, admin: b
 }
 
 export function clearAuthSession(): void {
+  authSessionRevision += 1;
   removeLocalStorage('token');
   removeLocalStorage(USER_STORAGE_KEY);
   removeLocalStorage(USER_ID_STORAGE_KEY);
