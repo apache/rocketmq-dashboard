@@ -29,6 +29,7 @@ import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.message.MessageAccessor;
+import org.apache.rocketmq.common.message.MessageClientExt;
 import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
@@ -64,6 +65,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.ByteArrayInputStream;
 import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -1644,6 +1646,384 @@ class RocketMQDLQProviderTest {
         assertThat(oversizedBody.codePoints())
                 .noneMatch(codePoint -> codePoint >= 0xD800 && codePoint <= 0xDFFF);
         assertThat(rows.get(1).get(bodyColumn)).isEqualTo("hello dlq");
+    }
+
+    @Test
+    void listMessagesExposesDistinctSelectionsForRepeatedClientIdsTest() throws Exception {
+        String topic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageClientExt first = decodedDeadLetter(topic, "repeated-client-id", 0L, "first payload");
+        MessageClientExt second = decodedDeadLetter(topic, "repeated-client-id", 1L, "second payload");
+        stubDecodedDeadLetterScan(topic, List.of(first, second));
+
+        List<DLQMessageVO> rows = provider.listMessages("instance-a", "group-a", 100L, 200L, 1, 20).getItems();
+
+        // The real SDK preserves the producer ID across distinct stored records. Keep that
+        // business-facing ID, but expose the physical identity needed to select one exact row.
+        assertThat(rows).extracting(DLQMessageVO::getMsgId)
+                .containsExactly("repeated-client-id", "repeated-client-id");
+        assertThat(rows).extracting(DLQMessageVO::getOffset).containsExactly(0L, 1L);
+        assertThat(rows).extracting("selectionId")
+                .containsExactly("queue:broker-a:0:0:4096", "queue:broker-a:0:1:4608");
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void exportExcelMatchesQueueSelectionsAndPreservesLegacyClientIdSelectionTest(boolean queueSelection)
+            throws Exception {
+        String topic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageClientExt first = decodedDeadLetter(topic, "repeated-client-id", 0L, "first payload");
+        MessageClientExt second = decodedDeadLetter(topic, "repeated-client-id", 1L, "second payload");
+        stubDecodedDeadLetterScan(topic, List.of(first, second));
+        String selectedId = queueSelection ? "queue:broker-a:0:1:4608" : second.getMsgId();
+
+        DLQExcelExportResultVO exported = provider.exportExcel(
+                "instance-a", "group-a", 100L, 200L, List.of(selectedId), queueSelection);
+
+        List<Map<Integer, String>> rows;
+        try (ByteArrayInputStream input = new ByteArrayInputStream(exported.getData())) {
+            rows = EasyExcel.read(input).sheet("DLQ").doReadSync();
+        }
+        if (queueSelection) {
+            assertThat(rows).singleElement().satisfies(row -> {
+                assertThat(row.get(3)).isEqualTo("1");
+                assertThat(row.get(7)).isEqualTo("second payload");
+                assertThat(row.get(9)).isEqualTo("queue:broker-a:0:1:4608");
+            });
+        } else {
+            // Older clients still send the logical ID. Preserve that matching contract:
+            // it names both stored records, so it cannot express selection of just the second.
+            assertThat(rows).extracting(row -> row.get(7)).containsExactly("first payload", "second payload");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void resendSelectedPhysicalIdsDistinguishRepeatedClientIdsTest(boolean selectBoth) throws Exception {
+        String topic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageClientExt first = decodedDeadLetter(topic, "repeated-client-id", 0L, "first payload");
+        MessageClientExt second = decodedDeadLetter(topic, "repeated-client-id", 1L, "second payload");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithBrokerAddresses("172.30.10.100:10911"));
+        when(adminExt.viewMessage(topic, second.getOffsetMsgId())).thenReturn(second);
+        List<String> selectedIds;
+        if (selectBoth) {
+            when(adminExt.viewMessage(topic, first.getOffsetMsgId())).thenReturn(first);
+            selectedIds = List.of(first.getOffsetMsgId(), second.getOffsetMsgId());
+        } else {
+            selectedIds = List.of(second.getOffsetMsgId());
+        }
+        stubExistingTarget("orders");
+        SendResult success = new SendResult();
+        success.setSendStatus(SendStatus.SEND_OK);
+        when(dlqProducer.send(any(Message.class))).thenReturn(success);
+
+        DLQResendResultVO result = provider.resendMessages("instance-a", "group-a", selectedIds, "orders");
+
+        int expectedCount = selectBoth ? 2 : 1;
+        assertThat(result).extracting("matched", "resent", "failed", "outcome", "scanIncomplete")
+                .containsExactly(expectedCount, expectedCount, 0, "SUCCESS", false);
+        ArgumentCaptor<Message> sent = ArgumentCaptor.forClass(Message.class);
+        verify(dlqProducer, times(expectedCount)).send(sent.capture());
+        assertThat(sent.getAllValues()).extracting(message -> new String(message.getBody(), StandardCharsets.UTF_8))
+                .containsExactlyElementsOf(selectBoth ? List.of("first payload", "second payload")
+                        : List.of("second payload"));
+        verify(adminExt, never()).viewMessage(topic, "repeated-client-id");
+    }
+
+    @Test
+    void resendSelectedLegacyClientIdsRetainsIndexedLookupCompatibilityTest() throws Exception {
+        String topic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageClientExt first = decodedDeadLetter(topic, "repeated-client-id", 0L, "first payload");
+        MessageClientExt second = decodedDeadLetter(topic, "repeated-client-id", 1L, "second payload");
+        // MQAdminImpl.queryMessageByUniqKey returns the first indexed match. Neither the
+        // legacy request nor this lookup carries the second record's physical location.
+        when(adminExt.viewMessage(topic, second.getMsgId())).thenReturn(first);
+        stubExistingTarget("orders");
+        SendResult success = new SendResult();
+        success.setSendStatus(SendStatus.SEND_OK);
+        when(dlqProducer.send(any(Message.class))).thenReturn(success);
+
+        DLQResendResultVO result = provider.resendMessages("instance-a", "group-a",
+                List.of(first.getMsgId(), second.getMsgId()), "orders");
+
+        assertThat(result).extracting("matched", "resent").containsExactly(1, 1);
+        ArgumentCaptor<Message> sent = ArgumentCaptor.forClass(Message.class);
+        verify(dlqProducer).send(sent.capture());
+        assertThat(sent.getValue().getBody()).isEqualTo(first.getBody());
+        verify(adminExt).viewMessage(topic, "repeated-client-id");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"queue:custom-id", "queue:broker-a:0:1:4608"})
+    void resendLegacyClientIdsWithQueuePrefixRemainLegacyLookupsTest(String clientId) throws Exception {
+        String topic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageClientExt message = decodedDeadLetter(topic, clientId, 0L, "legacy payload");
+        when(adminExt.viewMessage(topic, clientId)).thenReturn(message);
+        stubExistingTarget("orders");
+        SendResult success = new SendResult();
+        success.setSendStatus(SendStatus.SEND_OK);
+        when(dlqProducer.send(any(Message.class))).thenReturn(success);
+
+        DLQResendResultVO result = provider.resendMessages("instance-a", "group-a", List.of(clientId), "orders");
+
+        assertThat(result).extracting("matched", "resent", "outcome").containsExactly(1, 1, "SUCCESS");
+        verify(adminExt).viewMessage(topic, clientId);
+        verifyNoInteractions(pullConsumer);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void exportExcelKeepsLogicalAndQueueSelectionNamespacesSeparateTest(boolean queueSelection) throws Exception {
+        String topic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        String selectedId = "queue:broker-a:0:1:4608";
+        MessageClientExt logicalMatch = decodedDeadLetter(topic, selectedId, 0L, "logical ID match");
+        MessageClientExt queueMatch = decodedDeadLetter(topic, "second-client-id", 1L, "queue selection match");
+        stubDecodedDeadLetterScan(topic, List.of(logicalMatch, queueMatch));
+
+        DLQExcelExportResultVO exported = queueSelection
+                ? provider.exportExcel("instance-a", "group-a", 100L, 200L, List.of(selectedId), true)
+                : provider.exportExcel("instance-a", "group-a", 100L, 200L, List.of(selectedId));
+
+        List<Map<Integer, String>> rows;
+        try (ByteArrayInputStream input = new ByteArrayInputStream(exported.getData())) {
+            rows = EasyExcel.read(input).sheet("DLQ").doReadSync();
+        }
+        assertThat(rows).singleElement().satisfies(row ->
+                assertThat(row.get(7)).isEqualTo(queueSelection ? "queue selection match" : "logical ID match"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"legacy-client-id", "queue:broker-a:0:1", "queue:broker-a:0:01:4608"})
+    void exportExcelRejectsInvalidQueueSelectionsBeforeScanningTest(String selection) {
+        assertThatThrownBy(() -> provider.exportExcel(
+                "instance-a", "group-a", 100L, 200L, List.of(selection), true))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("Invalid DLQ selection ID");
+
+        verifyNoInteractions(adminExt, pullConsumer, dlqProducer);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void resendQueueSelectionsDistinguishRepeatedClientIdsTest(boolean selectBoth) throws Exception {
+        String topic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(topic, "broker:a", 0);
+        MessageClientExt first = decodedDeadLetter(topic, "repeated-client-id", 0L, "first payload");
+        MessageClientExt second = decodedDeadLetter(topic, "repeated-client-id", 1L, "second payload");
+        when(pullConsumer.fetchSubscribeMessageQueues(topic)).thenReturn(Set.of(queue));
+        when(pullConsumer.pull(queue, "*", 1L, 1))
+                .thenReturn(new PullResult(PullStatus.FOUND, 2L, 0L, 2L, List.of(second)));
+        List<String> selectedIds;
+        if (selectBoth) {
+            when(pullConsumer.pull(queue, "*", 0L, 1))
+                    .thenReturn(new PullResult(PullStatus.FOUND, 1L, 0L, 2L, List.of(first)));
+            selectedIds = List.of("queue:broker:a:0:1:4608", "queue:broker:a:0:0:4096", "queue:broker:a:0:1:4608");
+        } else {
+            selectedIds = List.of("queue:broker:a:0:1:4608");
+        }
+        stubExistingTarget("orders");
+        SendResult success = new SendResult();
+        success.setSendStatus(SendStatus.SEND_OK);
+        when(dlqProducer.send(any(Message.class))).thenReturn(success);
+
+        DLQResendResultVO result = provider.resendMessages("instance-a", "group-a", selectedIds, "orders", true);
+
+        int expectedCount = selectBoth ? 2 : 1;
+        assertThat(result).extracting("matched", "resent", "failed", "outcome", "scanIncomplete")
+                .containsExactly(expectedCount, expectedCount, 0, "SUCCESS", false);
+        ArgumentCaptor<Message> sent = ArgumentCaptor.forClass(Message.class);
+        verify(dlqProducer, times(expectedCount)).send(sent.capture());
+        assertThat(sent.getAllValues()).extracting(message -> new String(message.getBody(), StandardCharsets.UTF_8))
+                .containsExactlyElementsOf(selectBoth ? List.of("second payload", "first payload")
+                        : List.of("second payload"));
+        verify(adminExt, never()).viewMessage(anyString(), anyString());
+        verify(adminExt, never()).examineBrokerClusterInfo();
+        verify(pullConsumer).pull(queue, "*", 1L, 1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"legacy-client-id", "other:broker-a:0:1:4096", "queue:broker-a:0:1",
+        "queue::0:1:4096", "queue:broker-a:-1:1:4096",
+        "queue:broker-a:0:-1:4096", "queue:broker-a:0:1:-1", "queue:broker-a:0:1:garbage",
+        "queue:broker-a:2147483648:1:4096", "queue:broker-a:0:9223372036854775808:4096",
+        "queue:broker-a:0:+1:4096", "queue:broker-a:0:01:4096", "queue:broker-a:0:1:"})
+    void resendQueueSelectionsRejectMalformedPositionsBeforeLookupTest(String selection) {
+        assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a", List.of(selection), null, true))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("Invalid DLQ selection ID");
+
+        verifyNoInteractions(adminExt, pullConsumer, dlqProducer);
+    }
+
+    @Test
+    void resendQueueSelectionsRejectUnknownBrokerBeforePullTest() throws Exception {
+        String topic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        when(pullConsumer.fetchSubscribeMessageQueues(topic))
+                .thenReturn(Set.of(new MessageQueue(topic, "broker-a", 0)));
+
+        DLQResendResultVO result = provider.resendMessages("instance-a", "group-a",
+                List.of("queue:foreign-broker:0:0:4096"), null, true);
+
+        assertThat(result).extracting("matched", "resent", "outcome", "scanIncomplete")
+                .containsExactly(0, 0, "PARTIAL", true);
+        verify(pullConsumer, never()).pull(any(), anyString(), anyLong(), anyInt());
+        verifyNoInteractions(adminExt, dlqProducer);
+    }
+
+    @Test
+    void resendQueueSelectionsUsesTheSelectedBrokerWhenQueuePositionsMatchTest() throws Exception {
+        String topic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue firstBroker = new MessageQueue(topic, "broker-a", 0);
+        MessageQueue secondBroker = new MessageQueue(topic, "broker-b", 0);
+        MessageClientExt selected = decodedDeadLetter(topic, "repeated-client-id", 1L, "broker-b payload");
+        when(pullConsumer.fetchSubscribeMessageQueues(topic)).thenReturn(Set.of(firstBroker, secondBroker));
+        when(pullConsumer.pull(secondBroker, "*", 1L, 1))
+                .thenReturn(new PullResult(PullStatus.FOUND, 2L, 0L, 2L, List.of(selected)));
+        stubExistingTarget("orders");
+        SendResult success = new SendResult();
+        success.setSendStatus(SendStatus.SEND_OK);
+        when(dlqProducer.send(any(Message.class))).thenReturn(success);
+
+        DLQResendResultVO result = provider.resendMessages("instance-a", "group-a",
+                List.of("queue:broker-b:0:1:4608"), "orders", true);
+
+        assertThat(result).extracting("matched", "resent", "outcome").containsExactly(1, 1, "SUCCESS");
+        ArgumentCaptor<Message> sent = ArgumentCaptor.forClass(Message.class);
+        verify(dlqProducer).send(sent.capture());
+        assertThat(sent.getValue().getBody()).isEqualTo(selected.getBody());
+        verify(pullConsumer, never()).pull(eq(firstBroker), anyString(), anyLong(), anyInt());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"OFFSET_ILLEGAL", "NO_NEW_MSG", "NO_MATCHED_MSG", "null", "empty",
+        "other-topic", "other-queue", "next-offset", "replaced-record"})
+    void resendQueueSelectionsRejectMovedOrReplacedRecordsTest(String scenario) throws Exception {
+        String topic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(topic, "broker-a", 0);
+        MessageClientExt message = decodedDeadLetter(topic, "repeated-client-id", 1L, "replacement payload");
+        when(pullConsumer.fetchSubscribeMessageQueues(topic)).thenReturn(Set.of(queue));
+        PullResult pullResult;
+        if ("null".equals(scenario)) {
+            pullResult = null;
+        } else if ("empty".equals(scenario)) {
+            pullResult = new PullResult(PullStatus.FOUND, 2L, 0L, 2L, List.of());
+        } else {
+            PullStatus status = PullStatus.FOUND;
+            switch (scenario) {
+                case "other-topic" -> message.setTopic("orders");
+                case "other-queue" -> message.setQueueId(1);
+                case "next-offset" -> message.setQueueOffset(2L);
+                case "replaced-record" -> message.setCommitLogOffset(8192L);
+                default -> status = PullStatus.valueOf(scenario);
+            }
+            pullResult = new PullResult(status, 2L, 0L, 2L, List.of(message));
+        }
+        when(pullConsumer.pull(queue, "*", 1L, 1)).thenReturn(pullResult);
+
+        DLQResendResultVO result = provider.resendMessages("instance-a", "group-a",
+                List.of("queue:broker-a:0:1:4608"), null, true);
+
+        assertThat(result).extracting("matched", "resent", "outcome", "scanIncomplete")
+                .containsExactly(0, 0, "PARTIAL", true);
+        verify(pullConsumer).pull(queue, "*", 1L, 1);
+        verifyNoInteractions(adminExt, dlqProducer);
+    }
+
+    @Test
+    void resendQueueSelectionsCarryExactIdentityInFailureDetailsTest() throws Exception {
+        String topic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(topic, "broker-a", 0);
+        MessageClientExt selected = decodedDeadLetter(topic, "repeated-client-id", 1L, "second payload");
+        when(pullConsumer.fetchSubscribeMessageQueues(topic)).thenReturn(Set.of(queue));
+        when(pullConsumer.pull(queue, "*", 1L, 1))
+                .thenReturn(new PullResult(PullStatus.FOUND, 2L, 0L, 2L, List.of(selected)));
+        stubExistingTarget("orders");
+        when(dlqProducer.send(any(Message.class))).thenThrow(new IllegalStateException("broker unavailable"));
+
+        DLQResendResultVO result = provider.resendMessages("instance-a", "group-a",
+                List.of("queue:broker-a:0:1:4608"), "orders", true);
+
+        assertThat(result.getFailures()).singleElement().satisfies(failure -> {
+            assertThat(failure.getMsgId()).isEqualTo("repeated-client-id");
+            assertThat(failure).extracting("selectionId").isEqualTo("queue:broker-a:0:1:4608");
+        });
+    }
+
+    @Test
+    void resendQueueSelectionsPreservesRequestOrderAndReportsUnresolvedRecordsTest() throws Exception {
+        String topic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(topic, "broker-a", 0);
+        MessageClientExt first = decodedDeadLetter(topic, "repeated-client-id", 0L, "first payload");
+        MessageClientExt selected = decodedDeadLetter(topic, "selected-client-id", 1L, "selected payload");
+        when(pullConsumer.fetchSubscribeMessageQueues(topic)).thenReturn(Set.of(queue));
+        when(pullConsumer.pull(queue, "*", 0L, 1))
+                .thenReturn(new PullResult(PullStatus.FOUND, 1L, 0L, 3L, List.of(first)));
+        when(pullConsumer.pull(queue, "*", 1L, 1))
+                .thenReturn(new PullResult(PullStatus.FOUND, 2L, 0L, 3L, List.of(selected)));
+        when(pullConsumer.pull(queue, "*", 2L, 1)).thenThrow(new MQClientException("lookup failed", null));
+        stubExistingTarget("orders");
+        SendResult success = new SendResult();
+        success.setSendStatus(SendStatus.SEND_OK);
+        when(dlqProducer.send(any(Message.class))).thenReturn(success);
+
+        DLQResendResultVO result = provider.resendMessages("instance-a", "group-a",
+                List.of("queue:broker-a:0:1:4608", "queue:broker-a:0:2:5120", "queue:broker-a:0:0:4096"),
+                "orders", true);
+
+        assertThat(result).extracting("matched", "resent", "outcome", "scanIncomplete")
+                .containsExactly(2, 2, "PARTIAL", true);
+        ArgumentCaptor<Message> sent = ArgumentCaptor.forClass(Message.class);
+        verify(dlqProducer, times(2)).send(sent.capture());
+        assertThat(sent.getAllValues()).extracting(message -> new String(message.getBody(), StandardCharsets.UTF_8))
+                .containsExactly("selected payload", "first payload");
+        verify(pullConsumer).fetchSubscribeMessageQueues(topic);
+    }
+
+    @Test
+    void resendQueueSelectionsStopsOnInterruptedPullBeforeSendingTest() throws Exception {
+        String topic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(topic, "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues(topic)).thenReturn(Set.of(queue));
+        when(pullConsumer.pull(queue, "*", 1L, 1)).thenThrow(new InterruptedException("cancelled"));
+
+        try {
+            assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a",
+                    List.of("queue:broker-a:0:1:4608", "queue:broker-a:0:2:5120"), null, true))
+                    .isInstanceOf(InterruptedException.class);
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+            verify(pullConsumer, never()).pull(queue, "*", 2L, 1);
+            verifyNoInteractions(adminExt, dlqProducer);
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    private void stubDecodedDeadLetterScan(String topic, List<MessageExt> messages) throws Exception {
+        MessageQueue queue = new MessageQueue(topic, "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues(topic)).thenReturn(Set.of(queue));
+        when(pullConsumer.searchOffset(queue, 100L)).thenReturn(0L);
+        when(pullConsumer.searchOffset(queue, 201L)).thenReturn((long) messages.size());
+        when(pullConsumer.pull(queue, "*", 0L, 32)).thenReturn(
+                new PullResult(PullStatus.FOUND, messages.size(), 0L, messages.size(), messages));
+    }
+
+    private static MessageClientExt decodedDeadLetter(String topic, String clientId, long queueOffset,
+                                                       String body) throws Exception {
+        MessageExt stored = new MessageExt();
+        stored.setTopic(topic);
+        stored.setQueueId(0);
+        stored.setQueueOffset(queueOffset);
+        stored.setCommitLogOffset(4096L + queueOffset * 512L);
+        stored.setBornHost(new InetSocketAddress("192.0.2.10", 32100));
+        stored.setStoreHost(new InetSocketAddress("172.30.10.100", 10911));
+        stored.setBornTimestamp(120L);
+        stored.setStoreTimestamp(150L);
+        stored.setBody(body.getBytes(StandardCharsets.UTF_8));
+        MessageAccessor.putProperty(stored, MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX, clientId);
+        MessageExt decoded = MessageDecoder.clientDecode(ByteBuffer.wrap(MessageDecoder.encode(stored, false)), true);
+        assertThat(decoded).isInstanceOf(MessageClientExt.class);
+        MessageClientExt clientMessage = (MessageClientExt) decoded;
+        assertThat(clientMessage.getMsgId()).isEqualTo(clientId);
+        assertThat(clientMessage.getOffsetMsgId()).isEqualTo(MessageDecoder.createMessageId(
+                new InetSocketAddress("172.30.10.100", 10911), stored.getCommitLogOffset()));
+        return clientMessage;
     }
 
     private void stubExistingTarget(String topic) throws Exception {

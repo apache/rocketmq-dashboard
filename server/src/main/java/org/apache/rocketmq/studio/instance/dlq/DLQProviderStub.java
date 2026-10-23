@@ -83,4 +83,16 @@ public class DLQProviderStub implements DLQProvider {
     private BusinessException unsupported() {
         return new BusinessException(501, "DLQ provider is not configured");
     }
+
+    @Override
+    public DLQResendResultVO resendMessages(String instanceId, String groupName, List<String> msgIds,
+                                             String targetTopic, boolean queueSelection) {
+        throw unsupported();
+    }
+
+    @Override
+    public DLQExcelExportResultVO exportExcel(String instanceId, String groupName, Long startTime, Long endTime,
+                                              List<String> msgIds, boolean queueSelection) {
+        throw unsupported();
+    }
 }

@@ -23,6 +23,7 @@ import lombok.Value;
 @Builder
 public class DLQResendFailureVO {
     String msgId;
+    String selectionId;
     String targetTopic;
     String reason;
 }

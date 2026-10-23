@@ -43,7 +43,6 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -142,6 +141,46 @@ class DLQServiceTest {
     }
 
     @Test
+    void selectedQueueActionsShouldNormalizeAndDelegateWithOwnershipTest() {
+        List<String> ids = List.of(" queue:broker-a:0:1:4096 ");
+        List<String> normalizedIds = List.of("queue:broker-a:0:1:4096");
+
+        dlqService.resendSelectedMessages("instance-1", " group-1 ", ids, " target-topic ", true);
+        dlqService.exportExcel("instance-1", " group-1 ", 1000L, 2000L, ids, true);
+
+        verify(dlqProvider).resendMessages("instance-1", "group-1", normalizedIds, "target-topic", true);
+        verify(dlqProvider).exportExcel("instance-1", "group-1", 1000L, 2000L, normalizedIds, true);
+        verify(ownershipGuard).withOwned(
+                any(InstanceVO.class),
+                eq(List.of(new Resource(Kind.GROUP, "group-1"), new Resource(Kind.TOPIC, "target-topic"))),
+                any());
+    }
+
+    @Test
+    void selectedLegacyActionsShouldKeepQueuePrefixedIdsAsLegacyTest() {
+        List<String> ids = List.of("queue:custom-id");
+
+        dlqService.resendSelectedMessages("instance-1", "group-1", ids, null);
+        dlqService.exportExcel("instance-1", "group-1", null, null, ids);
+
+        verify(dlqProvider).resendMessages("instance-1", "group-1", ids, null);
+        verify(dlqProvider).exportExcel("instance-1", "group-1", null, null, ids);
+    }
+
+    @Test
+    void queueSelectionResendShouldNotReachProviderWhenOwnershipRefusesTest() {
+        doThrow(new BusinessException(409, "Resource is owned by another instance"))
+                .when(ownershipGuard).withOwned(any(), anyList(), any());
+
+        assertThatThrownBy(() -> dlqService.resendSelectedMessages(
+                "instance-1", "group-1", List.of("queue:broker-a:0:1:4096"), "target-topic", true))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getCode()).isEqualTo(409));
+
+        verifyNoInteractions(dlqProvider);
+    }
+
+    @Test
     void resendMessagesShouldNotReachTheProviderWhenOwnershipRefusesTest() {
         // doThrow: the when(...) form would invoke the mock and run the lenient answer below.
         doThrow(new BusinessException(409, "Resource is owned by another instance"))
@@ -151,7 +190,7 @@ class DLQServiceTest {
                 dlqService.resendMessages("instance-1", "group-1", 1000L, 2000L, null))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getCode()).isEqualTo(409));
-        verify(dlqProvider, never()).resendMessages(anyString(), anyString(), any(), any(), any());
+        verifyNoInteractions(dlqProvider);
     }
 
     @Test
@@ -211,6 +250,17 @@ class DLQServiceTest {
         dlqService.exportExcel("instance-1", "group-1", null, null, null);
 
         verify(dlqProvider).exportExcel("instance-1", "group-1", null, null, null);
+    }
+
+    @Test
+    void queueSelectionExportShouldRequireMsgIdsInsteadOfExportingWholeWindowTest() {
+        assertThatThrownBy(() -> dlqService.exportExcel(
+                "instance-1", "group-1", null, null, null, true))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getCode()).isEqualTo(400))
+                .hasMessage("msgIds are required for queue selection");
+
+        verifyNoInteractions(dlqProvider);
     }
 
     @Test

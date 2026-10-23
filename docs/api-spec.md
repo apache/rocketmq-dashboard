@@ -2095,7 +2095,8 @@ GET /api/dlq/{groupName}/messages?instanceId={instanceId}&startTime={ms}&endTime
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `msgId` | `string` | 消息 ID |
+| `msgId` | `string` | 原有消息 ID；拉取结果通常为生产者 `UNIQ_KEY`，多条物理记录可能相同 |
+| `selectionId` | `string` | 服务端生成的精确记录定位值；旧服务端或未提供定位信息的记录可能省略或为 `null` |
 | `topic` | `string` | 死信 Topic 名称（`%DLQ%{groupName}`） |
 | `queueId` | `number` | 队列 ID |
 | `offset` | `number` | 队列位点 |
@@ -2128,7 +2129,19 @@ POST /api/dlq/resend-selected
 | `instanceId` | `string` | 是 | 实例 ID（全局唯一字符串） |
 | `groupName` | `string` | 是 | 消费组名称 |
 | `msgIds` | `string[]` | 是 | 待重投的消息 ID，`1`–`100` 条，元素不可为空白 |
+| `selectionType` | `string` | 否 | 传 `queue` 时，`msgIds` 必须填写列表返回的 `selectionId`；省略时保持原消息 ID 查询语义 |
 | `targetTopic` | `string` | 否 | 目标 Topic，不传则重投回原 Topic |
+
+列表中的记录可能共享生产者 ID。要精确重发所选记录，请原样传回 `selectionId` 并设置
+`selectionType: "queue"`，不要从浏览器的数字 `offset` 重建定位值（其精度可能不足）。
+当前定位值包含 Broker 名、队列编号、队列偏移及 commit-log 偏移。服务端先验证队列属于当前
+实例的该 DLQ，再按队列偏移读取一条消息，并核对 Topic、队列编号和两个偏移。
+该路径不依赖消息索引，也不从定位值获取网络地址。
+
+无法按上述队列位置和 commit-log 偏移精确读回的记录不会被其他消息代替，继续通过 `matched` 和
+`scanIncomplete` 报告未匹配项。定位值不是跨 Broker 存储重建的永久身份；重建或恢复存储后应重新查询列表。
+无效定位格式返回 `400`。省略 `selectionType` 时，包括
+以 `queue:` 开头的自定义逻辑 ID 在内，均保持旧查询行为。一个请求不能混用两种选择方式。
 
 **Response `data`:** `DLQResendResult`（结构同 §9.2）
 
@@ -2163,10 +2176,14 @@ GET /api/dlq/export-excel?instanceId={instanceId}&groupName={groupName}&startTim
 | `startTime` | `number` | 否 | 起始时间（Unix 毫秒时间戳） |
 | `endTime` | `number` | 否 | 结束时间（Unix 毫秒时间戳） |
 | `msgIds` | `string[]` | 否 | 只导出选中的消息，最多 `100` 条；省略则导出整个时间窗口 |
+| `selectionType` | `string` | 否 | `queue` 表示 `msgIds` 是列表的 `selectionId`，此时 `msgIds` 不可省略；省略该参数则按原消息 ID 匹配 |
 
 **Response:** 不走统一 `Result` 外壳，直接返回 `.xlsx` 字节流，`Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`，`Content-Disposition: attachment; filename="dlq-{groupName}.xlsx"`。工作表名 `DLQ`，列为 `Message ID` / `Topic` / `Queue ID` / `Offset` / `Store Time` / `Reconsume Times` / `Keys` / `Body` / `Body Base64`；原始字节不是有效 UTF-8 时 `Body` 为空，`Body Base64` 保存原始字节，其他情况下该列为空。`Store Time` 按服务端默认时区格式化为 `yyyy-MM-dd HH:mm:ss`。生成失败返回 `502 Failed to export DLQ messages as Excel`。
 
 `msgIds` 使用重复同名参数（`msgIds=a&msgIds=b`）。省略 `msgIds` 才会导出整个时间窗口；显式传入空值（`msgIds=`）会返回 `400`。方括号或点号索引形式（如 `msgIds[]=a`、`msgIds[0]=a` 或 `msgIds.0=a`）也会返回 `400`，避免误将选中消息导出变成整个窗口导出。
+
+精确选择模式只匹配 `selectionId`；默认模式只匹配 `msgId`，不会交叉匹配。Excel 在原有列后
+追加 `Selection ID`，JSON 消息及重发失败明细也返回可用的 `selectionId`，用于区分共享消息 ID 的记录。
 
 > `msgIds` 是在一次上限 `5000` 条的扫描之后再做过滤，因此选中的消息若不在该窗口内不会出现在导出结果里；`X-DLQ-Export-Limit` 恒为 `5000`，不随 `msgIds` 条数变化。
 

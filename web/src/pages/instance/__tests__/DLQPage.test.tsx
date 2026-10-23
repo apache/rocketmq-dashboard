@@ -164,6 +164,78 @@ describe('DLQ page', () => {
     vi.clearAllMocks();
   });
 
+  it.each(['single resend', 'batch resend', 'selected export'])(
+    'uses the selected record locator for %s when producer IDs are repeated',
+    async (action) => {
+      // Keep the server-issued string intact, including offsets above JS's safe integer range.
+      const selectionIds = [
+        'queue:broker-a:0:9007199254740992:12000',
+        'queue:broker-a:0:9007199254740993:13000',
+      ];
+      vi.mocked(messageService.listDLQMessages).mockResolvedValue({
+        items: selectionIds.map((selectionId, index) => ({
+          msgId: 'shared-producer-id',
+          selectionId,
+          topic: '%DLQ%cg-order',
+          queueId: 0,
+          offset: index,
+          storeTime: 2,
+          keys: null,
+          body: `payload-${index}`,
+          bodyBase64: null,
+        })),
+        total: 2,
+        page: 1,
+        size: 20,
+      });
+      vi.mocked(messageService.resendDLQSelected).mockResolvedValue({
+        matched: 1,
+        resent: 1,
+        failed: 0,
+        outcome: 'SUCCESS',
+      });
+      vi.mocked(messageService.exportDLQExcel).mockResolvedValue({
+        blob: new Blob(['selected row']),
+        meta: { truncated: false, failedQueueCount: 0, limit: 5000 },
+      });
+      const user = userEvent.setup();
+      renderWithProviders(<DLQPage />);
+      const groupRow = (await screen.findByText('cg-order')).closest('tr')!;
+      const details = within(groupRow).getByRole('button', { name: /消息明细/ });
+      await expectInteractive(details);
+      await user.click(details);
+      const firstRow = (await screen.findByText('payload-0')).closest('tr')!;
+      const secondRow = (await screen.findByText('payload-1')).closest('tr')!;
+      await expectInteractive(within(secondRow).getByRole('checkbox'));
+      if (action === 'single resend') {
+        await user.click(within(secondRow).getByRole('button', { name: '重发' }));
+      } else {
+        await user.click(within(secondRow).getByRole('checkbox'));
+        expect(within(firstRow).getByRole('checkbox')).not.toBeChecked();
+        expect(within(secondRow).getByRole('checkbox')).toBeChecked();
+        await user.click(
+          screen.getByRole('button', {
+            name: action === 'selected export' ? /导出选中/ : /批量重发选中/,
+          }),
+        );
+      }
+      await waitFor(() =>
+        expect(
+          action === 'selected export'
+            ? messageService.exportDLQExcel
+            : messageService.resendDLQSelected,
+        ).toHaveBeenCalledWith(
+          expect.objectContaining({
+            instanceId: 'instance-1',
+            groupName: 'cg-order',
+            msgIds: [selectionIds[1]],
+            selectionType: 'queue',
+          }),
+        ),
+      );
+    },
+  );
+
   it.each([
     ['Page', 2, 20],
     ['PageSize', 1, 10],
@@ -289,6 +361,66 @@ describe('DLQ page', () => {
       expect(screen.queryByText(/重发完成：成功/)).not.toBeInTheDocument();
     },
   );
+
+  it('requires reselection when a retained queue selection disappears after refresh', async () => {
+    const messages = [0, 1].map((offset) => ({
+      msgId: `message-${offset}`,
+      selectionId: `queue:broker-a:0:${offset}:${4096 + offset * 512}`,
+      topic: '%DLQ%cg-order',
+      queueId: 0,
+      offset,
+      storeTime: 2,
+      keys: null,
+      body: `payload-${offset}`,
+      bodyBase64: null,
+    }));
+    vi.mocked(messageService.listDLQMessages)
+      .mockResolvedValueOnce({ items: messages, total: 2, page: 1, size: 20 })
+      .mockResolvedValue({ items: [messages[0]], total: 1, page: 1, size: 20 });
+    let resolveResend!: (result: DLQResendResult) => void;
+    vi.mocked(messageService.resendDLQSelected).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveResend = resolve;
+        }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+    const groupRow = (await screen.findByText('cg-order')).closest('tr')!;
+    const details = within(groupRow).getByRole('button', { name: /消息明细/ });
+    await expectInteractive(details);
+    await user.click(details);
+    const firstRow = (await screen.findByText('payload-0')).closest('tr')!;
+    const secondRow = (await screen.findByText('payload-1')).closest('tr')!;
+    await expectInteractive(within(firstRow).getByRole('checkbox'));
+    await user.click(within(firstRow).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: /批量重发选中/ }));
+    await waitFor(() =>
+      expect(messageService.resendDLQSelected).toHaveBeenCalledWith(
+        expect.objectContaining({ msgIds: [messages[0].selectionId], selectionType: 'queue' }),
+      ),
+    );
+
+    // Keep a new selection while the submitted record is replayed. The refresh then loses
+    // that selected record, as it can when the broker expires or purges it in the meantime.
+    await user.click(within(secondRow).getByRole('checkbox'));
+    await act(async () => resolveResend({ matched: 1, resent: 1, failed: 0, outcome: 'SUCCESS' }));
+    await waitFor(() => {
+      expect(messageService.listDLQMessages).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText('payload-1')).not.toBeInTheDocument();
+    });
+    const batchResend = screen.getByRole('button', { name: /批量重发选中 \(1\)/ });
+    await waitFor(() => expect(batchResend).not.toHaveClass('ant-btn-loading'));
+    await user.click(batchResend);
+
+    expect(await screen.findByText('所选记录已变化，请刷新明细后重新选择')).toBeInTheDocument();
+    expect(messageService.resendDLQSelected).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('button', { name: /导出选中 \(1\)/ }));
+    expect(messageService.exportDLQExcel).not.toHaveBeenCalled();
+    expect(createObjectURL).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /导出选中 \(1\)/ })).toBeInTheDocument();
+  });
+
   it('says so when the instance list itself failed to load', async () => {
     // Every instance-scoped request needs an instanceId, so a failed /instances request leaves the page
     // with nothing it can show. Rendering that as an empty result tells the operator the instance has no
@@ -978,6 +1110,7 @@ describe('DLQ page', () => {
       items: [
         {
           msgId: 'msg-1',
+          selectionId: 'queue:broker-a:0:1:4096',
           topic: '%DLQ%cg-order',
           queueId: 0,
           offset: 1,
@@ -1001,6 +1134,7 @@ describe('DLQ page', () => {
       failures: [
         {
           msgId: 'msg-1',
+          selectionId: 'queue:broker-a:0:1:4096',
           targetTopic: 'orders',
           reason: 'Producer send failed: broker unavailable',
         },
@@ -1020,6 +1154,7 @@ describe('DLQ page', () => {
 
     expect(await screen.findByText('Producer send failed: broker unavailable')).toBeInTheDocument();
     expect(screen.getAllByText('msg-1').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('queue:broker-a:0:1:4096')).toBeInTheDocument();
     expect(screen.getByText('orders')).toBeInTheDocument();
   });
 
