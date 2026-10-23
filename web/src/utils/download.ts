@@ -45,7 +45,16 @@ export const escapeCsvCell = (value: unknown) => {
   // Prefix both formulas and literal apostrophe-prefixed formulas. The importer removes
   // exactly one protection apostrophe, so any apostrophes supplied by the user survive a
   // complete export/import round trip.
-  const formulaSafeText = /^(?:[=+\-@\t\r\n]|'+[=+\-@\t\r\n])/.test(text) ? `'${text}` : text;
+  // Numeric values have already been parsed by the application and must stay numeric in
+  // spreadsheet exports; prefixing a negative number with an apostrophe turns a valid metric
+  // value such as -3.5 into text. String values keep the protection because they may be
+  // user-controlled formula input.
+  const formulaSafeText =
+    typeof value === 'number'
+      ? text
+      : /^(?:[=+\-@\t\r\n]|'+[=+\-@\t\r\n])/.test(text)
+        ? `'${text}`
+        : text;
   return `"${formulaSafeText.replace(/"/g, '""')}"`;
 };
 

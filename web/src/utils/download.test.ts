@@ -59,6 +59,15 @@ describe('buildCsv', () => {
       ].join('\n'),
     );
   });
+
+  it('keeps numeric negative cells numeric for spreadsheet exports', () => {
+    const csv = buildCsv(
+      [{ header: 'Value', value: (row: { value: number }) => row.value }],
+      [{ value: -3.5 }],
+    );
+
+    expect(csv).toBe('"Value"\n"-3.5"');
+  });
 });
 
 describe('downloadCsv', () => {
