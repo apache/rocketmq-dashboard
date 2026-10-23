@@ -323,6 +323,26 @@ class AliyunInstanceProviderTest {
     }
 
     @Test
+    void listConsumerGroupsPageShouldUseAliyunNativePaginationTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listConsumerGroups(any(ListConsumerGroupsRequest.class)))
+                .thenReturn(CompletableFuture.completedFuture(groupsResponse(201L, "GID_page-3")));
+
+        var page = provider.listConsumerGroupsPage(STUDIO_INSTANCE_ID, null, 3, 100);
+
+        assertThat(page.getTotal()).isEqualTo(201L);
+        assertThat(page.getPage()).isEqualTo(3);
+        assertThat(page.getSize()).isEqualTo(100);
+        assertThat(page.getItems()).extracting(ConsumerGroupVO::getName).containsExactly("GID_page-3");
+        ArgumentCaptor<ListConsumerGroupsRequest> captor =
+                ArgumentCaptor.forClass(ListConsumerGroupsRequest.class);
+        verify(asyncClient).listConsumerGroups(captor.capture());
+        assertThat(captor.getValue().getPageNumber()).isEqualTo(3L);
+        assertThat(captor.getValue().getPageSize()).isEqualTo(100L);
+    }
+
+    @Test
     void listTopicsShouldTraversePastLegacyFivePageCapTest() {
         stubInstance();
         stubCallThrough();
