@@ -921,6 +921,11 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'dlq.failureDetails': { zh: '失败消息明细', en: 'Failed message details' },
   'dlq.failureMessageId': { zh: '消息 ID', en: 'Message ID' },
+  'dlq.failureSelectionId': { zh: '选中记录', en: 'Selected record' },
+  'dlq.mixedSelection': {
+    zh: '所选记录已变化，请刷新明细后重新选择',
+    en: 'The selected records have changed. Refresh the details and select again.',
+  },
   'dlq.failureTargetTopic': { zh: '目标 Topic', en: 'Target topic' },
   'dlq.failureReason': { zh: '失败原因', en: 'Failure reason' },
   'dlq.failureDetailsTruncated': {

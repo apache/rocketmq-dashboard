@@ -56,6 +56,7 @@ const { Text } = Typography;
 const { RangePicker } = DatePicker;
 const DEFAULT_LOAD_ERROR = '死信队列加载失败，请稍后重试';
 const DEFAULT_RETRY_ERROR = '提交重投任务失败，请稍后重试';
+const selectionIdOf = (message: DLQMessage): string => message.selectionId ?? message.msgId;
 
 /* ─── Helpers ─── */
 
@@ -283,6 +284,12 @@ const DLQPage = () => {
                   <Text type="secondary">{t('dlq.failureMessageId')}: </Text>
                   <Text code>{failure.msgId || '-'}</Text>
                 </div>
+                {failure.selectionId && (
+                  <div>
+                    <Text type="secondary">{t('dlq.failureSelectionId')}: </Text>
+                    <Text code>{failure.selectionId}</Text>
+                  </div>
+                )}
                 <div>
                   <Text type="secondary">{t('dlq.failureTargetTopic')}: </Text>
                   <Text code>{failure.targetTopic || '-'}</Text>
@@ -431,6 +438,18 @@ const DLQPage = () => {
     }
   };
 
+  const selectionTypeFor = (ids: string[]): 'queue' | undefined => {
+    const records = ids.map((id) => detailMessages.find((record) => selectionIdOf(record) === id));
+    if (records.some((record) => !record)) {
+      throw new Error(t('dlq.mixedSelection'));
+    }
+    const queueSelections = records.filter((record) => record?.selectionId).length;
+    if (queueSelections > 0 && queueSelections !== ids.length) {
+      throw new Error(t('dlq.mixedSelection'));
+    }
+    return queueSelections > 0 ? 'queue' : undefined;
+  };
+
   const resendSelectedMessages = async (msgIds: string[]) => {
     if (!selectedInstanceId || !detailGroup || msgIds.length === 0) return;
     if (retryInFlightRef.current || detailResendInFlightRef.current) return;
@@ -446,6 +465,7 @@ const DLQPage = () => {
         instanceId,
         groupName: group.groupName,
         msgIds,
+        selectionType: selectionTypeFor(msgIds),
       });
       if (detailResendRequestIdRef.current !== requestId) return;
       // The server reports `matched` separately from `resent`: a selected message that can no
@@ -506,6 +526,7 @@ const DLQPage = () => {
         startTime: exportRange[0].valueOf(),
         endTime: exportRange[1].valueOf(),
         msgIds: detailSelectedMsgIds.length > 0 ? detailSelectedMsgIds : undefined,
+        selectionType: selectionTypeFor(detailSelectedMsgIds),
       });
       downloadBlob(blob, `${detailGroup.groupName}-dlq-messages.xlsx`);
       if (meta.truncated || meta.failedQueueCount > 0) {
@@ -706,7 +727,7 @@ const DLQPage = () => {
           size="small"
           icon={<ArrowsCounterClockwise size={13} />}
           loading={detailResending}
-          onClick={() => void resendSelectedMessages([record.msgId])}
+          onClick={() => void resendSelectedMessages([selectionIdOf(record)])}
         >
           重发
         </Button>
@@ -1004,7 +1025,7 @@ const DLQPage = () => {
             )}
 
             <Table<DLQMessage>
-              rowKey="msgId"
+              rowKey={selectionIdOf}
               size="small"
               loading={detailLoading}
               dataSource={detailMessages}

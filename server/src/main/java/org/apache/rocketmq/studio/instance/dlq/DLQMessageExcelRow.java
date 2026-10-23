@@ -59,6 +59,8 @@ public class DLQMessageExcelRow {
     private String body;
     @ExcelProperty("Body Base64")
     private String bodyBase64;
+    @ExcelProperty("Selection ID")
+    private String selectionId;
 
     public static DLQMessageExcelRow from(DLQMessageVO vo) {
         DLQMessageExcelRow row = new DLQMessageExcelRow();
@@ -72,6 +74,7 @@ public class DLQMessageExcelRow {
         row.setKeys(vo.getKeys());
         row.setBody(abbreviateForExcelCell(vo.getBody()));
         row.setBodyBase64(abbreviateForExcelCell(vo.getBody() == null ? vo.getBodyBase64() : null));
+        row.setSelectionId(vo.getSelectionId());
         return row;
     }
 

@@ -120,12 +120,15 @@ export interface DLQResendResult {
 
 export interface DLQResendFailure {
   msgId: string;
+  selectionId?: string | null;
   targetTopic?: string | null;
   reason: string;
 }
 
 export interface DLQMessage {
   msgId: string;
+  /** Server-issued locator for exact row selection; msgId remains the producer message ID. */
+  selectionId?: string | null;
   topic: string;
   queueId: number;
   offset: number;
@@ -317,6 +320,7 @@ export async function resendDLQSelected(data: {
   instanceId: string;
   groupName: string;
   msgIds: string[];
+  selectionType?: 'queue';
   targetTopic?: string;
 }): Promise<DLQResendResult> {
   const res = await client.post<{ data: DLQResendResult }>('/dlq/resend-selected', data);
@@ -329,6 +333,7 @@ export async function exportDLQExcel(params: {
   startTime?: number;
   endTime?: number;
   msgIds?: string[];
+  selectionType?: 'queue';
 }): Promise<{ blob: Blob; meta: DLQExportMeta }> {
   const res = await client.get<Blob>('/dlq/export-excel', {
     params,

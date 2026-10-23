@@ -26,6 +26,7 @@ import org.apache.rocketmq.studio.common.util.DlqExportHeaders;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ContentDisposition;
@@ -79,6 +80,10 @@ public class DLQController {
     public Result<DLQResendResultVO> resendSelectedMessages(
             @Valid @RequestBody(required = false) DLQResendSelectedRequestDTO request) {
         requireSelectedRequest(request);
+        if ("queue".equals(request.getSelectionType())) {
+            return Result.ok(dlqService.resendSelectedMessages(request.getInstanceId(), request.getGroupName(),
+                    request.getMsgIds(), request.getTargetTopic(), true));
+        }
         return Result.ok(dlqService.resendSelectedMessages(request.getInstanceId(), request.getGroupName(),
                 request.getMsgIds(), request.getTargetTopic()));
     }
@@ -104,6 +109,9 @@ public class DLQController {
                                                  @Size(max = MAX_SELECTED_MESSAGES,
                                                          message = "At most 100 msgIds are allowed per export")
                                                  @RequestParam(required = false) List<String> msgIds,
+                                                 @Pattern(regexp = "queue",
+                                                         message = "selectionType must be queue when provided")
+                                                 @RequestParam(required = false) String selectionType,
                                                  HttpServletRequest request) {
         if (request.getParameterMap().keySet().stream()
                 .anyMatch(name -> name.startsWith("msgIds[") || name.startsWith("msgIds."))) {
@@ -112,7 +120,9 @@ public class DLQController {
         if (request.getParameterMap().containsKey("msgIds") && (msgIds == null || msgIds.isEmpty())) {
             throw new BusinessException(400, "msgIds must not be empty when provided");
         }
-        DLQExcelExportResultVO result = dlqService.exportExcel(instanceId, groupName, startTime, endTime, msgIds);
+        DLQExcelExportResultVO result = "queue".equals(selectionType)
+                ? dlqService.exportExcel(instanceId, groupName, startTime, endTime, msgIds, true)
+                : dlqService.exportExcel(instanceId, groupName, startTime, endTime, msgIds);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         attachmentDisposition("dlq-" + sanitizeForFilename(groupName) + ".xlsx").toString())

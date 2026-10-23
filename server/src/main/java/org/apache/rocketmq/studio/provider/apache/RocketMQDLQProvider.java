@@ -98,6 +98,7 @@ public class RocketMQDLQProvider implements DLQProvider {
     private static final int MAX_FAILURE_REASON_LENGTH = 256;
     private static final String ORIGIN_MESSAGE_ID_PROPERTY = "studio_dlq_origin_message_id";
     private static final String ORIGIN_TOPIC_PROPERTY = "studio_dlq_origin_topic";
+    private static final String QUEUE_SELECTION_PREFIX = "queue:";
 
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final AuditService auditService;
@@ -258,6 +259,12 @@ public class RocketMQDLQProvider implements DLQProvider {
     @Override
     public DLQResendResultVO resendMessages(String instanceId, String groupName, List<String> msgIds,
                                              String targetTopic) {
+        return resendMessages(instanceId, groupName, msgIds, targetTopic, false);
+    }
+
+    @Override
+    public DLQResendResultVO resendMessages(String instanceId, String groupName, List<String> msgIds,
+                                             String targetTopic, boolean queueSelection) {
         if (!StringUtils.hasText(groupName)) {
             throw new BusinessException(400, "groupName is required for DLQ resend");
         }
@@ -279,28 +286,7 @@ public class RocketMQDLQProvider implements DLQProvider {
             validateResendTargetTopic(instanceId, dlqTopic, targetTopic);
         }
 
-        List<MessageExt> deadLetters = runtimeAdminClientResolver.execute(instanceId, admin -> {
-            List<MessageExt> resolved = new ArrayList<>(selected.size());
-            for (String msgId : selected) {
-                try {
-                    if (!BrokerTopologyGuards.isWithinKnownBrokerTopology(admin, msgId)) {
-                        continue;
-                    }
-                    MessageExt deadLetter = admin.viewMessage(dlqTopic, msgId);
-                    // Offset-based broker lookup ignores the requested topic; check the returned message.
-                    if (deadLetter != null && dlqTopic.equals(deadLetter.getTopic())) {
-                        resolved.add(deadLetter);
-                    } else if (deadLetter != null) {
-                        log.warn("Ignoring selected message {} from topic {} instead of {}",
-                                msgId, deadLetter.getTopic(), dlqTopic);
-                    }
-                } catch (Exception e) {
-                    log.warn("Failed to resolve selected dead letter {} from {}: {}",
-                            msgId, dlqTopic, e.getMessage());
-                }
-            }
-            return resolved;
-        });
+        List<MessageExt> deadLetters = resolveSelectedDeadLetters(instanceId, dlqTopic, selected, queueSelection);
         ResendBatch resendBatch = resendAll(instanceId, groupName, deadLetters, targetTopic);
         int resent = resendBatch.resent();
         int failed = resendBatch.failed();
@@ -322,6 +308,71 @@ public class RocketMQDLQProvider implements DLQProvider {
                 .failures(resendBatch.failures())
                 .failuresTruncated(resendBatch.failuresTruncated())
                 .build();
+    }
+
+    private List<MessageExt> resolveSelectedDeadLetters(String instanceId, String dlqTopic, Set<String> selected,
+                                                        boolean queueSelection) {
+        if (!queueSelection) {
+            return runtimeAdminClientResolver.execute(instanceId, admin -> {
+                List<MessageExt> resolved = new ArrayList<>();
+                for (String msgId : selected) {
+                    try {
+                        if (!BrokerTopologyGuards.isWithinKnownBrokerTopology(admin, msgId)) {
+                            continue;
+                        }
+                        MessageExt deadLetter = admin.viewMessage(dlqTopic, msgId);
+                        // Offset-based broker lookup ignores the requested topic; check the returned message.
+                        if (deadLetter != null && dlqTopic.equals(deadLetter.getTopic())) {
+                            resolved.add(deadLetter);
+                        } else if (deadLetter != null) {
+                            log.warn("Ignoring selected message {} from topic {} instead of {}",
+                                    msgId, deadLetter.getTopic(), dlqTopic);
+                        }
+                    } catch (Exception e) {
+                        log.warn("Failed to resolve selected dead letter {} from {}: {}",
+                                msgId, dlqTopic, e.getMessage());
+                    }
+                }
+                return resolved;
+            });
+        }
+        // Validate every token before starting a lookup. Explicit selection mode keeps custom
+        // legacy UNIQ_KEY values (including ones beginning with "queue:") unchanged.
+        List<QueueSelection> queueSelections = selected.stream().map(QueueSelection::parse).toList();
+        return runtimeAdminClientResolver.executePullConsumer(instanceId, consumer -> {
+            List<MessageExt> resolved = new ArrayList<>();
+            Set<MessageQueue> queues = consumer.fetchSubscribeMessageQueues(dlqTopic);
+            for (QueueSelection selection : queueSelections) {
+                MessageQueue queue = new MessageQueue(dlqTopic, selection.brokerName(), selection.queueId());
+                // Resolve through this DLQ's route rather than decoding a caller-supplied address.
+                // This also works when the broker advertises a hostname instead of a literal IP.
+                if (queues == null || !queues.contains(queue)) {
+                    continue;
+                }
+                try {
+                    PullResult result = consumer.pull(queue, "*", selection.queueOffset(), 1);
+                    if (result == null || result.getPullStatus() != PullStatus.FOUND
+                            || result.getMsgFoundList() == null) {
+                        continue;
+                    }
+                    for (MessageExt message : result.getMsgFoundList()) {
+                        if (dlqTopic.equals(message.getTopic()) && selection.queueId() == message.getQueueId()
+                                && selection.queueOffset() == message.getQueueOffset()
+                                && selection.commitLogOffset() == message.getCommitLogOffset()) {
+                            message.setBrokerName(queue.getBrokerName());
+                            resolved.add(message);
+                            break;
+                        }
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                } catch (Exception e) {
+                    log.warn("Failed to resolve selected dead letter {} from {}: {}", selection, dlqTopic, e.getMessage());
+                }
+            }
+            return resolved;
+        });
     }
 
     @Override
@@ -352,8 +403,21 @@ public class RocketMQDLQProvider implements DLQProvider {
     @Override
     public DLQExcelExportResultVO exportExcel(String instanceId, String groupName, Long startTime, Long endTime,
                                               List<String> msgIds) {
+        return exportExcel(instanceId, groupName, startTime, endTime, msgIds, false);
+    }
+
+    @Override
+    public DLQExcelExportResultVO exportExcel(String instanceId, String groupName, Long startTime, Long endTime,
+                                              List<String> msgIds, boolean queueSelection) {
         if (!StringUtils.hasText(groupName)) {
             throw new BusinessException(400, "groupName is required for DLQ export");
+        }
+        Set<String> selected = msgIds == null ? Collections.emptySet()
+                : new java.util.HashSet<>(msgIds);
+        if (queueSelection) {
+            for (String id : selected) {
+                QueueSelection.parse(id);
+            }
         }
         groupName = groupName.trim();
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
@@ -361,10 +425,9 @@ public class RocketMQDLQProvider implements DLQProvider {
         long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
         DeadLetterScanResult scanResult = collectDeadLetters(
                 instanceId, dlqTopic, begin, end, RESEND_HARD_CAP, MAX_READ_BODY_BYTES);
-        Set<String> selected = msgIds == null ? Collections.emptySet()
-                : new java.util.HashSet<>(msgIds);
         List<DLQMessageVO> messages = scanResult.messages().stream()
-                .filter(message -> selected.isEmpty() || selected.contains(message.getMsgId()))
+                .filter(message -> selected.isEmpty()
+                        || selected.contains(queueSelection ? selectionId(message) : message.getMsgId()))
                 .map(this::toExportVO)
                 .toList();
         byte[] data;
@@ -410,6 +473,7 @@ public class RocketMQDLQProvider implements DLQProvider {
         Map<String, String> displayProperties = MessagePropertyDisplay.limitProperties(userProperties);
         return DLQMessageVO.builder()
                 .msgId(message.getMsgId())
+                .selectionId(selectionId(message))
                 .topic(message.getTopic())
                 .queueId(message.getQueueId())
                 .offset(message.getQueueOffset())
@@ -523,6 +587,7 @@ public class RocketMQDLQProvider implements DLQProvider {
                                     throw new ReadBodyLimitExceededException();
                                 }
                                 retainedBodyBytes += bodyBytes;
+                                messageExt.setBrokerName(queue.getBrokerName());
                                 result.add(messageExt);
                                 if (result.size() >= cap) {
                                     truncated = true;
@@ -688,6 +753,7 @@ public class RocketMQDLQProvider implements DLQProvider {
         String msgId = StringUtils.hasText(deadLetter.getMsgId()) ? deadLetter.getMsgId().trim() : "<unknown>";
         return DLQResendFailureVO.builder()
                 .msgId(msgId)
+                .selectionId(selectionId(deadLetter))
                 .targetTopic(StringUtils.hasText(targetTopic) ? targetTopic.trim() : null)
                 .reason(normalizeFailureReason(reason))
                 .build();
@@ -850,6 +916,49 @@ public class RocketMQDLQProvider implements DLQProvider {
             auditService.record("RESEND_DLQ", "DLQ", groupName, null, detail, result);
         } catch (Exception e) {
             log.warn("Failed to record DLQ resend audit: {}", e.getMessage());
+        }
+    }
+
+    private static String selectionId(MessageExt message) {
+        if (!StringUtils.hasText(message.getBrokerName()) || message.getQueueId() < 0
+                || message.getQueueOffset() < 0 || message.getCommitLogOffset() < 0) {
+            return null;
+        }
+        return QUEUE_SELECTION_PREFIX + message.getBrokerName() + ":" + message.getQueueId()
+                + ":" + message.getQueueOffset() + ":" + message.getCommitLogOffset();
+    }
+
+    private record QueueSelection(String brokerName, int queueId, long queueOffset, long commitLogOffset) {
+        private static QueueSelection parse(String id) {
+            try {
+                if (!id.startsWith(QUEUE_SELECTION_PREFIX)) {
+                    throw new IllegalArgumentException("Missing queue selection prefix");
+                }
+                int commitSeparator = id.lastIndexOf(':');
+                int offsetSeparator = id.lastIndexOf(':', commitSeparator - 1);
+                int queueSeparator = id.lastIndexOf(':', offsetSeparator - 1);
+                String brokerName = id.substring(QUEUE_SELECTION_PREFIX.length(), queueSeparator);
+                if (!StringUtils.hasText(brokerName)) {
+                    throw new IllegalArgumentException("Missing broker name");
+                }
+                long queueId = nonnegativeLong(id.substring(queueSeparator + 1, offsetSeparator));
+                if (queueId > Integer.MAX_VALUE) {
+                    throw new IllegalArgumentException("Invalid queue id");
+                }
+                return new QueueSelection(brokerName, (int) queueId,
+                        nonnegativeLong(id.substring(offsetSeparator + 1, commitSeparator)),
+                        nonnegativeLong(id.substring(commitSeparator + 1)));
+            } catch (IllegalArgumentException | IndexOutOfBoundsException invalid) {
+                throw new BusinessException(400, "Invalid DLQ selection ID");
+            }
+        }
+
+        private static long nonnegativeLong(String value) {
+            if (value.isEmpty() || value.length() > 1 && value.charAt(0) == '0'
+                    || !value.chars().allMatch(character -> character >= '0' && character <= '9')) {
+                throw new IllegalArgumentException("Invalid queue position");
+            }
+            return Long.parseLong(value);
         }
     }
 

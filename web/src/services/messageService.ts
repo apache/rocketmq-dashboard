@@ -200,6 +200,7 @@ export async function resendDLQSelected(data: {
   instanceId: string;
   groupName: string;
   msgIds: string[];
+  selectionType?: 'queue';
   targetTopic?: string;
 }): Promise<DLQResendResult> {
   if (isMockMode()) {
@@ -219,6 +220,7 @@ export async function exportDLQExcel(params: {
   startTime?: number;
   endTime?: number;
   msgIds?: string[];
+  selectionType?: 'queue';
 }): Promise<{ blob: Blob; meta: DLQExportMeta }> {
   if (isMockMode()) {
     return {

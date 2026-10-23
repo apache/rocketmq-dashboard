@@ -94,6 +94,11 @@ public class DLQService {
 
     public DLQResendResultVO resendSelectedMessages(String instanceId, String groupName, List<String> msgIds,
                                                     String targetTopic) {
+        return resendSelectedMessages(instanceId, groupName, msgIds, targetTopic, false);
+    }
+
+    public DLQResendResultVO resendSelectedMessages(String instanceId, String groupName, List<String> msgIds,
+                                                    String targetTopic, boolean queueSelection) {
         requireApacheInstance(instanceId);
         String normalizedGroupName = requireGroupName(groupName);
         if (msgIds == null || msgIds.isEmpty()) {
@@ -107,7 +112,9 @@ public class DLQService {
         log.info("Resending selected DLQ messages: group={}, count={}, targetTopic={}",
                 normalizedGroupName, normalizedMsgIds.size(), normalizedTargetTopic);
         return withOwnedDlqTargets(instanceId, normalizedGroupName, normalizedTargetTopic, () ->
-                dlqProvider.resendMessages(
+                queueSelection ? dlqProvider.resendMessages(
+                        instanceId, normalizedGroupName, normalizedMsgIds, normalizedTargetTopic, true)
+                        : dlqProvider.resendMessages(
                         instanceId, normalizedGroupName, normalizedMsgIds, normalizedTargetTopic));
     }
 
@@ -131,9 +138,17 @@ public class DLQService {
 
     public DLQExcelExportResultVO exportExcel(String instanceId, String groupName, Long startTime, Long endTime,
                                               List<String> msgIds) {
+        return exportExcel(instanceId, groupName, startTime, endTime, msgIds, false);
+    }
+
+    public DLQExcelExportResultVO exportExcel(String instanceId, String groupName, Long startTime, Long endTime,
+                                              List<String> msgIds, boolean queueSelection) {
         requireApacheInstance(instanceId);
         String normalizedGroupName = requireGroupName(groupName);
         validateTimeRange(startTime, endTime);
+        if (queueSelection && msgIds == null) {
+            throw new BusinessException(400, "msgIds are required for queue selection");
+        }
         if (msgIds != null && msgIds.isEmpty()) {
             throw new BusinessException(400, "msgIds must not be empty when provided");
         }
@@ -143,7 +158,9 @@ public class DLQService {
         List<String> normalizedMsgIds = msgIds == null ? null : normalizeMsgIds(msgIds);
         log.info("Exporting DLQ messages as Excel: group={}, selected={}", normalizedGroupName,
                 normalizedMsgIds == null ? 0 : normalizedMsgIds.size());
-        return dlqProvider.exportExcel(
+        return queueSelection ? dlqProvider.exportExcel(
+                instanceId, normalizedGroupName, startTime, endTime, normalizedMsgIds, true)
+                : dlqProvider.exportExcel(
                 instanceId, normalizedGroupName, startTime, endTime, normalizedMsgIds);
     }
 

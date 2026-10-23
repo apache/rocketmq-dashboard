@@ -43,6 +43,9 @@ public interface DLQProvider {
     DLQResendResultVO resendMessages(String instanceId, String groupName, List<String> msgIds,
                                      String targetTopic);
 
+    DLQResendResultVO resendMessages(String instanceId, String groupName, List<String> msgIds,
+                                     String targetTopic, boolean queueSelection);
+
     /**
      * Excel (.xlsx) export of dead-letter messages; when {@code msgIds} is non-empty only those
      * messages are included, otherwise the whole time window is exported. The result carries the
@@ -50,4 +53,7 @@ public interface DLQProvider {
      */
     DLQExcelExportResultVO exportExcel(String instanceId, String groupName, Long startTime, Long endTime,
                                        List<String> msgIds);
+
+    DLQExcelExportResultVO exportExcel(String instanceId, String groupName, Long startTime, Long endTime,
+                                       List<String> msgIds, boolean queueSelection);
 }

@@ -35,6 +35,7 @@ import lombok.NoArgsConstructor;
 public class DLQMessageVO {
 
     private String msgId;
+    private String selectionId;
     private String topic;
     private int queueId;
     private long offset;

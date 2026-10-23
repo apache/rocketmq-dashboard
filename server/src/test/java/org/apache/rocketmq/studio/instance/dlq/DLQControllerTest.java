@@ -38,6 +38,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -45,6 +46,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -362,6 +364,7 @@ class DLQControllerTest extends WebMvcAuthTestSupport {
                 .thenReturn(PageResult.of(List.of(
                         DLQMessageVO.builder()
                                 .msgId("msg-1")
+                                .selectionId("queue:broker-a:0:5:4096")
                                 .topic("%DLQ%test-group")
                                 .queueId(0)
                                 .offset(5L)
@@ -375,6 +378,7 @@ class DLQControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.items[0].msgId").value("msg-1"))
+                .andExpect(jsonPath("$.data.items[0].selectionId").value("queue:broker-a:0:5:4096"))
                 .andExpect(jsonPath("$.data.total").value(1));
 
         verify(dlqService).listMessages(eq("instance-1"), eq("test-group"), isNull(), isNull(), eq(1), eq(20));
@@ -422,6 +426,60 @@ class DLQControllerTest extends WebMvcAuthTestSupport {
 
         verify(dlqService).resendSelectedMessages(
                 eq("instance-1"), eq("test-group"), eq(List.of("msg-1", "msg-2")), eq("target-topic"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void resendSelectedMessagesShouldUseOnlyExplicitQueueSelectionTest(boolean queueSelection) throws Exception {
+        List<String> ids = List.of(queueSelection ? "queue:broker-a:0:1:4096" : "queue:custom-id");
+        Map<String, Object> body = new HashMap<>(Map.of(
+                "instanceId", "instance-1",
+                "groupName", "test-group",
+                "msgIds", ids,
+                "targetTopic", "target-topic"));
+        if (queueSelection) {
+            body.put("selectionType", "queue");
+        }
+
+        mockMvc.perform(post("/api/dlq/resend-selected")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        if (queueSelection) {
+            verify(dlqService).resendSelectedMessages("instance-1", "test-group", ids, "target-topic", true);
+        } else {
+            verify(dlqService).resendSelectedMessages("instance-1", "test-group", ids, "target-topic");
+        }
+        verifyNoMoreInteractions(dlqService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", " ", "legacy", "QUEUE"})
+    void selectedActionsShouldRejectInvalidSelectionTypeTest(String selectionType) throws Exception {
+        Map<String, Object> body = Map.of(
+                "instanceId", "instance-1",
+                "groupName", "test-group",
+                "msgIds", List.of("queue:broker-a:0:1:4096"),
+                "selectionType", selectionType);
+
+        mockMvc.perform(post("/api/dlq/resend-selected")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("selectionType must be queue when provided"));
+        mockMvc.perform(get("/api/dlq/export-excel")
+                        .param("instanceId", "instance-1")
+                        .param("groupName", "test-group")
+                        .param("msgIds", "queue:broker-a:0:1:4096")
+                        .param("selectionType", selectionType))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("selectionType must be queue when provided"));
+
+        verifyNoInteractions(dlqService);
     }
 
     @Test
@@ -666,5 +724,41 @@ class DLQControllerTest extends WebMvcAuthTestSupport {
 
         verify(dlqService).exportExcel("instance-1", "test-group", null, null,
                 List.of("msg-1", "msg-2"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void exportDLQExcelShouldUseOnlyExplicitQueueSelectionTest(boolean queueSelection) throws Exception {
+        List<String> ids = List.of(queueSelection ? "queue:broker-a:0:1:4096" : "queue:custom-id");
+        DLQExcelExportResultVO exported = DLQExcelExportResultVO.builder()
+                .data(new byte[] {1, 2})
+                .limit(5000)
+                .build();
+        if (queueSelection) {
+            when(dlqService.exportExcel("instance-1", "test-group", null, null, ids, true))
+                    .thenReturn(exported);
+        } else {
+            when(dlqService.exportExcel("instance-1", "test-group", null, null, ids))
+                    .thenReturn(exported);
+        }
+        org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request =
+                get("/api/dlq/export-excel")
+                        .param("instanceId", "instance-1")
+                        .param("groupName", "test-group")
+                        .param("msgIds", ids.get(0));
+        if (queueSelection) {
+            request.param("selectionType", "queue");
+        }
+
+        mockMvc.perform(request)
+                .andExpect(status().isOk())
+                .andExpect(content().bytes(exported.getData()));
+
+        if (queueSelection) {
+            verify(dlqService).exportExcel("instance-1", "test-group", null, null, ids, true);
+        } else {
+            verify(dlqService).exportExcel("instance-1", "test-group", null, null, ids);
+        }
+        verifyNoMoreInteractions(dlqService);
     }
 }

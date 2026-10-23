@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.instance.dlq;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -40,6 +41,9 @@ public class DLQResendSelectedRequestDTO {
     @NotEmpty(message = "At least one msgId is required")
     @Size(max = 100, message = "At most 100 msgIds are allowed per resend")
     private List<@NotBlank(message = "msgId must not be blank") String> msgIds;
+
+    @Pattern(regexp = "queue", message = "selectionType must be queue when provided")
+    private String selectionType;
 
     private String targetTopic;
 }
