@@ -17,8 +17,9 @@
 package org.apache.rocketmq.studio.ops.ai.tool.contract.litetopic;
 
 /**
- * Result of an applied TTL extension. Reports the requested value; the broker applies it at
- * one-minute granularity capped at 30 days, which the preview warnings state up front.
+ * Result of an applied TTL extension. Reports the effective TTL the broker applies — the request
+ * normalized to one-minute granularity and capped at 30 days — while the original request is
+ * what the preview warnings state up front.
  */
 public record LiteTopicExtendTtlOutput(String topicPattern, long newTtlMillis) {
 }
