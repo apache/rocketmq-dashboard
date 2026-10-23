@@ -315,6 +315,15 @@ public class TencentInstanceProvider implements InstanceProvider {
         return PageResult.of(topics.subList(from, to), total, page, pageSize);
     }
 
+    private static PageResult<ConsumerGroupVO> paginateConsumerGroups(List<ConsumerGroupVO> groups,
+                                                                        int page, int pageSize) {
+        int total = groups.size();
+        long offset = Pagination.pageOffset(page, pageSize);
+        int from = (int) Math.min(offset, total);
+        int to = from + (int) Math.min(pageSize, total - from);
+        return PageResult.of(groups.subList(from, to), total, page, pageSize);
+    }
+
     /**
      * DescribeTopicList does not expose creation/update timestamps, so resolve them per-topic
      * from DescribeTopic. Kept off the cheap count path to avoid N+1 calls for instance listings.
@@ -435,6 +444,47 @@ public class TencentInstanceProvider implements InstanceProvider {
     @Override
     public List<ConsumerGroupVO> listConsumerGroups(String instanceId, String search) {
         return listConsumerGroups(instanceId, search, true);
+    }
+
+    @Override
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String search,
+                                                               int page, int pageSize) {
+        // Tencent does not expose a server-side consumer-group name filter. Keep the existing
+        // filtered-list semantics for searches, but use the native page for the common unfiltered
+        // inventory path so a page request does not scan and enrich the entire group inventory.
+        if (StringUtils.hasText(search)) {
+            return paginateConsumerGroups(listConsumerGroups(instanceId, search), page, pageSize);
+        }
+
+        Context context = resolve(instanceId);
+        long offset = Pagination.pageOffset(page, pageSize);
+        DescribeConsumerGroupListRequest request = new DescribeConsumerGroupListRequest();
+        request.setInstanceId(context.cloudInstanceId());
+        request.setOffset(offset);
+        request.setLimit((long) pageSize);
+        DescribeConsumerGroupListResponse response = clientFactory.call(context.credentialId(), context.regionId(),
+                client -> client.DescribeConsumerGroupList(request));
+        Long totalCount = response == null ? null : response.getTotalCount();
+        if (totalCount == null || totalCount < 0L) {
+            return paginateConsumerGroups(listConsumerGroups(instanceId, search), page, pageSize);
+        }
+        ConsumeGroupItem[] data = response.getData();
+        int returned = data == null ? 0 : data.length;
+        if (Pagination.isIncompletePage(offset, returned, pageSize, totalCount)) {
+            throw new BusinessException(502, "Tencent Cloud returned an incomplete consumer group page");
+        }
+        List<ConsumerGroupVO> groups = new ArrayList<>();
+        if (data != null) {
+            for (ConsumeGroupItem item : data) {
+                if (item == null) {
+                    continue;
+                }
+                ConsumerGroupVO group = toConsumerGroup(item, instanceId);
+                enrichConsumerGroupDetail(context, group);
+                groups.add(group);
+            }
+        }
+        return PageResult.of(groups, totalCount, page, pageSize);
     }
 
     private List<ConsumerGroupVO> listConsumerGroups(String instanceId, String search, boolean enrichTimes) {

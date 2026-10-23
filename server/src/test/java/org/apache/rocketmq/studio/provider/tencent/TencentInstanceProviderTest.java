@@ -356,6 +356,28 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void listConsumerGroupsPageShouldUseTencentNativePaginationTest() throws Exception {
+        ConsumeGroupItem item = new ConsumeGroupItem();
+        item.setConsumerGroup("GID_page-3");
+        DescribeConsumerGroupListResponse response = new DescribeConsumerGroupListResponse();
+        response.setTotalCount(201L);
+        response.setData(new ConsumeGroupItem[]{item});
+        when(client.DescribeConsumerGroupList(any())).thenReturn(response);
+
+        var page = provider.listConsumerGroupsPage(STUDIO_INSTANCE_ID, null, 3, 100);
+
+        assertThat(page.getTotal()).isEqualTo(201L);
+        assertThat(page.getPage()).isEqualTo(3);
+        assertThat(page.getSize()).isEqualTo(100);
+        assertThat(page.getItems()).extracting(ConsumerGroupVO::getName).containsExactly("GID_page-3");
+        ArgumentCaptor<DescribeConsumerGroupListRequest> captor =
+                ArgumentCaptor.forClass(DescribeConsumerGroupListRequest.class);
+        verify(client).DescribeConsumerGroupList(captor.capture());
+        assertThat(captor.getValue().getOffset()).isEqualTo(200L);
+        assertThat(captor.getValue().getLimit()).isEqualTo(100L);
+    }
+
+    @Test
     void countTopicsShouldFallBackToCompleteListingPastLegacyTenThousandCapTest() throws Exception {
         when(client.DescribeTopicList(any())).thenAnswer(invocation -> {
             DescribeTopicListRequest request = invocation.getArgument(0);

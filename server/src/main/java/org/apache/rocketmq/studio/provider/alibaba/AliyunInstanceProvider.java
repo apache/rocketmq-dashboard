@@ -250,6 +250,15 @@ public class AliyunInstanceProvider implements InstanceProvider {
         return PageResult.of(topics.subList(from, to), total, page, pageSize);
     }
 
+    private static PageResult<ConsumerGroupVO> paginateConsumerGroups(List<ConsumerGroupVO> groups,
+                                                                        int page, int pageSize) {
+        int total = groups.size();
+        long offset = Pagination.pageOffset(page, pageSize);
+        int from = (int) Math.min(offset, total);
+        int to = from + (int) Math.min(pageSize, total - from);
+        return PageResult.of(groups.subList(from, to), total, page, pageSize);
+    }
+
     @Override
     public TopicVO createTopic(String instanceId, TopicVO topic) {
         Context ctx = resolve(instanceId);
@@ -380,6 +389,45 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 continue;
             }
             groups.add(AliyunConverters.toConsumerGroupVO(item, instanceId));
+        }
+        return groups;
+    }
+
+    @Override
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String search,
+                                                               int page, int pageSize) {
+        Context ctx = resolve(instanceId);
+        ListConsumerGroupsRequest.Builder builder = ListConsumerGroupsRequest.builder()
+                .instanceId(ctx.cloudInstanceId())
+                .pageNumber(page)
+                .pageSize(pageSize);
+        if (StringUtils.hasText(search)) {
+            builder.filter(search);
+        }
+        ListConsumerGroupsResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
+                client -> client.listConsumerGroups(builder.build()));
+        ListConsumerGroupsResponseBody body = AliyunResponseValidator.requireReadableBody(
+                "consumer group listing", response == null ? null : response.getBody(),
+                ListConsumerGroupsResponseBody::getSuccess, ListConsumerGroupsResponseBody::getCode,
+                ListConsumerGroupsResponseBody::getMessage);
+        ListConsumerGroupsResponseBody.Data data = body.getData();
+        Long totalCount = data == null ? null : data.getTotalCount();
+        if (totalCount == null || totalCount < 0L) {
+            return paginateConsumerGroups(listConsumerGroups(instanceId, search), page, pageSize);
+        }
+        return PageResult.of(toConsumerGroups(data.getList(), instanceId), boundedCount(totalCount), page, pageSize);
+    }
+
+    private static List<ConsumerGroupVO> toConsumerGroups(
+            List<ListConsumerGroupsResponseBody.List> rows, String instanceId) {
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+        List<ConsumerGroupVO> groups = new ArrayList<>(rows.size());
+        for (ListConsumerGroupsResponseBody.List row : rows) {
+            if (row != null) {
+                groups.add(AliyunConverters.toConsumerGroupVO(row, instanceId));
+            }
         }
         return groups;
     }
