@@ -162,6 +162,7 @@
 | 118 | GET | `/api/liteTopic/capability` | LiteTopic 能力检查 |
 | 119 | GET | `/api/auth/status` | 登录策略与当前用户 |
 | 120 | POST | `/api/auth/password` | 修改当前用户密码 |
+| 121 | GET | `/api/audit-logs/summary` | 审计日志摘要 |
 
 ## 通用响应格式
 
@@ -2496,7 +2497,36 @@ GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operationTyp
 | `result` | `string` | 持久化的结果代码，如 `SUCCESS` / `FAILED` / `PARTIAL` |
 | `errorMessage` | `string` | 失败或部分成功时的错误信息 |
 
-### 13.2 获取审计日志筛选项
+### 13.2 获取审计日志摘要
+
+```
+GET /api/audit-logs/summary?search={search}&operationType={type}&resourceType={resourceType}&clusterId={clusterId}&startDate={start}&endDate={end}&result={result}
+```
+
+Query parameters use the same audit filters as the list endpoint, except that
+`page`, `pageSize`, `target`, and `clusterIdMissing` are not accepted.
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `total` | `number` | 匹配的审计记录总数 |
+| `successful` | `number` | 结果为 `SUCCESS` 的记录数 |
+| `failed` | `number` | 结果为 `FAILED` 的记录数 |
+| `partial` | `number` | 结果为 `PARTIAL` 的记录数 |
+| `uniqueOperators` | `number` | 匹配记录中的去重操作人数 |
+| `latestAt` | `string \| null` | 匹配记录中最新的操作时间；无匹配记录时为 `null` |
+| `byOperation` | `AuditSummaryBucket[]` | 按操作类型统计的记录数 |
+| `byResourceType` | `AuditSummaryBucket[]` | 按资源类型统计的记录数 |
+
+#### AuditSummaryBucket
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `name` | `string` | 分组名称 |
+| `count` | `number` | 该分组的记录数 |
+
+### 13.3 获取审计日志筛选项
 
 ```
 GET /api/audit-logs/filter-options
@@ -2513,7 +2543,7 @@ GET /api/audit-logs/filter-options
 
 筛选项保留数据库中的原始值，请将选中值原样传入列表或导出接口。
 
-### 13.3 导出审计日志
+### 13.4 导出审计日志
 
 ```
 GET /api/audit-logs/export?search={search}&operationType={type}&resourceType={resourceType}&target={target}&clusterId={clusterId}&clusterIdMissing={missing}&startDate={start}&endDate={end}&result={result}
@@ -2525,7 +2555,7 @@ GET /api/audit-logs/export?search={search}&operationType={type}&resourceType={re
 
 `startDate` 或 `endDate` 格式错误，以及 `startDate` 晚于 `endDate` 时，接口返回 HTTP 400。
 
-### 13.4 清理审计日志
+### 13.5 清理审计日志
 
 ```
 POST /api/audit-logs/cleanup
