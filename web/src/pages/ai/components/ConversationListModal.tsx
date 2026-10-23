@@ -188,14 +188,20 @@ const ConversationListPanel = ({
       try {
         await updateConversation(id, { archived: !archived });
         message.success(archived ? t('ai.list.unarchivedToast') : t('ai.list.archivedToast'));
-        reload();
+        // A page emptied by the archive has to fall back one, mirroring the delete path: the row
+        // leaves the current scope in either direction, so the pager can end up past the last page.
+        if (rowCount === 1 && page > 1) {
+          setPage(page - 1);
+        } else {
+          reload();
+        }
       } catch {
         message.error(t('ai.list.archiveFailed'));
       } finally {
         setArchivingIds((ids) => ids.filter((entry) => entry !== id));
       }
     },
-    [archived, reload, t],
+    [archived, page, reload, rowCount, setPage, t],
   );
 
   /**
