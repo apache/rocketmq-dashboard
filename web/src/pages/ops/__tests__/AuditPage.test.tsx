@@ -563,4 +563,15 @@ describe('Audit page', () => {
     resolveCleanup(3);
     await waitFor(() => expect(opsService.getAuditFilterOptions).toHaveBeenCalledTimes(2));
   });
+
+  it('does not offer page-local sorters on the server-paginated table', async () => {
+    // The table holds one server page; an in-memory sorter would reorder only that page while
+    // its header suggests the whole result set is ordered.
+    renderWithProviders(<AuditPage />);
+
+    await screen.findByText('topic-a');
+
+    expect(document.querySelectorAll('th.ant-table-column-has-sorters')).toHaveLength(0);
+    expect(document.querySelectorAll('.ant-table-column-sorters')).toHaveLength(0);
+  });
 });

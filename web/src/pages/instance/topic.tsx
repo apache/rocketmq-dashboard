@@ -703,7 +703,6 @@ const TopicPageContent = ({
       // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
       minWidth: 220,
       ellipsis: true,
-      sorter: (a, b) => a.name.localeCompare(b.name),
       render: (name: string) => (
         <Text strong style={{ fontSize: 14, display: 'block' }} ellipsis={{ tooltip: name }}>
           {name}
@@ -716,7 +715,6 @@ const TopicPageContent = ({
       key: 'remark',
       width: 200,
       ellipsis: true,
-      sorter: (a, b) => (a.remark ?? '').localeCompare(b.remark ?? ''),
       render: (remark: string) => (
         <Text
           type="secondary"
@@ -734,7 +732,6 @@ const TopicPageContent = ({
       // 类型标签实测 38px + 左右 padding 16px；余量让给操作列（见该列注释）。
       width: 92,
       align: 'center',
-      sorter: (a, b) => (a.type ?? '').localeCompare(b.type ?? ''),
       render: (type: string) => {
         const cfg = TOPIC_TYPE_MAP[type];
         return cfg ? <Tag color={cfg.color}>{t(cfg.labelKey)}</Tag> : <Tag>{type}</Tag>;
@@ -752,7 +749,6 @@ const TopicPageContent = ({
       dataIndex: 'gmtCreate',
       key: 'gmtCreate',
       width: 170,
-      sorter: (a, b) => (a.gmtCreate ?? '').localeCompare(b.gmtCreate ?? ''),
       render: (d: string) => <Text type="secondary">{formatDateTime(d)}</Text>,
     },
     {
@@ -760,7 +756,6 @@ const TopicPageContent = ({
       dataIndex: 'gmtModified',
       key: 'gmtModified',
       width: 170,
-      sorter: (a, b) => (a.gmtModified ?? '').localeCompare(b.gmtModified ?? ''),
       render: (d: string) => <Text type="secondary">{formatDateTime(d)}</Text>,
     },
     {
