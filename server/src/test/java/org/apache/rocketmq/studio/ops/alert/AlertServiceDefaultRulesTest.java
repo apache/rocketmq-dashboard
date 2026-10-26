@@ -42,7 +42,8 @@ class AlertServiceDefaultRulesTest {
 
         AlertService service = new AlertService(repository, Mockito.mock(AlertStateRepository.class),
                 new AlertRuleAssetService(), Mockito.mock(OperationAuditService.class),
-                new MetricProfileService(new PrometheusProperties()));
+                new MetricProfileService(new PrometheusProperties()),
+                org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class));
         String yaml = service.exportPrometheusRulesYaml();
 
         int ruleCount = countRules(yaml);
@@ -56,7 +57,8 @@ class AlertServiceDefaultRulesTest {
 
         AlertService service = new AlertService(repository, Mockito.mock(AlertStateRepository.class),
                 new AlertRuleAssetService(), Mockito.mock(OperationAuditService.class),
-                new MetricProfileService(new PrometheusProperties()));
+                new MetricProfileService(new PrometheusProperties()),
+                org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class));
         String yaml = service.exportPrometheusRulesYaml();
 
         assertTrue(yaml.contains("rocketmq-broker.rules"));

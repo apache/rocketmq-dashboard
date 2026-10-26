@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.ops.ai.tool.handler.message;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.dlq.DLQResendResultVO;
+import org.apache.rocketmq.studio.instance.dlq.DLQResendFailureVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQService;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.TimeRange;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageRedeliveryDlqInput;
@@ -35,6 +36,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Collections;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -92,8 +95,63 @@ class MessageRedeliveryDlqToolHandlerTest {
         MessageRedeliveryDlqInput input = new MessageRedeliveryDlqInput("instance-a", "group-1", null, null);
         MessageRedeliveryDlqOutput output = handler.execute(input, context("instance-a"));
         assertThat(output.matched()).isZero();
+        assertThat(output.failures()).isEmpty();
+        assertThat(output.failuresTruncated()).isFalse();
         verify(dlqService).resendMessages(eq("instance-a"), eq("group-1"),
                 eq(null), eq(null), eq(null));
+        verifyNoMoreInteractions(dlqService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void executePreservesFailureDetailsAndTheirTruncationTest(boolean truncated) {
+        DLQResendFailureVO failure = DLQResendFailureVO.builder()
+                .msgId("failed-1").targetTopic("orders").reason("Producer send failed: broker unavailable").build();
+        List<DLQResendFailureVO> failures = truncated ? Collections.nCopies(100, failure) : List.of(failure);
+        int failed = truncated ? 101 : 1;
+        when(dlqService.resendMessages("instance-a", "group-1", null, null, null))
+                .thenReturn(DLQResendResultVO.builder().matched(failed).failed(failed).outcome("FAILED")
+                        .failures(failures).failuresTruncated(truncated).build());
+
+        MessageRedeliveryDlqOutput output = handler.execute(
+                new MessageRedeliveryDlqInput("instance-a", "group-1", null, null), context("instance-a"));
+
+        assertThat(output.matched()).isEqualTo(failed);
+        assertThat(output.resent()).isZero();
+        assertThat(output.failed()).isEqualTo(failed);
+        assertThat(output.outcome()).isEqualTo("FAILED");
+        assertThat(output.scanIncomplete()).isFalse();
+        assertThat(output.failedQueueCount()).isZero();
+        assertThat(output.failures()).hasSize(failures.size()).allSatisfy(item -> {
+            assertThat(item.msgId()).isEqualTo("failed-1");
+            assertThat(item.targetTopic()).isEqualTo("orders");
+            assertThat(item.reason()).isEqualTo("Producer send failed: broker unavailable");
+        });
+        assertThat(output.failuresTruncated()).isEqualTo(truncated);
+        verify(dlqService).resendMessages("instance-a", "group-1", null, null, null);
+        verifyNoMoreInteractions(dlqService);
+    }
+
+    @Test
+    void executeKeepsUnresolvedTargetAbsentTest() {
+        DLQResendFailureVO failure = DLQResendFailureVO.builder()
+                .msgId("failed-1").reason("No target topic could be resolved").build();
+        when(dlqService.resendMessages("instance-a", "group-1", null, null, null))
+                .thenReturn(DLQResendResultVO.builder().matched(1).failed(1).outcome("FAILED")
+                        .scanIncomplete(true).failedQueueCount(1).failures(List.of(failure)).build());
+
+        MessageRedeliveryDlqOutput output = handler.execute(
+                new MessageRedeliveryDlqInput("instance-a", "group-1", null, null), context("instance-a"));
+
+        assertThat(output.failures()).singleElement().satisfies(item -> {
+            assertThat(item.msgId()).isEqualTo("failed-1");
+            assertThat(item.targetTopic()).isNull();
+            assertThat(item.reason()).isEqualTo("No target topic could be resolved");
+        });
+        assertThat(output.scanIncomplete()).isTrue();
+        assertThat(output.failedQueueCount()).isOne();
+        assertThat(output.failuresTruncated()).isFalse();
+        verify(dlqService).resendMessages("instance-a", "group-1", null, null, null);
         verifyNoMoreInteractions(dlqService);
     }
 

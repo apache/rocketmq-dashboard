@@ -42,12 +42,18 @@ import org.mockito.quality.Strictness;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -83,6 +89,14 @@ class AiRunExecutorTest {
     private static final long CONVERSATION_ID = 7L;
     private static final long RUN_ID = 11L;
     private static final String ENGINE = LlmConfigVO.ENGINE_CLAUDE_CODE;
+    /**
+     * The executor's clock, pinned so a write can be asserted against the exact stamp it should
+     * carry: {@code any(LocalDateTime.class)} would also pass a stamp taken from the database
+     * session's timezone, which is the bug this write exists to avoid.
+     */
+    private static final Instant FIXED_INSTANT = Instant.parse("2026-09-18T10:00:00Z");
+    private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
+    private static final LocalDateTime FIXED_NOW = LocalDateTime.ofInstant(FIXED_INSTANT, ZoneOffset.UTC);
 
     @Mock
     private AiRunRepository runRepository;
@@ -152,7 +166,7 @@ class AiRunExecutorTest {
         executor = new AiRunExecutor(new AgentProviderRegistry(List.of(provider)), llmClient, promptEnhancer,
                 registry, runRepository, conversationRepository, eventRepository, properties(), objectMapper,
                 AiRunTestSupport.directExecutor(), AiRunTestSupport.recordingInto(emitters), scheduler,
-                Clock.systemUTC());
+                FIXED_CLOCK);
         conversation = AiRunTestSupport.conversation(CONVERSATION_ID, "tester");
         run = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.QUEUED);
     }
@@ -160,6 +174,86 @@ class AiRunExecutorTest {
     @AfterEach
     void tearDown() {
         registry.liveRunIds().forEach(registry::unregister);
+    }
+
+    @Test
+    void realDeadlineShouldInterruptEnhancementAndPreventGenerationTest() throws Exception {
+        ExecutorService worker = Executors.newSingleThreadExecutor();
+        ScheduledExecutorService timers = Executors.newScheduledThreadPool(2);
+        CountDownLatch enhancing = new CountDownLatch(1);
+        CountDownLatch terminal = new CountDownLatch(1);
+        try {
+            executor = new AiRunExecutor(new AgentProviderRegistry(List.of(provider)), llmClient,
+                    promptEnhancer, registry, runRepository, conversationRepository, eventRepository,
+                    properties(), objectMapper, worker, AiRunTestSupport.recordingInto(emitters),
+                    timers, Clock.systemUTC());
+            when(promptEnhancer.enhance(any(), any(), any(), any())).thenAnswer(invocation -> {
+                enhancing.countDown();
+                try {
+                    new CountDownLatch(1).await();
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+                return "raw prompt";
+            });
+            doAnswer(invocation -> {
+                RmqAiRun updated = invocation.getArgument(0);
+                runUpdates.add(AiRunTestSupport.copyOf(updated));
+                if (RunStatus.FAILED.name().equals(updated.getStatus())) terminal.countDown();
+                return null;
+            }).when(runRepository).update(any(RmqAiRun.class));
+            AiRunExecutor.RunContext base = context(ENGINE, true);
+            AiRunExecutor.RunContext shortRun = new AiRunExecutor.RunContext(conversation, run,
+                    base.getSink(), base.getHandle(), base.getConfig(), ENGINE, "hello", null,
+                    true, Duration.ofMillis(500), null);
+            executor.submit(shortRun);
+            assertThat(enhancing.await(3, TimeUnit.SECONDS)).isTrue();
+            assertThat(terminal.await(3, TimeUnit.SECONDS)).isTrue();
+            assertThat(runRow().getStopReason()).isEqualTo(StopReason.TIMEOUT.name());
+            assertThat(provider.wasCalled()).isFalse();
+        } finally {
+            timers.shutdownNow();
+            worker.shutdownNow();
+            worker.awaitTermination(3, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    void deadlineDuringEnhancementShouldNotStartAnotherProviderCallTest() {
+        Runnable[] deadline = new Runnable[1];
+        ScheduledFuture<?> scheduled = mock(ScheduledFuture.class);
+        when(scheduler.schedule(any(Runnable.class), anyLong(), eq(TimeUnit.MILLISECONDS)))
+                .thenAnswer(invocation -> {
+                    deadline[0] = invocation.getArgument(0);
+                    return scheduled;
+                });
+        when(promptEnhancer.enhance(any(), any(), any(), any())).thenAnswer(invocation -> {
+            if (deadline[0] != null) deadline[0].run();
+            return "rewritten";
+        });
+
+        startAndRun(true);
+
+        assertThat(provider.wasCalled()).isFalse();
+        assertThat(runRow().getStatus()).isEqualTo(RunStatus.FAILED.name());
+        assertThat(runRow().getStopReason()).isEqualTo(StopReason.TIMEOUT.name());
+        verify(scheduled).cancel(false);
+        assertThat(emitters.get(0).eventCount("\"type\":\"run_finished\"")).isEqualTo(1);
+    }
+
+    @Test
+    void successfulCompletionShouldCancelTheRunDeadlineTest() {
+        ScheduledFuture<?> scheduled = mock(ScheduledFuture.class);
+        when(scheduler.schedule(any(Runnable.class), anyLong(), eq(TimeUnit.MILLISECONDS)))
+                .thenAnswer(invocation -> scheduled);
+        provider.emit(new AgentEvent.ResultMeta("session-9", 12L, 3, 9,
+                AgentEventProjector.SUCCESS_SUBTYPE));
+
+        startAndRun();
+
+        assertThat(runRow().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
+        verify(scheduler).schedule(any(Runnable.class), eq(295_000L), eq(TimeUnit.MILLISECONDS));
+        verify(scheduled).cancel(false);
     }
 
     @Test
@@ -349,7 +443,7 @@ class AiRunExecutorTest {
         assertThat(provider.calls).isEqualTo(2);
         assertThat(resumedSessions).containsExactly("gone-session", null);
         assertThat(provider.lastPrompt).isEqualTo("hello");
-        verify(conversationRepository).clearRuntimeSessionId(CONVERSATION_ID);
+        verify(conversationRepository).clearRuntimeSessionId(eq(CONVERSATION_ID), eq(FIXED_NOW));
         // The retry's session replaces the dead one, and the user is told the context is gone.
         assertThat(runRow().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
         assertThat(runRow().getRuntimeSessionId()).isEqualTo("new-session");
@@ -379,7 +473,7 @@ class AiRunExecutorTest {
         // A retry that fails must not put the dead id back: every turn after it would otherwise resume a
         // session that is still gone. Null is the honest state, and the next turn starts fresh.
         assertThat(provider.calls).isEqualTo(2);
-        verify(conversationRepository).clearRuntimeSessionId(CONVERSATION_ID);
+        verify(conversationRepository).clearRuntimeSessionId(eq(CONVERSATION_ID), eq(FIXED_NOW));
         assertThat(runRow().getStatus()).isEqualTo(RunStatus.FAILED.name());
         assertThat(runRow().getRuntimeSessionId()).isNull();
         assertThat(conversation.getRuntimeSessionId()).isNull();
