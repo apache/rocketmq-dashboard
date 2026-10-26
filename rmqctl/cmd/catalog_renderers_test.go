@@ -24,6 +24,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -233,4 +234,68 @@ func executeCatalogResult(t *testing.T, tool string, payload any, args ...string
 		t.Errorf("requests = %d, want exactly one", requests.Load())
 	}
 	return stdout, stderr, exitCode
+}
+
+func TestDlqResendFailureDetailsOutputTest(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		for _, format := range []string{"table", "json", "yaml"} {
+			t.Run(fmt.Sprintf("legacy=%t/%s", legacy, format), func(t *testing.T) {
+				result := map[string]any{
+					"matched": 101, "resent": 0, "failed": 101, "outcome": "FAILED",
+					"scanIncomplete": false, "failedQueueCount": 0,
+				}
+				if !legacy {
+					failures := make([]any, 100)
+					for i := range failures {
+						failure := map[string]any{"msgId": fmt.Sprintf("msg-%d", i), "reason": "broker unavailable"}
+						if i > 0 {
+							failure["targetTopic"] = "orders"
+						}
+						failures[i] = failure
+					}
+					result["failures"] = failures
+					result["failuresTruncated"] = true
+				}
+				payload := map[string]any{
+					"status": "EXECUTED", "instanceId": "instance-dev",
+					"plan": map[string]any{"summary": "Resend dead letters"}, "result": result,
+				}
+				args := []string{"message", "redelivery-dlq", "--group-name", "group-1",
+					"--confirm-token", "confirmation", "--yes", "--output", format}
+				stdout, stderr, exitCode := executeCatalogResult(t, "rmq.message.redelivery_dlq", payload, args...)
+				if exitCode != 0 || stderr != "" {
+					t.Fatalf("exit = %d, stderr = %q", exitCode, stderr)
+				}
+				var got any
+				var err error
+				want := any(payload)
+				if format == "table" {
+					_, body, found := strings.Cut(stdout, "\n\n")
+					if !found || !strings.Contains(stdout, "EXECUTED") {
+						t.Fatalf("missing mutation summary: %q", stdout)
+					}
+					err = json.Unmarshal([]byte(body), &got)
+					want = result
+				} else if format == "yaml" {
+					err = yaml.Unmarshal([]byte(stdout), &got)
+				} else {
+					err = json.Unmarshal([]byte(stdout), &got)
+				}
+				if err != nil {
+					t.Fatalf("decode %s output: %v", format, err)
+				}
+				gotJSON, err := json.Marshal(got)
+				if err != nil {
+					t.Fatal(err)
+				}
+				wantJSON, err := json.Marshal(want)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(gotJSON, wantJSON) {
+					t.Fatalf("failure details changed: got %s, want %s", gotJSON, wantJSON)
+				}
+			})
+		}
+	}
 }
