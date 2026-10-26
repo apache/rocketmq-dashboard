@@ -124,4 +124,4 @@ install: build
 	cp -R $(LEGAL_DIR)/native/. $(DESTDIR)/usr/local/share/licenses/rmqctl/legal/
 
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf -- "$(BUILD_DIR)"
