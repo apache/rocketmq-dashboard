@@ -35,7 +35,10 @@ export const useEngineStore = create<EngineState>()(
     {
       name: 'rocketmq-studio-agent-engine',
       // Bumped to reset stale persisted engines so Claude Code is the default selection.
-      version: 1,
+      // v2 (2026-10-20): a persisted `qoder` made every run fail with PROVIDER_ERROR whenever the
+      // CLI had no login state in the server image, and the failure read as a bare 「失败」 — the
+      // preference is not worth that trap, so stale values fall back to the engine that works.
+      version: 2,
       migrate: (persisted) => ({ ...(persisted as EngineState), engine: 'claude-code' }),
     },
   ),

@@ -785,6 +785,54 @@ describe('Message page query history', () => {
     expect(await screen.findByText('cg-billing')).toBeInTheDocument();
   });
 
+  it('renders a consumption with no recorded time as the placeholder instead of the Unix epoch', async () => {
+    messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-NO-TIME')]);
+    messageServiceMocks.getMessageTrace.mockResolvedValue({
+      nodes: [
+        {
+          title: 'Consumer 消费',
+          timestamp: 0,
+          costTime: 5,
+          status: 'finish',
+          description: 'consumer record carried no timestamp',
+        },
+      ],
+      consumerStatus: [
+        {
+          group: 'cg-orders',
+          deliveryStatus: 'pending',
+          consumeTime: 0,
+          retryCount: 0,
+        },
+      ],
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-NO-TIME');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    const row = await screen.findByRole('row', { name: /MID-NO-TIME/ });
+    await user.click(within(row).getByRole('button', { name: /轨迹/ }));
+    const dialog = await screen.findByRole('dialog');
+
+    // A trace node whose record carried no timestamp (0) must read as absent,
+    // not as the Unix epoch.
+    const node = (await within(dialog).findByText('Consumer 消费')).closest('.ant-steps-item');
+    expect(node).not.toBeNull();
+    expect(node).not.toHaveTextContent('1970-01-01');
+    expect(within(node as HTMLElement).getByText('-')).toBeInTheDocument();
+
+    // The same placeholder applies to a consumer group with no consumption time.
+    await user.click(within(dialog).getByRole('tab', { name: '验证' }));
+    const statusRow = (await within(dialog).findByText('cg-orders')).closest('tr');
+    expect(statusRow).not.toBeNull();
+    expect(within(statusRow as HTMLElement).getAllByRole('cell')[2]).toHaveTextContent('-');
+  });
+
   it('renders placeholders on the detail panel when the storage location is unknown', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     messageServiceMocks.queryMessages.mockResolvedValue([
@@ -866,5 +914,13 @@ describe('Message page query history', () => {
     await user.click(within(row).getByRole('button', { name: /详情/ }));
     expect(await screen.findByText('消息体')).toBeInTheDocument();
     expect(screen.getAllByText('5.0 GB').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('offers no clear control on the query window it always sends', () => {
+    const { container } = renderWithProviders(<MessagePage />);
+
+    // The topic query always carries a start/end pair, so a clear control would
+    // snap back and silently reuse the previous window. It must not be offered.
+    expect(container.querySelector('.ant-picker-clear')).toBeNull();
   });
 });

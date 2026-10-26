@@ -70,6 +70,7 @@ describe('Audit page', () => {
 
   beforeEach(() => {
     vi.mocked(opsService.getAuditFilterOptions).mockResolvedValue({
+      operators: ['admin', 'operator-a'],
       operationTypes: ['ADD_PROXY_ADDRESS', 'CREATE_TOPIC', 'RESET_OFFSET'],
       resourceTypes: ['CONSUMER_GROUP', 'PROXY', 'TOPIC'],
       clusterIds: ['prod-cn', 'prod-sh'],
@@ -141,6 +142,7 @@ describe('Audit page', () => {
     await waitFor(() =>
       expect(opsService.exportAuditLogs).toHaveBeenCalledWith({
         search: 'topic-a',
+        operator: undefined,
         operationType: undefined,
         resourceType: undefined,
         clusterId: undefined,
@@ -154,6 +156,25 @@ describe('Audit page', () => {
     await expect(blob.text()).resolves.toContain('"2026-08-01 10:00:00","admin"');
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:audit');
+  });
+
+  it('surfaces the export cap instead of telling the user to retry', async () => {
+    vi.mocked(opsService.exportAuditLogs).mockRejectedValueOnce({
+      response: {
+        data: {
+          code: 400,
+          message: 'Audit log export exceeds the maximum of 10000 records; narrow the filters',
+        },
+      },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findAllByText('topic-a')).not.toHaveLength(0);
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+
+    expect(await screen.findByText(/narrow the filters/)).toBeInTheDocument();
+    expect(screen.queryByText('导出审计日志失败，请稍后重试')).not.toBeInTheDocument();
   });
 
   it('renders control-plane audit labels and parsed detail values', async () => {
@@ -327,6 +348,7 @@ describe('Audit page', () => {
         page: 1,
         pageSize: 20,
         search: undefined,
+        operator: undefined,
         operationType: 'CREATE_TOPIC',
         resourceType: 'CONSUMER_GROUP',
         clusterId: 'prod-sh',
@@ -334,6 +356,34 @@ describe('Audit page', () => {
         endDate: undefined,
         result: undefined,
       }),
+    );
+  });
+
+  it('applies the selected operator as an exact backend filter', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: '操作人' }));
+    await user.click(
+      await screen.findByText('operator-a', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() =>
+      expect(opsService.listAuditRecords).toHaveBeenLastCalledWith(
+        expect.objectContaining({ operator: 'operator-a' }),
+      ),
+    );
+    await waitFor(() =>
+      expect(opsService.getAuditSummary).toHaveBeenLastCalledWith(
+        expect.objectContaining({ operator: 'operator-a' }),
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+    await waitFor(() =>
+      expect(opsService.exportAuditLogs).toHaveBeenLastCalledWith(
+        expect.objectContaining({ operator: 'operator-a' }),
+      ),
     );
   });
 
@@ -455,6 +505,7 @@ describe('Audit page', () => {
 
     await act(async () => {
       staleOptions.resolve({
+        operators: ['STALE_OPERATOR'],
         operationTypes: ['STALE_OPERATION'],
         resourceTypes: [],
         clusterIds: [],

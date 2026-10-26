@@ -175,6 +175,16 @@ The rules below are enforced by review or by the build; details and rationale li
   `tableLayout="fixed"` unsized columns share the whole `scroll.x` evenly and push the
   action column past the viewport. Verify in a real browser after adding or resizing
   columns.
+- **Row density**: a list row — table row or card-list row — renders on ONE line by default,
+  because every extra line costs a row of the page's visible budget. Long text gets
+  `ellipsis` plus a `Tooltip` with the full value; secondary facts (ids, timestamps, counts,
+  reasons) share the same line as bounded ellipsized segments or move into a Tooltip / an
+  on-demand expansion, never into stacked lines of their own. Multi-line detail belongs
+  behind an explicit user action (expand, modal, drawer). Row padding stays tight
+  (`size="small"` tables or ≤8px vertical padding on card rows). Reference implementations:
+  the alert deliveries table (`web/src/pages/ops/notificationDeliveries.tsx`) and the alert
+  events list (`web/src/pages/ops/systemAlerts.tsx`). Anything that must stay multi-line
+  (stacked tool output, code blocks, transcripts) is an exception, not a pattern.
 - **Configuration**: `server/src/main/resources/application.yml` keeps environment-variable
   overrides minimal. Only genuinely deployment-specific values — datasource coordinates,
   credentials and secrets, external endpoints (Prometheus, NameServer, LLM), and deployment

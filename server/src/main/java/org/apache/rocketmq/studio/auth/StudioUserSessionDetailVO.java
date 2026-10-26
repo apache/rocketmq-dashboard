@@ -34,4 +34,6 @@ public class StudioUserSessionDetailVO {
     private Long idleSeconds;
     private boolean expiringSoon;
     private boolean stale;
+    private String clientIp;
+    private String userAgent;
 }

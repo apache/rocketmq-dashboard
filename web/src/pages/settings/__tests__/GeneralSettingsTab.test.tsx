@@ -21,6 +21,8 @@ import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { getGeneralSettings, saveGeneralSettings } from '../../../api/settings';
 import { ThemeProvider } from '../../../theme/ThemeProvider';
+import { useTheme } from '../../../theme/useTheme';
+import { COMPACT_STORAGE_KEY, THEME_STORAGE_KEY } from '../../../theme/themePreference';
 import { LangProvider } from '../../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { GeneralSettingsTab } from '../GeneralSettingsTab';
@@ -51,11 +53,17 @@ vi.mock('../../../api/settings', () => ({
   updateDataSource: vi.fn(),
 }));
 
+const ThemeShortcut = () => {
+  const { toggleTheme } = useTheme();
+  return <button onClick={toggleTheme}>Toggle theme</button>;
+};
+
 const renderTab = () =>
   render(
     <App>
       <LangProvider>
         <ThemeProvider>
+          <ThemeShortcut />
           <GeneralSettingsTab />
         </ThemeProvider>
       </LangProvider>
@@ -95,11 +103,62 @@ describe('GeneralSettingsTab', () => {
     await waitFor(() => expect(saveGeneralSettings).toHaveBeenCalledTimes(1));
   });
 
-  it('keeps the session timeout field bound when displaying its unit', async () => {
+  it('keeps the session timeout fields bound when displaying their unit', async () => {
     renderTab();
 
-    expect(await screen.findByDisplayValue('30')).toBeInTheDocument();
+    // The absolute timeout comes from the stored settings; the idle deadline falls back to the
+    // server default, which is off rather than a window an upgrade silently starts enforcing.
+    const timeoutInputs = await screen.findAllByDisplayValue('30');
+    expect(timeoutInputs).toHaveLength(1);
+    expect(document.getElementById('sessionIdleTimeout')).toHaveValue('0');
     expect(screen.getByLabelText('会话超时单位')).toHaveValue('分钟');
+    expect(screen.getByLabelText('会话空闲超时单位')).toHaveValue('分钟');
+  });
+
+  it('saves the session idle timeout from the security form', async () => {
+    vi.mocked(saveGeneralSettings).mockResolvedValue();
+    vi.mocked(getGeneralSettings).mockResolvedValue({
+      theme: 'system',
+      compact: false,
+      desktopNotify: false,
+      notifySound: false,
+      sessionTimeout: 30,
+      sessionIdleTimeout: 15,
+      requireLogin: true,
+      llmProvider: 'openai',
+      apiKeyConfigured: false,
+      model: 'test-model',
+      baseUrl: 'https://example.test/v1',
+    });
+    renderTab();
+
+    const idleInput = await waitFor(() => {
+      const input = document.getElementById('sessionIdleTimeout') as HTMLInputElement | null;
+      expect(input).not.toBeNull();
+      return input!;
+    });
+    expect(idleInput).toHaveValue('15');
+    fireEvent.change(idleInput, { target: { value: '45' } });
+
+    const saveButtons = await screen.findAllByRole('button', { name: '保存设置' });
+    fireEvent.submit(saveButtons[0].closest('form')!);
+
+    await waitFor(() =>
+      expect(saveGeneralSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionTimeout: 30, sessionIdleTimeout: 45 }),
+      ),
+    );
+  });
+
+  it('defaults the idle timeout to the server default when the field is absent', async () => {
+    renderTab();
+
+    const idleInput = await waitFor(() => {
+      const input = document.getElementById('sessionIdleTimeout') as HTMLInputElement | null;
+      expect(input).not.toBeNull();
+      return input!;
+    });
+    expect(idleInput).toHaveValue('0');
   });
 
   it('shows appearance preferences but keeps desktop notification options hidden', async () => {
@@ -156,6 +215,41 @@ describe('GeneralSettingsTab', () => {
         'ant-segmented-item-selected',
       ),
     );
+  });
+
+  it('displays restored local appearance preferences instead of server defaultsTest', async () => {
+    localStorage.setItem(THEME_STORAGE_KEY, 'dark');
+    localStorage.setItem(COMPACT_STORAGE_KEY, 'true');
+    renderTab();
+
+    await screen.findByDisplayValue('30');
+
+    expect(screen.getByRole('radio', { name: '深色' })).toBeChecked();
+    expect(screen.getByRole('switch')).toBeChecked();
+    expect(saveGeneralSettings).not.toHaveBeenCalled();
+  });
+
+  it('follows global theme changes and allows returning to system modeTest', async () => {
+    vi.mocked(saveGeneralSettings).mockResolvedValue();
+    const user = userEvent.setup();
+    renderTab();
+    await screen.findByDisplayValue('30');
+
+    await user.click(screen.getByRole('button', { name: 'Toggle theme' }));
+
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
+    expect(screen.getByRole('radio', { name: '深色' })).toBeChecked();
+    expect(saveGeneralSettings).not.toHaveBeenCalled();
+
+    await user.click(screen.getByText('跟随系统'));
+
+    await waitFor(() =>
+      expect(saveGeneralSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ theme: 'system' }),
+      ),
+    );
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('system');
+    expect(screen.getByRole('radio', { name: '跟随系统' })).toBeChecked();
   });
 
   it('saves llm fields from a fresh read instead of the mount-time snapshot', async () => {

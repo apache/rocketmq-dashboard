@@ -213,7 +213,7 @@ class RocketMQMessageProviderTest {
         var instance = org.apache.rocketmq.studio.instance.InstanceVO.builder().name("cluster-a").build();
         when(ownershipGuard.requireInstance("instance-a")).thenReturn(instance);
         when(ownershipGuard.topicResource("orders")).thenCallRealMethod();
-        when(ownershipGuard.check(any(), any(), eq(true)))
+        when(ownershipGuard.checkOwnerInDomain(any(), any(), eq(true)))
                 .thenThrow(new BusinessException(409, "Resource belongs to another instance"));
         assertDirectConflict();
         verify(runtimeAdminClientResolver, never()).execute(anyString(), any());
@@ -229,9 +229,9 @@ class RocketMQMessageProviderTest {
         var instance = org.apache.rocketmq.studio.instance.InstanceVO.builder().name("cluster-a").build();
         when(ownershipGuard.requireInstance("instance-a")).thenReturn(instance);
         when(ownershipGuard.topicResource("orders")).thenCallRealMethod();
-        when(ownershipGuard.check(any(), any(), eq(true))).thenReturn(
+        when(ownershipGuard.checkOwnerInDomain(any(), any(), eq(true))).thenReturn(
                 new org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Ownership(
-                        1L, "orders", "cluster-a", "cluster-a", "NORMAL"));
+                        1L, "orders", "cluster-a", "cluster-a", "NORMAL", "ns:1"));
         when(ownershipGuard.withOwned(any(), any(), any())).thenAnswer(call ->
                 call.<java.util.function.Supplier<Object>>getArgument(2).get());
         ClusterInfo topology = new ClusterInfo();

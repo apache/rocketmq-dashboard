@@ -28,6 +28,7 @@ import org.apache.rocketmq.studio.persistence.mapper.RmqStudioSessionMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqStudioUserMapper;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -56,14 +57,20 @@ import static org.mockito.Mockito.when;
 class AuthServiceDatabaseTest {
 
     private AuthService authService;
+    private SettingsRepository settingsRepository;
     private RmqStudioUserMapper userMapper;
     private RmqStudioSessionMapper sessionMapper;
     private PasswordHasher passwordHasher;
 
+    @AfterEach
+    void clearAuthenticatedUserContext() {
+        AuthenticatedUserContext.clear();
+    }
+
     @BeforeEach
     void setUp() {
         AuthProperties authProperties = new AuthProperties();
-        SettingsRepository settingsRepository = mock(SettingsRepository.class);
+        settingsRepository = mock(SettingsRepository.class);
         GeneralSettingsVO settings = GeneralSettingsVO.builder().sessionTimeout(30).build();
         when(settingsRepository.loadGeneralSettings()).thenReturn(settings);
         userMapper = mock(RmqStudioUserMapper.class);
@@ -248,6 +255,45 @@ class AuthServiceDatabaseTest {
     }
 
     @Test
+    void databaseLoginAttributesTheSessionToTheRequestingClientTest() {
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(user);
+
+        LoginDTO request = new LoginDTO();
+        request.setUsername("operator");
+        request.setPassword("password-1");
+
+        authService.login(request, "203.0.113.7", "M".repeat(300));
+
+        org.mockito.ArgumentCaptor<RmqStudioSession> captor =
+                org.mockito.ArgumentCaptor.forClass(RmqStudioSession.class);
+        verify(sessionMapper).insert(captor.capture());
+        assertThat(captor.getValue().getClientIp()).isEqualTo("203.0.113.7");
+        // Overlong agents are truncated to the column width instead of failing the insert.
+        assertThat(captor.getValue().getUserAgent()).hasSize(255);
+    }
+
+    @Test
+    void databaseLoginWithoutClientAttributionKeepsTheColumnsNullTest() {
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(user);
+
+        LoginDTO request = new LoginDTO();
+        request.setUsername("operator");
+        request.setPassword("password-1");
+
+        authService.login(request);
+
+        org.mockito.ArgumentCaptor<RmqStudioSession> captor =
+                org.mockito.ArgumentCaptor.forClass(RmqStudioSession.class);
+        verify(sessionMapper).insert(captor.capture());
+        assertThat(captor.getValue().getClientIp()).isNull();
+        assertThat(captor.getValue().getUserAgent()).isNull();
+    }
+
+    @Test
     void passwordChangeRevokesExistingSessions() {
         RmqStudioUser user = user(1L, "operator", false, true, "password-1");
         when(userMapper.selectById(1L)).thenReturn(user);
@@ -256,6 +302,71 @@ class AuthServiceDatabaseTest {
 
         verify(userMapper).update(isNull(), any(Wrapper.class));
         verify(sessionMapper).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void adminPasswordResetRequiresRotationTest() {
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        when(userMapper.selectById(1L)).thenReturn(user);
+
+        // The admin-reset path: requireCurrentPassword is false, the new password was chosen
+        // by someone other than the owner, so the owner must rotate it at the next login.
+        authService.changePassword(1L, null, "password-2", false);
+
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioUser>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(userMapper).update(isNull(), updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("password_must_change");
+        assertThat(updateCaptor.getValue().getParamNameValuePairs().values()).contains(true);
+    }
+
+    @Test
+    void selfServicePasswordChangeClearsTheRotationFlagTest() {
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        when(userMapper.selectById(1L)).thenReturn(user);
+
+        authService.changePassword(1L, "password-1", "password-2", true);
+
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioUser>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(userMapper).update(isNull(), updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("password_must_change");
+        assertThat(updateCaptor.getValue().getParamNameValuePairs().values()).contains(false);
+    }
+
+    @Test
+    void createdUsersMustRotateTheirInitialPasswordTest() {
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(null);
+
+        authService.createUser("contractor", "initial-password", false);
+
+        org.mockito.ArgumentCaptor<RmqStudioUser> captor =
+                org.mockito.ArgumentCaptor.forClass(RmqStudioUser.class);
+        verify(userMapper).insert(captor.capture());
+        assertThat(captor.getValue().getPasswordMustChange()).isTrue();
+    }
+
+    @Test
+    void loginReportsWhenThePasswordMustBeRotatedTest() {
+        RmqStudioUser flagged = user(1L, "operator", false, true, "password-1");
+        flagged.setPasswordMustChange(true);
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(flagged);
+
+        LoginDTO request = new LoginDTO();
+        request.setUsername("operator");
+        request.setPassword("password-1");
+        LoginVO flaggedLogin = authService.login(request);
+
+        assertThat(flaggedLogin.getUser().isMustChangePassword()).isTrue();
+
+        RmqStudioUser settled = user(2L, "reader", false, true, "password-2");
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(settled);
+        request.setUsername("reader");
+        request.setPassword("password-2");
+        LoginVO settledLogin = authService.login(request);
+
+        assertThat(settledLogin.getUser().isMustChangePassword()).isFalse();
     }
 
     @Test
@@ -281,6 +392,95 @@ class AuthServiceDatabaseTest {
         assertThatThrownBy(() -> authService.revokeSessionsForUser(404L))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("User not found");
+
+        verify(sessionMapper, never()).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void revokingAllSessionsSparesTheOperatorTest() {
+        AuthenticatedUserContext.setUser(1L, "operator", true);
+        when(sessionMapper.update(isNull(), any(Wrapper.class))).thenReturn(7);
+
+        int revoked = authService.revokeAllSessions();
+
+        assertThat(revoked).isEqualTo(7);
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioSession>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(sessionMapper).update(isNull(), updateCaptor.capture());
+        // The active-session predicate plus the operator exclusion; the incident responder
+        // stays logged in and can still revoke their own account from its drawer.
+        assertThat(updateCaptor.getValue().getSqlSegment())
+                .contains("revoked_at IS NULL", "expires_at", "user_id");
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("revoked_at");
+        assertThat(updateCaptor.getValue().getParamNameValuePairs().values()).contains(1L);
+    }
+
+    @Test
+    void revokingAllSessionsWithoutAnOperatorContextRevokesEveryoneTest() {
+        when(sessionMapper.update(isNull(), any(Wrapper.class))).thenReturn(9);
+
+        int revoked = authService.revokeAllSessions();
+
+        assertThat(revoked).isEqualTo(9);
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioSession>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(sessionMapper).update(isNull(), updateCaptor.capture());
+        // No authenticated principal (e.g. a scheduled or system-triggered call): nothing
+        // is excluded, every active session is revoked.
+        assertThat(updateCaptor.getValue().getSqlSegment())
+                .contains("revoked_at IS NULL", "expires_at")
+                .doesNotContain("user_id");
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("revoked_at");
+    }
+
+    @Test
+    void revokingASessionByIdUpdatesOnlyThatRowTest() {
+        RmqStudioSession session = activeSession(19L, 7L,
+                LocalDateTime.parse("2026-08-13T00:00:00"));
+        when(sessionMapper.selectById(19L)).thenReturn(session);
+
+        authService.revokeSessionById(19L);
+
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioSession>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(sessionMapper).update(isNull(), updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("revoked_at");
+        assertThat(updateCaptor.getValue().getSqlSegment())
+                .contains("id", "revoked_at IS NULL");
+    }
+
+    @Test
+    void revokingAnAlreadyRevokedSessionIsANoOpTest() {
+        RmqStudioSession session = activeSession(19L, 7L,
+                LocalDateTime.parse("2026-08-13T00:00:00"));
+        session.setRevokedAt(LocalDateTime.parse("2026-08-12T23:00:00"));
+        when(sessionMapper.selectById(19L)).thenReturn(session);
+
+        // A stale drawer must not turn a repeated confirmation into a failure.
+        authService.revokeSessionById(19L);
+
+        verify(sessionMapper, never()).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void revokingAnExpiredSessionIsANoOpTest() {
+        RmqStudioSession session = activeSession(19L, 7L,
+                LocalDateTime.parse("2026-08-12T22:00:00"));
+        session.setExpiresAt(LocalDateTime.parse("2026-08-12T23:00:00"));
+        when(sessionMapper.selectById(19L)).thenReturn(session);
+
+        authService.revokeSessionById(19L);
+
+        verify(sessionMapper, never()).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void revokingAMissingSessionIsRejectedTest() {
+        when(sessionMapper.selectById(404L)).thenReturn(null);
+
+        assertThatThrownBy(() -> authService.revokeSessionById(404L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Session not found");
 
         verify(sessionMapper, never()).update(isNull(), any(Wrapper.class));
     }
@@ -340,6 +540,152 @@ class AuthServiceDatabaseTest {
     }
 
     @Test
+    void grantingTheAdministratorRoleUpdatesTheFlagAndRevokesSessionsTest() {
+        RmqStudioUser operator = user(2L, "operator", false, true, "password-1");
+        when(userMapper.selectById(2L)).thenReturn(operator);
+
+        RmqStudioUser result = authService.setUserAdmin(2L, true);
+
+        assertThat(result.getAdmin()).isTrue();
+        // Granting needs no last-admin guard, but the sessions must be revoked so the
+        // re-login picks up the elevated role.
+        verify(userMapper, never()).selectList(any(Wrapper.class));
+        verify(userMapper).updateById(argThat((RmqStudioUser update) -> update.getId().equals(2L)
+                && Boolean.TRUE.equals(update.getAdmin())));
+        verify(sessionMapper).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void revokingTheRoleFromTheLastEnabledAdministratorIsRejectedTest() {
+        RmqStudioUser admin = user(1L, "solo-admin", true, true, "password-1");
+        when(userMapper.selectById(1L)).thenReturn(admin);
+        when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of(admin));
+
+        assertThatThrownBy(() -> authService.setUserAdmin(1L, false))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("The last enabled administrator cannot lose the role");
+
+        verify(userMapper, never()).updateById(any(RmqStudioUser.class));
+        verify(sessionMapper, never()).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void revokingTheRoleKeepsTheOtherEnabledAdministratorTest() {
+        RmqStudioUser target = user(1L, "admin-one", true, true, "password-1");
+        RmqStudioUser other = user(2L, "admin-two", true, true, "password-1");
+        when(userMapper.selectById(1L)).thenReturn(target);
+        when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of(target, other));
+
+        RmqStudioUser result = authService.setUserAdmin(1L, false);
+
+        assertThat(result.getAdmin()).isFalse();
+        verify(userMapper).updateById(argThat((RmqStudioUser update) -> update.getId().equals(1L)
+                && Boolean.FALSE.equals(update.getAdmin())));
+        verify(sessionMapper).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void settingTheCurrentRoleShouldBeIdempotentTest() {
+        RmqStudioUser admin = user(1L, "admin", true, true, "password-1");
+        when(userMapper.selectById(1L)).thenReturn(admin);
+
+        assertThat(authService.setUserAdmin(1L, true)).isSameAs(admin);
+
+        verify(userMapper, never()).selectList(any(Wrapper.class));
+        verify(userMapper, never()).updateById(any(RmqStudioUser.class));
+        verify(sessionMapper, never()).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void deletingAUserRemovesTheAccountAndItsSessionsTest() {
+        AuthenticatedUserContext.setUser(1L, "operator", true);
+        RmqStudioUser contractor = user(2L, "contractor", false, true, "password-1");
+        when(userMapper.selectById(2L)).thenReturn(contractor);
+
+        authService.deleteUser(2L);
+
+        org.mockito.ArgumentCaptor<QueryWrapper<RmqStudioSession>> queryCaptor =
+                org.mockito.ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(sessionMapper).delete(queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getSqlSegment()).contains("user_id");
+        assertThat(queryCaptor.getValue().getParamNameValuePairs().values()).contains(2L);
+        verify(userMapper).deleteById(2L);
+    }
+
+    @Test
+    void deletingTheOperatorsOwnAccountIsRejectedTest() {
+        AuthenticatedUserContext.setUser(1L, "operator", true);
+        when(userMapper.selectById(1L)).thenReturn(user(1L, "operator", true, true, "password-1"));
+
+        assertThatThrownBy(() -> authService.deleteUser(1L))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(400))
+                .hasMessage("The current account cannot delete itself; disable it instead");
+
+        verify(sessionMapper, never()).delete(any(Wrapper.class));
+        verify(userMapper, never()).deleteById(2L);
+    }
+
+    @Test
+    void deletingTheLastEnabledAdministratorIsRejectedTest() {
+        AuthenticatedUserContext.setUser(1L, "operator", true);
+        RmqStudioUser soleAdmin = user(2L, "sole-admin", true, true, "password-1");
+        when(userMapper.selectById(2L)).thenReturn(soleAdmin);
+        when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of(soleAdmin));
+
+        assertThatThrownBy(() -> authService.deleteUser(2L))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(409))
+                .hasMessage("The last enabled administrator cannot be deleted");
+
+        verify(sessionMapper, never()).delete(any(Wrapper.class));
+        verify(userMapper, never()).deleteById(2L);
+    }
+
+    @Test
+    void deletingAnAdministratorKeepsTheOtherEnabledAdministratorTest() {
+        AuthenticatedUserContext.setUser(1L, "operator", true);
+        RmqStudioUser target = user(2L, "admin-two", true, true, "password-1");
+        RmqStudioUser other = user(3L, "admin-three", true, true, "password-1");
+        when(userMapper.selectById(2L)).thenReturn(target);
+        when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of(target, other));
+
+        authService.deleteUser(2L);
+
+        verify(sessionMapper).delete(any(Wrapper.class));
+        verify(userMapper).deleteById(2L);
+    }
+
+    @Test
+    void deletingADisabledAdministratorSkipsTheLastAdminGuardTest() {
+        // A disabled administrator is not part of the enabled-administrator set, so removing
+        // the account cannot lock the deployment out even when no other admin exists.
+        AuthenticatedUserContext.setUser(1L, "operator", true);
+        when(userMapper.selectById(2L)).thenReturn(user(2L, "retired-admin", true, false, "password-1"));
+
+        authService.deleteUser(2L);
+
+        verify(userMapper, never()).selectList(any(Wrapper.class));
+        verify(sessionMapper).delete(any(Wrapper.class));
+        verify(userMapper).deleteById(2L);
+    }
+
+    @Test
+    void deletingAMissingUserIsRejectedBeforeAnyDeleteTest() {
+        AuthenticatedUserContext.setUser(1L, "operator", true);
+        when(userMapper.selectById(404L)).thenReturn(null);
+
+        assertThatThrownBy(() -> authService.deleteUser(404L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("User not found");
+
+        verify(sessionMapper, never()).delete(any(Wrapper.class));
+        verify(userMapper, never()).deleteById(404L);
+    }
+
+    @Test
     void databaseAuthenticationThrottlesLastSeenWrites() {
         RmqStudioUser user = user(1L, "operator", false, true, "password-1");
         RmqStudioSession session = activeSession(10L, 1L,
@@ -363,6 +709,125 @@ class AuthServiceDatabaseTest {
         assertThat(authService.isAuthenticated("Bearer token-1")).isTrue();
 
         verify(sessionMapper).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void idleExpiredSessionsAreRejectedAndRevokedTest() {
+        // Last seen 60 minutes ago against a configured 30-minute idle window, while the absolute
+        // expiry (2026-08-14) is still a day away: only the idle deadline can reject it.
+        // The idle deadline is off unless an operator turns it on, so this case configures it.
+        when(settingsRepository.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .sessionTimeout(30)
+                .sessionIdleTimeout(30)
+                .build());
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        RmqStudioSession session = activeSession(10L, 1L,
+                LocalDateTime.parse("2026-08-12T23:00:00"));
+        when(sessionMapper.selectOne(any(Wrapper.class))).thenReturn(session);
+        when(userMapper.selectById(1L)).thenReturn(user);
+
+        assertThat(authService.isAuthenticated("Bearer token-1")).isFalse();
+
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioSession>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(sessionMapper).update(isNull(), updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("revoked_at");
+    }
+
+    @Test
+    void sessionsSeenWithinTheIdleWindowStayAuthenticatedTest() {
+        // Ten minutes old: inside the 30-minute idle window but past the throttled
+        // last-seen interval, so the session survives and only its last_seen_at refreshes.
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        RmqStudioSession session = activeSession(10L, 1L,
+                LocalDateTime.parse("2026-08-12T23:50:00"));
+        when(sessionMapper.selectOne(any(Wrapper.class))).thenReturn(session);
+        when(userMapper.selectById(1L)).thenReturn(user);
+
+        assertThat(authService.isAuthenticated("Bearer token-1")).isTrue();
+
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioSession>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(sessionMapper).update(isNull(), updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("last_seen_at")
+                .doesNotContain("revoked_at");
+    }
+
+    @Test
+    void configuredIdleWindowShortensTheDeadlineTest() {
+        GeneralSettingsVO configured = GeneralSettingsVO.builder()
+                .sessionTimeout(30)
+                .sessionIdleTimeout(15)
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(configured);
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        RmqStudioSession session = activeSession(10L, 1L,
+                LocalDateTime.parse("2026-08-12T23:45:00"));
+        when(sessionMapper.selectOne(any(Wrapper.class))).thenReturn(session);
+        when(userMapper.selectById(1L)).thenReturn(user);
+
+        // Twenty minutes unused: inside the default window but past the configured one.
+        assertThat(authService.isAuthenticated("Bearer token-1")).isFalse();
+
+        verify(sessionMapper).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void zeroIdleTimeoutDisablesTheIdleDeadlineTest() {
+        GeneralSettingsVO configured = GeneralSettingsVO.builder()
+                .sessionTimeout(30)
+                .sessionIdleTimeout(0)
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(configured);
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        RmqStudioSession session = activeSession(10L, 1L,
+                LocalDateTime.parse("2026-08-12T22:00:00"));
+        when(sessionMapper.selectOne(any(Wrapper.class))).thenReturn(session);
+        when(userMapper.selectById(1L)).thenReturn(user);
+
+        // Two hours unused: only the absolute expiry (tomorrow) may reject this token.
+        assertThat(authService.isAuthenticated("Bearer token-1")).isTrue();
+
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioSession>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(sessionMapper).update(isNull(), updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("last_seen_at")
+                .doesNotContain("revoked_at");
+    }
+
+    @Test
+    void missingLastSeenSessionsFallBackToTheAbsoluteDeadlineTest() {
+        // Rows written before the column existed have no last_seen_at; the idle deadline
+        // must not guess one from gmt_create and lock their owners out.
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        RmqStudioSession session = activeSession(10L, 1L, LocalDateTime.parse("2026-08-13T00:00:00"));
+        session.setLastSeenAt(null);
+        when(sessionMapper.selectOne(any(Wrapper.class))).thenReturn(session);
+        when(userMapper.selectById(1L)).thenReturn(user);
+
+        assertThat(authService.isAuthenticated("Bearer token-1")).isTrue();
+
+        verify(sessionMapper).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void scheduledPurgeRevokesIdleExpiredSessionsTest() {
+        // The idle deadline is off unless an operator turns it on, so this case configures it.
+        when(settingsRepository.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .sessionTimeout(30)
+                .sessionIdleTimeout(30)
+                .build());
+
+        authService.purgeExpiredSessions();
+
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioSession>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(sessionMapper).update(isNull(), updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("revoked_at");
+        assertThat(updateCaptor.getValue().getSqlSegment())
+                .contains("revoked_at", "last_seen_at", "expires_at");
+        // The absolute-expiry cleanup keeps running alongside the idle revocation.
+        verify(sessionMapper).delete(any(Wrapper.class));
     }
 
     @Test

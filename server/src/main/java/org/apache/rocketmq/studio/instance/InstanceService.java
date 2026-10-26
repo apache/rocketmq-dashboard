@@ -22,6 +22,8 @@ import org.springframework.util.StringUtils;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryService;
+import org.apache.rocketmq.studio.cluster.nameserver.NamesrvAddrParser;
 import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
@@ -77,6 +79,7 @@ public class InstanceService {
     private final CacheManager cacheManager;
     private final RegionNames regionNames;
     private final ResourceOwnershipGuard ownershipGuard;
+    private final NameserverRegistryService nameserverRegistry;
 
     // @Lazy self-injection: Spring AOP proxies intercept @Transactional calls only when they
     // originate from outside the bean. Calling deleteInstance() directly from within this class
@@ -527,6 +530,10 @@ public class InstanceService {
         if (instance.getType() == InstanceType.CLOUD) {
             throw new BusinessException(400, "CLOUD type is reserved for vendor-managed instances");
         }
+        if (instance.getNameserverId() == null || instance.getNameserverId() <= 0) {
+            throw new BusinessException(400, "nameserverId is required");
+        }
+        nameserverRegistry.requireExisting(instance.getNameserverId());
     }
 
     /**
@@ -671,8 +678,23 @@ public class InstanceService {
                 }
                 updated.setType(instance.getType());
             }
+            if (instance.getNameserverId() != null
+                    && !instance.getNameserverId().equals(existing.getNameserverId())) {
+                throw new BusinessException(400, "The bound NameServer cluster cannot be changed after creation");
+            }
             if (instance.getEndpoint() != null) {
-                updated.setEndpoint(requireValidEndpoint(instance.getEndpoint()));
+                String normalized = requireValidEndpoint(instance.getEndpoint());
+                // A DIRECT endpoint is the NameServer address itself, so it must keep matching the binding;
+                // proxy endpoints address the proxy tier and stay free to move inside the same domain.
+                if (existing.getType() == InstanceType.DIRECT && existing.getNameserverId() != null
+                        && !NamesrvAddrParser.normalize(nameserverRegistry.addressOf(existing.getNameserverId()))
+                                .equals(NamesrvAddrParser.normalize(normalized))) {
+                    throw new BusinessException(400,
+                            "The endpoint must stay inside the bound NameServer cluster: " + existing.getName());
+                }
+                // A DIRECT endpoint is stored in the same normalized form as the registry address it binds to.
+                updated.setEndpoint(existing.getType() == InstanceType.DIRECT && existing.getNameserverId() != null
+                        ? NamesrvAddrParser.normalize(normalized) : normalized);
             }
         }
         if (instance.getRemark() != null) {

@@ -167,8 +167,13 @@ const ClusterPage = () => {
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [selectedCluster, setSelectedCluster] = useState<ClusterInfo | null>(null);
   const [configPreview, setConfigPreview] = useState<ClusterConfigPreviewResult | null>(null);
+  /** The flush mode the Broker actually runs with when the config modal opens. */
+  const [initialFlushDisk, setInitialFlushDisk] = useState<string | null>(null);
   const [configPreviewLoading, setConfigPreviewLoading] = useState(false);
   const [configSubmitting, setConfigSubmitting] = useState(false);
+  // Synchronous lock: the OK button's spinner only renders after React re-renders, so a second
+  // confirmation click inside the validateFields await would start a duplicate write.
+  const configSubmittingRef = useRef(false);
   const [nsRegistry, setNsRegistry] = useState<NameserverRegistryEntry[]>([]);
   const [selectedProxy, setSelectedProxy] = useState<ProxyDetail | null>(null);
   const [nsConfigDiffState, setNsConfigDiffState] = useState<{
@@ -198,6 +203,11 @@ const ClusterPage = () => {
     result: null,
   });
   const [configForm] = Form.useForm();
+  const flushDiskValue = Form.useWatch('flushDiskType', configForm);
+  const flushDiskChanged =
+    initialFlushDisk !== null &&
+    flushDiskValue !== undefined &&
+    flushDiskValue !== initialFlushDisk;
 
   const [k8sIdOptions, setK8sIdOptions] = useState<string[]>([]);
 
@@ -704,6 +714,7 @@ const ClusterPage = () => {
     setConfigPreview(null);
     setConfigPreviewLoading(false);
     setConfigSubmitting(false);
+    setInitialFlushDisk(cfg.flushDiskType ?? 'ASYNC_FLUSH');
     configForm.setFieldsValue({
       flushDiskType: cfg.flushDiskType ?? 'ASYNC_FLUSH',
       autoCreateTopicEnable: cfg.autoCreateTopicEnable ?? false,
@@ -764,21 +775,59 @@ const ClusterPage = () => {
     }
   };
 
+  const releaseConfigSubmitLock = () => {
+    configSubmittingRef.current = false;
+    setConfigSubmitting(false);
+  };
+
   const handleConfigSubmit = async () => {
+    if (configSubmittingRef.current) return;
+    configSubmittingRef.current = true;
+    // Following the nsSubmittingRef convention from the nameserver dialog: the spinner on the
+    // OK button does not stop a click fired before React re-renders, so the lock has to be taken
+    // synchronously here, before any await. The write's finally releases it; the paths that never
+    // reach the write release it themselves, and cancelling the flush-disk confirmation releases
+    // it too so the dialog is not left dead.
+    setConfigSubmitting(true);
+    let values: ClusterConfigFormValues;
+    try {
+      values = await configForm.validateFields();
+    } catch {
+      releaseConfigSubmitLock();
+      return;
+    }
+    const request = buildConfigUpdateRequest(values);
+    if (!request) {
+      releaseConfigSubmitLock();
+      return;
+    }
+
+    // The flush disk type is the one knob here that a running Broker ignores until it restarts,
+    // so applying it gets an explicit second confirmation naming the change — a silent success
+    // toast would leave the operator believing the new mode is already in effect.
+    if (flushDiskChanged) {
+      Modal.confirm({
+        title: t('cluster.flushDiskRestartConfirmTitle'),
+        content: t('cluster.flushDiskRestartConfirmContent', {
+          from: initialFlushDisk ?? '-',
+          to: String(values.flushDiskType),
+        }),
+        onOk: () => applyConfigUpdate(request),
+        onCancel: releaseConfigSubmitLock,
+      });
+      return;
+    }
+    await applyConfigUpdate(request);
+  };
+
+  const applyConfigUpdate = async (
+    request: NonNullable<ReturnType<typeof buildConfigUpdateRequest>>,
+  ) => {
     // A write can change only some Brokers. Any preview from before the write,
     // including one still in flight, no longer describes the cluster afterward.
     configPreviewRequest.invalidate();
     setConfigPreview(null);
     setConfigPreviewLoading(false);
-    let values: ClusterConfigFormValues;
-    try {
-      values = await configForm.validateFields();
-    } catch {
-      return;
-    }
-    const request = buildConfigUpdateRequest(values);
-    if (!request) return;
-
     setConfigSubmitting(true);
     try {
       const result = await updateClusterConfig(request);
@@ -787,6 +836,7 @@ const ClusterPage = () => {
         message.success(t('cluster.configUpdated'));
         setConfigModalOpen(false);
         setConfigPreview(null);
+        setInitialFlushDisk(null);
         return;
       }
 
@@ -800,6 +850,7 @@ const ClusterPage = () => {
     } catch {
       message.error(t('cluster.configUpdateFailed', { brokers: '' }));
     } finally {
+      configSubmittingRef.current = false;
       setConfigSubmitting(false);
     }
   };
@@ -1406,6 +1457,7 @@ const ClusterPage = () => {
               configPreviewRequest.invalidate();
               setConfigModalOpen(false);
               setConfigPreview(null);
+              setInitialFlushDisk(null);
             }}
             onOk={() => void handleConfigSubmit()}
             confirmLoading={configSubmitting}
@@ -1416,6 +1468,7 @@ const ClusterPage = () => {
                 size="small"
                 icon={<EyeOutlined />}
                 loading={configPreviewLoading}
+                disabled={configSubmitting}
                 onClick={() => void handleConfigPreview()}
               >
                 {t('cluster.configPreview')}
@@ -1449,6 +1502,14 @@ const ClusterPage = () => {
                   </Form.Item>
                 </Col>
               </Row>
+              {flushDiskChanged && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  style={{ marginBottom: 12 }}
+                  message={t('cluster.flushDiskRestartWarning')}
+                />
+              )}
               <Row gutter={16}>
                 <Col span={12}>
                   <Form.Item label={t('cluster.maxMessageSize')} name="maxMessageSizeMB">
@@ -1785,9 +1846,16 @@ const ClusterPage = () => {
                   okText: t('common.confirm'),
                   cancelText: t('common.cancel'),
                   onOk: async () => {
-                    await restartProxy({ clusterId: record.clusterId, addr: record.addr });
-                    await requestRefresh('operation');
-                    message.success(t('cluster.restartProxySubmitted', { addr: record.addr }));
+                    // antd's confirm wrapper drops a rejected onOk: without this catch a failed
+                    // restart leaves the operator with no outcome at all — no toast, and a dialog
+                    // that resets its spinner as if nothing had been requested.
+                    try {
+                      await restartProxy({ clusterId: record.clusterId, addr: record.addr });
+                      await requestRefresh('operation');
+                      message.success(t('cluster.restartProxySubmitted', { addr: record.addr }));
+                    } catch {
+                      message.error(t('cluster.restartProxyFailed', { addr: record.addr }));
+                    }
                   },
                 });
               }}

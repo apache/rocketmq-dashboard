@@ -20,6 +20,7 @@ Object.defineProperty(window, 'matchMedia', {
 
 const navigateMock = vi.hoisted(() => vi.fn());
 const loginApiMock = vi.hoisted(() => vi.fn());
+const changePasswordMock = vi.hoisted(() => vi.fn());
 const loginStoreMock = vi.hoisted(() => vi.fn());
 
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -27,7 +28,7 @@ vi.mock('react-router-dom', async (importOriginal) => {
   return { ...actual, useNavigate: () => navigateMock };
 });
 
-vi.mock('../../api/auth', () => ({ login: loginApiMock }));
+vi.mock('../../api/auth', () => ({ login: loginApiMock, changePassword: changePasswordMock }));
 
 vi.mock('../../stores/authStore', () => ({
   default: (selector: (state: { login: typeof loginStoreMock }) => unknown) =>
@@ -126,5 +127,35 @@ describe('LoginPage', () => {
     await waitFor(() => expect(screen.getByText('login.usernameRequired')).toBeTruthy());
     expect(screen.getByText('login.passwordRequired')).toBeTruthy();
     expect(loginApiMock).not.toHaveBeenCalled();
+  });
+
+  it('forces a password rotation before entering, then signs in with the new password', async () => {
+    loginApiMock
+      .mockResolvedValueOnce({
+        user: { username: 'alice', userId: 42, admin: false, mustChangePassword: true },
+      })
+      .mockResolvedValueOnce({
+        user: { username: 'alice', userId: 42, admin: false },
+      });
+    changePasswordMock.mockResolvedValue(undefined);
+    renderPage();
+    fillCredentials();
+    fireEvent.click(screen.getByRole('button', { name: 'login.title' }));
+
+    // The rotation form replaces the login form; the session must not be entered yet.
+    const newPasswordInput = await screen.findByPlaceholderText('login.newPasswordPlaceholder');
+    expect(loginStoreMock).not.toHaveBeenCalled();
+    expect(navigateMock).not.toHaveBeenCalled();
+    fireEvent.change(newPasswordInput, { target: { value: 'fresh-secret' } });
+    fireEvent.change(screen.getByPlaceholderText('login.confirmNewPasswordPlaceholder'), {
+      target: { value: 'fresh-secret' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'login.rotationSubmit' }));
+
+    await waitFor(() => expect(changePasswordMock).toHaveBeenCalledWith('secret', 'fresh-secret'));
+    // The rotation revokes the session, so the flow signs in again with the new password.
+    await waitFor(() => expect(loginApiMock).toHaveBeenLastCalledWith('alice', 'fresh-secret'));
+    await waitFor(() => expect(loginStoreMock).toHaveBeenCalledWith('alice', 42, false));
+    expect(navigateMock).toHaveBeenCalledWith('/', { replace: true });
   });
 });

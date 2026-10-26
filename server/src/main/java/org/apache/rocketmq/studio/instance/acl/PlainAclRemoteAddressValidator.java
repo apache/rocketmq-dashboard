@@ -211,7 +211,9 @@ final class PlainAclRemoteAddressValidator {
         try {
             int start = Integer.parseInt(startValue, radix);
             int end = Integer.parseInt(endValue, radix);
-            return start <= end && end <= maximum;
+            // The broker only initializes a range when its upper bound is positive. A zero-only
+            // range can fail matching or widen a trailing wildcard; use a literal zero instead.
+            return start <= end && end > 0 && end <= maximum;
         } catch (NumberFormatException ignored) {
             return false;
         }

@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.ops.ai;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -141,9 +142,43 @@ public class OpenAiCompatibleLlmClient {
     }
 
     public void stream(LlmConfigVO config, String prompt, String modelOverride, Consumer<String> tokenConsumer) {
+        streamConversation(config, List.of(), prompt, modelOverride, tokenConsumer);
+    }
+
+    /** Prior conversational content never acquires the authority of the formatting system message. */
+    public record ChatMessage(String role, String content) {
+        public ChatMessage {
+            if (!("user".equals(role) || "assistant".equals(role)) || content == null) {
+                throw new IllegalArgumentException("History messages require a user/assistant role and content");
+            }
+        }
+    }
+
+    public void streamConversation(LlmConfigVO config, List<ChatMessage> history, String prompt,
+                                   String modelOverride, Consumer<String> tokenConsumer) {
         validate(config);
         AiPayloadGuard.validateOutboundPrompt(prompt, effectiveModel(config, modelOverride));
         Map<String, Object> requestBody = requestBody(config, prompt, modelOverride, true);
+        if (history.size() > 64) {
+            throw new BusinessException(400, "LLM history must not exceed 64 messages");
+        }
+        List<Object> messages = new ArrayList<>();
+        messages.add(Map.of("role", "system", "content", MARKDOWN_SYSTEM_PROMPT));
+        int historyBytes = 0;
+        StringBuilder combined = new StringBuilder(prompt == null ? "" : prompt);
+        for (ChatMessage message : history) {
+            AiPayloadGuard.validateOutboundPrompt(message.content(), effectiveModel(config, modelOverride));
+            historyBytes += message.content().getBytes(StandardCharsets.UTF_8).length;
+            if (historyBytes > AiPayloadGuard.MAX_CONTEXT_BYTES) {
+                throw new BusinessException(400, "LLM history must not exceed "
+                        + AiPayloadGuard.MAX_CONTEXT_BYTES + " UTF-8 bytes");
+            }
+            messages.add(message);
+            combined.append(message.content());
+        }
+        AiPayloadGuard.validateOutboundPrompt(combined.toString(), effectiveModel(config, modelOverride));
+        messages.add(Map.of("role", "user", "content", StringUtils.hasText(prompt) ? prompt.trim() : ""));
+        requestBody.put("messages", messages);
         HttpRequest request = request(config, "text/event-stream", requestBody);
         try {
             HttpResponse<StreamBody> response = httpClient.send(request, streamBodyHandler());
