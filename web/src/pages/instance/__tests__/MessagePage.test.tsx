@@ -867,4 +867,29 @@ describe('Message page query history', () => {
     expect(await screen.findByText('消息体')).toBeInTheDocument();
     expect(screen.getAllByText('5.0 GB').length).toBeGreaterThanOrEqual(2);
   });
+
+  it('renders an unknown message size as unavailable instead of 0 B', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      // Tencent list rows carry the UNKNOWN_SIZE sentinel: the cloud API returns no body
+      // and no size field for them, so "0 B" would read like a measurement.
+      { ...createMessage('MID-UNKNOWN-SIZE'), size: -1 },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-UNKNOWN-SIZE');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    const row = await screen.findByRole('row', { name: /MID-UNKNOWN-SIZE/ });
+    expect(within(row).getByText('不可用')).toBeInTheDocument();
+    expect(within(row).queryByText('-1 B')).toBeNull();
+
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+    expect(await screen.findByText('消息体')).toBeInTheDocument();
+    expect(screen.getAllByText('不可用').length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText('-1 B')).toBeNull();
+  });
 });
