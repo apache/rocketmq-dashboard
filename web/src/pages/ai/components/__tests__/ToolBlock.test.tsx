@@ -132,6 +132,33 @@ describe('ToolBlock', () => {
     expect(screen.queryByTestId('ai-tool-risk')).not.toBeInTheDocument();
   });
 
+  it('rendersTheDestructiveRiskLevelInRedTest', () => {
+    // L3 is the destructive tier of the backend's ToolRiskLevel; rendering it with the L2
+    // (previewable mutation) colour would make the two indistinguishable exactly where an
+    // operator decides whether to trust the call.
+    const block = foldOne(ORPHANED_RESULT);
+
+    render(
+      <LangProvider>
+        <ToolBlock
+          block={block}
+          toolCatalog={[
+            {
+              name: 'rmq.topic.list',
+              description: 'List topics',
+              parameters: {},
+              riskLevel: 'L3',
+            },
+          ]}
+        />
+      </LangProvider>,
+    );
+
+    const riskTag = screen.getByTestId('ai-tool-risk');
+    expect(riskTag).toHaveTextContent('L3');
+    expect(riskTag).toHaveClass('ant-tag-red');
+  });
+
   it('rendersADoneCardWithNullInputForAnOrphanedToolResultTest', () => {
     const block = foldOne(ORPHANED_RESULT);
 

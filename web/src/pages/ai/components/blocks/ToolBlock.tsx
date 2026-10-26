@@ -22,7 +22,7 @@ import { useLang } from '../../../../i18n/LangContext';
 import type { McpTool } from '../../../../api/ai';
 import type { RunStatus } from '../../../../api/aiEvents';
 import type { ToolBlock as ToolBlockData } from '../../render/blocks';
-import { toolDisplayName } from '../../render/blocks';
+import { toolDisplayName, RISK_TAG_COLOR } from '../../render/blocks';
 import { formatBytes } from '../../../../utils/format';
 import ToolOutput from './ToolOutput';
 
@@ -56,9 +56,6 @@ import ToolOutput from './ToolOutput';
  * rate while the NEXT call streams, and `withToolResult` only replaces the block it fills — every
  * finished card keeps its identity and must not reconcile its (up to 32 KiB) `<pre>` again.
  */
-
-/** Risk colour of the tool catalog: L1 reads, L2 previewable changes, L3 destructive changes. */
-const RISK_TAG_COLOR: Record<string, string> = { L1: 'green', L2: 'orange', L3: 'red' };
 
 /** Copied verbatim from the tool playground's result `<pre>` so both surfaces read the same. */
 const usePreStyle = (): CSSProperties => {
