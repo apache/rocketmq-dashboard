@@ -260,6 +260,14 @@ public class ResourceOwnershipGuard {
             throw new IllegalStateException("Instance update must run inside a database transaction");
         }
         lockInstance(existing);
+        // InstanceService saves a complete snapshot, including an omitted remark. A remark
+        // edit committed since that snapshot must not be overwritten by this update. Use a
+        // locking current read so MySQL REPEATABLE READ does not return the earlier snapshot.
+        String currentRemark = jdbc.queryForObject("SELECT remark FROM rmq_instance WHERE id = ? FOR UPDATE",
+                String.class, existing.getId());
+        if (!Objects.equals(existing.getRemark(), currentRemark)) {
+            throw new BusinessException(409, "Instance was changed; please retry the update");
+        }
         if (!Objects.equals(existing.getEndpoint(), updated.getEndpoint())
                 || !Objects.equals(existing.getType(), updated.getType())) {
             lockForInstanceDeletion(existing.getId());
