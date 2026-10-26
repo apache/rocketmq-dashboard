@@ -79,7 +79,7 @@ import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import useAuthStore from '../../stores/authStore';
 import { downloadBlob } from '../../utils/download';
 import { describeThrownMessage } from '../../utils/apiError';
-import { formatBytes, formatTimeMs } from '../../utils/format';
+import { formatBytes, formatOptionalTimeMs, formatTimeMs } from '../../utils/format';
 import {
   readMessageTraceTopic,
   writeMessageTraceTopic,
@@ -96,14 +96,6 @@ import {
 
 const { Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
-
-/**
- * Trace and consumption records report "no time" as 0. formatTimeMs deliberately treats zero
- * as a real timestamp because stored values can legitimately be the epoch, so the optional-time
- * call sites map zero to the placeholder themselves.
- */
-const formatOptionalTimeMs = (value: number | string | null | undefined): string =>
-  value === 0 || value === '0' ? '-' : formatTimeMs(value);
 
 /* ─── Constants ─── */
 
