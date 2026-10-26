@@ -1524,6 +1524,24 @@ const translations: Record<string, Record<Lang, string>> = {
   'sysAlerts.suppressionFilter': { zh: '通知抑制筛选', en: 'Filter by notification suppression' },
   'sysAlerts.allDeliveryStatuses': { zh: '全部投递状态', en: 'All delivery statuses' },
   'sysAlerts.notificationSuppressed': { zh: '通知已抑制', en: 'Notifications suppressed' },
+  'sysAlerts.labelCount': { zh: '标签 {count}', en: '{count} labels' },
+  'sysAlerts.colTitle': { zh: '告警标题', en: 'Alert' },
+  'sysAlerts.level': { zh: '级别', en: 'Level' },
+  'sysAlerts.status': { zh: '状态', en: 'Status' },
+  'sysAlerts.description': { zh: '描述', en: 'Description' },
+  'sysAlerts.labels': { zh: '标签', en: 'Labels' },
+  'sysAlerts.time': { zh: '时间', en: 'Time' },
+  'sysAlerts.batchAck': { zh: '批量确认（{count}）', en: 'Acknowledge {count}' },
+  'sysAlerts.batchHint': {
+    zh: '勾选后可批量确认；展开行查看确认信息、抑制原因、标签与投递/关联明细',
+    en: 'Select rows to acknowledge in batch; expand a row for ack info, suppression reason, labels and delivery/related details',
+  },
+  'sysAlerts.levelCountHint': {
+    zh: '当前页中该级别的告警条数（不是全库总数）',
+    en: 'Alerts of this level on the current page, not the server-wide total',
+  },
+  'queueBrowser.pulledTitle': { zh: '已拉取消息（{count}）', en: 'Pulled messages ({count})' },
+  'queueBrowser.closeEntry': { zh: '移除该条', en: 'Remove this entry' },
   'sysAlerts.notificationNotSuppressed': { zh: '未被抑制', en: 'Not suppressed' },
   'sysAlerts.collectorImplementations': {
     zh: '采集器组件：集群 {cluster}，业务 {business}',
@@ -1900,8 +1918,17 @@ const translations: Record<string, Record<Lang, string>> = {
   'ai.composer.modelLabel': { zh: '模型', en: 'Model' },
   'ai.composer.agentLabel': { zh: 'Agent', en: 'Agent' },
   'ai.composer.contextUsage': {
-    zh: '上下文约 {used} / {total} tokens（{percent}%）',
-    en: 'Context ≈ {used} / {total} tokens ({percent}%)',
+    zh: '上下文约 {used} / {total} tokens（{percent}%），剩余约 {remaining}；{source}',
+    en: 'Context ≈ {used} / {total} tokens ({percent}%), ≈ {remaining} left; {source}',
+  },
+  'ai.composer.contextRemaining': { zh: '剩 {remaining}', en: '{remaining} left' },
+  'ai.composer.contextSourceUsage': {
+    zh: '数字来自模型上报的 usage',
+    en: 'measured from the provider usage',
+  },
+  'ai.composer.contextSourceEstimate': {
+    zh: '按正文估算（模型未上报 usage）',
+    en: 'estimated from the transcript (the engine reported no usage)',
   },
   'ai.providerNotReady': { zh: 'AI 助手未启用', en: 'AI assistant is not enabled' },
   'ai.goToSettings': { zh: '去配置', en: 'Configure' },
@@ -1980,6 +2007,23 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'The tool input is outside the loaded event window',
   },
   'ai.tool.outputPending': { zh: '工具执行中，暂无结果', en: 'The tool is still running' },
+  'ai.tool.elapsedHint': {
+    zh: '本次工具调用的经过时间；重连到一个仍在执行的调用时从重连时刻起算',
+    en: 'Elapsed time of this tool call; counts from the reconnect when rejoining a call already in flight',
+  },
+  'ai.tool.mayTimeout': { zh: '可能超时', en: 'May be timing out' },
+  'ai.tool.outputRaw': { zh: '原文', en: 'Raw text' },
+  'ai.tool.outputStructured': { zh: '结构化视图', en: 'Structured view' },
+  'ai.queue.title': {
+    zh: '排队中 {count} 条（当前回答结束后按顺序发送）',
+    en: '{count} queued (sent in order when the current answer finishes)',
+  },
+  'ai.queue.first': { zh: '下一个发', en: 'Send next' },
+  'ai.queue.edit': { zh: '编辑', en: 'Edit' },
+  'ai.queue.remove': { zh: '删除', en: 'Remove' },
+  'ai.followups.title': { zh: '推荐追问', en: 'Suggested follow-ups' },
+  'ai.minimap.jump': { zh: '跳到第 {n} 条消息', en: 'Jump to message {n}' },
+  'layout.openMenu': { zh: '打开导航', en: 'Open navigation' },
   'ai.notice.warn': { zh: '注意', en: 'Notice' },
 
   // ─── AI page shell ───
@@ -2437,6 +2481,42 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Manage consumer-group subscriptions and progress, {count} groups in total',
   },
   'consumer.totalGroups': { zh: '共 {count} 个 Group', en: '{count} groups in total' },
+  'consumer.health.scoreLabel': { zh: '健康分:', en: 'Health score:' },
+  'consumer.health.scoreHint': {
+    zh: '100 起扣：每个 critical 问题 -25、warning -12，下限 0；扣分项见下方问题清单',
+    en: 'Starts at 100; each critical issue costs 25 and each warning 12, floored at 0. The deductions are the issues listed below',
+  },
+  'consumer.health.knownLagLabel': { zh: '已知堆积:', en: 'Known lag:' },
+  'consumer.health.knownLagHint': {
+    zh: '逐 Queue 位点差中可计算部分之和；不含不可用 Queue，与报告堆积口径不同',
+    en: 'Sum of per-queue lag over the queues whose offsets are computable; excludes unavailable queues, so its caliber differs from the reported lag',
+  },
+  'consumer.health.reportedLagLabel': { zh: '报告堆积:', en: 'Reported lag:' },
+  'consumer.health.reportedLagHint': {
+    zh: '消费组/Provider 上报的组维度总堆积；与已知堆积可能因不可用 Queue 或重试队列而不一致',
+    en: 'Group-level lag reported by the group or provider; may disagree with the known lag when some queues are unavailable or retry queues exist',
+  },
+  'consumer.health.queueProgressLabel': { zh: 'Queue 进度:', en: 'Queue progress:' },
+  'consumer.health.queueProgressValue': {
+    zh: '{queues} 个 Queue / {topics} 个 Topic',
+    en: '{queues} queues / {topics} topics',
+  },
+  'consumer.health.queueProgressHint': {
+    zh: '分子是诊断拿到的队列进度行数（观测到的 Queue 数），分母是订阅 Topic 去重数；不是完成率。核对覆盖是否完整请对照各 Topic 读队列数之和',
+    en: 'Numerator is the number of queue-progress rows observed, denominator the distinct subscribed topic count; it is not a completion ratio. Compare against the sum of read queues per topic to judge completeness',
+  },
+  'consumer.health.queueOffsetLabel': { zh: 'Queue 位点:', en: 'Queue offsets:' },
+  'consumer.health.queueOffsetHint': {
+    zh: '逐 Queue 堆积是否可计算；不可用通常因组离线或云端不提供 per-queue 位点',
+    en: 'Whether per-queue lag is computable; unavailable usually means the group is offline or the cloud exposes no per-queue offsets',
+  },
+  'consumer.health.offsetsOk': { zh: '均可计算', en: 'all computable' },
+  'consumer.health.offsetsUnknown': { zh: '{count} 个不可用', en: '{count} unavailable' },
+  'consumer.health.heartbeatLabel': { zh: '心跳:', en: 'Heartbeat:' },
+  'consumer.health.heartbeatHint': {
+    zh: '超过心跳阈值未上报的客户端数；阈值内显示正常',
+    en: 'Clients whose heartbeat exceeded the stale threshold; 正常 means none did',
+  },
   'consumer.importDone': { zh: '已导入 {created} 个 Group', en: 'Imported {created} groups' },
   'consumer.importDoneSkipped': {
     zh: '已导入 {created} 个 Group，{invalid} 行无效已跳过',
@@ -2889,6 +2969,18 @@ const translations: Record<string, Record<Lang, string>> = {
   'cluster.flushDiskType': { zh: '刷盘方式', en: 'Flush Disk Type' },
   'cluster.syncFlush': { zh: '同步刷盘', en: 'Sync Flush' },
   'cluster.asyncFlush': { zh: '异步刷盘', en: 'Async Flush' },
+  'cluster.flushDiskRestartWarning': {
+    zh: '刷盘类型已修改：该配置需要重启 Broker 后才生效，下发后请安排滚动重启',
+    en: 'Flush disk type changed: it only takes effect after the Broker restarts, so plan a rolling restart after applying',
+  },
+  'cluster.flushDiskRestartConfirmTitle': {
+    zh: '刷盘类型修改需重启生效',
+    en: 'The flush disk change needs a restart',
+  },
+  'cluster.flushDiskRestartConfirmContent': {
+    zh: '本次修改包含 flushDiskType（{from} → {to}）。运行中的 Broker 会忽略该变更直到重启，确认继续下发？',
+    en: 'This update includes flushDiskType ({from} → {to}). A running Broker ignores it until restarted. Apply anyway?',
+  },
   'cluster.autoCreateTopic': { zh: '自动创建 Topic', en: 'Auto Create Topic' },
   'cluster.autoCreateSubGroup': { zh: '自动创建订阅组', en: 'Auto Create Subscription Group' },
   'cluster.maxMessageSize': { zh: '最大消息大小 (MB)', en: 'Max Message Size (MB)' },
