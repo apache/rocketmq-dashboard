@@ -27,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpHeaders;
@@ -34,9 +35,15 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.mock.http.client.MockClientHttpResponse;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestClient;
 
+import java.io.ByteArrayInputStream;
+import java.net.HttpURLConnection;
 import java.net.InetAddress;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Base64;
@@ -50,6 +57,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -57,6 +67,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withException;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 @ExtendWith(MockitoExtension.class)
@@ -604,6 +615,75 @@ class SettingsServiceTest {
 
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getMessage()).contains("Unsupported data source type: grafana-metrics");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"200,false", "200,true", "422,false", "422,true", "500,false"})
+    void connectionShouldBoundSuccessAndErrorBodiesTest(int status, boolean declaredLength) {
+        int limit = 5 * 1024 * 1024;
+        byte[] oversizedJson = (PROMETHEUS_SUCCESS_BODY + " ".repeat(limit + 1))
+                .getBytes(StandardCharsets.UTF_8);
+        ByteArrayInputStream body = new ByteArrayInputStream(oversizedJson);
+        MockClientHttpResponse response = spy(new MockClientHttpResponse(body, HttpStatus.valueOf(status)));
+        response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
+        if (declaredLength) {
+            response.getHeaders().setContentLength(oversizedJson.length);
+        }
+        prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL)).andRespond(request -> response);
+
+        DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
+                .url(PROMETHEUS_BASE_URL).type("Prometheus").build());
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).isEqualTo("Prometheus response body exceeds " + limit + " bytes");
+        assertThat(body.available()).isEqualTo(declaredLength ? oversizedJson.length
+                : oversizedJson.length - limit - 1);
+        verify(response, atLeastOnce()).close();
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {200, 422})
+    void connectionShouldParseBodiesExactlyAtTheLimitTest(int status) {
+        String json = status == 200 ? PROMETHEUS_SUCCESS_BODY
+                : "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid query\"}";
+        String body = json + " ".repeat(5 * 1024 * 1024 - json.length());
+        prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL))
+                .andRespond(withStatus(HttpStatus.valueOf(status)).contentType(MediaType.APPLICATION_JSON).body(body));
+
+        DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
+                .url(PROMETHEUS_BASE_URL).type("Prometheus").build());
+
+        assertThat(result.isSuccess()).isEqualTo(status == 200);
+        assertThat(result.getMessage()).isEqualTo(status == 200 ? "Connection successful"
+                : "Prometheus query failed (bad_data): invalid query");
+    }
+
+    @Test
+    void connectionShouldKeepTheReadTimeoutErrorTest() {
+        prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL))
+                .andRespond(withException(new SocketTimeoutException("timed out")));
+
+        DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
+                .url(PROMETHEUS_BASE_URL).type("Prometheus").build());
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).isEqualTo("Prometheus connection timed out");
+    }
+
+    @Test
+    void dataSourceClientShouldKeepTimeoutsAndRedirectPolicyTest() {
+        RestClient.Builder builder = spy(RestClient.builder());
+        new SettingsService(settingsRepository, builder, new ObjectMapper(), operationAuditService);
+        org.mockito.ArgumentCaptor<ClientHttpRequestFactory> factory =
+                org.mockito.ArgumentCaptor.forClass(ClientHttpRequestFactory.class);
+        verify(builder).requestFactory(factory.capture());
+        HttpURLConnection connection = mock(HttpURLConnection.class);
+
+        ReflectionTestUtils.invokeMethod(factory.getValue(), "prepareConnection", connection, "GET");
+
+        verify(connection).setConnectTimeout(3000);
+        verify(connection).setReadTimeout(5000);
+        verify(connection).setInstanceFollowRedirects(false);
     }
 
     @Test

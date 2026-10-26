@@ -24,6 +24,7 @@ import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.cluster.metrics.MetricsBackendType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.util.BoundedResponseBodyInterceptor;
 import org.apache.rocketmq.studio.common.util.UrlHostGuard;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -68,6 +69,7 @@ public class SettingsService {
             }, // AWS IMDS IPv6: fd00:ec2::254
             new byte[] {100, 100, 100, (byte) 200}); // Alibaba Cloud ECS metadata
     private static final String PROMETHEUS_TEST_QUERY = "up";
+    private static final int MAX_DATA_SOURCE_RESPONSE_BYTES = 5 * 1024 * 1024;
     private static final String AUTH_NONE = "none";
     private static final String AUTH_BASIC = "basic auth";
     private static final String AUTH_BEARER = "bearer token";
@@ -88,7 +90,9 @@ public class SettingsService {
     SettingsService(SettingsRepository settingsRepository, RestClient restClient,
                     ObjectMapper objectMapper, OperationAuditService operationAuditService) {
         this.settingsRepository = settingsRepository;
-        this.restClient = restClient;
+        this.restClient = restClient.mutate()
+                .requestInterceptor(new BoundedResponseBodyInterceptor(MAX_DATA_SOURCE_RESPONSE_BYTES))
+                .build();
         this.objectMapper = objectMapper;
         this.operationAuditService = operationAuditService;
     }
@@ -341,6 +345,8 @@ public class SettingsService {
             return prometheusSuccess(parseJson(body));
         } catch (IllegalArgumentException | URISyntaxException exception) {
             return failed(exception.getMessage());
+        } catch (BoundedResponseBodyInterceptor.ResponseTooLargeException exception) {
+            return failed("Prometheus response body exceeds " + MAX_DATA_SOURCE_RESPONSE_BYTES + " bytes");
         } catch (RestClientResponseException exception) {
             return failed(prometheusErrorMessage(exception));
         } catch (ResourceAccessException exception) {
