@@ -65,11 +65,12 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
 
     @Override
     public List<InstanceVO> search(String keyword) {
+        String literalKeyword = escapeLike(keyword);
         return instanceMapper.selectList(
                 new QueryWrapper<RmqInstance>()
-                        .and(w -> w.like("name", keyword)
-                                .or().like("endpoint", keyword)
-                                .or().like("remark", keyword))
+                        .and(w -> w.like("name", literalKeyword)
+                                .or().like("endpoint", literalKeyword)
+                                .or().like("remark", literalKeyword))
                         .orderByAsc("id")).stream()
                 .map(this::toVO)
                 .toList();
@@ -77,15 +78,20 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
 
     @Override
     public List<InstanceVO> findByTypeAndSearch(InstanceType type, String keyword) {
+        String literalKeyword = escapeLike(keyword);
         return instanceMapper.selectList(
                 new QueryWrapper<RmqInstance>()
                         .eq("type", type.name())
-                        .and(w -> w.like("name", keyword)
-                                .or().like("endpoint", keyword)
-                                .or().like("remark", keyword))
+                        .and(w -> w.like("name", literalKeyword)
+                                .or().like("endpoint", literalKeyword)
+                                .or().like("remark", literalKeyword))
                         .orderByAsc("id")).stream()
                 .map(this::toVO)
                 .toList();
+    }
+
+    private static String escapeLike(String value) {
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     @Override
