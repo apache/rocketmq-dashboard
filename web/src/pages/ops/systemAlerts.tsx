@@ -952,7 +952,7 @@ const SystemAlertsPage = () => {
                     <Tooltip title={t('sysAlerts.levelCountHint')}>
                       <span
                         data-testid={`sys-alert-level-count-${level}`}
-                        style={{ fontSize: 12, fontWeight: 600, color: levelColor }}
+                        style={{ fontSize: 14, fontWeight: 600, color: levelColor }}
                       >
                         {levelCount}
                       </span>

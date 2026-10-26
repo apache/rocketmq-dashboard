@@ -144,7 +144,7 @@ public class AiFollowupService {
         if (!StringUtils.hasText(question) || !StringUtils.hasText(answer)) {
             return List.of();
         }
-        String prompt = TEMPLATE.formatted(question.trim(), abbreviate(answer.trim()));
+        String prompt = TEMPLATE.formatted(abbreviate(question.trim()), abbreviate(answer.trim()));
         StringBuilder accumulated = new StringBuilder();
         try {
             if (isHttpEngine(conversation.getEngine())) {

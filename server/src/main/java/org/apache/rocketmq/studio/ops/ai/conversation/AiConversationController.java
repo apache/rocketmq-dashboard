@@ -58,7 +58,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.util.List;
 
 /**
- * The conversation REST surface: eleven endpoints, nine of them the usual {@code Result<T>} JSON and
+ * The conversation REST surface: thirteen endpoints, eleven of them the usual {@code Result<T>} JSON and
  * two of them SSE.
  *
  * <table border="1">
