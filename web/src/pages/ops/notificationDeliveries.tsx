@@ -216,10 +216,18 @@ const NotificationDeliveriesPage = () => {
       dataIndex: 'alertTitle',
       // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
       minWidth: 300,
+      // One line per row (project row-density rule): the alert id and transition share the
+      // title's line as a bounded secondary segment instead of stacking a second line.
       render: (title, record) => (
-        <Flex vertical gap={2}>
-          <Typography.Text ellipsis={{ tooltip: title }}>{title}</Typography.Text>
-          <Typography.Text type="secondary">
+        <Flex align="center" gap={6} style={{ minWidth: 0 }}>
+          <Typography.Text ellipsis={{ tooltip: title }} style={{ flex: '1 1 auto', minWidth: 0 }}>
+            {title}
+          </Typography.Text>
+          <Typography.Text
+            type="secondary"
+            ellipsis={{ tooltip: `#${record.alertId} · ${record.transition ?? '-'}` }}
+            style={{ flex: '0 1 150px', minWidth: 0 }}
+          >
             #{record.alertId} · {record.transition ?? '-'}
           </Typography.Text>
         </Flex>
@@ -396,6 +404,7 @@ const NotificationDeliveriesPage = () => {
           )}
           <Table
             rowKey="id"
+            size="small"
             columns={columns}
             dataSource={items}
             loading={loading}

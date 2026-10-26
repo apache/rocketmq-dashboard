@@ -582,6 +582,75 @@ class RocketMQClusterProviderTest {
         verify(admin, never()).fetchBrokerRuntimeStats(anyString());
     }
 
+    @Test
+    void scopedProxyDiscoveryAggregatesOnlySelectedClusterBrokersTest() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = scopedProvider(admin, "DefaultCluster");
+        ClusterInfo topology = sharedTopology();
+        topology.getClusterAddrTable().put("DefaultCluster", Set.of("broker-a", "broker-c"));
+        topology.getBrokerAddrTable().put("broker-c", new BrokerData("DefaultCluster", "broker-c",
+                new HashMap<>(Map.of(0L, "10.0.0.13:10911"))));
+        when(admin.examineBrokerClusterInfo()).thenReturn(topology);
+        when(admin.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic", "10.0.0.11:10911"))
+                .thenReturn(proxyHeartbeats("10.0.3.5:40001", "10.0.3.6:40002"));
+        when(admin.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic", "10.0.0.13:10911"))
+                .thenReturn(proxyHeartbeats("10.0.3.5:40003", "10.0.3.7:40004"));
+
+        assertThat(provider.discoverProxies("selected"))
+                .extracting(proxy -> proxy.getAddr())
+                .containsExactly("10.0.3.5:8080", "10.0.3.6:8080", "10.0.3.7:8080");
+        verify(admin).examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic", "10.0.0.11:10911");
+        verify(admin).examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic", "10.0.0.13:10911");
+        verify(admin, never()).examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic", "10.0.0.12:10911");
+        verify(admin, never()).examineConsumerConnectionInfo(anyString());
+    }
+
+    @Test
+    void scopedProxyDiscoveryDoesNotFallBackWhenClusterIsAbsentTest() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = scopedProvider(admin, "MissingCluster");
+        when(admin.examineBrokerClusterInfo()).thenReturn(sharedTopology());
+
+        assertThat(provider.discoverProxies("selected")).isEmpty();
+
+        verify(admin, never()).examineConsumerConnectionInfo(anyString());
+        verify(admin, never()).examineConsumerConnectionInfo(anyString(), anyString());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"topology", "brokers", "clusters", "membership"})
+    void scopedProxyDiscoveryTreatsUnavailableMembershipAsEmptyTest(String unavailable) throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = scopedProvider(admin, "DefaultCluster");
+        ClusterInfo topology = sharedTopology();
+        switch (unavailable) {
+            case "topology" -> topology = null;
+            case "brokers" -> topology.setBrokerAddrTable(null);
+            case "clusters" -> topology.setClusterAddrTable(null);
+            case "membership" -> topology.getClusterAddrTable().put("DefaultCluster", null);
+            default -> throw new IllegalArgumentException(unavailable);
+        }
+        when(admin.examineBrokerClusterInfo()).thenReturn(topology);
+
+        // discoverClustersAt answers a topology it cannot read with an empty list, not an error;
+        // the scoped lookup keeps that caliber so one missing membership cannot fail the page.
+        assertThat(provider.discoverProxies("selected")).isEmpty();
+        verify(admin, never()).examineConsumerConnectionInfo(anyString());
+        verify(admin, never()).examineConsumerConnectionInfo(anyString(), anyString());
+    }
+
+    private ConsumerConnection proxyHeartbeats(String... clientAddresses) {
+        LinkedHashSet<Connection> connections = new LinkedHashSet<>();
+        for (String clientAddress : clientAddresses) {
+            Connection connection = new Connection();
+            connection.setClientAddr(clientAddress);
+            connections.add(connection);
+        }
+        ConsumerConnection result = new ConsumerConnection();
+        result.setConnectionSet(connections);
+        return result;
+    }
+
     private RocketMQClusterProvider scopedProvider(DefaultMQAdminExt admin, String cluster) {
         RuntimeAdminClientResolver runtime = mock(RuntimeAdminClientResolver.class);
         org.mockito.Mockito.lenient().when(runtime.resolveEndpoint("selected")).thenReturn("10.0.0.1:9876");

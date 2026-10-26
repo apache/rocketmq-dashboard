@@ -713,39 +713,21 @@ class MetadataServiceTest {
     }
 
     @Test
-    void crossInstanceWritesStopBeforeProviderTest() {
-        when(ownershipGuard.check(any(), any(), org.mockito.ArgumentMatchers.anyBoolean()))
+    void crossInstanceDeletesAndMessageOpsStopBeforeProviderTest() {
+        when(ownershipGuard.checkOwnerInDomain(any(), any(), org.mockito.ArgumentMatchers.anyBoolean()))
                 .thenThrow(new BusinessException(409, "Resource belongs to another instance"));
-        TopicVO topic = topic("orders", null, TopicType.NORMAL);
-        topic.setInstanceId("instance-a");
         ConsumerGroupVO group = new ConsumerGroupVO();
         group.setName("buyers");
         group.setInstanceId("instance-a");
-        assertCode(() -> metadataService.createTopic(topic), 409);
-        assertCode(() -> metadataService.updateTopic(topic), 409);
+        // Registration writes resolve ownership inside the provider slot reservation instead,
+        // so only the delete and message paths pre-check here.
         assertCode(() -> metadataService.deleteTopic("instance-a", "orders"), 409);
-        assertCode(() -> metadataService.createConsumerGroup(group), 409);
-        assertCode(() -> metadataService.updateConsumerGroup(group), 409);
         assertCode(() -> metadataService.deleteConsumerGroup("instance-a", "buyers"), 409);
         assertCode(() -> metadataService.resetOffset("instance-a", "buyers", 1L, "orders"), 409);
         assertCode(() -> metadataService.skipAccumulated("instance-a", "buyers", "orders"), 409);
         assertCode(() -> metadataService.redeliverMessage("instance-a", "buyers", "orders", "msg", null), 409);
         assertCode(() -> metadataService.sendMessage(SendMessageDTO.builder()
                 .instanceId("instance-a").topic("orders").body("x").build()), 409);
-        var topics = metadataService.importTopics("instance-a", List.of(topicImportRequest("orders", null)));
-        assertThat(topics.getFailed()).isEqualTo(1);
-        assertThat(topics.getFailures()).singleElement().satisfies(failure -> {
-            assertThat(failure.getName()).isEqualTo("orders");
-            assertThat(failure.getIndex()).isZero();
-            assertThat(failure.getMessage()).isEqualTo("Resource belongs to another instance");
-        });
-        var groups = metadataService.importConsumerGroups("instance-a", List.of(importRequest("buyers", null)));
-        assertThat(groups.getFailed()).isEqualTo(1);
-        assertThat(groups.getFailures()).singleElement().satisfies(failure -> {
-            assertThat(failure.getName()).isEqualTo("buyers");
-            assertThat(failure.getIndex()).isZero();
-            assertThat(failure.getMessage()).isEqualTo("Resource belongs to another instance");
-        });
         verifyNoInteractions(apacheProvider, cloudProvider, adminClient, runtimeAdminClientResolver, messageService);
     }
 
@@ -1258,7 +1240,7 @@ class MetadataServiceTest {
     @Test
     void previewResetOffsetShouldRejectForeignGroupBeforeProviderAccess() {
         doThrow(new BusinessException(409, "Resource belongs to another instance"))
-                .when(ownershipGuard).check(any(), eq(new ResourceOwnershipGuard.Resource(
+                .when(ownershipGuard).checkOwnerInDomain(any(), eq(new ResourceOwnershipGuard.Resource(
                         ResourceOwnershipGuard.Kind.GROUP, "cg-orders")), eq(true));
 
         assertThatThrownBy(() -> metadataService.previewResetOffset(
@@ -1271,10 +1253,10 @@ class MetadataServiceTest {
 
     @Test
     void previewResetOffsetShouldRejectForeignTopicBeforeProviderAccess() {
-        when(ownershipGuard.check(any(), eq(new ResourceOwnershipGuard.Resource(
+        when(ownershipGuard.checkOwnerInDomain(any(), eq(new ResourceOwnershipGuard.Resource(
                 ResourceOwnershipGuard.Kind.GROUP, "cg-orders")), eq(true))).thenReturn(null);
         doThrow(new BusinessException(409, "Resource belongs to another instance"))
-                .when(ownershipGuard).check(any(), eq(new ResourceOwnershipGuard.Resource(
+                .when(ownershipGuard).checkOwnerInDomain(any(), eq(new ResourceOwnershipGuard.Resource(
                         ResourceOwnershipGuard.Kind.TOPIC, "orders")), eq(true));
 
         assertThatThrownBy(() -> metadataService.previewResetOffset(

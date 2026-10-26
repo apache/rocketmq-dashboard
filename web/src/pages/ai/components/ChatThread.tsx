@@ -16,7 +16,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Button, Flex, theme } from 'antd';
+import { Button, Flex, Tag, Tooltip, theme } from 'antd';
 import { ArrowDown } from '@phosphor-icons/react';
 import { useLang } from '../../../i18n/LangContext';
 import type { McpTool } from '../../../api/ai';
@@ -46,6 +46,20 @@ import BubbleList from './BubbleList';
 
 /** Distance from the bottom that still counts as "reading the latest". */
 const AT_BOTTOM_THRESHOLD_PX = 40;
+
+/** How long a jumped-to bubble stays outlined, so the eye lands on the right row. */
+const HIGHLIGHT_MS = 1200;
+
+/** Fewer rows than this and a minimap is noise rather than navigation. */
+const MINIMAP_MIN_BUBBLES = 4;
+
+/** The first answer text of a bubble, capped: a minimap tooltip is a reminder, not a re-read. */
+function previewOf(bubble: Bubble): string {
+  for (const block of bubble.blocks) {
+    if (block.kind === 'text') return block.text.slice(0, 60);
+  }
+  return '';
+}
 
 export interface ChatThreadProps {
   bubbles: Bubble[];
@@ -77,6 +91,13 @@ export interface ChatThreadProps {
   /** Earlier events exist outside the loaded window (`useConversationTimeline().hasMore`). */
   hasMore?: boolean;
   onLoadMore?: () => void;
+  /**
+   * Follow-up questions for the latest answer, rendered as one-click chips at the end of the
+   * transcript. Clicking one is an ordinary new turn, so it goes through the same admission and
+   * permission path a typed message does.
+   */
+  followups?: string[];
+  onFollowup?: (text: string) => void;
   /** Change this to reset the scroll position and the unread badge, e.g. the conversation id. */
   resetKey?: string | number | null;
 }
@@ -94,6 +115,8 @@ const ChatThread = ({
   footer,
   hasMore = false,
   onLoadMore,
+  followups = [],
+  onFollowup,
   resetKey = null,
 }: ChatThreadProps) => {
   const { t } = useLang();
@@ -107,6 +130,8 @@ const ChatThread = ({
   const positionedRef = useRef(false);
   const [atBottom, setAtBottom] = useState(true);
   const [unread, setUnread] = useState(0);
+  const [activeBubble, setActiveBubble] = useState(0);
+  const [highlighted, setHighlighted] = useState<number | null>(null);
   const prevBubbleCountRef = useRef(bubbles.length);
 
   const bubbleCount = bubbles.length + (liveBlocks && liveBlocks.length > 0 ? 1 : 0);
@@ -130,6 +155,26 @@ const ChatThread = ({
     atBottomRef.current = bottom;
     setAtBottom(bottom);
     if (bottom) setUnread(0);
+    // The minimap's reading line: the last bubble whose top has passed the viewport's upper edge.
+    const nodes = container.querySelectorAll<HTMLElement>('[data-bubble-index]');
+    if (nodes.length === 0) return;
+    const containerTop = container.getBoundingClientRect().top;
+    let active = 0;
+    nodes.forEach((node, index) => {
+      if (node.getBoundingClientRect().top - containerTop < 80) active = index;
+    });
+    setActiveBubble(active);
+  }, []);
+
+  const jumpToBubble = useCallback((index: number) => {
+    const node = containerRef.current?.querySelector<HTMLElement>(`[data-bubble-index="${index}"]`);
+    if (!node) return;
+    node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setHighlighted(index);
+    window.setTimeout(
+      () => setHighlighted((current) => (current === index ? null : current)),
+      HIGHLIGHT_MS,
+    );
   }, []);
 
   // Switching conversation: the new transcript starts at its tail, and the previous conversation's
@@ -140,6 +185,8 @@ const ChatThread = ({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setAtBottom(true);
     setUnread(0);
+    setActiveBubble(0);
+    setHighlighted(null);
     followToBottom('auto');
   }, [followToBottom, resetKey]);
 
@@ -202,11 +249,89 @@ const ChatThread = ({
             model={model}
             empty={empty}
           />
+          {followups.length > 0 && onFollowup && (
+            <Flex
+              gap={8}
+              wrap="wrap"
+              align="center"
+              data-testid="ai-followups"
+              style={{ marginTop: 4, marginBottom: 12 }}
+            >
+              <span style={{ fontSize: 14, color: token.colorTextTertiary }}>
+                {t('ai.followups.title')}
+              </span>
+              {followups.map((item) => (
+                <Tag
+                  key={item}
+                  data-testid="ai-followup-chip"
+                  onClick={() => onFollowup(item)}
+                  style={{
+                    cursor: 'pointer',
+                    borderRadius: 999,
+                    padding: '2px 12px',
+                    fontSize: 14,
+                    marginInlineEnd: 0,
+                    userSelect: 'none',
+                    color: token.colorPrimary,
+                    borderColor: token.colorPrimaryBorder,
+                    background: token.colorPrimaryBg,
+                  }}
+                >
+                  {item}
+                </Tag>
+              ))}
+            </Flex>
+          )}
           <div ref={sentinelRef} />
           <div style={{ flex: 1 }} />
           {footer}
         </div>
       </div>
+
+      {/* The minimap: one tick per transcript row on the left rail, the reading position filled,
+          hover for a preview, click to jump. It lives OUTSIDE the scroll container so scrolling
+          never moves it, and only appears once there is something to navigate. */}
+      {bubbles.length >= MINIMAP_MIN_BUBBLES && (
+        <div
+          data-testid="ai-minimap"
+          style={{
+            position: 'absolute',
+            left: 6,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+            padding: '6px 2px',
+            zIndex: 2,
+          }}
+        >
+          {bubbles.map((bubble, index) => (
+            <Tooltip key={`minimap-${index}`} title={previewOf(bubble)} placement="right">
+              <button
+                type="button"
+                data-testid="ai-minimap-tick"
+                data-active={index === activeBubble || undefined}
+                aria-label={t('ai.minimap.jump', { n: index + 1 })}
+                onClick={() => jumpToBubble(index)}
+                style={{
+                  width: 10,
+                  height: index === activeBubble ? 12 : 6,
+                  borderRadius: 2,
+                  border: 0,
+                  padding: 0,
+                  cursor: 'pointer',
+                  background:
+                    highlighted === index || index === activeBubble
+                      ? token.colorPrimary
+                      : token.colorFillSecondary,
+                  transition: 'all 0.2s',
+                }}
+              />
+            </Tooltip>
+          ))}
+        </div>
+      )}
 
       {!atBottom && (
         <button
