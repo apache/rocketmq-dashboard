@@ -70,7 +70,8 @@ class AlertServiceTest {
     @org.junit.jupiter.api.BeforeEach
     void setUpTest() {
         alertService = new AlertService(alertRepository, alertStateRepository, new AlertRuleAssetService(),
-                operationAuditService, new MetricProfileService(new PrometheusProperties()));
+                operationAuditService, new MetricProfileService(new PrometheusProperties()),
+                org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class));
     }
 
     @Test
@@ -566,7 +567,8 @@ class AlertServiceTest {
         PrometheusProperties properties = new PrometheusProperties();
         properties.setProfile(profileId);
         return new AlertService(alertRepository, alertStateRepository, new AlertRuleAssetService(),
-                operationAuditService, new MetricProfileService(properties));
+                operationAuditService, new MetricProfileService(properties),
+                org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class));
     }
 
     private MetricProfileVO.MetricMappingVO activeLagMapping(String profileId) {
