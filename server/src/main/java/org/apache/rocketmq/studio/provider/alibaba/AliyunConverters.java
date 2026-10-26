@@ -46,6 +46,7 @@ import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
 import org.apache.rocketmq.studio.provider.CloudInstanceOptionVO;
 import org.apache.rocketmq.studio.provider.CloudRegionVO;
+import org.apache.rocketmq.studio.provider.apache.ConsumerLagResolver;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
@@ -181,6 +182,12 @@ final class AliyunConverters {
         // consumer groups are push consumers. Read paths (web detail, AI rmq.group.list) require
         // a non-null subscriptionMode, mirroring the Apache provider invariant.
         vo.setSubscriptionMode(SubscriptionMode.Push);
+        // ListConsumerGroups carries no lag or delay fields, so the VO primitives would default
+        // to 0 and render a measured "0 backlog / 0s delay" for every group. Report the -1
+        // unknown sentinel, the same one the Apache provider documents in ConsumerLagResolver;
+        // the real backlog stays reachable through getGroupProgress.
+        vo.setTotalLag(ConsumerLagResolver.UNKNOWN);
+        vo.setDelaySeconds((int) ConsumerLagResolver.UNKNOWN);
         if (data.getTopicName() != null && !data.getTopicName().isBlank()) {
             vo.setSubscribedTopics(List.of(data.getTopicName()));
         }
