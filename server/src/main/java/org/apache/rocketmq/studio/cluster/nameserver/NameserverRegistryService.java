@@ -126,6 +126,26 @@ public class NameserverRegistryService {
         return new BusinessException(409, "NameServer registry name already exists: " + name);
     }
 
+    public NameserverRegistryVO requireExisting(long id) {
+        RmqNameserver entity = nameserverMapper.selectById(id);
+        if (entity == null) {
+            throw new BusinessException(404, "NameServer registry entry not found: " + id);
+        }
+        return toVO(entity);
+    }
+
+    public String addressOf(long id) {
+        return requireExisting(id).getNamesrvAddr();
+    }
+
+    public String nameOf(Long id) {
+        if (id == null) {
+            return null;
+        }
+        RmqNameserver entity = nameserverMapper.selectById(id);
+        return entity == null ? null : entity.getName();
+    }
+
     public void delete(Long id) {
         if (nameserverMapper.selectById(id) == null) {
             throw new BusinessException(404, "NameServer registry entry not found: " + id);
