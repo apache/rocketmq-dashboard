@@ -536,4 +536,24 @@ describe('CloudCredentialTab', () => {
     expect(await screen.findByText('导出云凭据失败，请稍后重试')).toBeInTheDocument();
     expect(downloadBlob).not.toHaveBeenCalled();
   });
+
+  it('surfaces the server reason when a credential export is refused', async () => {
+    vi.mocked(exportCloudCredentials).mockRejectedValueOnce({
+      response: {
+        data: {
+          code: 400,
+          message: 'Cloud credential export exceeds the maximum of 500 records; narrow the filters',
+        },
+      },
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderTab();
+    await waitFor(() => expect(listCloudCredentials).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+
+    expect(await screen.findByText(/narrow the filters/)).toBeInTheDocument();
+    expect(screen.queryByText('导出云凭据失败，请稍后重试')).not.toBeInTheDocument();
+    expect(downloadBlob).not.toHaveBeenCalled();
+  });
 });

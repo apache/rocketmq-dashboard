@@ -370,7 +370,7 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
         var instance = ownershipGuard.requireInstance(instanceId);
         String topicPattern = ResourceOwnershipGuard.requireText(rawTopicPattern, "topicPattern");
         var resource = ownershipGuard.topicResource(topicPattern);
-        ownershipGuard.check(instance, resource, true);
+        ownershipGuard.checkSlot(instance, resource, null, true);
         ownershipGuard.requireSupportedProvider(instance);
         if (resource.kind() != ResourceOwnershipGuard.Kind.TOPIC) {
             throw new BusinessException(409, "TTL can only be updated for a registered Lite parent topic");
@@ -380,7 +380,7 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
         }
         long minutes = Math.min(Math.max(Math.round(ttlMillis / 60000.0), 1), MAX_LITE_TTL_MINUTES);
         ownershipGuard.withOwned(instance, List.of(resource), () -> runtimeAdminClientResolver.execute(instance, admin -> {
-            var owner = ownershipGuard.check(instance, resource, true);
+            var owner = ownershipGuard.checkSlot(instance, resource, null, true);
             var target = ApacheWriteTargetResolver.resolve(admin, instance, owner.clusterId());
             // Read every master's config before writing any of them: a master that cannot be
             // examined must fail the request up front instead of being silently skipped, which
@@ -396,7 +396,11 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
             if (pending.isEmpty()) {
                 throw new BusinessException(404, "Lite parent topic not found: " + topicPattern);
             }
-            for (Map.Entry<String, TopicConfig> entry : pending.entrySet()) {
+            List<String> masters = new ArrayList<>(pending.keySet());
+            List<String> updatedMasters = new ArrayList<>();
+            for (int index = 0; index < masters.size(); index++) {
+                String master = masters.get(index);
+                TopicConfig config = pending.get(master);
                 // Attributes read back from the broker use bare keys ("lite.topic.expiration"),
                 // while the update protocol only accepts change entries ("+key=value"); a bare
                 // key is rejected with "add/alter attribute format is wrong". The broker merges
@@ -405,13 +409,49 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
                 // Only the TTL is altered.
                 Map<String, String> change = new HashMap<>();
                 change.put("+lite.topic.expiration", String.valueOf(minutes));
-                entry.getValue().setAttributes(change);
-                admin.createAndUpdateTopicConfig(entry.getKey(), entry.getValue());
+                config.setAttributes(change);
+                try {
+                    admin.createAndUpdateTopicConfig(master, config);
+                } catch (Exception failure) {
+                    restoreInterrupt(failure);
+                    if (updatedMasters.isEmpty()) {
+                        // No master was touched yet, so the cluster still holds the previous
+                        // expiration and the caller keeps the plain write error.
+                        throw failure;
+                    }
+                    // The masters listed above already store the new expiration while this one
+                    // does not: report that split - and the way out of it - instead of a bare
+                    // write error that hides which masters the request already changed.
+                    throw partialTtlUpdate(topicPattern, minutes, updatedMasters, master,
+                            masters.subList(index + 1, masters.size()), failure);
+                }
+                updatedMasters.add(master);
             }
             log.info("Extended LiteTopic TTL to {}ms ({} min) for parent topic {} on {} broker(s)",
                     ttlMillis, minutes, topicPattern, pending.size());
             return null;
         }));
+    }
+
+    /**
+     * Reports a TTL write phase that stopped after at least one master was rewritten: the caller
+     * needs to know which masters already store the new expiration, which one failed and which ones
+     * were not attempted. The extension is idempotent, so re-running it is the recovery path the
+     * message names.
+     */
+    private static BusinessException partialTtlUpdate(String topicPattern, long minutes,
+                                                      List<String> updatedMasters, String failedMaster,
+                                                      List<String> notUpdatedMasters,
+                                                      Exception failure) {
+        String untouched = notUpdatedMasters.isEmpty()
+                ? "every other master was already updated"
+                : "not updated yet: " + String.join(", ", notUpdatedMasters);
+        return new BusinessException(502, "LiteTopic TTL for " + topicPattern
+                + " is only partially applied: " + minutes + " minute(s) reached "
+                + String.join(", ", updatedMasters) + " before " + failedMaster + " failed ("
+                + failure.getMessage() + "); " + untouched
+                + ". Re-run the same TTL extension for " + topicPattern
+                + " to apply it to every master; the write is idempotent.");
     }
 
     /**

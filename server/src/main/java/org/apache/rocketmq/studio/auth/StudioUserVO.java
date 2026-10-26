@@ -29,6 +29,8 @@ public class StudioUserVO {
     private String username;
     private boolean admin;
     private boolean enabled;
+    /** The account's password awaits rotation by its owner (set by creation or admin reset). */
+    private boolean passwordMustChange;
     private int activeSessionCount;
     private LocalDateTime lastSessionSeenAt;
     private LocalDateTime nearestSessionExpiresAt;
@@ -46,6 +48,7 @@ public class StudioUserVO {
                 .username(user.getUsername())
                 .admin(Boolean.TRUE.equals(user.getAdmin()))
                 .enabled(Boolean.TRUE.equals(user.getEnabled()))
+                .passwordMustChange(Boolean.TRUE.equals(user.getPasswordMustChange()))
                 .activeSessionCount(sessionSummary == null ? 0 : sessionSummary.getActiveSessionCount())
                 .lastSessionSeenAt(sessionSummary == null ? null : sessionSummary.getLastSessionSeenAt())
                 .nearestSessionExpiresAt(sessionSummary == null

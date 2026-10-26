@@ -333,7 +333,7 @@ public class AclService {
         }
         log.info("Creating/updating plain access config accessKey={}", config.getAccessKey());
         PlainAccessConfigVO saved = aclRepository.createAndUpdatePlainAccessConfig(config);
-        String auditDetail = "admin=" + saved.isAdmin()
+        String auditDetail = "admin=" + Boolean.TRUE.equals(saved.getAdmin())
                 + ", whiteRemoteAddressConfigured="
                 + StringUtils.hasText(saved.getWhiteRemoteAddress());
         recordAudit("UPSERT_PLAIN_ACCESS_CONFIG", "ACL_USER", saved.getAccessKey(), null,
@@ -437,6 +437,16 @@ public class AclService {
                 continue;
             }
             String resource = brokerResource(rule);
+            if (resource == null) {
+                // A rule without a resource type does not say whether its resource names a topic
+                // or a group. Pushing it as the ANY resource would widen a named grant to the
+                // whole cluster, so it is skipped with a reason like every other rule the broker
+                // model cannot express.
+                skipped.add(rule.getResource() + ": resource type "
+                        + (rule.getResourceType() == null ? "" : rule.getResourceType())
+                        + " has no broker ACL equivalent");
+                continue;
+            }
             entries.add(AclInfo.PolicyEntryInfo.of(resource, actions,
                     splitWhiteList(user.getWhiteRemoteAddress()),
                     (rule.getDecision() == null ? "" : rule.getDecision()).toUpperCase(Locale.ROOT)));
@@ -507,7 +517,9 @@ public class AclService {
     /**
      * Broker ACL 2.0 resources are typed strings ("Topic:orders", "Group:cg"); a bare name parses
      * to a null resource and the broker rejects the entry with CODE 16. Cluster-scoped rules map to
-     * the ANY resource, which the broker stores as "*".
+     * the ANY resource, which the broker stores as "*". A rule with no resource type (or one the
+     * broker model has no equivalent for) returns {@code null}: its resource name cannot be typed,
+     * and pushing it as ANY would widen a named grant to the whole cluster.
      */
     private String brokerResource(AclRuleVO rule) {
         String type = rule.getResourceType() == null ? "" : rule.getResourceType();
@@ -517,7 +529,10 @@ public class AclService {
         if ("Group".equalsIgnoreCase(type)) {
             return "Group:" + rule.getResource();
         }
-        return "*";
+        if ("Cluster".equalsIgnoreCase(type)) {
+            return "*";
+        }
+        return null;
     }
 
     /** ALL expands to both message directions; anything else the broker cannot act on is dropped. */

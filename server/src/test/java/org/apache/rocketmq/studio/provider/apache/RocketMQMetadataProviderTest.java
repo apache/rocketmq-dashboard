@@ -269,6 +269,28 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void listConsumerGroupsPageShouldFilterTheSubscriptionModeTheWayItIsDisplayedTest() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        when(groupMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
+                .thenReturn(new Page<>(1, 20, 0));
+        RocketMQMetadataProvider provider = newProvider();
+
+        provider.listConsumerGroupsPage("instance-a", null, null, "Pop", 1, 20);
+        provider.listConsumerGroupsPage("instance-a", null, null, "Push", 1, 20);
+
+        org.mockito.ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor =
+                org.mockito.ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(groupMapper, times(2)).selectPage(any(Page.class), captor.capture());
+        // Pop is a stored value, so it stays an equality. Push is what the read path shows for
+        // every row that is not Pop — a null, a blank, or a legacy "CLUSTERING" — so its filter
+        // has to match that set; message_model = 'Push' would hide those rows while the list
+        // still labels them Push.
+        assertThat(captor.getAllValues().get(0).getSqlSegment()).contains("message_model =");
+        assertThat(captor.getAllValues().get(1).getSqlSegment())
+                .contains("message_model IS NULL", "message_model <>");
+    }
+
+    @Test
     void getTopicRoutesShouldUseSelectedInstanceRuntimeClient() {
         List<BrokerRouteVO> routes = List.of(BrokerRouteVO.builder().brokerName("broker-a").build());
         when(runtimeAdminClientResolver.execute(eq("instance-a"), any())).thenReturn(routes);
@@ -843,11 +865,13 @@ class RocketMQMetadataProviderTest {
         try {
             ConsumerGroupVO returned = provider.listConsumerGroups("instance-a", null, null).get(0);
             assertThat(connectionStarted.getCount()).isZero();
-            assertThat(returned.getOnlineInstances()).isZero();
+            // A cancelled enrichment is an unread inventory, not a measured zero: the group must
+            // carry the documented -1 sentinel instead of claiming no clients are online.
+            assertThat(returned.getOnlineInstances()).isEqualTo(-1);
 
             releaseConnection.countDown();
             assertThat(statsRead.await(5, TimeUnit.SECONDS)).isTrue();
-            assertThat(returned.getOnlineInstances()).isZero();
+            assertThat(returned.getOnlineInstances()).isEqualTo(-1);
             assertThat(returned.getInstances()).isEmpty();
         } finally {
             releaseConnection.countDown();
