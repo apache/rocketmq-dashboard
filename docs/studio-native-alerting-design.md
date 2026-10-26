@@ -326,6 +326,13 @@ An event row displays its domain badge, current value, threshold, resource ident
 
 ## Migration
 
+The rule editor displays native disk, heap, and send-queue usage thresholds in percentage
+points. Legacy rules with no `thresholdUnit` store a fraction (for example `0.29` for 29%).
+Editing or duplicating such a rule converts the value and unit together when the editor opens,
+before metric-capability discovery. A failed or delayed discovery request cannot change the
+threshold used for saving or testing, or overwrite a value the operator has edited. Rules
+already carrying a unit retain their existing value.
+
 1. Add new nullable fields and backfill existing rule records to `BUSINESS` or `CLUSTER` where the metric is unambiguous.
 2. Retain rules that cannot be structurally mapped as export-only Prometheus compatibility rules.
 3. Migrate existing `rmq_system_alert` rows into `rmq_alert_event` as historical events without inventing a firing state.

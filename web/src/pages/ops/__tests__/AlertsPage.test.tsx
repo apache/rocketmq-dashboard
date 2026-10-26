@@ -403,6 +403,155 @@ describe('AlertsPage', () => {
     );
   });
 
+  it.each([
+    ['edit', 'pending', 'broker.disk.usage_ratio'],
+    ['edit', 'failed', 'broker.jvm.heap.usage_ratio'],
+    ['duplicate', 'pending', 'broker.send_queue.usage_ratio'],
+    ['duplicate', 'failed', 'broker.disk.usage_ratio'],
+  ] as const)(
+    'preservesLegacyRatioThresholdWith%sAnd%sDiscoveryFor%sTest',
+    async (mode, discovery, metric) => {
+      const legacyRule = {
+        ...cloneRule(alertRules[0]),
+        instanceId: 'local',
+        metric,
+        threshold: 0.29,
+        thresholdUnit: null,
+      };
+      vi.mocked(listAlertRulesPage).mockResolvedValue(pageResult([legacyRule]));
+      let rejectDiscovery!: (error: Error) => void;
+      vi.mocked(listNativeAlertMetrics).mockReturnValue(
+        new Promise<NativeAlertMetricInfo[]>((_resolve, reject) => {
+          rejectDiscovery = reject;
+        }),
+      );
+      vi.mocked(updateAlertRule).mockImplementation(async (data) => ({ ...legacyRule, ...data }));
+      vi.mocked(createAlertRule).mockImplementation(async (data) => ({ ...legacyRule, ...data }));
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByText(legacyRule.name);
+      await expectRuleRowInteractive(legacyRule.name);
+      await user.click(
+        within(getRuleRow(legacyRule.name)).getByRole('button', {
+          name: mode === 'edit' ? '编辑' : '复制',
+        }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      await waitFor(() => expect(listNativeAlertMetrics).toHaveBeenCalledTimes(1));
+      if (discovery === 'failed') {
+        await act(async () => rejectDiscovery(new Error('metric discovery unavailable')));
+      }
+      await user.click(
+        within(dialog).getByRole('button', { name: mode === 'edit' ? /编\s*辑/ : /新\s*建/ }),
+      );
+      await waitFor(() =>
+        expect(mode === 'edit' ? updateAlertRule : createAlertRule).toHaveBeenCalledWith(
+          expect.objectContaining({ threshold: 29, thresholdUnit: '%' }),
+        ),
+      );
+    },
+  );
+
+  it('keepsOperatorThresholdWhenLegacyDiscoveryFinishesLateTest', async () => {
+    const legacyRule = {
+      ...cloneRule(alertRules[0]),
+      instanceId: 'local',
+      metric: 'broker.disk.usage_ratio',
+      threshold: 0.29,
+      thresholdUnit: null,
+    };
+    vi.mocked(listAlertRulesPage).mockResolvedValue(pageResult([legacyRule]));
+    let resolveDiscovery!: (metrics: NativeAlertMetricInfo[]) => void;
+    vi.mocked(listNativeAlertMetrics).mockReturnValue(
+      new Promise<NativeAlertMetricInfo[]>((resolve) => {
+        resolveDiscovery = resolve;
+      }),
+    );
+    vi.mocked(updateAlertRule).mockImplementation(async (data) => ({ ...legacyRule, ...data }));
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText(legacyRule.name);
+    await expectRuleRowInteractive(legacyRule.name);
+    await user.click(within(getRuleRow(legacyRule.name)).getByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog');
+    const threshold = within(dialog).getByPlaceholderText('阈值');
+    await user.clear(threshold);
+    await user.type(threshold, '40');
+    await act(async () =>
+      resolveDiscovery([
+        {
+          key: legacyRule.metric,
+          label: 'Broker disk usage ratio',
+          thresholdUnit: 'ratio',
+          supportsConsumerGroup: false,
+        },
+      ]),
+    );
+    await user.click(within(dialog).getByRole('button', { name: /编\s*辑/ }));
+    await waitFor(() =>
+      expect(updateAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({ threshold: 40, thresholdUnit: '%' }),
+      ),
+    );
+  });
+
+  it.each([
+    ['broker.disk.usage_ratio', 29, '%'],
+    ['consumer.lag.total', 1200, 'messages'],
+    ['rocketmq_disk_use_ratio', 85, '%'],
+  ] as const)(
+    'preservesExistingUnitsWithoutDiscoveryFor%sTest',
+    async (metric, threshold, thresholdUnit) => {
+      const rule = {
+        ...cloneRule(alertRules[0]),
+        instanceId: 'local',
+        metric,
+        threshold,
+        thresholdUnit,
+      };
+      vi.mocked(listAlertRulesPage).mockResolvedValue(pageResult([rule]));
+      vi.mocked(listNativeAlertMetrics).mockReturnValue(new Promise(() => {}));
+      vi.mocked(updateAlertRule).mockImplementation(async (data) => ({ ...rule, ...data }));
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByText(rule.name);
+      await expectRuleRowInteractive(rule.name);
+      await user.click(within(getRuleRow(rule.name)).getByRole('button', { name: '编辑' }));
+      const dialog = await screen.findByRole('dialog');
+      await user.click(within(dialog).getByRole('button', { name: /编\s*辑/ }));
+      await waitFor(() =>
+        expect(updateAlertRule).toHaveBeenCalledWith(
+          expect.objectContaining({ threshold, thresholdUnit }),
+        ),
+      );
+    },
+  );
+
+  it('testsLegacyRatioInPercentBeforeDiscoveryCompletesTest', async () => {
+    const legacyRule = {
+      ...cloneRule(alertRules[0]),
+      instanceId: 'local',
+      metric: 'broker.disk.usage_ratio',
+      threshold: 0.29,
+      thresholdUnit: null,
+    };
+    vi.mocked(listAlertRulesPage).mockResolvedValue(pageResult([legacyRule]));
+    vi.mocked(listNativeAlertMetrics).mockReturnValue(new Promise(() => {}));
+    vi.mocked(testAlertRule).mockResolvedValue({ samples: [] });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText(legacyRule.name);
+    await expectRuleRowInteractive(legacyRule.name);
+    await user.click(within(getRuleRow(legacyRule.name)).getByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: '试运行' }));
+    await waitFor(() =>
+      expect(testAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({ threshold: 29, thresholdUnit: '%' }),
+      ),
+    );
+  });
+
   it('bulk enables selected alert rules and clears the selection after success', async () => {
     const user = userEvent.setup();
     renderPage();

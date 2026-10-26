@@ -181,6 +181,11 @@ export const formatThresholdCondition = (
   return `${rule.operator} ${rule.threshold}${rule.thresholdUnit ?? ''}`;
 };
 
+const legacyRatioThresholdForEditor = (rule: AlertRule) =>
+  nativeRatioMetrics.has(rule.metric) && !rule.thresholdUnit
+    ? { threshold: ratioToPercent(rule.threshold), thresholdUnit: '%' }
+    : {};
+
 const previewValueForMetric = (metric?: string, threshold?: string | number | null): string => {
   if (metric && nativeRatioMetrics.has(metric)) {
     const value = Number(threshold);
@@ -515,13 +520,6 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       if (requestVersion !== metricRequestVersion.current) return;
       setMetricOptions(metrics);
       if (resetMetric) form.setFieldValue('metric', undefined);
-      if (
-        !resetMetric &&
-        nativeRatioMetrics.has(form.getFieldValue('metric')) &&
-        !form.getFieldValue('thresholdUnit')
-      ) {
-        form.setFieldValue('threshold', ratioToPercent(Number(form.getFieldValue('threshold'))));
-      }
       if (metrics.length === 0) message.warning(t('alerts.metricUnavailable'));
     } catch {
       if (requestVersion === metricRequestVersion.current) {
@@ -539,6 +537,8 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       ...rule,
       metric: normalizeMetric(rule.metric),
       duration: normalizeDuration(rule.duration),
+      // Value and unit must agree even while discovery is pending or unavailable.
+      ...legacyRatioThresholdForEditor(rule),
     });
     setSelectedInstanceId(rule.instanceId);
     if (rule.instanceId?.trim()) {
@@ -559,6 +559,7 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       name: t('alerts.duplicateName', { name: rule.name }),
       metric: normalizeMetric(copy.metric),
       duration: normalizeDuration(copy.duration),
+      ...legacyRatioThresholdForEditor(rule),
     });
     if (rule.instanceId?.trim()) {
       void loadMetricCapabilities(rule.instanceId, false);
