@@ -182,40 +182,56 @@ const sortMetricSamples = (samples: NumericMetricSample[]) =>
     .sort((left, right) => left.timestamp - right.timestamp || left.index - right.index);
 
 const toScalarSamples = (series: MetricSeries): NumericMetricSample[] =>
-  sortMetricSamples(
-    series.values.map((sample, index) => ({
-      timestamp: sample.timestamp,
-      value: finiteNumber(sample.value) ?? Number.NaN,
-      kind: 'scalar',
-      index,
-    })),
-  );
+  series.values.map((sample, index) => ({
+    timestamp: sample.timestamp,
+    value: finiteNumber(sample.value) ?? Number.NaN,
+    kind: 'scalar',
+    index,
+  }));
 
 // To keep native histogram diagnostics usable, derive
 // a trend value from the observed sum and fall back to observation count.
 const toHistogramSamples = (series: MetricSeries): NumericMetricSample[] =>
-  sortMetricSamples(
-    series.histograms.map((sample, index) => {
-      const sum = finiteNumber(sample.histogram.sum);
-      const count = finiteNumber(sample.histogram.count);
-      return {
-        timestamp: sample.timestamp,
-        value: sum ?? count ?? Number.NaN,
-        kind: 'histogram',
-        index,
-        ...(count !== undefined ? { histogramCount: count } : {}),
-        ...(sum !== undefined ? { histogramSum: sum } : {}),
-      };
-    }),
-  );
+  series.histograms.map((sample, index) => {
+    const sum = finiteNumber(sample.histogram.sum);
+    const count = finiteNumber(sample.histogram.count);
+    return {
+      timestamp: sample.timestamp,
+      value: sum ?? count ?? Number.NaN,
+      kind: 'histogram',
+      index,
+      ...(count !== undefined ? { histogramCount: count } : {}),
+      ...(sum !== undefined ? { histogramSum: sum } : {}),
+    };
+  });
 
 export const toMetricSeriesSamples = (series: MetricSeries): MetricSeriesSamples => {
-  const scalar = toScalarSamples(series);
-  const histograms = toHistogramSamples(series);
+  const samples = sortMetricSamples([...toScalarSamples(series), ...toHistogramSamples(series)]);
   return {
-    samples: sortMetricSamples([...scalar, ...histograms]),
-    fromHistogram: histograms.length > 0,
+    samples,
+    fromHistogram: samples.some((sample) => sample.kind === 'histogram'),
   };
+};
+
+/** Keep explicit unavailable observations as chart breaks, without inventing time-gap rules. */
+export const toMetricSeriesChartSegments = (
+  series: MetricSeries,
+  kind: MetricSampleKind,
+): NumericMetricSample[][] => {
+  const observations = (kind === 'scalar' ? toScalarSamples(series) : toHistogramSamples(series))
+    .filter((sample) => Number.isFinite(sample.timestamp))
+    .sort((left, right) => left.timestamp - right.timestamp || left.index - right.index);
+  const segments: NumericMetricSample[][] = [];
+  let segment: NumericMetricSample[] = [];
+  for (const sample of observations) {
+    if (!Number.isFinite(sample.value)) {
+      segment = [];
+      continue;
+    }
+    if (segment.length === 0) segments.push(segment);
+    segment.push(sample);
+  }
+  return segments;
 };
 
 export const summarizeMetricData = (data: MetricData): MetricResultSummary => {

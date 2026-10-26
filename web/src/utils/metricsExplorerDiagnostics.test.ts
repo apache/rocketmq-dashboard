@@ -36,6 +36,7 @@ import {
   stableLabelsText,
   summarizeMetricData,
   toMetricSeriesSamples,
+  toMetricSeriesChartSegments,
 } from './metricsExplorerDiagnostics';
 
 const metric: MetricMapping = {
@@ -488,5 +489,116 @@ describe('metrics explorer diagnostics', () => {
     localStorage.setItem(METRICS_QUERY_HISTORY_STORAGE_KEY, '{"broken"');
 
     expect(loadMetricsQueryHistory()).toEqual([]);
+  });
+});
+
+describe('metric chart segments', () => {
+  it.each(['NaN', '+Inf', '-Inf', '', ' '])(
+    'splitsAtExplicitUnavailableScalarSamplesTest (%s)',
+    (unavailable) => {
+      const series = {
+        labels: {},
+        histograms: [],
+        values: [
+          { timestamp: 5, value: '50' },
+          { timestamp: 2, value: '20' },
+          { timestamp: 3, value: unavailable },
+          { timestamp: 1, value: '10' },
+          { timestamp: 4, value: '40' },
+        ],
+      };
+      expect(
+        toMetricSeriesChartSegments(series, 'scalar').map((segment) =>
+          segment.map((sample) => sample.timestamp),
+        ),
+      ).toEqual([
+        [1, 2],
+        [4, 5],
+      ]);
+      const data: MetricData = { resultType: 'matrix', warnings: [], series: [series] };
+      expect(summarizeMetricData(data).sampleCount).toBe(4);
+      expect(
+        buildMetricCsvRows(data, metric, { profileName: 'test', sourceName: 'test' }).map(
+          (row) => row.timestamp,
+        ),
+      ).toEqual([1, 2, 4, 5]);
+    },
+  );
+
+  it('doesNotInferGapsFromTimeSpacingOrDiscardDuplicateTimestampsTest', () => {
+    const series = {
+      labels: {},
+      histograms: [],
+      values: [
+        { timestamp: 1, value: '10' },
+        { timestamp: 1000, value: '20' },
+        { timestamp: 1000, value: '30' },
+      ],
+    };
+    expect(
+      toMetricSeriesChartSegments(series, 'scalar').map((segment) =>
+        segment.map((sample) => sample.value),
+      ),
+    ).toEqual([[10, 20, 30]]);
+  });
+
+  it('ignoresUnplaceableTimestampsWithoutCreatingAGapTest', () => {
+    const series = {
+      labels: {},
+      histograms: [],
+      values: [
+        { timestamp: 1, value: '10' },
+        { timestamp: Number.NaN, value: 'NaN' },
+        { timestamp: Number.POSITIVE_INFINITY, value: '15' },
+        { timestamp: 3, value: '20' },
+      ],
+    };
+    expect(
+      toMetricSeriesChartSegments(series, 'scalar').map((segment) =>
+        segment.map((sample) => sample.value),
+      ),
+    ).toEqual([[10, 20]]);
+  });
+
+  it('keepsHistogramFallbackAndMixedKindsIndependentTest', () => {
+    const series = {
+      labels: {},
+      values: [
+        { timestamp: 2, value: '7' },
+        { timestamp: 4, value: 'NaN' },
+        { timestamp: 6, value: '8' },
+      ],
+      histograms: [
+        { timestamp: 5, histogram: { count: '5', sum: '50', buckets: [] } },
+        { timestamp: 3, histogram: { count: 'NaN', sum: 'NaN', buckets: [] } },
+        { timestamp: 1, histogram: { count: '2', sum: '', buckets: [] } },
+      ],
+    };
+    expect(
+      toMetricSeriesChartSegments(series, 'histogram').map((segment) =>
+        segment.map((sample) => sample.value),
+      ),
+    ).toEqual([[2], [50]]);
+    expect(
+      toMetricSeriesChartSegments(series, 'scalar').map((segment) =>
+        segment.map((sample) => sample.value),
+      ),
+    ).toEqual([[7], [8]]);
+    expect(toMetricSeriesSamples(series).samples.map((sample) => sample.value)).toEqual([
+      2, 7, 50, 8,
+    ]);
+  });
+
+  it('doesNotProduceEmptySegmentsForUnavailableOnlySeriesTest', () => {
+    const series = {
+      labels: {},
+      histograms: [],
+      values: [
+        { timestamp: 1, value: 'NaN' },
+        { timestamp: 2, value: 'NaN' },
+      ],
+    };
+    expect(toMetricSeriesChartSegments(series, 'scalar')).toEqual([]);
+    expect(toMetricSeriesChartSegments(series, 'histogram')).toEqual([]);
   });
 });
