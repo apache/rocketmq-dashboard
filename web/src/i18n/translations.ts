@@ -40,9 +40,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'nav.grafanaDashboards': { zh: 'Grafana 看板', en: 'Grafana Dashboards' },
   'nav.ai': { zh: 'AI 交互', en: 'AI Chat' },
   'nav.settings': { zh: '设置', en: 'Settings' },
-  'nav.resourceModel': { zh: '资源模型', en: 'Resource Model' },
 
-  // ─── Common ───
+  // ─── Common ──
   'common.search': { zh: '搜索...', en: 'Search...' },
   'common.searchPlaceholder': { zh: '搜索页面、功能...', en: 'Search pages, features...' },
   'common.create': { zh: '新建', en: 'Create' },
@@ -3998,20 +3997,7 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
-  // ─── ResourceModel（资源命名与归属：说明页 + 创建表单的规则弹窗）───
-  'resourceModel.title': { zh: '资源模型', en: 'Resource Model' },
-  'resourceModel.banner': {
-    zh:
-      'Studio 把每一组 nameserver 看作一套独立的环境，例如生产与预发各用一组。Topic 与 Group 的名字' +
-      '在同一套环境里的同一个 broker 集群上唯一；换一套环境、或换同一套环境里的另一个 broker 集群，' +
-      '都可以继续使用相同的名字。',
-    en:
-      'Studio treats each set of NameServers as one independent environment, for example one for production and ' +
-      'one for staging. A topic or group name is unique on one broker cluster within one environment; another ' +
-      'environment, or another broker cluster in the same environment, may use the same name again.',
-  },
-
-  'resourceModel.archTitle': { zh: '命名与归属', en: 'Naming and ownership' },
+  // ─── ResourceModel（资源命名与归属：创建表单问号弹窗内的说明）───
   'resourceModel.svgTopologyAria': {
     zh: '生产与预发两套 nameserver 环境下 Topic 名字的归属示意',
     en: 'Topic ownership across the production and staging NameServer environments',
@@ -4080,12 +4066,14 @@ const translations: Record<string, Record<Lang, string>> = {
     en: '· Cloud instances (Alibaba Cloud, Tencent Cloud) are each an environment of their own and never collide with open-source instances.',
   },
 
-  'resourceModel.helpTooltip': { zh: '资源命名与归属规则', en: 'Naming and ownership rules' },
   'resourceModel.helpAria': {
     zh: '查看资源命名与归属规则',
     en: 'Show the naming and ownership rules',
   },
-  'resourceModel.modalTitle': { zh: '创建时的归属规则', en: 'Ownership rules when you create' },
+  'resourceModel.modalTitle': {
+    zh: '资源命名与归属规则',
+    en: 'Naming and ownership rules',
+  },
   'resourceModel.modalIntro': {
     zh:
       '一个名字在「nameserver 集群 + broker 集群」这个范围内唯一。实例在创建时选定 nameserver ' +
@@ -4093,24 +4081,6 @@ const translations: Record<string, Record<Lang, string>> = {
     en:
       'A name is unique within one NameServer cluster plus one broker cluster. An instance picks its ' +
       'NameServer cluster at creation and keeps it forever; each cloud instance is an environment of its own.',
-  },
-  'resourceModel.outcomeFreeTitle': { zh: '这个名字还没有人使用', en: 'The name is not used yet' },
-  'resourceModel.outcomeFreeDesc': { zh: '正常创建。', en: 'It is created.' },
-  'resourceModel.outcomeOwnTitle': {
-    zh: '这个名字已经属于当前实例',
-    en: 'The name already belongs to this instance',
-  },
-  'resourceModel.outcomeOwnDesc': {
-    zh: '相当于按这次填写的队列数等参数更新它。',
-    en: 'It is updated with the queue counts and other settings you submit.',
-  },
-  'resourceModel.outcomeOtherTitle': {
-    zh: '这个名字已经属于其他实例',
-    en: 'The name already belongs to another instance',
-  },
-  'resourceModel.outcomeOtherDesc': {
-    zh: 'Studio 会告诉你它属于哪个实例，并停止本次创建。',
-    en: 'Studio tells you which instance owns it and stops this creation.',
   },
 
   // ─── BrokerCluster ───

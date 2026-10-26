@@ -19,41 +19,24 @@ import { useState } from 'react';
 import { Button, Modal, Space, Tooltip, Typography, theme } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useLang } from '../i18n/LangContext';
+import ResourceOwnershipTopology from './ResourceOwnershipTopology';
 
 const { Text } = Typography;
 
 const FONT_SIZE = 14;
 
 /**
- * 创建实例 / Topic / Group 表单上的规则入口：问号点开弹窗，讲清名字的唯一性边界与
- * 创建时的三种结果。文案与「资源模型」页共用 `resourceModel.*` 一套口径。
+ * 创建实例 / Topic / Group 表单上的规则入口：问号点开弹窗，讲清名字的唯一性边界、
+ * 归属拓扑与创建时的三种结果。2026-10-26 起这套说明没有独立页面，只在这里出现。
  */
 const ResourceRuleHelp = () => {
   const { t } = useLang();
   const { token } = theme.useToken();
   const [open, setOpen] = useState(false);
 
-  const outcomes = [
-    {
-      color: token.colorSuccess,
-      title: t('resourceModel.outcomeFreeTitle'),
-      desc: t('resourceModel.outcomeFreeDesc'),
-    },
-    {
-      color: token.colorPrimary,
-      title: t('resourceModel.outcomeOwnTitle'),
-      desc: t('resourceModel.outcomeOwnDesc'),
-    },
-    {
-      color: token.colorError,
-      title: t('resourceModel.outcomeOtherTitle'),
-      desc: t('resourceModel.outcomeOtherDesc'),
-    },
-  ];
-
   return (
     <>
-      <Tooltip title={t('resourceModel.helpTooltip')}>
+      <Tooltip title={t('resourceModel.helpAria')}>
         <span
           role="button"
           tabIndex={0}
@@ -78,39 +61,39 @@ const ResourceRuleHelp = () => {
       <Modal
         title={t('resourceModel.modalTitle')}
         open={open}
-        width={520}
+        width={860}
         onCancel={() => setOpen(false)}
+        styles={{
+          body: { maxHeight: 'calc(100vh - 260px)', overflowY: 'auto', paddingRight: 8 },
+        }}
         footer={<Button onClick={() => setOpen(false)}>{t('common.close')}</Button>}
       >
-        <Space direction="vertical" size={14} style={{ width: '100%', marginTop: 8 }}>
+        <Space direction="vertical" size={16} style={{ width: '100%', marginTop: 8 }}>
           <Text style={{ fontSize: FONT_SIZE, lineHeight: 1.7 }}>
             {t('resourceModel.modalIntro')}
           </Text>
-          {outcomes.map((outcome) => (
-            <Space key={outcome.title} align="start" size={10}>
-              <span
-                aria-hidden
-                style={{
-                  width: 8,
-                  height: 8,
-                  marginTop: 7,
-                  borderRadius: '50%',
-                  background: outcome.color,
-                  flexShrink: 0,
-                }}
-              />
-              <div>
-                <Text strong style={{ fontSize: FONT_SIZE }}>
-                  {outcome.title}
-                </Text>
-                <div>
-                  <Text type="secondary" style={{ fontSize: FONT_SIZE, lineHeight: 1.7 }}>
-                    {outcome.desc}
-                  </Text>
-                </div>
-              </div>
+
+          <ResourceOwnershipTopology />
+
+          <div>
+            <Text strong style={{ fontSize: FONT_SIZE }}>
+              {t('resourceModel.rulesTitle')}
+            </Text>
+            <Space direction="vertical" size={4} style={{ display: 'flex', marginTop: 6 }}>
+              <Text style={{ fontSize: FONT_SIZE, lineHeight: 1.7 }}>
+                {t('resourceModel.rule1')}
+              </Text>
+              <Text style={{ fontSize: FONT_SIZE, lineHeight: 1.7 }}>
+                {t('resourceModel.rule2')}
+              </Text>
+              <Text style={{ fontSize: FONT_SIZE, lineHeight: 1.7 }}>
+                {t('resourceModel.rule3')}
+              </Text>
+              <Text style={{ fontSize: FONT_SIZE, lineHeight: 1.7 }}>
+                {t('resourceModel.rule4')}
+              </Text>
             </Space>
-          ))}
+          </div>
         </Space>
       </Modal>
     </>

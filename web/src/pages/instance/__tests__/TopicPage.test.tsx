@@ -309,7 +309,7 @@ describe('TopicPage', () => {
     await user.click(screen.getByRole('button', { name: /创建 Topic/ }));
     const dialog = await screen.findByRole('dialog', { name: /创建 Topic/ });
     await user.click(within(dialog).getByRole('button', { name: '查看资源命名与归属规则' }));
-    expect(await screen.findByText('创建时的归属规则')).toBeInTheDocument();
+    expect(await screen.findByText('资源命名与归属规则')).toBeInTheDocument();
   });
 
   it('gives each of the four row actions its own color', async () => {
