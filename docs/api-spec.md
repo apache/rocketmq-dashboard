@@ -1772,13 +1772,14 @@ POST /api/acl/plain-access-config
 | `accessKey` | `string` | 是 | 账号 AccessKey（更新时不可变更） |
 | `secretKey` | `string` | 条件 | 新建账号必填；更新时留空表示保留原密钥 |
 | `whiteRemoteAddress` | `string` | 否 | IP 白名单，持久化存储，空表示不限制 |
-| `admin` | `boolean` | 否 | 是否管理员 |
+| `admin` | `boolean` | 否 | 是否管理员；**省略 = 保留存量值**（新建账号默认 `false`），显式传值才覆盖 |
 | `defaultTopicPerm` | `string` | 否 | 默认 Topic 权限 |
 | `defaultGroupPerm` | `string` | 否 | 默认 Group 权限 |
 | `topicPerms` | `string[]` | 否 | 逐 Topic 权限，格式 `resource=action` |
 | `groupPerms` | `string[]` | 否 | 逐 Group 权限，格式 `resource=action` |
 
-**Response `data`:** `PlainAccessConfig`。`secretKey` 仅在本次显式提交时回显，保留原密钥时返回 `null`。
+**Response `data`:** `PlainAccessConfig`。`secretKey` 仅在本次显式提交时回显，保留原密钥时返回 `null`；
+`admin` 回显**生效值**（省略写入时为保留后的存量值）。
 
 ### 7.10 查看单个用户明文凭证
 
