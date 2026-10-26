@@ -3026,7 +3026,11 @@ POST /api/ai/conversations/:id/messages
 | `engine` | `string` | 否 | 覆盖本轮引擎（`http` / `claude-code` / `qoder`），最长 16 字符 |
 | `mode` | `string` | 否 | 覆盖本轮模式，最长 16 字符 |
 | `enhance` | `boolean` | 否 | 是否先做 prompt 增强改写；改写过程以 `source: "enhance"` 的 `thinking` 帧流回，默认 `false` |
-| `resume` | `boolean` | 否 | 是否复用上游 Agent 会话（`claude --resume`）。**省略 = 沿用会话自身状态**，`false` = 强制开新会话，`true` = 强制复用 |
+| `resume` | `boolean` | 否 | 是否复用上游会话。**省略 = 沿用会话自身状态**，`false` = 强制开新会话，`true` = 强制复用。CLI 引擎（`claude-code` / `qoder`）表现为是否带 `--resume`；**`http` 引擎表现为是否随本轮携带此前对话历史**——`false` 只发本轮提问，省略或 `true` 时附带**有界**历史（读当前 run `start_seq` 之前最近 200 条事件，最多 16 轮 / 64 KiB UTF-8，只取完整的用户问题与助手文本，超预算整轮丢弃） |
+
+> `http` 引擎的历史只作为普通 `user` / `assistant` 消息附带，不取得系统提示词的权限；历史超过 64 条、
+> 或累计超过出站上下文预算时按 **400** 拒绝（与 `AiPayloadGuard` 同一口径）。`resume=false` 只影响
+> 本次请求，不删除库里的历史、也不为后续请求建立持久重置点。CLI 引擎与旧的单 prompt HTTP 调用行为不变。
 
 **Response:** `text/event-stream`
 

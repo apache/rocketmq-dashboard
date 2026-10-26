@@ -565,7 +565,7 @@ class AiRunServiceTest {
         AiRunExecutor.RunContext context = new AiRunExecutor.RunContext(conversation,
                 AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.RUNNING), sink,
                 new AgentRunHandle(RUN_ID, Duration.ofMillis(1)), null, provider.engine(), "hello",
-                null, false, Duration.ofSeconds(300), null);
+                null, false, Duration.ofSeconds(300), null, true);
 
         // A stop, a provider failure, the worker's own safety net and a shutdown drain can all reach
         // finalisation for the same run; the compareAndSet is what makes exactly one of them write.

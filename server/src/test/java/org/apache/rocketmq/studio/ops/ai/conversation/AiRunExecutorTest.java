@@ -206,7 +206,7 @@ class AiRunExecutorTest {
             AiRunExecutor.RunContext base = context(ENGINE, true);
             AiRunExecutor.RunContext shortRun = new AiRunExecutor.RunContext(conversation, run,
                     base.getSink(), base.getHandle(), base.getConfig(), ENGINE, "hello", null,
-                    true, Duration.ofMillis(500), null);
+                    true, Duration.ofMillis(500), null, true);
             executor.submit(shortRun);
             assertThat(enhancing.await(3, TimeUnit.SECONDS)).isTrue();
             assertThat(terminal.await(3, TimeUnit.SECONDS)).isTrue();
@@ -339,7 +339,7 @@ class AiRunExecutorTest {
         session.finishReplay();
         lateExecutor.submit(new AiRunExecutor.RunContext(conversation, run, sink, handle,
                 LlmConfigVO.builder().engine(ENGINE).model("qwen3.8-max").enabled(true).build(),
-                ENGINE, "hello", null, false, Duration.ofSeconds(300), null));
+                ENGINE, "hello", null, false, Duration.ofSeconds(300), null, true));
 
         assertThat(runRow().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
         assertThat(runRow().getStopReason()).isNull();
@@ -749,7 +749,7 @@ class AiRunExecutorTest {
         session.finishReplay();
         return new AiRunExecutor.RunContext(conversation, run, sink, handle,
                 LlmConfigVO.builder().engine(engine).model("qwen3.8-max").enabled(true).build(),
-                engine, "hello", resumeSessionId, enhance, Duration.ofSeconds(300), null);
+                engine, "hello", resumeSessionId, enhance, Duration.ofSeconds(300), null, true);
     }
 
     private List<String> types() {

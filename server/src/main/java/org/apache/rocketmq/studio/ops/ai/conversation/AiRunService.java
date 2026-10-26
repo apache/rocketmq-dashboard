@@ -236,8 +236,8 @@ public class AiRunService {
         AgentStreamSession session = runExecutor.newSession(run.getId(), timeoutMillis);
         AiRunExecutor.RunContext context = new AiRunExecutor.RunContext(conversation, run, sink, handle,
                 config, engine, message, resumeSessionId, request.enhance(),
-                Duration.ofMillis(timeoutMillis), preparation);
-        context.setHttpHistoryEnabled(!Boolean.FALSE.equals(request.resume()));
+                Duration.ofMillis(timeoutMillis), preparation,
+                !Boolean.FALSE.equals(request.resume()));
         registry.register(run.getId(), handle);
         try {
             // enhancedPrompt stays null on this row: the rewrite happens on the worker, after the turn
@@ -597,7 +597,7 @@ public class AiRunService {
         AiEventSink sink = runExecutor.newSink(run.getConversationId(), run.getId(),
                 run.getTurn() == null ? 0 : run.getTurn(), seedSeq);
         return new AiRunExecutor.RunContext(conversation, run, sink, null, null, run.getEngine(), null,
-                null, false, null, null);
+                null, false, null, null, true);
     }
 
     /** The notice a conversation gets when it has to do without RocketMQ tools. */

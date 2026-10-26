@@ -20,7 +20,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PreDestroy;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
-import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.ops.ai.AgentProviderRegistry;
 import org.apache.rocketmq.studio.ops.ai.LlmConfigVO;
@@ -730,10 +729,13 @@ public class AiRunExecutor {
         private final Duration timeout;
         /** Null when the conversation runs without RocketMQ tools. */
         private final RmqctlWorkspace.Preparation preparation;
+        /**
+         * False when the caller asked not to resume, so an HTTP run carries only this turn. Final
+         * like every other input: a run's shape is fixed when it is admitted, not mutated mid-flight.
+         */
+        private final boolean httpHistoryEnabled;
 
         private final AtomicReference<State> state = new AtomicReference<>(State.ACTIVE);
-        @Setter
-        private boolean httpHistoryEnabled = true;
 
         /** Upstream frame types already warned about, so a chatty parser cannot fill the timeline. */
         private final Set<String> unhandledUpstream = ConcurrentHashMap.newKeySet();
