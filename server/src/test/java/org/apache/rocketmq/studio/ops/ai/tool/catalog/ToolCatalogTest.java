@@ -108,6 +108,28 @@ class ToolCatalogTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void breakGlassFieldsBelongExactlyToL3Tools() {
+        ToolCatalog catalog = new ToolCatalog(new DefaultResourceLoader());
+
+        for (ToolDefinition definition : catalog.list()) {
+            Map<String, Object> properties = definition.inputSchema() == null
+                    ? Map.of()
+                    : (Map<String, Object>) definition.inputSchema().getOrDefault("properties", Map.of());
+            if (definition.riskLevel() == ToolRiskLevel.L3) {
+                assertThat(properties)
+                        .as("%s is L3 and must declare the break-glass fields", definition.name())
+                        .containsKeys("break_glass", "reason");
+            } else {
+                assertThat(properties)
+                        .as("%s is %s and must not declare the break-glass fields",
+                                definition.name(), definition.riskLevel())
+                        .doesNotContainKeys("break_glass", "reason");
+            }
+        }
+    }
+
+    @Test
     void rejectsCatalogThatDoesNotMatchItsJsonSchema() {
         Resource invalid = utf8Resource("""
                 version: 1.0.0

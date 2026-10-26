@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.filter;
 
+import org.apache.rocketmq.studio.ops.ai.tool.catalog.ToolCatalog;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.MutationOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.plan.ToolPlan;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolDefinition;
@@ -26,6 +27,7 @@ import org.apache.rocketmq.studio.ops.ai.tool.core.ToolRiskLevel;
 import org.apache.rocketmq.studio.ops.ai.tool.handler.MutationToolHandler;
 import org.apache.rocketmq.studio.ops.ai.tool.service.ToolTokenService;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.DefaultResourceLoader;
 
 import java.util.List;
 import java.util.Map;
@@ -45,6 +47,7 @@ class ToolMutationFilterTest {
     private final ToolMutationFilter filter = new ToolMutationFilter(tokens, true);
     private final ToolFilterChain chain = new ToolFilterChain(List.of(filter));
     private final TestHandler handler = new TestHandler();
+    private final MapHandler mapHandler = new MapHandler();
 
     @Test
     void generatesResponsePlanAndExecutesWithOriginalContext() {
@@ -124,6 +127,36 @@ class ToolMutationFilterTest {
         assertThat(handler.executions).isZero();
     }
 
+    @Test
+    void catalogResetOffsetRequiresL3EnablementBreakGlassAndReason() {
+        ToolDefinition resetOffset = new ToolCatalog(new DefaultResourceLoader())
+                .getDefinition("rmq.group.reset_offset");
+        assertThat(resetOffset.requiresReason())
+                .as("rmq.group.reset_offset declares break_glass and reason and must be L3")
+                .isTrue();
+
+        Map<String, Object> base = new java.util.HashMap<>(Map.of(
+                "instanceId", "instance-a", "groupName", "g", "topicName", "t",
+                "timestamp", 0L, "confirm_token", "token"));
+
+        ToolMutationFilter l3Disabled = new ToolMutationFilter(tokens, false);
+        ToolExecutionContext unapproved = ToolExecutionContext.of("instance-a", resetOffset, base);
+        assertThatThrownBy(() -> l3Disabled.filter(
+                        new ToolInvocation(unapproved, mapHandler), ignored -> null))
+                .hasMessageContaining("L3 tools are disabled by server policy");
+
+        assertThatThrownBy(() -> filter.filter(
+                        new ToolInvocation(unapproved, mapHandler), ignored -> null))
+                .hasMessageContaining("requires break_glass=true before execution: rmq.group.reset_offset");
+
+        Map<String, Object> approved = new java.util.HashMap<>(base);
+        approved.put("break_glass", true);
+        assertThatThrownBy(() -> filter.filter(
+                        new ToolInvocation(ToolExecutionContext.of("instance-a", resetOffset, approved), mapHandler),
+                        ignored -> null))
+                .hasMessageContaining("requires a non-empty reason before L3 execution: rmq.group.reset_offset");
+    }
+
     private static ToolExecutionContext context(ToolRiskLevel risk, Map<String, Object> input) {
         ToolDefinition definition = new ToolDefinition("rmq.topic.update",
                 new ToolDefinition.Cli("topic", "update"), "Create topic", risk,
@@ -132,6 +165,31 @@ class ToolMutationFilterTest {
     }
 
     private record Input(String topic) {
+    }
+
+    private static class MapHandler extends MutationToolHandler<Map<String, Object>, Object> {
+
+        @SuppressWarnings("unchecked")
+        private MapHandler() {
+            super((Class<Map<String, Object>>) (Class<?>) Map.class);
+        }
+
+        @Override
+        public String name() {
+            return "rmq.group.reset_offset";
+        }
+
+        @Override
+        public ToolPlan preview(Map<String, Object> input, ToolExecutionContext context) {
+            return ToolPlan.builder("Reset consumer offset")
+                    .after(Map.of("groupName", input.get("groupName")))
+                    .build();
+        }
+
+        @Override
+        public Object execute(Map<String, Object> input, ToolExecutionContext context) {
+            return input;
+        }
     }
 
     private static class TestHandler extends MutationToolHandler<Input, Object> {
