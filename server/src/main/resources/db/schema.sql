@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS rmq_studio_session (
   expires_at DATETIME NOT NULL COMMENT '会话过期时间',
   revoked_at DATETIME NULL COMMENT '会话注销时间',
   last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最近活跃时间',
+  client_ip VARCHAR(64) NULL COMMENT '签发会话的客户端地址（经反代时取 X-Forwarded-For 首跳）',
+  user_agent VARCHAR(255) NULL COMMENT '签发会话的客户端 User-Agent',
   PRIMARY KEY (`id`),
   UNIQUE KEY uk_studio_session_token_hash (token_hash),
   INDEX idx_studio_session_user (user_id),

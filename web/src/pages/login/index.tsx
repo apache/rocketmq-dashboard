@@ -24,7 +24,7 @@ import {
   UserOutlined,
 } from '@ant-design/icons';
 import { App, Button, Form, Input, Typography } from 'antd';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useLang } from '../../i18n/LangContext';
 import useAuthStore from '../../stores/authStore';
 import { login as loginApi } from '../../api/auth';
@@ -38,6 +38,18 @@ interface LoginFormValues {
   password: string;
 }
 
+/**
+ * Only same-app absolute paths may be used as the post-login destination: protocol-relative
+ * URLs (`//evil.com`) and anything with a scheme or a backslash must fall back to home.
+ */
+function sanitizeReturnPath(candidate: string | null): string | null {
+  if (!candidate) return null;
+  if (!candidate.startsWith('/') || candidate.startsWith('//') || candidate.includes('\\')) {
+    return null;
+  }
+  return candidate;
+}
+
 const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const loginInFlightRef = useRef(false);
@@ -45,6 +57,7 @@ const LoginPage = () => {
   const { t } = useLang();
   const { message } = App.useApp();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const authLogin = useAuthStore((s) => s.login);
   const { darkMode, toggleTheme } = useTheme();
 
@@ -58,7 +71,8 @@ const LoginPage = () => {
       const data = await loginApi(values.username, values.password);
       authLogin(data.user.username, data.user.userId, data.user.admin);
       message.success(t('login.success'));
-      navigate('/', { replace: true });
+      // A session that expired mid-work redirects here with ?redirect=<page>; go back to it.
+      navigate(sanitizeReturnPath(searchParams.get('redirect')) ?? '/', { replace: true });
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : t('login.failed');
       message.error(errorMsg);
