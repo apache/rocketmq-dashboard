@@ -71,6 +71,7 @@ function distinctSorted(values: Array<string | null | undefined>): string[] {
 
 function getMockAuditFilterOptions(): AuditFilterOptions {
   return {
+    operators: distinctSorted(auditRecordsState.map((record) => record.operator)),
     operationTypes: distinctSorted(auditRecordsState.map((record) => record.operationType)),
     resourceTypes: distinctSorted(auditRecordsState.map((record) => record.resourceType)),
     clusterIds: distinctSorted(auditRecordsState.map((record) => record.clusterId)),
@@ -89,6 +90,7 @@ function filterAuditRecords(params: AuditFilter): AuditRecord[] {
     ) {
       return false;
     }
+    if (params.operator && record.operator !== params.operator) return false;
     if (params.operationType && record.operationType !== params.operationType) return false;
     if (params.resourceType && record.resourceType !== params.resourceType) return false;
     if (params.target && record.target !== params.target) return false;
@@ -476,6 +478,21 @@ export async function listAlertSilencesPage(
 
 export async function createAlertSilence(data: CreateAlertSilence): Promise<AlertSilence> {
   if (!isMockMode()) return opsApi.createAlertSilence(data);
+  // Match AlertSilenceService.create: the end must be strictly after the start, and a
+  // rejected request must not mutate the Mock inventory.
+  if (!(new Date(data.endsAt).getTime() > new Date(data.startsAt).getTime())) {
+    throw new Error('Silence end time must be after start time');
+  }
+  // Same service, recurring branch: a recurring silence carries the end of its recurrence, and
+  // that end must not precede the first window's end.
+  if (data.recurrence && data.recurrence !== 'ONCE') {
+    if (!data.recurrenceUntil) {
+      throw new Error('Recurrence end time is required for recurring silences');
+    }
+    if (new Date(data.recurrenceUntil).getTime() < new Date(data.endsAt).getTime()) {
+      throw new Error('Recurrence end time must not be before the first window ends');
+    }
+  }
   const silence = { ...data, id: Date.now(), createdBy: 'admin' } as AlertSilence;
   alertSilencesState = [silence, ...alertSilencesState];
   return silence;

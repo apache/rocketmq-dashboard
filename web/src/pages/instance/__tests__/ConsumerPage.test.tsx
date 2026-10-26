@@ -355,6 +355,29 @@ describe('Consumer page', () => {
     });
   });
 
+  it('applies the subscription-mode filter on the server', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('remote-cg')).toBeInTheDocument();
+
+    const modeSelect = screen.getAllByRole('combobox')[1];
+    fireEvent.mouseDown(modeSelect.parentElement!);
+    await user.click(
+      await screen.findByText('Pop', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() =>
+      expect(consumerService.listConsumerGroupPage).toHaveBeenLastCalledWith({
+        instanceId: 'instance-1',
+        page: 1,
+        pageSize: 20,
+        search: undefined,
+        subscriptionMode: 'Pop',
+      }),
+    );
+  });
+
   it('clears selected consumer groups when the search scope changes', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
@@ -541,6 +564,21 @@ describe('Consumer page', () => {
       pageSize: 20,
     });
     confirmSpy.mockRestore();
+  });
+
+  // 创建规则从「资源模型」页的判定流程图搬到了创建表单上的问号弹窗（用户约定 2026-10-26）。
+  it('explains the naming rule from a question mark on the create form', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    await screen.findByText('remote-cg');
+    const createButton = screen.getByRole('button', { name: '创建 Group' });
+    await waitFor(() => expect(createButton).toBeEnabled());
+    await user.click(createButton);
+    const dialog = await screen.findByRole('dialog');
+
+    await user.click(within(dialog).getByRole('button', { name: '查看资源命名与归属规则' }));
+    expect(await screen.findByText('资源命名与归属规则')).toBeInTheDocument();
   });
 
   it('submits the canonical global delivery order type', async () => {
@@ -892,6 +930,12 @@ describe('Consumer page', () => {
     await waitFor(() => expect(within(panel).getAllByText('消费风险').length).toBeGreaterThan(0));
     expect(within(panel).getByText('订阅表达式不一致')).toBeInTheDocument();
     expect(within(panel).getByText('Queue 堆积分布严重倾斜')).toBeInTheDocument();
+    // The summary row must name its units: "Queue 覆盖: 9 / 2 Topic" read like a completion ratio
+    // of two unrelated dimensions, and "Queue 堆积" reported offset availability, not lag.
+    expect(within(panel).getByText('Queue 进度:')).toBeInTheDocument();
+    expect(within(panel).getByText('Queue 位点:')).toBeInTheDocument();
+    expect(within(panel).getByText(/个 Queue \/ .*个 Topic/)).toBeInTheDocument();
+    expect(within(panel).queryByText('Queue 覆盖:')).not.toBeInTheDocument();
     expect(within(panel).getAllByText('客户端心跳过期').length).toBeGreaterThan(0);
     expect(within(panel).getByText('处理建议')).toBeInTheDocument();
   });

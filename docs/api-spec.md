@@ -162,6 +162,9 @@
 | 118 | GET | `/api/liteTopic/capability` | LiteTopic 能力检查 |
 | 119 | GET | `/api/auth/status` | 登录策略与当前用户 |
 | 120 | POST | `/api/auth/password` | 修改当前用户密码 |
+| 121 | POST | `/api/ai/conversations/:id/followups` | AI 追问建议（一次小补全；无内容或失败返回空数组） |
+| 122 | POST | `/api/studio-users/sessions/revoke-all` | 注销其他账号的全部有效会话 |
+| 123 | DELETE | `/api/studio-users/sessions/:sessionId` | 注销单条会话 |
 
 ## 通用响应格式
 
@@ -1041,7 +1044,7 @@ POST /api/topics/update
 | `clusterId` | `string` | 否 | 所属集群；Apache 写路径按实例与所有权记录解析目标集群，不读取该字段 |
 | `writeQueues` | `number` | 否 | 写队列数，须 ≥ 0；缺省或非正数时保留现值 |
 | `readQueues` | `number` | 否 | 读队列数，须 ≥ 0；缺省或非正数时保留现值 |
-| `perm` | `string` | 否 | 权限，默认 `RW` |
+| `perm` | `string` | 否 | 权限。Apache：显式传值即更新权限；省略时各既有 Broker 保留自身运行时的权限掩码（含 Studio 不可编辑的位）、库内存值不变；新增 Broker 用库内存值兜底，取不到时用 `RW` |
 | `remark` | `string` | 否 | 备注 |
 
 **Response `data`:** `Topic`
@@ -1434,7 +1437,7 @@ GET /api/groups/export?names={name1,name2}
 ### 6.10 分页获取消费组列表
 
 ```
-GET /api/groups/page?instanceId={instanceId}&clusterId={clusterId}&search={search}&page={page}&pageSize={pageSize}
+GET /api/groups/page?instanceId={instanceId}&clusterId={clusterId}&search={search}&subscriptionMode={subscriptionMode}&page={page}&pageSize={pageSize}
 ```
 
 **Query Parameters:**
@@ -1444,6 +1447,7 @@ GET /api/groups/page?instanceId={instanceId}&clusterId={clusterId}&search={searc
 | `instanceId` | `string` | 否 | 所属实例 ID，不传时按默认平台集群查询 |
 | `clusterId` | `string` | 否 | 按集群过滤 |
 | `search` | `string` | 否 | 按名称模糊搜索 |
+| `subscriptionMode` | `string` | 否 | 按订阅模式过滤：`Push` / `Pop`（大小写不敏感）。`Pop` 为等值匹配；`Push` 与列表展示同口径，同时匹配 `message_model` 为空或存历史遗留值（如 `CLUSTERING`）的记录。不传或传 `ALL` 表示不过滤 |
 | `page` | `number` | 否 | 页码，默认 `1` |
 | `pageSize` | `number` | 否 | 每页条数，默认 `20` |
 
@@ -2065,7 +2069,7 @@ POST /api/dlq/resend
 | `failuresTruncated` | `boolean` | 失败明细是否被截断：失败条数超过 100 时为 `true`，此时 `failed` 仍是真实的失败总数 |
 
 `DLQResendFailure` 的字段：`msgId`（`string`，重投失败的死信消息 ID）、`targetTopic`（`string`，解析出的目标
-Topic，未指定 `targetTopic` 时即原 Topic）、`reason`（`string`，归一化后的简短失败原因，最长 256 字符）。
+Topic，未指定 `targetTopic` 时即原 Topic）、`reason`（`string`，归一化后的简短失败原因，最长 256 个 UTF-16 单元；超长时在完整字符边界截断并以 `...` 结尾）。
 §9.4「重发选中的死信消息」返回同一结构，两条重投路径共用该 VO。
 
 > **跨集群拒绝（`409`）**：显式传入 `targetTopic` 时，若它解析出的集群不是死信 Topic（`%DLQ%{groupName}`）
@@ -2073,6 +2077,12 @@ Topic，未指定 `targetTopic` 时即原 Topic）、`reason`（`string`，归�
 > （`RocketMQDLQProvider.requireSameClusterAsDlqTopic`）。**省略 `targetTopic` 时同样校验**：服务端先按每条死信
 > 推断目的地（即其原 Topic），对推断出的每一个目的地跑同一次校验，任一跨集群即整批 `409` 拒绝，
 > 不会出现「重投了一半」。§9.4 的按 `msgIds` 重投走同一套校验。
+
+AI / CLI 的 `rmq.message.redelivery_dlq` 工具在执行结果中提供相同的有界 `failures` 明细和
+`failuresTruncated` 标记：最多保留 100 条，`failed` 仍为失败总数；`scanIncomplete` 只描述扫描完整性。
+无法解析目的 Topic 时，明细省略 `targetTopic`。新服务总是返回这两个字段（无失败时为 `[]` / `false`），
+它们在工具 schema 中为可选项，以兼容仅返回聚合字段的旧服务。rmqctl 默认摘要以及 JSON / YAML 输出均保留明细，
+不会自动重试。
 
 ### 9.3 分页获取死信消息明细
 
@@ -2406,6 +2416,9 @@ GET /api/system-alerts?level={level}
 
 **Response `data`:** `SystemAlert[]`
 
+> 最多返回**最新 100 条**匹配记录（与分页端点同一个上限）；`rmq_system_alert` 没有保留期清理，
+> 无界读取会随表一起增长，需要完整视图走分页端点 `GET /api/system-alerts/page`。
+
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `id` | `string` | 告警 ID |
@@ -2448,7 +2461,7 @@ POST /api/system-alerts/clear-acknowledged
 ### 13.1 获取审计日志列表
 
 ```
-GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operationType={type}&resourceType={resourceType}&target={target}&clusterId={clusterId}&clusterIdMissing={missing}&startDate={start}&endDate={end}&result={result}
+GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operator={operator}&operationType={type}&resourceType={resourceType}&target={target}&clusterId={clusterId}&clusterIdMissing={missing}&startDate={start}&endDate={end}&result={result}
 ```
 
 **Query Parameters:**
@@ -2458,6 +2471,7 @@ GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operationTyp
 | `page` | `number` | 否 | 页码，默认 1 |
 | `pageSize` | `number` | 否 | 每页条数，默认 20 |
 | `search` | `string` | 否 | 模糊搜索（匹配 operator / target / detail） |
+| `operator` | `string` | 否 | 操作人过滤，使用等值匹配而非模糊搜索；取值来自筛选项接口的 `operators` |
 | `operationType` | `string` | 否 | 操作类型过滤 |
 | `resourceType` | `string` | 否 | 资源类型过滤 |
 | `target` | `string` | 否 | 操作对象精确过滤，使用等值匹配而非模糊搜索 |
@@ -2506,6 +2520,7 @@ GET /api/audit-logs/filter-options
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
+| `operators` | `string[]` | 数据库中已存在的操作人原始值 |
 | `operationTypes` | `string[]` | 数据库中已存在的操作类型原始值 |
 | `resourceTypes` | `string[]` | 数据库中已存在的资源类型原始值 |
 | `clusterIds` | `string[]` | 数据库中已存在的非空集群 ID |
@@ -2516,7 +2531,7 @@ GET /api/audit-logs/filter-options
 ### 13.3 导出审计日志
 
 ```
-GET /api/audit-logs/export?search={search}&operationType={type}&resourceType={resourceType}&target={target}&clusterId={clusterId}&clusterIdMissing={missing}&startDate={start}&endDate={end}&result={result}
+GET /api/audit-logs/export?search={search}&operator={operator}&operationType={type}&resourceType={resourceType}&target={target}&clusterId={clusterId}&clusterIdMissing={missing}&startDate={start}&endDate={end}&result={result}
 ```
 
 查询参数与列表接口相同，但不包含 `page` 和 `pageSize`。接口返回全部匹配记录，不受当前表格分页影响。
@@ -2562,6 +2577,7 @@ GET /api/settings/general
 | `desktopNotify` | `boolean` | 桌面通知 |
 | `notifySound` | `boolean` | 通知声音 |
 | `sessionTimeout` | `number` | 会话超时（分钟，5-1440） |
+| `sessionIdleTimeout` | `number?` | 会话空闲超时（分钟）；`null` = 未设置，按服务端默认 **0（关闭）** 处理，`0` = 只按绝对超时判定，1~9 按 10 分钟生效，上限 1440 |
 | `requireLogin` | `boolean` | 是否需要登录 |
 | `llmProvider` | `string` | LLM 提供商: `openai` / `azure` / `anthropic` / `deepseek` / `tongyi` / `ollama` / `bedrock` |
 | `apiKeyConfigured` | `boolean` | 是否已配置 API Key；响应不会返回密钥内容 |
@@ -2583,6 +2599,7 @@ POST /api/settings/general/save
 | `desktopNotify` | `boolean` | 是 | 桌面通知 |
 | `notifySound` | `boolean` | 是 | 通知声音 |
 | `sessionTimeout` | `number` | 是 | 会话超时（分钟，5-1440） |
+| `sessionIdleTimeout` | `number` | 否 | 会话空闲超时（分钟，0-1440）；**省略 = 保留当前值**（老客户端不传也不会被重置），`0` = 关闭空闲判定 |
 | `requireLogin` | `boolean` | 是 | 是否需要登录 |
 | `llmProvider` | `string` | 是 | LLM 提供商 |
 | `apiKey` | `string` | 否 | 新 API Key；省略或传空值时保留现有密钥 |
@@ -3016,7 +3033,11 @@ POST /api/ai/conversations/:id/messages
 | `engine` | `string` | 否 | 覆盖本轮引擎（`http` / `claude-code` / `qoder`），最长 16 字符 |
 | `mode` | `string` | 否 | 覆盖本轮模式，最长 16 字符 |
 | `enhance` | `boolean` | 否 | 是否先做 prompt 增强改写；改写过程以 `source: "enhance"` 的 `thinking` 帧流回，默认 `false` |
-| `resume` | `boolean` | 否 | 是否复用上游 Agent 会话（`claude --resume`）。**省略 = 沿用会话自身状态**，`false` = 强制开新会话，`true` = 强制复用 |
+| `resume` | `boolean` | 否 | 是否复用上游会话。**省略 = 沿用会话自身状态**，`false` = 强制开新会话，`true` = 强制复用。CLI 引擎（`claude-code` / `qoder`）表现为是否带 `--resume`；**`http` 引擎表现为是否随本轮携带此前对话历史**——`false` 只发本轮提问，省略或 `true` 时附带**有界**历史（读当前 run `start_seq` 之前最近 200 条事件，最多 16 轮 / 64 KiB UTF-8，只取完整的用户问题与助手文本，超预算整轮丢弃） |
+
+> `http` 引擎的历史只作为普通 `user` / `assistant` 消息附带，不取得系统提示词的权限；历史超过 64 条、
+> 或累计超过出站上下文预算时按 **400** 拒绝（与 `AiPayloadGuard` 同一口径）。`resume=false` 只影响
+> 本次请求，不删除库里的历史、也不为后续请求建立持久重置点。CLI 引擎与旧的单 prompt HTTP 调用行为不变。
 
 **Response:** `text/event-stream`
 
@@ -3272,6 +3293,40 @@ POST /api/ai/tools/:name/execute
 
 ---
 
+### 15.14 获取追问建议
+
+```
+POST /api/ai/conversations/:id/followups
+```
+
+对会话的「最后一问 + 最后一答」跑一次小补全，返回运营者最可能接着问的追问，前端渲染成可一键发送的
+按钮。与其他 POST 一样仅管理员可调用（要花模型 token），会话归属校验与其他会话端点一致。
+
+**空数组是正常返回**：没有可建议的内容、模型未配置就绪、读取会话尾部失败或补全调用失败，一律返回
+`[]` 且只在服务端记 warn，不以错误状态码返回——建议失败不该把一次已经完成的对话变成错误提示。
+最后一答最多取 4000 字符，返回最多 3 条、每条最多 60 字符，模型自带的编号 / 项目符号 / 引号会被剥掉
+（这些字符会随芯片一起被当作下一个问题发出去）。
+
+**Path Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `number` | 是 | AI 会话 ID |
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `(root)` | `string[]` | 0~3 条追问文本，顺序即建议展示顺序；无建议时为 `[]` |
+
+**示例：**
+
+```json
+["查看该 Group 的堆积明细", "把位点重置到最近", "对比两个集群的 NameServer 配置"]
+```
+
+---
+
 ## 16. 监控指标 Metrics
 
 ### 16.1 查询监控指标数据
@@ -3463,6 +3518,53 @@ GET /api/metrics/grafana/dashboards/export
 |-----------|------|
 | `404` | 没有可导出的有效内置看板 |
 | `500` | 看板 JSON 读取或 zip 打包失败 |
+
+---
+
+## 17. Studio 会话注销 Studio User Sessions
+
+> 本节只记录会话注销与其归因字段；`/api/studio-users` 的账号管理面尚未整体入档。
+
+### 17.1 注销其他账号的全部会话
+
+```
+POST /api/studio-users/sessions/revoke-all
+```
+
+把**除当前登录账号以外**所有账号的有效会话（`revoked_at IS NULL` 且未过期）一次性注销，用于凭据
+外泄或人员变动后的收口。调用者自己的会话**不受影响**，所以这次调用不会把操作者自己踢下线。
+仅数据库态会话可用（内存态直接拒绝）。
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `revokedSessionCount` | `number` | 本次注销的会话条数 |
+
+### 17.2 注销单条会话
+
+```
+DELETE /api/studio-users/sessions/:sessionId
+```
+
+**Path Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `sessionId` | `number` | 是 | 会话行 ID |
+
+会话不存在返回 **404**；已注销或已过期的会话是 **no-op**（返回 200），所以一个过期的抽屉反复确认
+不会变成错误。**Response `data`:** `null`。
+
+### 17.3 会话明细的客户端归因字段
+
+会话明细（`GET /api/studio-users/:userId/sessions` 与 `GET /api/studio-users/sessions/overview`）
+额外返回签发该会话时的客户端信息：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `clientIp` | `string?` | 签发会话的客户端地址；经反向代理时取 `X-Forwarded-For` 首跳。本次改动之前签发的会话为 `null` |
+| `userAgent` | `string?` | 签发会话的客户端 User-Agent。本次改动之前签发的会话为 `null` |
 
 ---
 

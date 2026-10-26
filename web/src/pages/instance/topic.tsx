@@ -59,6 +59,7 @@ import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import TopicConfigComparisonModal from '../../components/TopicConfigComparisonModal';
+import ResourceRuleHelp from '../../components/ResourceRuleHelp';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, CLUSTER_TYPE_MAP } from '../../constants/theme';
 import type { Topic, BrokerRoute, ConsumerGroupInfo, TopicConsumerPage } from '../../api/metadata';
@@ -1526,7 +1527,16 @@ const TopicPageContent = ({
           style={{ marginTop: 16 }}
         >
           <Form.Item
-            label="Topic 名称"
+            label={
+              editingTopic ? (
+                'Topic 名称'
+              ) : (
+                <Space size={4}>
+                  Topic 名称
+                  <ResourceRuleHelp />
+                </Space>
+              )
+            }
             name="name"
             rules={[
               { required: true, message: '请输入 Topic 名称' },

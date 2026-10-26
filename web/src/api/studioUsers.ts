@@ -74,6 +74,9 @@ export interface StudioUserSessionDetail {
   idleSeconds?: number | null;
   expiringSoon: boolean;
   stale: boolean;
+  /** Client address the session was issued to; absent for rows created before attribution. */
+  clientIp?: string | null;
+  userAgent?: string | null;
 }
 
 export async function listStudioUsers(query: StudioUserQuery = {}) {
@@ -96,9 +99,7 @@ export interface StudioLoginLockout {
 }
 
 export async function listStudioLoginLockouts() {
-  const response = await client.get<{ data: StudioLoginLockout[] }>(
-    '/studio-users/login-lockouts',
-  );
+  const response = await client.get<{ data: StudioLoginLockout[] }>('/studio-users/login-lockouts');
   return response.data.data;
 }
 
@@ -160,4 +161,15 @@ export async function revokeStudioUserSessions(userId: number) {
 
 export async function deleteStudioUser(userId: number) {
   await client.delete(`/studio-users/${userId}`);
+}
+
+export async function revokeAllStudioUserSessions() {
+  const response = await client.post<{ data: { revokedSessionCount: number } }>(
+    '/studio-users/sessions/revoke-all',
+  );
+  return response.data.data.revokedSessionCount;
+}
+
+export async function revokeStudioSession(sessionId: number) {
+  await client.delete(`/studio-users/sessions/${sessionId}`);
 }

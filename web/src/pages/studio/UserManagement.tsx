@@ -57,6 +57,8 @@ import {
   listStudioUserSessions,
   listStudioUsers,
   resetStudioUserPassword,
+  revokeAllStudioUserSessions,
+  revokeStudioSession,
   revokeStudioUserSessions,
   setStudioUserEnabled,
   setStudioUserRole,
@@ -146,6 +148,7 @@ const UserManagementPage = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState<StudioUser | null>(null);
   const [userExporting, setUserExporting] = useState(false);
+  const [revokingAllSessions, setRevokingAllSessions] = useState(false);
   const [mutatingUserIds, setMutatingUserIds] = useState<Set<number>>(() => new Set());
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [createForm] = Form.useForm<CreateFormValues>();
@@ -415,7 +418,40 @@ const UserManagementPage = () => {
       t('userMgmt.deleteFailed'),
     );
 
+  // Shares the per-user in-flight guard with revoke-all, so the two can never overlap.
+  const revokeSession = (record: StudioUser, sessionId: number) =>
+    runUserMutation(
+      record.id,
+      async () => {
+        await revokeStudioSession(sessionId);
+        message.success(t('userMgmt.sessionRevoked', { id: sessionId }));
+        await loadSessionDetails(record);
+        await loadUsers();
+      },
+      t('userMgmt.revokeFailed'),
+    );
+
   const openCreateUserModal = () => setCreateOpen(true);
+
+  // The endpoint spares this operator's own sessions, so the incident responder stays
+  // logged in; everyone else has to sign in again.
+  const handleRevokeAllSessions = async () => {
+    if (revokingAllSessions) return;
+    setRevokingAllSessions(true);
+    try {
+      const revokedCount = await revokeAllStudioUserSessions();
+      message.success(t('userMgmt.revokedAllCount', { count: revokedCount }));
+      if (sessionModalUser) {
+        setSessionDrawerUser(null);
+      }
+      await loadUsers();
+    } catch {
+      message.error(t('userMgmt.revokeAllFailed'));
+    } finally {
+      setRevokingAllSessions(false);
+    }
+  };
+
   const handleExportUsers = useCallback(async () => {
     if (!admin) return;
     setUserExporting(true);
@@ -478,6 +514,39 @@ const UserManagementPage = () => {
       width: 160,
       ellipsis: true,
       render: dateTime,
+    },
+    {
+      title: t('userMgmt.clientOrigin'),
+      dataIndex: 'clientIp',
+      width: 160,
+      ellipsis: true,
+      render: (value: string | null | undefined, record) =>
+        value ? (
+          <Tooltip title={record.userAgent ?? value} placement="topLeft">
+            <span>{value}</span>
+          </Tooltip>
+        ) : (
+          '-'
+        ),
+    },
+    {
+      title: t('common.actions'),
+      key: 'actions',
+      width: 96,
+      render: (_, record) =>
+        sessionModalUser && !mutatingUserIds.has(sessionModalUser.id) ? (
+          <Popconfirm
+            title={t('userMgmt.revokeSessionConfirm', { id: record.id })}
+            okText={t('userMgmt.revokeSession')}
+            cancelText={t('common.cancel')}
+            okButtonProps={{ danger: true }}
+            onConfirm={() => void revokeSession(sessionModalUser, record.id)}
+          >
+            <Button size="small" danger icon={<SignOut size={14} />}>
+              {t('userMgmt.revokeSession')}
+            </Button>
+          </Popconfirm>
+        ) : null,
     },
   ];
   // Declared widths total 1116px, which stays inside the usable content width of a normal
@@ -699,7 +768,24 @@ const UserManagementPage = () => {
         />
       )}
       {admin && sessionOverview && (
-        <Card title={t('userMgmt.sessionOverview')} style={{ marginBottom: 16 }}>
+        <Card
+          title={t('userMgmt.sessionOverview')}
+          extra={
+            <Popconfirm
+              title={t('userMgmt.revokeAllConfirmTitle')}
+              description={t('userMgmt.revokeAllConfirmDescription')}
+              okText={t('userMgmt.revokeAllSessions')}
+              cancelText={t('common.cancel')}
+              okButtonProps={{ danger: true }}
+              onConfirm={() => void handleRevokeAllSessions()}
+            >
+              <Button danger icon={<SignOut size={14} />} loading={revokingAllSessions}>
+                {t('userMgmt.revokeAllSessions')}
+              </Button>
+            </Popconfirm>
+          }
+          style={{ marginBottom: 16 }}
+        >
           <Flex gap={32} wrap>
             <Statistic
               title={t('userMgmt.activeSessions')}
@@ -729,7 +815,8 @@ const UserManagementPage = () => {
                   placement="top"
                 >
                   <Tag color="red">
-                    {lockout.username} · {t('userMgmt.loginLockoutRemaining', {
+                    {lockout.username} ·{' '}
+                    {t('userMgmt.loginLockoutRemaining', {
                       seconds: lockout.remainingSeconds,
                     })}
                   </Tag>

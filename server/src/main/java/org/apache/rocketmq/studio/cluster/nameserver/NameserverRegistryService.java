@@ -24,6 +24,7 @@ import org.apache.rocketmq.studio.persistence.entity.RmqNameserver;
 import org.apache.rocketmq.studio.persistence.mapper.RmqNameserverMapper;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -75,6 +76,7 @@ public class NameserverRegistryService {
         return toVO(stored);
     }
 
+    @Transactional
     public NameserverRegistryVO update(UpdateNameserverRegistryDTO command) {
         RmqNameserver entity = nameserverMapper.selectById(command.getId());
         if (entity == null) {
@@ -124,6 +126,26 @@ public class NameserverRegistryService {
 
     private static BusinessException duplicateName(String name) {
         return new BusinessException(409, "NameServer registry name already exists: " + name);
+    }
+
+    public NameserverRegistryVO requireExisting(long id) {
+        RmqNameserver entity = nameserverMapper.selectById(id);
+        if (entity == null) {
+            throw new BusinessException(404, "NameServer registry entry not found: " + id);
+        }
+        return toVO(entity);
+    }
+
+    public String addressOf(long id) {
+        return requireExisting(id).getNamesrvAddr();
+    }
+
+    public String nameOf(Long id) {
+        if (id == null) {
+            return null;
+        }
+        RmqNameserver entity = nameserverMapper.selectById(id);
+        return entity == null ? null : entity.getName();
     }
 
     public void delete(Long id) {

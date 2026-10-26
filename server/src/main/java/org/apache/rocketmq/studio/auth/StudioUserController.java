@@ -115,4 +115,17 @@ public class StudioUserController {
         authService.deleteUser(userId);
         return Result.ok();
     }
+
+    @PostMapping("/sessions/revoke-all")
+    public Result<StudioGlobalSessionRevokeVO> revokeAllSessions() {
+        return Result.ok(StudioGlobalSessionRevokeVO.builder()
+                .revokedSessionCount(authService.revokeAllSessions())
+                .build());
+    }
+
+    @DeleteMapping("/sessions/{sessionId}")
+    public Result<Void> revokeSession(@PathVariable Long sessionId) {
+        authService.revokeSessionById(sessionId);
+        return Result.ok();
+    }
 }

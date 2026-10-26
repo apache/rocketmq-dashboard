@@ -225,13 +225,6 @@ public class MybatisPlusAlertRepository implements AlertRepository {
     }
 
     @Override
-    public List<SystemAlertVO> findAlerts(String level) {
-        return alertMapper.selectList(alertQuery(level)).stream()
-                .map(MybatisPlusAlertRepository::toAlertVO)
-                .collect(Collectors.toList());
-    }
-
-    @Override
     public PageResult<SystemAlertVO> findAlerts(String level, int page, int pageSize) {
         Page<RmqSystemAlert> result = alertMapper.selectPage(
                 new Page<>(page, pageSize), alertQuery(level));

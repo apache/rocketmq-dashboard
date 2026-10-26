@@ -24,7 +24,7 @@ import {
   UserOutlined,
 } from '@ant-design/icons';
 import { App, Button, Form, Input, Typography } from 'antd';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useLang } from '../../i18n/LangContext';
 import useAuthStore from '../../stores/authStore';
 import { login as loginApi, changePassword } from '../../api/auth';
@@ -43,6 +43,18 @@ interface PasswordChangeFormValues {
   confirmPassword: string;
 }
 
+/**
+ * Only same-app absolute paths may be used as the post-login destination: protocol-relative
+ * URLs (`//evil.com`) and anything with a scheme or a backslash must fall back to home.
+ */
+function sanitizeReturnPath(candidate: string | null): string | null {
+  if (!candidate) return null;
+  if (!candidate.startsWith('/') || candidate.startsWith('//') || candidate.includes('\\')) {
+    return null;
+  }
+  return candidate;
+}
+
 const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const loginInFlightRef = useRef(false);
@@ -54,13 +66,16 @@ const LoginPage = () => {
   const { t } = useLang();
   const { message } = App.useApp();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const authLogin = useAuthStore((s) => s.login);
   const { darkMode, toggleTheme } = useTheme();
 
   const enterApp = (user: { username: string; userId: number | null; admin: boolean }) => {
     authLogin(user.username, user.userId, user.admin);
     message.success(t('login.success'));
-    navigate('/', { replace: true });
+    // A session that expired mid-work redirects here with ?redirect=<page>; go back to it. Both
+    // entry points share this, so completing a forced rotation lands on the same page.
+    navigate(sanitizeReturnPath(searchParams.get('redirect')) ?? '/', { replace: true });
   };
 
   const onFinish = async (values: LoginFormValues) => {
@@ -266,43 +281,43 @@ const LoginPage = () => {
               </Form.Item>
             </Form>
           ) : (
-          <Form
-            form={form}
-            name="login_form"
-            layout="vertical"
-            onFinish={onFinish}
-            initialValues={{ username: '', password: '' }}
-          >
-            <Form.Item
-              label={t('login.username')}
-              name="username"
-              rules={[{ required: true, message: t('login.usernameRequired') }]}
+            <Form
+              form={form}
+              name="login_form"
+              layout="vertical"
+              onFinish={onFinish}
+              initialValues={{ username: '', password: '' }}
             >
-              <Input
-                prefix={<UserOutlined />}
-                placeholder={t('login.usernamePlaceholder')}
-                autoComplete="username"
-              />
-            </Form.Item>
+              <Form.Item
+                label={t('login.username')}
+                name="username"
+                rules={[{ required: true, message: t('login.usernameRequired') }]}
+              >
+                <Input
+                  prefix={<UserOutlined />}
+                  placeholder={t('login.usernamePlaceholder')}
+                  autoComplete="username"
+                />
+              </Form.Item>
 
-            <Form.Item
-              label={t('login.password')}
-              name="password"
-              rules={[{ required: true, message: t('login.passwordRequired') }]}
-            >
-              <Input.Password
-                prefix={<LockOutlined />}
-                placeholder={t('login.passwordPlaceholder')}
-                autoComplete="current-password"
-              />
-            </Form.Item>
+              <Form.Item
+                label={t('login.password')}
+                name="password"
+                rules={[{ required: true, message: t('login.passwordRequired') }]}
+              >
+                <Input.Password
+                  prefix={<LockOutlined />}
+                  placeholder={t('login.passwordPlaceholder')}
+                  autoComplete="current-password"
+                />
+              </Form.Item>
 
-            <Form.Item className="login-submit-item">
-              <Button type="primary" htmlType="submit" block loading={loading}>
-                {t('login.title')}
-              </Button>
-            </Form.Item>
-          </Form>
+              <Form.Item className="login-submit-item">
+                <Button type="primary" htmlType="submit" block loading={loading}>
+                  {t('login.title')}
+                </Button>
+              </Form.Item>
+            </Form>
           )}
         </div>
 
