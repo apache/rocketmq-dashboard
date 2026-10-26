@@ -46,8 +46,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -160,6 +163,86 @@ class AiRunExecutorTest {
     @AfterEach
     void tearDown() {
         registry.liveRunIds().forEach(registry::unregister);
+    }
+
+    @Test
+    void realDeadlineShouldInterruptEnhancementAndPreventGenerationTest() throws Exception {
+        ExecutorService worker = Executors.newSingleThreadExecutor();
+        ScheduledExecutorService timers = Executors.newScheduledThreadPool(2);
+        CountDownLatch enhancing = new CountDownLatch(1);
+        CountDownLatch terminal = new CountDownLatch(1);
+        try {
+            executor = new AiRunExecutor(new AgentProviderRegistry(List.of(provider)), llmClient,
+                    promptEnhancer, registry, runRepository, conversationRepository, eventRepository,
+                    properties(), objectMapper, worker, AiRunTestSupport.recordingInto(emitters),
+                    timers, Clock.systemUTC());
+            when(promptEnhancer.enhance(any(), any(), any(), any())).thenAnswer(invocation -> {
+                enhancing.countDown();
+                try {
+                    new CountDownLatch(1).await();
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+                return "raw prompt";
+            });
+            doAnswer(invocation -> {
+                RmqAiRun updated = invocation.getArgument(0);
+                runUpdates.add(AiRunTestSupport.copyOf(updated));
+                if (RunStatus.FAILED.name().equals(updated.getStatus())) terminal.countDown();
+                return null;
+            }).when(runRepository).update(any(RmqAiRun.class));
+            AiRunExecutor.RunContext base = context(ENGINE, true);
+            AiRunExecutor.RunContext shortRun = new AiRunExecutor.RunContext(conversation, run,
+                    base.getSink(), base.getHandle(), base.getConfig(), ENGINE, "hello", null,
+                    true, Duration.ofMillis(500), null);
+            executor.submit(shortRun);
+            assertThat(enhancing.await(3, TimeUnit.SECONDS)).isTrue();
+            assertThat(terminal.await(3, TimeUnit.SECONDS)).isTrue();
+            assertThat(runRow().getStopReason()).isEqualTo(StopReason.TIMEOUT.name());
+            assertThat(provider.wasCalled()).isFalse();
+        } finally {
+            timers.shutdownNow();
+            worker.shutdownNow();
+            worker.awaitTermination(3, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    void deadlineDuringEnhancementShouldNotStartAnotherProviderCallTest() {
+        Runnable[] deadline = new Runnable[1];
+        ScheduledFuture<?> scheduled = mock(ScheduledFuture.class);
+        when(scheduler.schedule(any(Runnable.class), anyLong(), eq(TimeUnit.MILLISECONDS)))
+                .thenAnswer(invocation -> {
+                    deadline[0] = invocation.getArgument(0);
+                    return scheduled;
+                });
+        when(promptEnhancer.enhance(any(), any(), any(), any())).thenAnswer(invocation -> {
+            if (deadline[0] != null) deadline[0].run();
+            return "rewritten";
+        });
+
+        startAndRun(true);
+
+        assertThat(provider.wasCalled()).isFalse();
+        assertThat(runRow().getStatus()).isEqualTo(RunStatus.FAILED.name());
+        assertThat(runRow().getStopReason()).isEqualTo(StopReason.TIMEOUT.name());
+        verify(scheduled).cancel(false);
+        assertThat(emitters.get(0).eventCount("\"type\":\"run_finished\"")).isEqualTo(1);
+    }
+
+    @Test
+    void successfulCompletionShouldCancelTheRunDeadlineTest() {
+        ScheduledFuture<?> scheduled = mock(ScheduledFuture.class);
+        when(scheduler.schedule(any(Runnable.class), anyLong(), eq(TimeUnit.MILLISECONDS)))
+                .thenAnswer(invocation -> scheduled);
+        provider.emit(new AgentEvent.ResultMeta("session-9", 12L, 3, 9,
+                AgentEventProjector.SUCCESS_SUBTYPE));
+
+        startAndRun();
+
+        assertThat(runRow().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
+        verify(scheduler).schedule(any(Runnable.class), eq(295_000L), eq(TimeUnit.MILLISECONDS));
+        verify(scheduled).cancel(false);
     }
 
     @Test
