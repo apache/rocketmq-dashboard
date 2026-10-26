@@ -159,6 +159,38 @@ describe('K8sCertsPage', () => {
     expect(screen.getAllByText('-').length).toBeGreaterThan(0);
   });
 
+  it.each(['America/New_York', 'Asia/Shanghai', 'UTC'])(
+    'sortsUtcCertificateExpiriesInBothDirectionsIn%sTest',
+    async (timeZone) => {
+      vi.stubEnv('TZ', timeZone);
+      try {
+        // These are UTC instants, although the wire format has no offset. In New York,
+        // parsing them as local times normalizes the DST gap's 02:30 to 03:30.
+        vi.mocked(listK8sCerts).mockResolvedValue([
+          { ...certs[0], id: 2, k8sId: 'later-expiry', notAfter: '2026-03-08T03:00:00' },
+          { ...certs[0], id: 1, k8sId: 'earlier-expiry', notAfter: '2026-03-08T02:30:00' },
+        ]);
+        const user = userEvent.setup();
+        renderPage();
+        await screen.findByText('earlier-expiry');
+
+        const rowIds = () =>
+          screen
+            .getAllByRole('row')
+            .filter((row) => row.hasAttribute('data-row-key'))
+            .map((row) => row.getAttribute('data-row-key'));
+        const expiryHeader = screen.getByRole('columnheader', { name: /到期时间/ });
+        await user.click(expiryHeader);
+        await waitFor(() => expect(rowIds()).toEqual(['1', '2']));
+
+        await user.click(expiryHeader);
+        await waitFor(() => expect(rowIds()).toEqual(['2', '1']));
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+  );
+
   it('explains that certificate records are Studio-local metadata', async () => {
     renderPage();
 

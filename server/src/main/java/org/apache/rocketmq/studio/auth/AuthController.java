@@ -91,13 +91,28 @@ public class AuthController {
         if (request == null) {
             throw new BusinessException(400, "Login request is required");
         }
-        LoginVO login = authService.login(request);
+        LoginVO login = authService.login(request, clientIp(servletRequest),
+                servletRequest.getHeader("User-Agent"));
         if (AuthCookie.requestsBearerToken(servletRequest)) {
             return Result.ok(login);
         }
         AuthCookie.write(response, authProperties, login.getToken(), Duration.ofSeconds(login.getExpiresIn()));
         login.setToken(null);
         return Result.ok(login);
+    }
+
+    /**
+     * Best-effort client address for session attribution. Behind a reverse proxy the socket
+     * address is the proxy's, so the first X-Forwarded-For hop is preferred when present;
+     * the value is observability metadata only and never used for authorization.
+     */
+    static String clientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            int comma = forwarded.indexOf(',');
+            return comma > 0 ? forwarded.substring(0, comma).trim() : forwarded.trim();
+        }
+        return request.getRemoteAddr();
     }
 
     @PostMapping("/logout")

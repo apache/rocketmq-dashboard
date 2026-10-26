@@ -98,26 +98,25 @@ const BubbleList = ({
 
   return (
     <>
-      {bubbles.map((bubble, index) =>
-        bubble.role === 'user' ? (
-          <UserBubble
-            key={`user-${bubble.turn ?? index}-${index}`}
-            text={bubbleText(bubble.blocks)}
-            createdAt={bubble.createdAt}
-          />
-        ) : (
-          <AssistantBubble
-            key={`assistant-${bubble.turn ?? index}-${index}`}
-            bubble={bubble}
-            toolCatalog={toolCatalog}
-            model={model}
-            tokensPerSecond={
-              bubble.tokensPerSecond ??
-              (index === lastAssistantIndex ? lastRunTokensPerSecond : null)
-            }
-          />
-        ),
-      )}
+      {bubbles.map((bubble, index) => (
+        // The wrapper is the minimap's anchor: a stable, queryable handle per transcript row that
+        // neither bubble component has to know about.
+        <div key={`bubble-${bubble.turn ?? index}-${index}`} data-bubble-index={index}>
+          {bubble.role === 'user' ? (
+            <UserBubble text={bubbleText(bubble.blocks)} createdAt={bubble.createdAt} />
+          ) : (
+            <AssistantBubble
+              bubble={bubble}
+              toolCatalog={toolCatalog}
+              model={model}
+              tokensPerSecond={
+                bubble.tokensPerSecond ??
+                (index === lastAssistantIndex ? lastRunTokensPerSecond : null)
+              }
+            />
+          )}
+        </div>
+      ))}
       {hasPendingUser && (
         <UserBubble
           key="user-pending"

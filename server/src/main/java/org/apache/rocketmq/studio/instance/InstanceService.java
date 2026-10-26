@@ -22,6 +22,8 @@ import org.springframework.util.StringUtils;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryService;
+import org.apache.rocketmq.studio.cluster.nameserver.NamesrvAddrParser;
 import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
@@ -77,6 +79,7 @@ public class InstanceService {
     private final CacheManager cacheManager;
     private final RegionNames regionNames;
     private final ResourceOwnershipGuard ownershipGuard;
+    private final NameserverRegistryService nameserverRegistry;
 
     // @Lazy self-injection: Spring AOP proxies intercept @Transactional calls only when they
     // originate from outside the bean. Calling deleteInstance() directly from within this class
@@ -163,6 +166,13 @@ public class InstanceService {
             }
 
             clearCounts(instance);
+            // A cancelled batch is routine (the caller stopped waiting or the deadline passed),
+            // so the interrupt the worker raises at the checkpoint must not be counted or logged as
+            // a provider failure: the instance keeps the same unavailable counts as a timeout.
+            if (outcome.failure() instanceof InterruptedException) {
+                log.debug("Resource count lookup cancelled for instance {}", instance.getId());
+                continue;
+            }
             switch (outcome.status()) {
                 case REJECTED -> rejected++;
                 case TIMED_OUT -> timedOut++;
@@ -195,10 +205,20 @@ public class InstanceService {
      * unique name first, so a name that happens to equal another instance's numeric id would
      * otherwise shadow it and attribute the counts to the wrong instance.
      */
-    private InstanceResourceCountRunner.ResourceCounts loadCounts(InstanceVO instance) {
+    private InstanceResourceCountRunner.ResourceCounts loadCounts(InstanceVO instance)
+            throws InterruptedException {
         InstanceVendor vendor = instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor();
         InstanceProvider provider = providerRegistry.forVendor(vendor);
         int topicCount = provider.countTopics(instance.getName());
+        // The batch deadline or a caller cancellation interrupts this worker, but a provider that
+        // ignores the interrupt can still return a count afterwards. Check the flag between the two
+        // lookups so a batch nobody waits for does not start the second remote call.
+        // Thread.interrupted() consumes the flag the way any InterruptedException producer does, so
+        // the pooled worker does not hand a stale interrupt to its next count task.
+        if (Thread.interrupted()) {
+            throw new InterruptedException(
+                    "resource count batch cancelled after counting topics of " + instance.getName());
+        }
         int consumerGroupCount = provider.countGroups(instance.getName());
         return new InstanceResourceCountRunner.ResourceCounts(topicCount, consumerGroupCount);
     }
@@ -510,6 +530,10 @@ public class InstanceService {
         if (instance.getType() == InstanceType.CLOUD) {
             throw new BusinessException(400, "CLOUD type is reserved for vendor-managed instances");
         }
+        if (instance.getNameserverId() == null || instance.getNameserverId() <= 0) {
+            throw new BusinessException(400, "nameserverId is required");
+        }
+        nameserverRegistry.requireExisting(instance.getNameserverId());
     }
 
     /**
@@ -654,8 +678,23 @@ public class InstanceService {
                 }
                 updated.setType(instance.getType());
             }
+            if (instance.getNameserverId() != null
+                    && !instance.getNameserverId().equals(existing.getNameserverId())) {
+                throw new BusinessException(400, "The bound NameServer cluster cannot be changed after creation");
+            }
             if (instance.getEndpoint() != null) {
-                updated.setEndpoint(requireValidEndpoint(instance.getEndpoint()));
+                String normalized = requireValidEndpoint(instance.getEndpoint());
+                // A DIRECT endpoint is the NameServer address itself, so it must keep matching the binding;
+                // proxy endpoints address the proxy tier and stay free to move inside the same domain.
+                if (existing.getType() == InstanceType.DIRECT && existing.getNameserverId() != null
+                        && !NamesrvAddrParser.normalize(nameserverRegistry.addressOf(existing.getNameserverId()))
+                                .equals(NamesrvAddrParser.normalize(normalized))) {
+                    throw new BusinessException(400,
+                            "The endpoint must stay inside the bound NameServer cluster: " + existing.getName());
+                }
+                // A DIRECT endpoint is stored in the same normalized form as the registry address it binds to.
+                updated.setEndpoint(existing.getType() == InstanceType.DIRECT && existing.getNameserverId() != null
+                        ? NamesrvAddrParser.normalize(normalized) : normalized);
             }
         }
         if (instance.getRemark() != null) {

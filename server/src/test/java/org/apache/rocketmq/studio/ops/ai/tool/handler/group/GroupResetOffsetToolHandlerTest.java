@@ -15,6 +15,8 @@ import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupResetOffsetInp
 import org.apache.rocketmq.studio.ops.ai.tool.contract.group.ResetOffsetOutput;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -62,6 +64,39 @@ class GroupResetOffsetToolHandlerTest {
         assertThatThrownBy(() -> handler.execute(input, execution))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("timestamp is required")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        verifyNoInteractions(metadataService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {0L, -1L})
+    void applyShouldRejectANonPositiveTimestampTest(long timestamp) {
+        // The broker resolves a non-positive timestamp to the minimum offset, which
+        // would rewind every queue; the tool must match the REST contract's @Positive.
+        GroupResetOffsetInput input = new GroupResetOffsetInput(
+                "untrusted-instance", "group-1", "TopicA", timestamp);
+        ToolExecutionContext execution = ToolExecutionContext.of(
+                "instance-a", null, Map.of("instanceId", "untrusted-instance"));
+
+        assertThatThrownBy(() -> handler.execute(input, execution))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("timestamp must be positive")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        verifyNoInteractions(metadataService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {0L, -1L})
+    void previewShouldRejectANonPositiveTimestampTest(long timestamp) {
+        // The L2 preview must fail before issuing a confirm token for the destructive rewind.
+        GroupResetOffsetInput input = new GroupResetOffsetInput(
+                "untrusted-instance", "group-1", "TopicA", timestamp);
+        ToolExecutionContext execution = ToolExecutionContext.of(
+                "instance-a", null, Map.of("instanceId", "untrusted-instance"));
+
+        assertThatThrownBy(() -> handler.preview(input, execution))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("timestamp must be positive")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
         verifyNoInteractions(metadataService);
     }
