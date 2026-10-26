@@ -45,6 +45,7 @@ import {
 } from '../../api/cloudCredential';
 import type { CloudCredential } from '../../api/cloudCredential';
 import type { InstanceVendor } from '../../api/instance';
+import { describeApiError } from '../../utils/apiError';
 import { downloadBlob, localExportDateStamp } from '../../utils/download';
 
 const vendorTagColor: Record<string, string> = {
@@ -155,8 +156,10 @@ export const CloudCredentialTab = () => {
         new Blob([csv], { type: 'text/csv;charset=utf-8' }),
         `rocketmq-cloud-credentials-${localExportDateStamp()}.csv`,
       );
-    } catch {
-      message.error(t('settings.credentialExportFailed'));
+    } catch (error) {
+      // A refused export (for example above the server's record cap) names the reason and the
+      // only actionable step; the generic retry advice can never succeed for the same filters.
+      message.error(describeApiError(error, t('settings.credentialExportFailed')));
     } finally {
       setExporting(false);
     }

@@ -15,10 +15,10 @@
  * limitations under the License.
  */
 
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { App } from 'antd';
+import { App, ConfigProvider, message } from 'antd';
 import type { DataSource, DataSourcePage } from '../../../api/settings';
 import {
   createDataSource,
@@ -105,6 +105,10 @@ beforeAll(() => {
 });
 
 describe('DataSourceTab', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.removeItem(LANGUAGE_STORAGE_KEY);
@@ -421,6 +425,112 @@ describe('DataSourceTab', () => {
     });
   });
 
+  it.each(['success', 'failure', 'rejection'] as const)(
+    'ignores a previous modal connection test after reopening (%s) Test',
+    async (outcome) => {
+      const previousTest = deferred<{ success: boolean; message: string }>();
+      const currentTest = deferred<{ success: boolean; message: string }>();
+      vi.mocked(testDataSource)
+        .mockReturnValueOnce(previousTest.promise)
+        .mockReturnValueOnce(currentTest.promise);
+      const successMessage = vi.spyOn(message, 'success');
+      const errorMessage = vi.spyOn(message, 'error');
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      render(
+        <ConfigProvider theme={{ token: { motion: false } }}>
+          <App>
+            <LangProvider>
+              <DataSourceTab />
+            </LangProvider>
+          </App>
+        </ConfigProvider>,
+      );
+
+      const row = await screen.findByRole('row', { name: /Prometheus prod/ });
+      await user.click(within(row).getByRole('button', { name: /edit/i }));
+      const previousDialog = await screen.findByRole('dialog');
+      await user.click(within(previousDialog).getByRole('button', { name: /test connection/i }));
+      await waitFor(() => expect(testDataSource).toHaveBeenCalledTimes(1));
+      await user.click(within(previousDialog).getByRole('button', { name: /cancel/i }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+      await user.click(within(row).getByRole('button', { name: /edit/i }));
+      const currentDialog = await screen.findByRole('dialog');
+      const testButton = within(currentDialog).getByRole('button', { name: /test connection/i });
+      expect(testButton).not.toHaveClass('ant-btn-loading');
+      fireEvent.change(within(currentDialog).getByLabelText('URL'), {
+        target: { value: 'http://prometheus-new:9090' },
+      });
+      await user.click(testButton);
+      await waitFor(() => expect(testDataSource).toHaveBeenCalledTimes(2));
+      expect(testDataSource).toHaveBeenLastCalledWith({
+        type: 'Prometheus',
+        url: 'http://prometheus-new:9090',
+        auth: 'None',
+      });
+      expect(testButton).toHaveClass('ant-btn-loading');
+
+      await act(async () => {
+        if (outcome === 'rejection') previousTest.reject(new Error('old request failed'));
+        else previousTest.resolve({ success: outcome === 'success', message: 'Old test result' });
+      });
+      expect(testButton).toHaveClass('ant-btn-loading');
+      expect(successMessage).not.toHaveBeenCalled();
+      expect(errorMessage).not.toHaveBeenCalled();
+
+      await act(async () => currentTest.resolve({ success: true, message: 'Current test result' }));
+      await waitFor(() => expect(testButton).not.toHaveClass('ant-btn-loading'));
+      expect(successMessage).toHaveBeenCalledWith('Current test result');
+    },
+  );
+
+  it.each(['cancel', 'save', 'unmount'] as const)(
+    'ignores a pending modal connection test after %s Test',
+    async (action) => {
+      const pendingTest = deferred<{ success: boolean; message: string }>();
+      vi.mocked(testDataSource).mockReturnValueOnce(pendingTest.promise);
+      vi.mocked(updateDataSource).mockResolvedValueOnce(sources[0]);
+      const successMessage = vi.spyOn(message, 'success');
+      const errorMessage = vi.spyOn(message, 'error');
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      const { unmount } = render(
+        <ConfigProvider theme={{ token: { motion: false } }}>
+          <App>
+            <LangProvider>
+              <DataSourceTab />
+            </LangProvider>
+          </App>
+        </ConfigProvider>,
+      );
+
+      const row = await screen.findByRole('row', { name: /Prometheus prod/ });
+      await user.click(within(row).getByRole('button', { name: /edit/i }));
+      const dialog = await screen.findByRole('dialog');
+      await user.click(within(dialog).getByRole('button', { name: /test connection/i }));
+      await waitFor(() => expect(testDataSource).toHaveBeenCalledTimes(1));
+
+      if (action === 'unmount') unmount();
+      else {
+        await user.click(
+          within(dialog).getByRole('button', { name: action === 'save' ? 'OK' : /cancel/i }),
+        );
+        await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+        if (action === 'save') expect(updateDataSource).toHaveBeenCalledTimes(1);
+      }
+      successMessage.mockClear();
+      errorMessage.mockClear();
+
+      await act(async () => {
+        if (action === 'unmount') pendingTest.reject(new Error('request failed after unmount'));
+        else pendingTest.resolve({ success: true, message: 'Closed modal test result' });
+      });
+      expect(successMessage).not.toHaveBeenCalled();
+      expect(errorMessage).not.toHaveBeenCalled();
+    },
+  );
+
   it('exports all data sources that match the active filters without secrets', async () => {
     vi.mocked(listAllDataSources).mockResolvedValue([
       {
@@ -659,6 +769,52 @@ describe('DataSourceTab', () => {
         url: 'http://prometheus:9090',
         auth: 'Basic Auth',
       });
+    });
+  });
+
+  it('creates each data source once per modal confirmation', async () => {
+    const pendingCreate = deferred<DataSource>();
+    vi.mocked(createDataSource).mockReturnValueOnce(pendingCreate.promise);
+
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+
+    await screen.findByText('Prometheus prod');
+    await user.click(screen.getByRole('button', { name: /添加数据源/ }));
+    await user.type(screen.getByLabelText('名称'), 'Prometheus dupe');
+    await selectAntdOption(user, '类型', 'Prometheus');
+    await user.type(screen.getByLabelText('URL'), 'http://prometheus:9090');
+
+    const confirmButton = screen.getByRole('button', { name: 'OK' });
+    fireEvent.click(confirmButton);
+    // The modal must lock with the first click: `submitting` alone flips only after
+    // validateFields resolves and React re-renders, so a second OK in that window would
+    // create the same data source twice.
+    expect(confirmButton).toHaveClass('ant-btn-loading');
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => expect(createDataSource).toHaveBeenCalledTimes(1));
+    expect(createDataSource).toHaveBeenCalledTimes(1);
+    expect(createDataSource).toHaveBeenCalledWith({
+      name: 'Prometheus dupe',
+      type: 'Prometheus',
+      url: 'http://prometheus:9090',
+      auth: 'None',
+    });
+
+    await act(async () => {
+      pendingCreate.resolve({
+        key: 'prom-dupe',
+        name: 'Prometheus dupe',
+        type: 'Prometheus',
+        url: 'http://prometheus:9090',
+        auth: 'None',
+      });
+      await pendingCreate.promise;
     });
   });
 

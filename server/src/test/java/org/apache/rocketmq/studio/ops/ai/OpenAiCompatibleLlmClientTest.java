@@ -135,6 +135,38 @@ class OpenAiCompatibleLlmClientTest {
     }
 
     @Test
+    void conversationStreamShouldSendHistoryAsSeparateRolesTest() {
+        AtomicReference<JsonNode> body = new AtomicReference<>();
+        server.createContext("/v1/chat/completions", exchange -> {
+            body.set(objectMapper.readTree(exchange.getRequestBody()));
+            respond(exchange, 200, "data: [DONE]\n\n", "text/event-stream");
+        });
+        client.streamConversation(config("openai", "sk-test"), List.of(
+                new OpenAiCompatibleLlmClient.ChatMessage("user", "previous question"),
+                new OpenAiCompatibleLlmClient.ChatMessage("assistant", "previous answer")),
+                "follow-up", "selected-model", ignored -> { });
+
+        assertThat(body.get().path("model").asText()).isEqualTo("selected-model");
+        JsonNode messages = body.get().path("messages");
+        assertThat(messages.size()).isEqualTo(4);
+        assertThat(messages.get(0).path("role").asText()).isEqualTo("system");
+        assertThat(messages.get(1).path("content").asText()).isEqualTo("previous question");
+        assertThat(messages.get(2).path("role").asText()).isEqualTo("assistant");
+        assertThat(messages.get(3).path("content").asText()).isEqualTo("follow-up");
+        assertThatThrownBy(() -> new OpenAiCompatibleLlmClient.ChatMessage("system", "untrusted"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void conversationContextMustFitTheCombinedOutboundBudgetTest() {
+        assertThatThrownBy(() -> client.streamConversation(config("openai", "sk-test"),
+                List.of(new OpenAiCompatibleLlmClient.ChatMessage("user", "x".repeat(200_000))),
+                "y".repeat(200_000), null, ignored -> { }))
+                .isInstanceOf(LlmGatewayException.class)
+                .hasMessageContaining("UTF-8 bytes");
+    }
+
+    @Test
     void streamShouldParseOpenAiCompatibleSseDeltas() {
         AtomicReference<JsonNode> requestBody = new AtomicReference<>();
         server.createContext("/v1/chat/completions", exchange -> {

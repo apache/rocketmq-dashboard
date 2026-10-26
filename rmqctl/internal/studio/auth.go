@@ -11,8 +11,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -115,8 +115,22 @@ func isLoopbackHost(host string) bool {
 	if strings.EqualFold(host, "localhost") {
 		return true
 	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	addr, ok := parseHostAddress(host)
+	return ok && addr.IsLoopback()
+}
+
+// parseHostAddress parses host as an IP literal while honouring an IPv6 zone,
+// such as the "eth0" in "fe80::1%eth0" (the hostname url.Parse reports for the
+// escaped "[fe80::1%25eth0]" form). net.ParseIP rejects the zone suffix, so
+// every scoped link-local endpoint used to be classified as a public host.
+// IPv4-mapped IPv6 addresses are unmapped so that they keep being classified
+// exactly like the equivalent IPv4 literal.
+func parseHostAddress(host string) (netip.Addr, bool) {
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return netip.Addr{}, false
+	}
+	return addr.Unmap(), true
 }
 
 // isPrivateHost reports whether host is a loopback, RFC1918 private-network,
@@ -128,9 +142,9 @@ func isPrivateHost(host string) bool {
 	if isLoopbackHost(host) {
 		return true
 	}
-	ip := net.ParseIP(host)
-	if ip == nil {
+	addr, ok := parseHostAddress(host)
+	if !ok {
 		return false
 	}
-	return ip.IsPrivate() || ip.IsLinkLocalUnicast()
+	return addr.IsPrivate() || addr.IsLinkLocalUnicast()
 }
