@@ -385,6 +385,29 @@ describe('ops service mock data', () => {
     expect(await listAlertSilences()).toHaveLength(before.length);
   });
 
+  it('rejects a mock recurring alert silence whose recurrence end is missing or too early', async () => {
+    const before = await listAlertSilences();
+
+    // AlertSilenceService.validateRecurrence requires recurrenceUntil for a recurring silence and
+    // rejects one that ends before the first window does; the mock must not accept what the server
+    // would refuse, or a form built against the mock breaks the moment it meets a real backend.
+    for (const recurrenceUntil of [undefined, '2026-10-20T11:30:00Z']) {
+      await expect(
+        createAlertSilence({
+          domain: 'BUSINESS',
+          startsAt: '2026-10-20T11:00:00Z',
+          endsAt: '2026-10-20T12:00:00Z',
+          recurrence: 'DAILY',
+          timeZone: 'UTC',
+          recurrenceUntil,
+          reason: 'recurrence-until-probe',
+        }),
+      ).rejects.toThrow(/Recurrence end time/);
+    }
+
+    expect(await listAlertSilences()).toHaveLength(before.length);
+  });
+
   it('keeps accepting a mock alert silence whose end is after its start', async () => {
     const created = await createAlertSilence({
       domain: 'BUSINESS',
