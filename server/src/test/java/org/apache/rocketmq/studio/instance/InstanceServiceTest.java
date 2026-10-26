@@ -53,6 +53,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.TimeZone;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -179,6 +180,33 @@ class InstanceServiceTest {
         List<InstanceVO> result = instanceService.listInstances(null, null, true);
 
         assertThat(result.get(0).getRegionName()).isEqualTo("Hangzhou (CN)");
+    }
+
+    @Test
+    void listInstancesShouldSerializeTimestampsAsUtcWallTimeTest() {
+        // rmq_instance timestamps are stored as zone-less server-local wall clocks and the page
+        // renders them in the viewer's zone, so the JSON wire carries UTC — the alert / audit
+        // convention. A UTC container viewed from UTC+8 would otherwise show every instance
+        // created eight hours off.
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            InstanceVO instance = InstanceVO.builder()
+                    .name("inst-1")
+                    .vendor(InstanceVendor.APACHE)
+                    .build();
+            instance.setGmtCreate(LocalDateTime.of(2026, 8, 1, 10, 0, 0));
+            instance.setGmtModified(LocalDateTime.of(2026, 8, 2, 10, 0, 0));
+            when(instanceRepository.findAll()).thenReturn(List.of(instance));
+            when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+
+            List<InstanceVO> result = instanceService.listInstances(null, null);
+
+            assertThat(result.get(0).getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 8, 1, 2, 0, 0));
+            assertThat(result.get(0).getGmtModified()).isEqualTo(LocalDateTime.of(2026, 8, 2, 2, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
     }
 
     @Test

@@ -54,6 +54,8 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -133,6 +135,7 @@ public class InstanceService {
             instances.forEach(InstanceService::clearCounts);
         }
         instances.forEach(instance -> instance.setRegionName(regionNames.resolve(instance.getRegionId())));
+        instances.forEach(InstanceService::toUtcWire);
         List<InstanceVO> sorted = new ArrayList<>(instances);
         sorted.sort(Comparator
                 .comparing((InstanceVO instance) ->
@@ -141,6 +144,26 @@ public class InstanceService {
                 .thenComparing(instance -> instance.getRegionId() == null ? "" : instance.getRegionId())
                 .thenComparing(InstanceVO::getName, String.CASE_INSENSITIVE_ORDER));
         return sorted;
+    }
+
+    /**
+     * rmq_instance timestamps are stored as zone-less server-local wall clocks, and the instance
+     * page renders them in the viewer's zone, so the JSON wire carries a UTC wall clock — the
+     * alert / K8s-cert / audit-table convention — instead of a zone-less value the browser would
+     * parse as its own zone. The stored base is not converted.
+     */
+    private static void toUtcWire(InstanceVO instance) {
+        if (instance.getGmtCreate() != null) {
+            instance.setGmtCreate(toUtcWallTime(instance.getGmtCreate()));
+        }
+        if (instance.getGmtModified() != null) {
+            instance.setGmtModified(toUtcWallTime(instance.getGmtModified()));
+        }
+    }
+
+    private static LocalDateTime toUtcWallTime(LocalDateTime serverLocal) {
+        return serverLocal.atZone(ZoneId.systemDefault())
+                .withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
     }
 
     /**

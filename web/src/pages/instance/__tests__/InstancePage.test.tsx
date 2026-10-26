@@ -436,6 +436,23 @@ describe('InstancePage', () => {
     expect(screen.queryByText('添加实例')).not.toBeInTheDocument();
   });
 
+  it('renders creation times in the viewer timezone from the offset-less UTC wire format', async () => {
+    // gmtCreate/gmtModified arrive as UTC wall clocks without an offset; a plain Date parse
+    // would read the server's clock as the viewer's own and shift every creation time by the
+    // difference.
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    try {
+      vi.mocked(instanceService.listInstances).mockResolvedValue([
+        { ...instance(1, 'production-proxy'), gmtCreate: '2026-01-01T02:00:00' },
+      ]);
+      renderPage();
+
+      expect(await screen.findByText('2026-01-01 10:00:00')).toBeInTheDocument();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('keeps unavailable resource counts after available values in both sort directions', async () => {
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {
