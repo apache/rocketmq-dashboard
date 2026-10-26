@@ -163,6 +163,8 @@
 | 119 | GET | `/api/auth/status` | 登录策略与当前用户 |
 | 120 | POST | `/api/auth/password` | 修改当前用户密码 |
 | 121 | POST | `/api/ai/conversations/:id/followups` | AI 追问建议（一次小补全；无内容或失败返回空数组） |
+| 122 | POST | `/api/studio-users/sessions/revoke-all` | 注销其他账号的全部有效会话 |
+| 123 | DELETE | `/api/studio-users/sessions/:sessionId` | 注销单条会话 |
 
 ## 通用响应格式
 
@@ -2575,6 +2577,7 @@ GET /api/settings/general
 | `desktopNotify` | `boolean` | 桌面通知 |
 | `notifySound` | `boolean` | 通知声音 |
 | `sessionTimeout` | `number` | 会话超时（分钟，5-1440） |
+| `sessionIdleTimeout` | `number?` | 会话空闲超时（分钟）；`null` = 未设置，按服务端默认 **0（关闭）** 处理，`0` = 只按绝对超时判定，1~9 按 10 分钟生效，上限 1440 |
 | `requireLogin` | `boolean` | 是否需要登录 |
 | `llmProvider` | `string` | LLM 提供商: `openai` / `azure` / `anthropic` / `deepseek` / `tongyi` / `ollama` / `bedrock` |
 | `apiKeyConfigured` | `boolean` | 是否已配置 API Key；响应不会返回密钥内容 |
@@ -2596,6 +2599,7 @@ POST /api/settings/general/save
 | `desktopNotify` | `boolean` | 是 | 桌面通知 |
 | `notifySound` | `boolean` | 是 | 通知声音 |
 | `sessionTimeout` | `number` | 是 | 会话超时（分钟，5-1440） |
+| `sessionIdleTimeout` | `number` | 否 | 会话空闲超时（分钟，0-1440）；**省略 = 保留当前值**（老客户端不传也不会被重置），`0` = 关闭空闲判定 |
 | `requireLogin` | `boolean` | 是 | 是否需要登录 |
 | `llmProvider` | `string` | 是 | LLM 提供商 |
 | `apiKey` | `string` | 否 | 新 API Key；省略或传空值时保留现有密钥 |
@@ -3514,6 +3518,53 @@ GET /api/metrics/grafana/dashboards/export
 |-----------|------|
 | `404` | 没有可导出的有效内置看板 |
 | `500` | 看板 JSON 读取或 zip 打包失败 |
+
+---
+
+## 17. Studio 会话注销 Studio User Sessions
+
+> 本节只记录会话注销与其归因字段；`/api/studio-users` 的账号管理面尚未整体入档。
+
+### 17.1 注销其他账号的全部会话
+
+```
+POST /api/studio-users/sessions/revoke-all
+```
+
+把**除当前登录账号以外**所有账号的有效会话（`revoked_at IS NULL` 且未过期）一次性注销，用于凭据
+外泄或人员变动后的收口。调用者自己的会话**不受影响**，所以这次调用不会把操作者自己踢下线。
+仅数据库态会话可用（内存态直接拒绝）。
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `revokedSessionCount` | `number` | 本次注销的会话条数 |
+
+### 17.2 注销单条会话
+
+```
+DELETE /api/studio-users/sessions/:sessionId
+```
+
+**Path Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `sessionId` | `number` | 是 | 会话行 ID |
+
+会话不存在返回 **404**；已注销或已过期的会话是 **no-op**（返回 200），所以一个过期的抽屉反复确认
+不会变成错误。**Response `data`:** `null`。
+
+### 17.3 会话明细的客户端归因字段
+
+会话明细（`GET /api/studio-users/:userId/sessions` 与 `GET /api/studio-users/sessions/overview`）
+额外返回签发该会话时的客户端信息：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `clientIp` | `string?` | 签发会话的客户端地址；经反向代理时取 `X-Forwarded-For` 首跳。本次改动之前签发的会话为 `null` |
+| `userAgent` | `string?` | 签发会话的客户端 User-Agent。本次改动之前签发的会话为 `null` |
 
 ---
 

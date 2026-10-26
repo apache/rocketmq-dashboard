@@ -502,8 +502,13 @@ class AuthServiceDatabaseTest {
 
     @Test
     void idleExpiredSessionsAreRejectedAndRevokedTest() {
-        // Last seen 60 minutes ago with the 30-minute default idle window, while the absolute
+        // Last seen 60 minutes ago against a configured 30-minute idle window, while the absolute
         // expiry (2026-08-14) is still a day away: only the idle deadline can reject it.
+        // The idle deadline is off unless an operator turns it on, so this case configures it.
+        when(settingsRepository.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .sessionTimeout(30)
+                .sessionIdleTimeout(30)
+                .build());
         RmqStudioUser user = user(1L, "operator", false, true, "password-1");
         RmqStudioSession session = activeSession(10L, 1L,
                 LocalDateTime.parse("2026-08-12T23:00:00"));
@@ -596,6 +601,12 @@ class AuthServiceDatabaseTest {
 
     @Test
     void scheduledPurgeRevokesIdleExpiredSessionsTest() {
+        // The idle deadline is off unless an operator turns it on, so this case configures it.
+        when(settingsRepository.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .sessionTimeout(30)
+                .sessionIdleTimeout(30)
+                .build());
+
         authService.purgeExpiredSessions();
 
         org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioSession>> updateCaptor =

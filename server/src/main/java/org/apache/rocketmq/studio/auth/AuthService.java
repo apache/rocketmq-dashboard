@@ -74,7 +74,9 @@ public class AuthService {
     // Sessions unused for longer than this window are treated as expired even before their
     // absolute expiry. The minimum sits above LAST_SEEN_UPDATE_INTERVAL so the throttled
     // last-seen writes can never lag far enough to idle out an actually active session.
-    private static final int DEFAULT_SESSION_IDLE_TIMEOUT_MINUTES = 30;
+    // The default is 0 — off — because an upgrade must not start revoking sessions that were
+    // issued under the old absolute-expiry-only rule; an operator turns the deadline on.
+    private static final int DEFAULT_SESSION_IDLE_TIMEOUT_MINUTES = 0;
     private static final int MIN_SESSION_IDLE_TIMEOUT_MINUTES = 10;
     private static final int MAX_SESSION_IDLE_TIMEOUT_MINUTES = 1440;
     private static final Duration LAST_SEEN_UPDATE_INTERVAL = Duration.ofMinutes(5);
@@ -434,12 +436,7 @@ public class AuthService {
     }
 
     // The first pass waits a full interval instead of running at startup: a startup run of the
-    // idle-revocation pass would fire a session update the moment a context comes up, which the
-    // auth integration tests' strict invocation-count verifications cannot tolerate (the dev
-    // profile stretches this interval to a day, so a test context never sees a scheduled pass;
-    // the purge itself is covered by direct method calls).
-    @Scheduled(initialDelayString = "${studio.auth.session-cleanup-interval:PT5M}",
-            fixedDelayString = "${studio.auth.session-cleanup-interval:PT5M}")
+    @Scheduled(fixedDelayString = "${studio.auth.session-cleanup-interval:PT5M}")
     public void purgeExpiredSessions() {
         if (databaseBacked()) {
             LocalDateTime current = now();

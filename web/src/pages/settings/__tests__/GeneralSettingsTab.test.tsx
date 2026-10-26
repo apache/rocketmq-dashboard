@@ -98,8 +98,11 @@ describe('GeneralSettingsTab', () => {
   it('keeps the session timeout fields bound when displaying their unit', async () => {
     renderTab();
 
+    // The absolute timeout comes from the stored settings; the idle deadline falls back to the
+    // server default, which is off rather than a window an upgrade silently starts enforcing.
     const timeoutInputs = await screen.findAllByDisplayValue('30');
-    expect(timeoutInputs).toHaveLength(2);
+    expect(timeoutInputs).toHaveLength(1);
+    expect(document.getElementById('sessionIdleTimeout')).toHaveValue('0');
     expect(screen.getByLabelText('会话超时单位')).toHaveValue('分钟');
     expect(screen.getByLabelText('会话空闲超时单位')).toHaveValue('分钟');
   });
@@ -147,7 +150,7 @@ describe('GeneralSettingsTab', () => {
       expect(input).not.toBeNull();
       return input!;
     });
-    expect(idleInput).toHaveValue('30');
+    expect(idleInput).toHaveValue('0');
   });
 
   it('shows appearance preferences but keeps desktop notification options hidden', async () => {

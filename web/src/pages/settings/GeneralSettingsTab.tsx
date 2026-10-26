@@ -50,7 +50,7 @@ const buildPayload = (settings: GeneralSettings): GeneralSettingsUpdate => ({
   notifySound: settings.notifySound,
   sessionTimeout: settings.sessionTimeout,
   // Backends predating the field omit it; saving the server default keeps the two in sync.
-  sessionIdleTimeout: settings.sessionIdleTimeout ?? 30,
+  sessionIdleTimeout: settings.sessionIdleTimeout ?? 0,
   requireLogin: settings.requireLogin,
   llmProvider: settings.llmProvider,
   model: settings.model,
@@ -98,7 +98,7 @@ export const GeneralSettingsTab = () => {
         setSettings(loaded);
         securityForm.setFieldsValue({
           sessionTimeout: loaded.sessionTimeout,
-          sessionIdleTimeout: loaded.sessionIdleTimeout ?? 30,
+          sessionIdleTimeout: loaded.sessionIdleTimeout ?? 0,
         });
         notifyForm.setFieldsValue({
           dingtalkWebhook: loaded.dingtalkWebhook,
@@ -184,12 +184,20 @@ export const GeneralSettingsTab = () => {
     }
   };
 
-  const handleSecurityFinish = async (values: { sessionTimeout: number; sessionIdleTimeout: number }) => {
+  const handleSecurityFinish = async (values: {
+    sessionTimeout: number;
+    sessionIdleTimeout: number;
+  }) => {
     if (!canWriteSettings || securityInFlightRef.current) return;
     securityInFlightRef.current = true;
     setSavingSecurity(true);
     try {
-      if (await mergeAndSave({ sessionTimeout: values.sessionTimeout, sessionIdleTimeout: values.sessionIdleTimeout })) {
+      if (
+        await mergeAndSave({
+          sessionTimeout: values.sessionTimeout,
+          sessionIdleTimeout: values.sessionIdleTimeout,
+        })
+      ) {
         message.success(t('settings.saveSuccess'));
       }
     } finally {

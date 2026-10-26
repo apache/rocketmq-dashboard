@@ -204,7 +204,11 @@ class AuthServiceTest {
         Clock clock = mock(Clock.class);
         when(clock.millis()).thenReturn(0L);
         authService = new AuthService(authProperties, settingsRepository, clock);
-        when(settingsRepository.loadGeneralSettings()).thenReturn(sessionSettings(120));
+        // The idle deadline is off unless an operator turns it on, so this case configures it.
+        when(settingsRepository.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .sessionTimeout(120)
+                .sessionIdleTimeout(30)
+                .build());
         AuthProperties.User user = new AuthProperties.User();
         user.setUsername("testuser");
         user.setPassword("testpass");
@@ -214,7 +218,7 @@ class AuthServiceTest {
         request.setPassword("testpass");
         LoginVO response = authService.login(request);
 
-        // 31 minutes unused: past the 30-minute default idle window while the two-hour
+        // 31 minutes unused: past the configured 30-minute idle window while the two-hour
         // absolute expiry is still far away, so only the idle deadline can reject it.
         when(clock.millis()).thenReturn(31 * 60_000L);
         assertThat(authService.isAuthenticated("Bearer " + response.getToken())).isFalse();
