@@ -1184,6 +1184,25 @@ class AlertServiceTest {
     }
 
     @Test
+    void updateRuleShouldReturnTheStoredRuleInsteadOfTheRequestTest() {
+        AlertRuleVO existing = AlertRuleVO.builder().id(1L).name("CPU Alert").metric("cpu_usage")
+                .operator(">=").threshold(80.0).instanceId("local").enabled(true)
+                .lastTriggered("2026-09-30T08:00:00").build();
+        AlertRuleVO update = AlertRuleVO.builder().id(1L).name("CPU Alert").metric("cpu_usage")
+                .operator(">=").threshold(90.0).instanceId("local").enabled(true).build();
+        AlertRuleVO stored = AlertRuleVO.builder().id(1L).name("CPU Alert").metric("cpu_usage")
+                .operator(">=").threshold(90.0).instanceId("local").enabled(true)
+                .lastTriggered("2026-10-01T10:00:00").build();
+        when(alertRepository.findRuleById(1L)).thenReturn(Optional.of(existing), Optional.of(stored));
+        when(alertRepository.replaceRule(update)).thenReturn(true);
+
+        AlertRuleVO result = alertService.updateRule(update);
+
+        assertThat(result.getLastTriggered()).isEqualTo("2026-10-01T10:00:00");
+        assertThat(result.getThreshold()).isEqualTo(90.0);
+    }
+
+    @Test
     void updateRuleShouldRejectNullRequestTest() {
         assertThatThrownBy(() -> alertService.updateRule(null))
                 .isInstanceOf(BusinessException.class)

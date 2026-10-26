@@ -220,7 +220,10 @@ public class AlertService {
             alertStateRepository.deleteByRuleId(id);
         }
         auditRule("UPDATE_ALERT_RULE", rule, null);
-        return rule;
+        // The write leaves the fields an update cannot carry (the fire history) untouched, so the
+        // response must describe the stored rule: echoing the request reported a triggered rule as
+        // never triggered until the list reloaded.
+        return alertRepository.findRuleById(id).orElse(rule);
     }
 
     @Transactional
