@@ -82,13 +82,17 @@ upload_source() {
   # 保留远端环境专属配置（tar 已排除，这里防 rm -rf 误删）。
   # 任一步失败（备份 .env、清理、解压、恢复 .env）都必须让远端命令以非零退出：
   # 旧写法用 `;` 分隔并以 `|| true` 结尾，tar 解压失败也被吞掉，部署会带着残缺源码继续走到
-  # docker build 才在别处报错。解压失败时仍先恢复 .env，再以原退出码终止。
+  # docker build 才在别处报错。解压失败时重建 deploy/ 并恢复 .env，保留最先发生的错误。
   # rmqctl 也要清理：源包带 rmqctl（server 镜像的 Go 阶段 COPY 它），tar 解压只覆盖同名文件，
   # 新提交删除/重命名的旧 Go 文件会留在远端，被 COPY 进镜像后可能重复声明编译失败、
   # 或编出包含已删实现的 CLI。rmqctl/bin 是远端构建产物，随清理重建。
   run_remote "cd $REMOTE_PATH && { [ ! -f deploy/.env ] || cp deploy/.env /tmp/deploy-env-backup; } && \
     { rm -rf server web deploy rmqctl && tar xzf $(basename "$SRC_TAR") && rm $(basename "$SRC_TAR"); \
-      rc=\$?; { [ ! -f /tmp/deploy-env-backup ] || mv /tmp/deploy-env-backup deploy/.env; }; exit \$rc; }"
+      rc=\$?; \
+      if [ -f /tmp/deploy-env-backup ]; then \
+        mkdir -p deploy && mv /tmp/deploy-env-backup deploy/.env; \
+        restore_rc=\$?; [ \$rc -ne 0 ] || rc=\$restore_rc; \
+      fi; exit \$rc; }"
   run_remote 'docker network inspect rocketmq_net >/dev/null 2>&1 || docker network create rocketmq_net'
   log "源码就位，rocketmq_net 网络就绪"
 }
