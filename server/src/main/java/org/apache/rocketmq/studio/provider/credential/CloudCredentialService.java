@@ -69,6 +69,10 @@ public class CloudCredentialService {
             throw new BusinessException(400, "Cloud credential export exceeds the maximum of "
                     + MAX_EXPORT_CREDENTIALS + " records; narrow the filters");
         }
+        if (result.getItems().size() != result.getTotal()) {
+            throw new BusinessException(409,
+                    "Cloud credential export returned an incomplete page; retry to avoid an incomplete CSV");
+        }
         StringBuilder csv = new StringBuilder("\uFEFF").append(EXPORT_CSV_HEADER);
         for (CloudCredentialVO credential : result.getItems()) {
             CloudCredentialVO masked = maskAccessKey(credential);

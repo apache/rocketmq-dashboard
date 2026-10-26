@@ -108,6 +108,10 @@ public class AuditService {
             throw new BusinessException(400,
                     "Audit log export exceeds the maximum of " + MAX_EXPORT_RECORDS + " records; narrow the filters");
         }
+        if (page.getItems().size() != page.getTotal()) {
+            throw new BusinessException(409,
+                    "Audit log export returned an incomplete page; retry to avoid an incomplete CSV");
+        }
         StringBuilder csv = new StringBuilder("\uFEFF").append(csvHeader());
         for (AuditRecordVO record : page.getItems()) {
             CsvUtil.appendRow(csv,

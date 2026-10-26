@@ -262,6 +262,20 @@ class AuditServiceTest {
     }
 
     @Test
+    void exportLogsShouldRejectShortPageInsteadOfReturningIncompleteCsvTest() {
+        AuditRecordVO record = AuditRecordVO.builder().operator("alice").build();
+        when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(), isNull(),
+                eq(false), isNull(), isNull(), isNull(), eq(1), eq(10_000)))
+                .thenReturn(PageResult.of(List.of(record), 2, 1, 10_000));
+
+        assertThatThrownBy(() -> auditService.exportLogs(
+                null, null, null, null, null, false, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("incomplete CSV")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
+    }
+
+    @Test
     void getFilterOptionsReturnsRepositoryValues() {
         AuditFilterOptionsVO options = AuditFilterOptionsVO.builder()
                 .operators(List.of("admin"))
