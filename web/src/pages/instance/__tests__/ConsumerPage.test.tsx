@@ -555,7 +555,7 @@ describe('Consumer page', () => {
     const dialog = await screen.findByRole('dialog');
 
     await user.click(within(dialog).getByRole('button', { name: '查看资源命名与归属规则' }));
-    expect(await screen.findByText('创建时的归属规则')).toBeInTheDocument();
+    expect(await screen.findByText('资源命名与归属规则')).toBeInTheDocument();
   });
 
   it('submits the canonical global delivery order type', async () => {
