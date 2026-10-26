@@ -652,6 +652,25 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void getGroupProgressOrdersQueuesWithinEachBrokerByTopicAndQueueId() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        ConsumeStats stats = new ConsumeStats();
+        Map<MessageQueue, OffsetWrapper> offsets = new LinkedHashMap<>();
+        offsets.put(new MessageQueue("TopicB", "broker-a", 0), offset(20, 10));
+        offsets.put(new MessageQueue("TopicA", "broker-a", 1), offset(20, 10));
+        offsets.put(new MessageQueue("TopicA", "broker-a", 0), offset(20, 10));
+        stats.setOffsetTable(offsets);
+        when(admin.examineConsumeStats("group-a")).thenReturn(stats);
+
+        List<QueueProgressVO> progress = newLiveProvider(admin).getGroupProgress(null, "group-a");
+
+        assertThat(progress).extracting(QueueProgressVO::getTopic)
+                .containsExactly("TopicA", "TopicA", "TopicB");
+        assertThat(progress).extracting(QueueProgressVO::getQueueId)
+                .containsExactly(0, 1, 0);
+    }
+
+    @Test
     void getGroupProgressShouldReturnEmptyWhenConsumerNotOnlineTest() throws Exception {
         DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
         when(admin.examineConsumeStats("group-offline")).thenThrow(

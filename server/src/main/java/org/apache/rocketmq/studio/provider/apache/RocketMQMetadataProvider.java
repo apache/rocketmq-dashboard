@@ -755,10 +755,11 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                         .build());
             }
 
-            progress.sort((a, b) -> {
-                int cmp = a.getBroker().compareToIgnoreCase(b.getBroker());
-                return cmp != 0 ? cmp : Integer.compare(a.getQueueId(), b.getQueueId());
-            });
+            progress.sort(Comparator.comparing(QueueProgressVO::getBroker, String.CASE_INSENSITIVE_ORDER)
+                    .thenComparing(QueueProgressVO::getBroker)
+                    .thenComparing(QueueProgressVO::getTopic, String.CASE_INSENSITIVE_ORDER)
+                    .thenComparing(QueueProgressVO::getTopic)
+                    .thenComparingInt(QueueProgressVO::getQueueId));
             return progress;
         } catch (Exception e) {
             if (isGroupNotOnline(e)) {
