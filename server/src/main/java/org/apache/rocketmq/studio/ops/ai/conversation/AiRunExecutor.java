@@ -381,10 +381,8 @@ public class AiRunExecutor {
     }
 
     /**
-     * The {@code http} engine has no agent CLI, so it stays a single-turn completion streamed as text
-     * deltas: no reasoning, no tools, no resumable session id. That is a real limitation of the engine
-     * and not something to paper over — the run row keeps {@code runtime_session_id} null and the next
-     * turn starts from scratch.
+     * HTTP carries bounded persisted prose history, not a CLI session, reasoning or tool execution.
+     * The run row still has no provider runtime_session_id; resume=false omits prior messages.
      */
     private void streamHttp(RunContext context, String prompt, Consumer<AgentEvent> events) {
         LlmConfigVO config = context.getConfig();
@@ -393,7 +391,15 @@ public class AiRunExecutor {
                     "LLM provider is not supported by the OpenAI-compatible gateway",
                     "Use one of: openai, deepseek, tongyi, ollama.");
         }
-        llmClient.stream(config, prompt, context.getRun().getModel(),
+        HttpConversationContext history = context.isHttpHistoryEnabled()
+                ? HttpConversationContext.read(eventRepository, objectMapper,
+                        context.getRun().getConversationId(), context.getRun().getStartSeq())
+                : new HttpConversationContext(java.util.List.of(), false);
+        if (history.truncated()) {
+            events.accept(new AgentEvent.ProviderNotice(AgentEventProjector.LEVEL_WARN,
+                    "Only bounded recent question/answer history is included in this HTTP turn."));
+        }
+        llmClient.streamConversation(config, history.messages(), prompt, context.getRun().getModel(),
                 token -> events.accept(new AgentEvent.TextDelta(token)));
     }
 
@@ -723,6 +729,11 @@ public class AiRunExecutor {
         private final Duration timeout;
         /** Null when the conversation runs without RocketMQ tools. */
         private final RmqctlWorkspace.Preparation preparation;
+        /**
+         * False when the caller asked not to resume, so an HTTP run carries only this turn. Final
+         * like every other input: a run's shape is fixed when it is admitted, not mutated mid-flight.
+         */
+        private final boolean httpHistoryEnabled;
 
         private final AtomicReference<State> state = new AtomicReference<>(State.ACTIVE);
 

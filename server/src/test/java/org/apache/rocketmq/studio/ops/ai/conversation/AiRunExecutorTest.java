@@ -60,6 +60,7 @@ import java.util.function.Consumer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -205,7 +206,7 @@ class AiRunExecutorTest {
             AiRunExecutor.RunContext base = context(ENGINE, true);
             AiRunExecutor.RunContext shortRun = new AiRunExecutor.RunContext(conversation, run,
                     base.getSink(), base.getHandle(), base.getConfig(), ENGINE, "hello", null,
-                    true, Duration.ofMillis(500), null);
+                    true, Duration.ofMillis(500), null, true);
             executor.submit(shortRun);
             assertThat(enhancing.await(3, TimeUnit.SECONDS)).isTrue();
             assertThat(terminal.await(3, TimeUnit.SECONDS)).isTrue();
@@ -338,7 +339,7 @@ class AiRunExecutorTest {
         session.finishReplay();
         lateExecutor.submit(new AiRunExecutor.RunContext(conversation, run, sink, handle,
                 LlmConfigVO.builder().engine(ENGINE).model("qwen3.8-max").enabled(true).build(),
-                ENGINE, "hello", null, false, Duration.ofSeconds(300), null));
+                ENGINE, "hello", null, false, Duration.ofSeconds(300), null, true));
 
         assertThat(runRow().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
         assertThat(runRow().getStopReason()).isNull();
@@ -581,13 +582,36 @@ class AiRunExecutorTest {
     }
 
     @Test
+    void httpTurnShouldReceiveOnlyItsPriorConversationMessagesTest() {
+        when(llmClient.supports(any())).thenReturn(true);
+        RmqAiEvent question = new RmqAiEvent();
+        question.setSeq(1);
+        question.setTurn(1);
+        question.setPayload("{\"type\":\"user\",\"text\":\"previous question\"}");
+        RmqAiEvent answer = new RmqAiEvent();
+        answer.setSeq(2);
+        answer.setTurn(1);
+        answer.setPayload("{\"type\":\"text\",\"text\":\"previous answer\"}");
+        when(eventRepository.findRecentBeforeSeq(eq(CONVERSATION_ID), eq(3), anyInt()))
+                .thenReturn(List.of(question, answer));
+        run.setStartSeq(3);
+
+        executor.submit(context(LlmConfigVO.ENGINE_HTTP));
+
+        verify(llmClient).streamConversation(any(), eq(List.of(
+                new OpenAiCompatibleLlmClient.ChatMessage("user", "previous question"),
+                new OpenAiCompatibleLlmClient.ChatMessage("assistant", "previous answer"))),
+                eq("hello"), eq("qwen3.8-max"), any());
+    }
+
+    @Test
     void httpEngineShouldStreamTokensAsTextDeltasWithoutAnAgentProviderTest() {
         doAnswer(invocation -> {
-            Consumer<String> tokens = invocation.getArgument(3);
+            Consumer<String> tokens = invocation.getArgument(4);
             tokens.accept("hello ");
             tokens.accept("world");
             return null;
-        }).when(llmClient).stream(any(), any(), any(), any());
+        }).when(llmClient).streamConversation(any(), any(), any(), any(), any());
         when(llmClient.supports(any())).thenReturn(true);
 
         AiRunExecutor.RunContext context = context(LlmConfigVO.ENGINE_HTTP);
@@ -725,7 +749,7 @@ class AiRunExecutorTest {
         session.finishReplay();
         return new AiRunExecutor.RunContext(conversation, run, sink, handle,
                 LlmConfigVO.builder().engine(engine).model("qwen3.8-max").enabled(true).build(),
-                engine, "hello", resumeSessionId, enhance, Duration.ofSeconds(300), null);
+                engine, "hello", resumeSessionId, enhance, Duration.ofSeconds(300), null, true);
     }
 
     private List<String> types() {
