@@ -292,3 +292,12 @@ export function ratioToPercent(value: number): number {
       : `${digits}${'0'.repeat(pointIndex - digits.length)}`;
   return Number(`${sign}${scaled}`);
 }
+
+/**
+ * Trace and consumption records report "no time" as 0. {@link formatTimeMs} deliberately treats
+ * zero as a real timestamp because stored values can legitimately be the epoch, so the
+ * optional-time call sites map zero to the placeholder themselves.
+ */
+export function formatOptionalTimeMs(value: number | string | null | undefined): string {
+  return value === 0 || value === '0' ? '-' : formatTimeMs(value);
+}

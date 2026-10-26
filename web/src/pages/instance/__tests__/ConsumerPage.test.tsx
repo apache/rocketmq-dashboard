@@ -355,6 +355,29 @@ describe('Consumer page', () => {
     });
   });
 
+  it('applies the subscription-mode filter on the server', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('remote-cg')).toBeInTheDocument();
+
+    const modeSelect = screen.getAllByRole('combobox')[1];
+    fireEvent.mouseDown(modeSelect.parentElement!);
+    await user.click(
+      await screen.findByText('Pop', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() =>
+      expect(consumerService.listConsumerGroupPage).toHaveBeenLastCalledWith({
+        instanceId: 'instance-1',
+        page: 1,
+        pageSize: 20,
+        search: undefined,
+        subscriptionMode: 'Pop',
+      }),
+    );
+  });
+
   it('clears selected consumer groups when the search scope changes', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
@@ -445,6 +468,30 @@ describe('Consumer page', () => {
     );
     await waitFor(() => expect(consumerService.listConsumerGroupPage).toHaveBeenCalledTimes(2));
     expect(screen.getByText('管理消费者组订阅关系与消费进度，共 0 个 Group')).toBeInTheDocument();
+    confirmSpy.mockRestore();
+  });
+
+  it('reports a failed consumer group deletion instead of staying silent', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    vi.mocked(consumerService.deleteConsumerGroup).mockRejectedValue(new Error('network error'));
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(groupPage([group]));
+    renderWithProviders(<ConsumerPage />);
+
+    const row = await screen.findByRole('row', { name: /remote-cg/ });
+    await user.click(within(row).getByRole('button', { name: /删除/ }));
+
+    await waitFor(() =>
+      expect(consumerService.deleteConsumerGroup).toHaveBeenCalledWith('remote-cg', 'instance-1'),
+    );
+    // The delete was rejected, so the operator must be told instead of the request
+    // failing with no feedback at all.
+    expect(await screen.findByText('删除消费组失败，请稍后重试')).toBeInTheDocument();
+    // The group still exists on the server, so the row must still be listed.
+    expect(await screen.findByRole('row', { name: /remote-cg/ })).toBeInTheDocument();
     confirmSpy.mockRestore();
   });
 
@@ -541,6 +588,21 @@ describe('Consumer page', () => {
       pageSize: 20,
     });
     confirmSpy.mockRestore();
+  });
+
+  // 创建规则从「资源模型」页的判定流程图搬到了创建表单上的问号弹窗（用户约定 2026-10-26）。
+  it('explains the naming rule from a question mark on the create form', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    await screen.findByText('remote-cg');
+    const createButton = screen.getByRole('button', { name: '创建 Group' });
+    await waitFor(() => expect(createButton).toBeEnabled());
+    await user.click(createButton);
+    const dialog = await screen.findByRole('dialog');
+
+    await user.click(within(dialog).getByRole('button', { name: '查看资源命名与归属规则' }));
+    expect(await screen.findByText('资源命名与归属规则')).toBeInTheDocument();
   });
 
   it('submits the canonical global delivery order type', async () => {
@@ -892,6 +954,12 @@ describe('Consumer page', () => {
     await waitFor(() => expect(within(panel).getAllByText('消费风险').length).toBeGreaterThan(0));
     expect(within(panel).getByText('订阅表达式不一致')).toBeInTheDocument();
     expect(within(panel).getByText('Queue 堆积分布严重倾斜')).toBeInTheDocument();
+    // The summary row must name its units: "Queue 覆盖: 9 / 2 Topic" read like a completion ratio
+    // of two unrelated dimensions, and "Queue 堆积" reported offset availability, not lag.
+    expect(within(panel).getByText('Queue 进度:')).toBeInTheDocument();
+    expect(within(panel).getByText('Queue 位点:')).toBeInTheDocument();
+    expect(within(panel).getByText(/个 Queue \/ .*个 Topic/)).toBeInTheDocument();
+    expect(within(panel).queryByText('Queue 覆盖:')).not.toBeInTheDocument();
     expect(within(panel).getAllByText('客户端心跳过期').length).toBeGreaterThan(0);
     expect(within(panel).getByText('处理建议')).toBeInTheDocument();
   });

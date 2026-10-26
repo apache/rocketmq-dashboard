@@ -79,6 +79,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 
@@ -104,8 +105,9 @@ class ResourceOwnershipGuardTest {
         resolver = mock(InstanceResolver.class);
         defaultClusters = mock(RocketMQDefaultClusterResolver.class);
         guard = new ResourceOwnershipGuard(jdbc, transactions, resolver);
-        jdbc.update("INSERT INTO rmq_instance (name, type, endpoint, vendor) VALUES ('first', 'DIRECT', 'same:9876', 'APACHE')");
-        jdbc.update("INSERT INTO rmq_instance (name, type, endpoint, vendor) VALUES ('second', 'DIRECT', 'same:9876', 'APACHE')");
+        jdbc.update("INSERT INTO rmq_nameserver (name, namesrv_addr, status) VALUES ('ns-test', 'same:9876', 'healthy')");
+        jdbc.update("INSERT INTO rmq_instance (name, type, endpoint, vendor, nameserver_id) VALUES ('first', 'DIRECT', 'same:9876', 'APACHE', 1)");
+        jdbc.update("INSERT INTO rmq_instance (name, type, endpoint, vendor, nameserver_id) VALUES ('second', 'DIRECT', 'same:9876', 'APACHE', 1)");
         first = instance("first");
         second = instance("second");
     }
@@ -184,7 +186,7 @@ class ResourceOwnershipGuardTest {
             jdbc.update("DELETE FROM rmq_instance_topic WHERE name = 'orders'");
             throw new BusinessException(502, "NameServer failed");
         })).isInstanceOf(BusinessException.class);
-        assertCode(() -> guard.check(second, topic, true), 409);
+        assertCode(() -> guard.checkSlot(second, topic, null, true), 409);
     }
 
     @Test
@@ -198,11 +200,50 @@ class ResourceOwnershipGuardTest {
     }
 
     @Test
-    void legacyOwnerOnlyAcceptsConfirmedVirtualClusterTest() {
-        jdbc.update("INSERT INTO rmq_instance_topic (name, cluster_id) VALUES ('orders', 'cluster')");
-        assertCode(() -> guard.check(first, topic, true), 409);
-        InstanceVO virtual = InstanceVO.builder().name("cluster").vendor(InstanceVendor.APACHE).build();
-        assertThat(guard.check(virtual, topic, true).instanceId()).isEmpty();
+    void sameNameInDifferentDomainsCoexistsTest() {
+        jdbc.update("INSERT INTO rmq_nameserver (name, namesrv_addr, status) VALUES ('ns-other', 'other:9876', 'healthy')");
+        jdbc.update("INSERT INTO rmq_instance (name, type, endpoint, vendor, nameserver_id)"
+                + " VALUES ('third', 'DIRECT', 'other:9876', 'APACHE', 2)");
+        InstanceVO third = instance("third");
+        guard.write(first, topic, "cluster", true, "NORMAL", () -> null);
+        guard.write(third, topic, "cluster", true, "NORMAL", () -> null);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM rmq_instance_topic", Integer.class)).isEqualTo(2);
+    }
+
+    @Test
+    void sameNameOnDifferentClustersOfOneDomainCoexistsTest() {
+        guard.write(first, topic, "cluster-a", true, "NORMAL", () -> null);
+        guard.write(second, topic, "cluster-b", true, "NORMAL", () -> null);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM rmq_instance_topic", Integer.class)).isEqualTo(2);
+        assertThat(guard.slots(first, topic)).hasSize(2);
+    }
+
+    @Test
+    void sameSlotSecondInstanceIsRejectedTest() {
+        guard.write(first, topic, "cluster-a", true, "NORMAL", () -> null);
+        assertCode(() -> guard.write(second, topic, "cluster-a", true, "NORMAL", () -> null), 409);
+    }
+
+    @Test
+    void sameSlotSameInstanceIsAnUpsertTest() {
+        guard.write(first, topic, "cluster-a", true, "NORMAL", () -> null);
+        guard.write(first, topic, "cluster-a", true, "NORMAL", () -> null);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM rmq_instance_topic", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void releasedSlotCanBeClaimedByAnotherInstanceTest() {
+        guard.write(first, topic, "cluster-a", true, "NORMAL", () -> null);
+        jdbc.update("DELETE FROM rmq_instance_topic WHERE name = 'orders'");
+        guard.write(second, topic, "cluster-a", true, "NORMAL", () -> null);
+        assertThat(jdbc.queryForObject("SELECT instance_id FROM rmq_instance_topic", String.class)).isEqualTo("second");
+    }
+
+    @Test
+    void foreignOwnerInSameDomainIsRejectedBeforeAnyWriteTest() {
+        jdbc.update("INSERT INTO rmq_instance_topic (name, cluster_id, domain, instance_id) VALUES ('orders', 'cluster', 'ns:1', 'first')");
+        assertCode(() -> guard.checkSlot(second, topic, null, true), 409);
+        assertThat(guard.checkSlot(first, topic, null, true).instanceId()).isEqualTo("first");
     }
 
     @Test
@@ -210,31 +251,35 @@ class ResourceOwnershipGuardTest {
         legacyIndexes();
         guard.write(first, topic, "cluster", true, "NORMAL", () -> null);
         jdbc.execute("DROP TABLE rmq_instance_ownership_lock");
-        var migration = new ResourceOwnershipSchemaMigration(dataSource, defaultClusters);
+        var migration = new ResourceOwnershipSchemaMigration(dataSource);
         migration.afterPropertiesSet();
         migration.afterPropertiesSet();
         guard.write(first, topic, "cluster", true, "NORMAL", () -> null);
-        assertThatThrownBy(() -> jdbc.update("INSERT INTO rmq_instance_topic (name, instance_id, cluster_id)"
-                + " VALUES ('orders', 'second', 'other')")).isInstanceOf(org.springframework.dao.DuplicateKeyException.class);
+        // The slot key still rejects a second owner of the very same (domain, cluster, name)...
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO rmq_instance_topic (name, instance_id, cluster_id, domain)"
+                + " VALUES ('orders', 'second', 'cluster', 'ns:1')")).isInstanceOf(org.springframework.dao.DuplicateKeyException.class);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM rmq_instance_topic", Integer.class)).isEqualTo(1);
+        // ...while the same name on another broker cluster of the domain is exactly what the model allows.
+        jdbc.update("INSERT INTO rmq_instance_topic (name, instance_id, cluster_id, domain)"
+                + " VALUES ('orders', 'second', 'other', 'ns:1')");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM rmq_instance_topic", Integer.class)).isEqualTo(2);
     }
 
     @Test
     void migrationRejectsDuplicatesWithoutDiscardingAnyRowsTest() {
         legacyIndexes();
-        jdbc.update("INSERT INTO rmq_instance_group (name, instance_id, cluster_id) VALUES ('buyers', 'first', 'a')");
-        jdbc.update("INSERT INTO rmq_instance_group (name, instance_id, cluster_id) VALUES ('buyers', 'second', 'b')");
-        assertThatThrownBy(() -> new ResourceOwnershipSchemaMigration(dataSource, defaultClusters).afterPropertiesSet())
-                .isInstanceOf(IllegalStateException.class).hasMessageContaining("duplicate name");
+        jdbc.update("INSERT INTO rmq_instance_group (name, instance_id, cluster_id, domain) VALUES ('buyers', 'first', 'a', 'ns:1')");
+        jdbc.update("INSERT INTO rmq_instance_group (name, instance_id, cluster_id, domain) VALUES ('buyers', 'second', 'a', 'ns:1')");
+        assertThatThrownBy(() -> new ResourceOwnershipSchemaMigration(dataSource).afterPropertiesSet())
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("manual resolution");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM rmq_instance_group", Integer.class)).isEqualTo(2);
     }
 
     @Test
     void migrationRejectsUnknownLegacyOwnerWithoutChangingItTest() {
         jdbc.update("INSERT INTO rmq_instance_topic (name, cluster_id) VALUES ('orders', 'unknown')");
-        when(defaultClusters.names()).thenReturn(List.of("cluster"));
-        assertThatThrownBy(() -> new ResourceOwnershipSchemaMigration(dataSource, defaultClusters).afterPropertiesSet())
-                .isInstanceOf(IllegalStateException.class).hasMessageContaining("no trusted virtual cluster mapping");
+        assertThatThrownBy(() -> new ResourceOwnershipSchemaMigration(dataSource).afterPropertiesSet())
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("cannot be determined");
         assertThat(jdbc.queryForObject("SELECT instance_id FROM rmq_instance_topic", String.class)).isEmpty();
     }
 
@@ -243,21 +288,23 @@ class ResourceOwnershipGuardTest {
         var runtime = mock(RuntimeAdminClientResolver.class);
         var broker = mock(DefaultMQAdminExt.class);
         var admin = apacheAdmin(runtime, broker);
-        InstanceVO virtual = InstanceVO.builder().name("cluster-b").endpoint("same:9876").build();
-        when(resolver.findByIdentifier("cluster-b")).thenReturn(Optional.of(virtual));
+        jdbc.update("INSERT INTO rmq_instance (name, type, endpoint, vendor, nameserver_id) VALUES ('prod-b', 'DIRECT', 'same:9876', 'APACHE', 1)");
+        InstanceVO registered = instance("prod-b");
+        when(resolver.findByIdentifier("prod-b")).thenReturn(Optional.of(registered));
         when(broker.examineBrokerClusterInfo()).thenReturn(twoClusters());
         TopicVO request = new TopicVO();
         request.setName("orders");
-        admin.createTopic("cluster-b", request);
+        request.setClusterId("cluster-b");
+        admin.createTopic("prod-b", request);
 
-        assertThat(guard.check(virtual, topic, true).clusterId()).isEqualTo("cluster-b");
+        assertThat(guard.checkSlot(registered, topic, null, true).clusterId()).isEqualTo("cluster-b");
         verify(broker).createAndUpdateTopicConfig(eq("10.0.1.1:10911"), any(TopicConfig.class));
         verify(broker, never()).createAndUpdateTopicConfig(eq("10.0.0.1:10911"), any(TopicConfig.class));
         verify(broker, never()).createAndUpdateTopicConfig(eq("10.0.1.2:10911"), any(TopicConfig.class));
     }
 
     @Test
-    void apacheWritesRejectForeignOwnerBeforeAnyBrokerOrProducerCallTest() {
+    void apacheWritesRejectForeignOwnerBeforeAnyBrokerOrProducerCallTest() throws Exception {
         guard.write(first, topic, "cluster-a", true, "NORMAL", () -> null);
         guard.write(first, new Resource(Kind.GROUP, "buyers"), "cluster-a", true, null, () -> null);
         var runtime = mock(RuntimeAdminClientResolver.class);
@@ -285,7 +332,10 @@ class ResourceOwnershipGuardTest {
         direct.setClientId("client");
         direct.setMsgId("msg");
         assertCode(() -> new RocketMQMessageProvider(runtime, guard).consumeMessageDirectly(direct), 409);
-        verifyNoInteractions(runtime, broker);
+        verify(broker, never()).createAndUpdateTopicConfig(anyString(), any());
+        verify(broker, never()).createAndUpdateSubscriptionGroupConfig(anyString(), any());
+        verify(broker, never()).deleteTopicInBroker(any(), anyString());
+        verify(broker, never()).deleteSubscriptionGroup(anyString(), anyString(), anyBoolean());
     }
 
     @Test
@@ -359,9 +409,8 @@ class ResourceOwnershipGuardTest {
     @Test
     void migrationRejectsMissingExplicitOwnerWithoutDataLossTest() {
         jdbc.update("INSERT INTO rmq_instance_topic (name, instance_id, cluster_id) VALUES ('orders', 'gone', 'cluster')");
-        when(defaultClusters.names()).thenReturn(List.of("cluster"));
-        assertThatThrownBy(() -> new ResourceOwnershipSchemaMigration(dataSource, defaultClusters).afterPropertiesSet())
-                .isInstanceOf(IllegalStateException.class).hasMessageContaining("does not exist and has no trusted virtual mapping");
+        assertThatThrownBy(() -> new ResourceOwnershipSchemaMigration(dataSource).afterPropertiesSet())
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("cannot be determined");
         assertThat(jdbc.queryForObject("SELECT instance_id FROM rmq_instance_topic", String.class)).isEqualTo("gone");
     }
 
@@ -381,7 +430,7 @@ class ResourceOwnershipGuardTest {
         request.setName("orders");
         request.setType(TopicType.NORMAL);
         admin.importTopic(" first ", request);
-        assertThat(guard.check(first, topic, true).clusterId()).isEqualTo("cluster-b");
+        assertThat(guard.checkSlot(first, topic, null, true).clusterId()).isEqualTo("cluster-b");
         assertThat(jdbc.queryForObject("SELECT status FROM rmq_instance_topic", String.class)).isEqualTo("ACTIVE");
         request.setReadQueues(16);
         assertCode(() -> admin.importTopic("first", request), 409);
@@ -408,7 +457,7 @@ class ResourceOwnershipGuardTest {
         request.setName("orders");
         request.setType(type);
         admin.importTopic("first", request);
-        assertThat(guard.check(first, topic, true).topicType()).isEqualTo(type.name());
+        assertThat(guard.checkSlot(first, topic, null, true).topicType()).isEqualTo(type.name());
         physical.setAttributes(Map.of("message.type", type == TopicType.NORMAL ? "FIFO" : "NORMAL"));
         assertCode(() -> admin.importTopic("first", request), 409);
         verify(broker, never()).createAndUpdateTopicConfig(anyString(), any());
@@ -426,7 +475,7 @@ class ResourceOwnershipGuardTest {
         topology.getBrokerAddrTable().remove("broker-a");
         when(broker.examineBrokerClusterInfo()).thenReturn(topology);
         org.mockito.Mockito.doAnswer(call -> {
-            assertThat(guard.check(first, topic, true).instanceId()).isEqualTo("first");
+            assertThat(guard.checkSlot(first, topic, null, true).instanceId()).isEqualTo("first");
             throw new BusinessException(502, "Remote already partially succeeded");
         }).when(broker).createAndUpdateTopicConfig(anyString(), any());
         TopicVO request = new TopicVO();
@@ -493,29 +542,27 @@ class ResourceOwnershipGuardTest {
         assertCode(() -> lite.extendTTL("first", "orders", 120_000L), 502);
         assertCode(() -> lite.extendTTL("second", "orders", 120_000L), 409);
         verifyNoInteractions(factory);
-        assertThat(guard.check(first, topic, true).instanceId()).isEqualTo("first");
+        assertThat(guard.checkSlot(first, topic, null, true).instanceId()).isEqualTo("first");
     }
 
     @Test
-    void virtualClaimAndRegistrationSerializeWithoutChangingOwnershipTest() throws Exception {
-        InstanceVO virtual = InstanceVO.builder().name("virtual").build();
+    void registeredClaimAndRegistrationSerializeWithoutChangingOwnershipTest() throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         try (var executor = Executors.newFixedThreadPool(2)) {
-            var write = executor.submit(() -> guard.write(virtual, topic, "virtual", true, "NORMAL", () -> {
+            var write = executor.submit(() -> guard.write(first, topic, "cluster", true, "NORMAL", () -> {
                 entered.countDown();
                 await(release);
                 return null;
             }));
             assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
-            var register = executor.submit(() -> assertCode(() -> guard.withInstanceRegistration("virtual", () ->
-                    jdbc.update("INSERT INTO rmq_instance (name, type, endpoint) VALUES ('virtual','DIRECT','other:9876')")), 409));
+            var register = executor.submit(() -> assertCode(() -> guard.withInstanceRegistration("first", () ->
+                    jdbc.update("INSERT INTO rmq_instance (name, type, endpoint, vendor, nameserver_id) VALUES ('dup', 'DIRECT', 'other:9876', 'APACHE', 1)")), 409));
             release.countDown();
             write.get(10, TimeUnit.SECONDS);
             register.get(10, TimeUnit.SECONDS);
         }
-        assertThat(guard.check(virtual, topic, true).instanceId()).isEqualTo("virtual");
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM rmq_instance WHERE name = 'virtual'", Integer.class)).isZero();
+        assertThat(guard.checkSlot(first, topic, null, true).instanceId()).isEqualTo("first");
     }
 
     @Test
@@ -539,13 +586,12 @@ class ResourceOwnershipGuardTest {
 
     @Test
     void migrationAcceptsTrustedVirtualOwnerWithoutRewritingLegacyDataTest() throws Exception {
-        jdbc.update("INSERT INTO rmq_instance_topic (name, cluster_id) VALUES ('orders', 'cluster')");
-        when(defaultClusters.names()).thenReturn(List.of("cluster"));
-        var migration = new ResourceOwnershipSchemaMigration(dataSource, defaultClusters);
+        jdbc.update("INSERT INTO rmq_instance_topic (name, instance_id, cluster_id) VALUES ('orders', 'first', 'cluster')");
+        var migration = new ResourceOwnershipSchemaMigration(dataSource);
         migration.afterPropertiesSet();
         migration.afterPropertiesSet();
-        assertThat(jdbc.queryForObject("SELECT instance_id FROM rmq_instance_topic", String.class)).isEmpty();
-        assertCode(() -> guard.withInstanceRegistration("cluster", () -> null), 409);
+        assertThat(jdbc.queryForObject("SELECT domain FROM rmq_instance_topic", String.class)).isEqualTo("ns:1");
+        assertCode(() -> guard.withInstanceRegistration("first", () -> null), 409);
     }
 
     @Test
@@ -556,7 +602,7 @@ class ResourceOwnershipGuardTest {
         try (var executor = Executors.newFixedThreadPool(2)) {
             java.util.concurrent.Callable<Void> migrate = () -> {
                 await(start);
-                new ResourceOwnershipSchemaMigration(dataSource, defaultClusters).afterPropertiesSet();
+                new ResourceOwnershipSchemaMigration(dataSource).afterPropertiesSet();
                 return null;
             };
             var a = executor.submit(migrate);
@@ -644,7 +690,7 @@ class ResourceOwnershipGuardTest {
 
     private void legacyIndexes() {
         for (String kind : List.of("topic", "group")) {
-            jdbc.execute("ALTER TABLE rmq_instance_" + kind + " DROP INDEX uk_" + kind + "_name");
+            jdbc.execute("ALTER TABLE rmq_instance_" + kind + " DROP INDEX uk_" + kind + "_domain");
             jdbc.execute("CREATE UNIQUE INDEX uk_cluster_instance_" + kind + " ON rmq_instance_" + kind
                     + " (cluster_id, instance_id, name)");
         }
@@ -662,7 +708,11 @@ class ResourceOwnershipGuardTest {
 
     private InstanceVO instance(String name) {
         InstanceVO instance = InstanceVO.builder().name(name).vendor(InstanceVendor.APACHE)
-                .type(InstanceType.DIRECT).endpoint("same:9876").build();
+                .type(InstanceType.DIRECT)
+                .endpoint(jdbc.queryForObject("SELECT endpoint FROM rmq_instance WHERE name = ?", String.class, name))
+                .nameserverId(jdbc.queryForObject("SELECT nameserver_id FROM rmq_instance WHERE name = ?",
+                        Long.class, name))
+                .build();
         instance.setId(jdbc.queryForObject("SELECT id FROM rmq_instance WHERE name = ?", Long.class, name));
         return instance;
     }

@@ -79,10 +79,18 @@ public class GroupResetOffsetToolHandler extends MutationToolHandler<GroupResetO
         return new ResetOffsetOutput(input.groupName(), input.topicName(), timestamp);
     }
 
-    /** Decision 13: no server-side default — rmqctl fills the current time client-side. */
+    /**
+     * Decision 13: no server-side default — rmqctl fills the current time client-side.
+     * A non-positive timestamp rewinds every queue to its minimum offset (the broker
+     * resolves such a value before the first stored message), so it must be rejected
+     * with the same contract as {@code POST /api/groups/reset-offset}.
+     */
     private static long requireTimestamp(GroupResetOffsetInput input) {
         if (input.timestamp() == null) {
             throw new BusinessException(400, "timestamp is required");
+        }
+        if (input.timestamp() <= 0L) {
+            throw new BusinessException(400, "timestamp must be positive");
         }
         return input.timestamp();
     }

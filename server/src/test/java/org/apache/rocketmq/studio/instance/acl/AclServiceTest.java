@@ -1022,7 +1022,9 @@ class AclServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"999.999.999.999", "10.0.0.0/8", "192.168.100-1.*", "192.168.1.{}"})
+    @ValueSource(strings = {"999.999.999.999", "10.0.0.0/8", "192.168.100-1.*", "192.168.1.{}",
+        "192.168.1.0-0", "192.168.0-0.*", "192.168.1.000-000", "192.168.000-000.*",
+        "2001:db8::0-0", "2001:db8::0-0:*", "2001:db8::0000-0000", "2001:db8::0000-0000:*"})
     void createAndUpdatePlainAccessConfigShouldRejectInvalidWhiteRemoteAddress(String whiteRemoteAddress) {
         PlainAccessConfigVO config = PlainAccessConfigVO.builder()
                 .accessKey("ak-1")
@@ -1039,7 +1041,9 @@ class AclServiceTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"*", "192.168.*.*", "192.168.1-100.*", "192.168.1.{1,2,3}",
-        "192.168.1.10,192.168.1.11", "2001:db8::1"})
+        "192.168.1.10,192.168.1.11", "2001:db8::1",
+        "192.168.0.*", "192.168.0-1.*", "192.168.1-1.*", "192.168.1.0",
+        "2001:db8::0:*", "2001:db8::0-1:*", "2001:db8::1-1:*", "2001:db8::0"})
     void createAndUpdatePlainAccessConfigShouldAcceptValidWhiteRemoteAddress(String whiteRemoteAddress) {
         PlainAccessConfigVO config = PlainAccessConfigVO.builder()
                 .accessKey("ak-1")
@@ -1424,6 +1428,53 @@ class AclServiceTest {
         assertThat(entry.getActions()).containsExactly("PUB");
         assertThat(entry.getDecision()).isEqualTo("ALLOW");
         assertThat(entry.getSourceIps()).containsExactly("10.0.0.0/8", "192.168.1.5");
+    }
+
+    @Test
+    void pushAclToBrokerSkipsRulesWithoutAResourceTypeInsteadOfWideningThemTest() throws Exception {
+        // A rule whose resourceType is absent does not say whether its resource names a topic or a
+        // group. The push used to map every such rule to the ANY resource ("*"), widening a named
+        // grant (e.g. "Allow SUB on topic-a") to the whole cluster on the broker, while rules with
+        // an unrepresentable pattern were already skipped with a reason.
+        AclUserVO stored = AclUserVO.builder()
+                .id(11L)
+                .username("orders")
+                .secretKey("secret-4")
+                .build();
+        when(aclRepository.findUsers()).thenReturn(List.of(stored));
+        when(aclRepository.findUserById(11L)).thenReturn(Optional.of(stored));
+        when(aclRepository.findRulePage("user:orders", null, null, null, null, 1, 200))
+                .thenReturn(PageResult.of(List.of(
+                        AclRuleVO.builder().principal("user:orders").resource("topic-a")
+                                .resourceType("Topic").resourcePattern("LITERAL")
+                                .actions(List.of("PUB")).decision("ALLOW").build(),
+                        AclRuleVO.builder().principal("user:orders").resource("topic-a")
+                                .resourcePattern("LITERAL")
+                                .actions(List.of("SUB")).decision("ALLOW").build(),
+                        AclRuleVO.builder().principal("user:orders").resource("*")
+                                .resourceType("Cluster").resourcePattern("LITERAL")
+                                .actions(List.of("GET")).decision("ALLOW").build()),
+                        3, 1, 200));
+        when(clusterProvider.discoverBrokers("instance-a", null)).thenReturn(List.of());
+
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster("10.0.0.1:10911"));
+        when(admin.getUser("10.0.0.1:10911", "orders"))
+                .thenThrow(new MQBrokerException(207, "no such user"));
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(call -> call.getArgument(1, MqAdminExtFactory.AdminAction.class).apply(admin));
+
+        PushAclToBrokerResultVO result = aclService.pushAclToBroker("instance-a");
+
+        PushAclToBrokerResultVO.AccountOutcome account = result.getAccounts().get(0);
+        assertThat(account.getPolicyCount()).isEqualTo(2);
+        assertThat(account.getSkipped()).singleElement()
+                .asString().contains("topic-a").contains("no broker ACL equivalent");
+        ArgumentCaptor<AclInfo> aclCaptor = ArgumentCaptor.forClass(AclInfo.class);
+        verify(admin).updateAcl(eq("10.0.0.1:10911"), aclCaptor.capture());
+        assertThat(aclCaptor.getValue().getPolicies().get(0).getEntries())
+                .extracting(AclInfo.PolicyEntryInfo::getResource)
+                .containsExactly("Topic:topic-a", "*");
     }
 
     @Test

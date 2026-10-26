@@ -23,6 +23,8 @@ export interface StudioUser {
   username: string;
   admin: boolean;
   enabled: boolean;
+  /** The account's password awaits rotation by its owner (set by creation or admin reset). */
+  passwordMustChange?: boolean;
   activeSessionCount: number;
   lastSessionSeenAt?: string | null;
   nearestSessionExpiresAt?: string | null;
@@ -72,6 +74,9 @@ export interface StudioUserSessionDetail {
   idleSeconds?: number | null;
   expiringSoon: boolean;
   stale: boolean;
+  /** Client address the session was issued to; absent for rows created before attribution. */
+  clientIp?: string | null;
+  userAgent?: string | null;
 }
 
 export async function listStudioUsers(query: StudioUserQuery = {}) {
@@ -85,6 +90,16 @@ export async function getStudioUserSessionOverview() {
   const response = await client.get<{ data: StudioUserSessionOverview }>(
     '/studio-users/sessions/overview',
   );
+  return response.data.data;
+}
+
+export interface StudioLoginLockout {
+  username: string;
+  remainingSeconds: number;
+}
+
+export async function listStudioLoginLockouts() {
+  const response = await client.get<{ data: StudioLoginLockout[] }>('/studio-users/login-lockouts');
   return response.data.data;
 }
 
@@ -127,6 +142,12 @@ export async function setStudioUserEnabled(userId: number, enabled: boolean) {
   return response.data.data;
 }
 
+export async function setStudioUserRole(userId: number, admin: boolean) {
+  const rolePath = `/studio-users/${userId}/role`;
+  const response = await client.post<{ data: StudioUser }>(rolePath, { admin });
+  return response.data.data;
+}
+
 export async function resetStudioUserPassword(userId: number, newPassword: string) {
   await client.post(`/studio-users/${userId}/password`, { newPassword });
 }
@@ -136,4 +157,19 @@ export async function revokeStudioUserSessions(userId: number) {
     `/studio-users/${userId}/sessions/revoke`,
   );
   return response.data.data;
+}
+
+export async function deleteStudioUser(userId: number) {
+  await client.delete(`/studio-users/${userId}`);
+}
+
+export async function revokeAllStudioUserSessions() {
+  const response = await client.post<{ data: { revokedSessionCount: number } }>(
+    '/studio-users/sessions/revoke-all',
+  );
+  return response.data.data.revokedSessionCount;
+}
+
+export async function revokeStudioSession(sessionId: number) {
+  await client.delete(`/studio-users/sessions/${sessionId}`);
 }

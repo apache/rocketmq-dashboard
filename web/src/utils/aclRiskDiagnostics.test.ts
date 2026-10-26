@@ -61,6 +61,37 @@ describe('ACL risk diagnostics', () => {
     ]);
   });
 
+  it.each([undefined, null, '', ' \t '])(
+    'reports an unrestricted account source for %jTest',
+    (whiteRemoteAddress) => {
+      const diagnostics = analyzeAclRisk(config({ accounts: [account({ whiteRemoteAddress })] }));
+
+      expect(diagnostics.status).toBe('critical');
+      expect(diagnostics.summary.broadWhitelistCount).toBe(1);
+      expect(diagnostics.issues).toEqual([
+        expect.objectContaining({
+          code: 'BROAD_ACCOUNT_WHITELIST',
+          severity: 'critical',
+          evidence: ['<empty>'],
+        }),
+      ]);
+    },
+  );
+
+  it('reports an unrestricted administrator despite deny-by-default permissionsTest', () => {
+    const diagnostics = analyzeAclRisk(
+      config({ accounts: [account({ admin: true, whiteRemoteAddress: '' })] }),
+    );
+
+    expect(diagnostics.status).toBe('critical');
+    expect(diagnostics.score).toBeLessThan(100);
+    expect(diagnostics.summary.broadWhitelistCount).toBe(1);
+    expect(diagnostics.issues.map((item) => item.code)).toEqual(
+      expect.arrayContaining(['BROAD_ACCOUNT_WHITELIST', 'ADMIN_WITH_BROAD_ACCESS']),
+    );
+    expect(diagnostics.issues.some((item) => item.code === 'BROAD_GLOBAL_WHITELIST')).toBe(false);
+  });
+
   it('flags disabled ACL and missing accounts as critical risks', () => {
     const diagnostics = analyzeAclRisk(
       config({
