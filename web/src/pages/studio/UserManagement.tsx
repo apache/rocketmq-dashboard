@@ -411,7 +411,7 @@ const UserManagementPage = () => {
         await deleteStudioUser(record.id);
         message.success(t('userMgmt.deleted', { username: record.username }));
         if (sessionModalUser?.id === record.id) {
-          setSessionDrawerUser(null);
+          setSessionModalUser(null);
         }
         await loadUsers();
       },
@@ -442,7 +442,7 @@ const UserManagementPage = () => {
       const revokedCount = await revokeAllStudioUserSessions();
       message.success(t('userMgmt.revokedAllCount', { count: revokedCount }));
       if (sessionModalUser) {
-        setSessionDrawerUser(null);
+        setSessionModalUser(null);
       }
       await loadUsers();
     } catch {
