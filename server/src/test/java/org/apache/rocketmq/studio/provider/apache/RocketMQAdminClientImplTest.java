@@ -155,19 +155,35 @@ class RocketMQAdminClientImplTest {
             return instance;
         });
         lenient().when(ownershipGuard.topicResource(any())).thenCallRealMethod();
-        lenient().when(ownershipGuard.check(any(), any(), anyBoolean())).thenAnswer(call -> {
+        lenient().when(ownershipGuard.checkOwnerInDomain(any(), any(), anyBoolean())).thenAnswer(call -> {
             if (!call.<Boolean>getArgument(2)) {
                 return null;
             }
             var resource = call.<org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Resource>getArgument(1);
             return new org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Ownership(
                     1L, resource.name(), call.<org.apache.rocketmq.studio.instance.InstanceVO>getArgument(0).getName(),
-                    "cluster-1", null);
+                    "cluster-1", null, "ns:1");
+        });
+        lenient().when(ownershipGuard.checkSlot(any(), any(), any(), anyBoolean())).thenAnswer(call -> {
+            if (!call.<Boolean>getArgument(3)) {
+                return null;
+            }
+            var resource = call.<org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Resource>getArgument(1);
+            return new org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Ownership(
+                    1L, resource.name(), call.<org.apache.rocketmq.studio.instance.InstanceVO>getArgument(0).getName(),
+                    "cluster-1", null, "ns:1");
         });
         lenient().when(ownershipGuard.write(any(), any(), any(), anyBoolean(), any(), any())).thenAnswer(call ->
                 call.<java.util.function.Supplier<Object>>getArgument(5).get());
         lenient().when(ownershipGuard.withOwned(any(), any(), any())).thenAnswer(call ->
                 call.<java.util.function.Supplier<Object>>getArgument(2).get());
+        lenient().when(ownershipGuard.domainOf(any())).thenReturn("ns:1");
+        lenient().when(ownershipGuard.slots(any(), any())).thenAnswer(call -> {
+            var resource = call.<org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Resource>getArgument(1);
+            return java.util.List.of(new org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Ownership(
+                    1L, resource.name(), call.<org.apache.rocketmq.studio.instance.InstanceVO>getArgument(0).getName(),
+                    "cluster-1", null, "ns:1"));
+        });
         lenient().when(runtimeAdminClientResolver.execute(anyString(), any())).thenAnswer(call ->
                 call.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(adminExt));
         lenient().when(runtimeAdminClientResolver.resolveEndpoint(anyString())).thenReturn("10.0.0.1:9876");
@@ -749,7 +765,8 @@ class RocketMQAdminClientImplTest {
                 ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(topicMapper, times(2)).selectOne(captor.capture());
         for (LambdaQueryWrapper<RmqTopic> wrapper : captor.getAllValues()) {
-            assertThat(wrapper.getSqlSegment()).contains("name").doesNotContain("cluster_id", "instance_id");
+            assertThat(wrapper.getSqlSegment()).contains("name", "domain", "cluster_id")
+                    .doesNotContain("instance_id");
         }
     }
 
@@ -858,8 +875,9 @@ class RocketMQAdminClientImplTest {
         ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> queries = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(topicMapper, times(create ? 2 : 1)).selectOne(queries.capture());
         for (LambdaQueryWrapper<RmqTopic> query : queries.getAllValues()) {
-            assertThat(query.getSqlSegment()).contains("name").doesNotContain("instance_id", "cluster_id");
-            assertThat(query.getParamNameValuePairs().values()).containsExactly("orders");
+            assertThat(query.getSqlSegment()).contains("name", "domain", "cluster_id")
+                    .doesNotContain("instance_id");
+            assertThat(query.getParamNameValuePairs().values()).contains("orders", "ns:1");
         }
         if (create) {
             ArgumentCaptor<RmqTopic> saved = ArgumentCaptor.forClass(RmqTopic.class);
@@ -1303,7 +1321,8 @@ class RocketMQAdminClientImplTest {
 
         ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(topicMapper).delete(captor.capture());
-        assertThat(captor.getValue().getSqlSegment()).contains("name").doesNotContain("cluster_id", "instance_id");
+        assertThat(captor.getValue().getSqlSegment()).contains("name", "domain")
+                .doesNotContain("instance_id", "cluster_id");
         verify(selectedAdmin).deleteTopicInBroker(Set.of("10.0.0.1:10911"), "orders");
         verify(selectedAdmin).deleteTopicInNameServer(Set.of("10.0.0.2:9876"), "cluster-1", "orders");
     }
@@ -1358,7 +1377,8 @@ class RocketMQAdminClientImplTest {
         verify(adminExt, never()).createAndUpdateSubscriptionGroupConfig(anyString(), any());
         ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(groupMapper).selectOne(captor.capture());
-        assertThat(captor.getValue().getSqlSegment()).contains("name").doesNotContain("cluster_id", "instance_id");
+        assertThat(captor.getValue().getSqlSegment()).contains("name", "domain", "cluster_id")
+                .doesNotContain("instance_id");
     }
 
     @ParameterizedTest
@@ -1733,7 +1753,8 @@ class RocketMQAdminClientImplTest {
         verify(adminExt, never()).deleteSubscriptionGroup(anyString(), anyString(), org.mockito.ArgumentMatchers.anyBoolean());
         ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(groupMapper).delete(captor.capture());
-        assertThat(captor.getValue().getSqlSegment()).contains("name").doesNotContain("cluster_id", "instance_id");
+        assertThat(captor.getValue().getSqlSegment()).contains("name", "domain", "cluster_id")
+                .doesNotContain("instance_id");
     }
 
     @Test
@@ -2081,7 +2102,7 @@ class RocketMQAdminClientImplTest {
         String destination = targetTopic == null ? "%RETRY%group-a" : targetTopic;
         assertThat(sent.getTopic()).isEqualTo(destination);
         var destinationResource = ownershipGuard.topicResource(destination);
-        verify(ownershipGuard, org.mockito.Mockito.atLeastOnce()).check(any(), eq(destinationResource), eq(true));
+        verify(ownershipGuard, org.mockito.Mockito.atLeastOnce()).checkOwnerInDomain(any(), eq(destinationResource), eq(true));
         MessageExt delivered = new MessageExt();
         delivered.setTopic(sent.getTopic());
         delivered.setBody(sent.getBody());
@@ -2169,7 +2190,7 @@ class RocketMQAdminClientImplTest {
                 .body("payload").properties(Map.of(MessageConst.PROPERTY_RETRY_TOPIC, "orders")).build();
         var logicalTopic = new org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Resource(
                 org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Kind.TOPIC, "orders");
-        when(ownershipGuard.check(any(), eq(logicalTopic), eq(true)))
+        when(ownershipGuard.checkOwnerInDomain(any(), eq(logicalTopic), eq(true)))
                 .thenThrow(new org.apache.rocketmq.studio.common.exception.BusinessException(409, "Topic scope mismatch"));
 
         assertThatThrownBy(() -> redeliveryService().redeliverMessage("instance-a", "group-a", source, null))

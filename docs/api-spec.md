@@ -162,6 +162,7 @@
 | 118 | GET | `/api/liteTopic/capability` | LiteTopic 能力检查 |
 | 119 | GET | `/api/auth/status` | 登录策略与当前用户 |
 | 120 | POST | `/api/auth/password` | 修改当前用户密码 |
+| 121 | POST | `/api/ai/conversations/:id/followups` | AI 追问建议（一次小补全；无内容或失败返回空数组） |
 
 ## 通用响应格式
 
@@ -2065,7 +2066,7 @@ POST /api/dlq/resend
 | `failuresTruncated` | `boolean` | 失败明细是否被截断：失败条数超过 100 时为 `true`，此时 `failed` 仍是真实的失败总数 |
 
 `DLQResendFailure` 的字段：`msgId`（`string`，重投失败的死信消息 ID）、`targetTopic`（`string`，解析出的目标
-Topic，未指定 `targetTopic` 时即原 Topic）、`reason`（`string`，归一化后的简短失败原因，最长 256 字符）。
+Topic，未指定 `targetTopic` 时即原 Topic）、`reason`（`string`，归一化后的简短失败原因，最长 256 个 UTF-16 单元；超长时在完整字符边界截断并以 `...` 结尾）。
 §9.4「重发选中的死信消息」返回同一结构，两条重投路径共用该 VO。
 
 > **跨集群拒绝（`409`）**：显式传入 `targetTopic` 时，若它解析出的集群不是死信 Topic（`%DLQ%{groupName}`）
@@ -2073,6 +2074,12 @@ Topic，未指定 `targetTopic` 时即原 Topic）、`reason`（`string`，归�
 > （`RocketMQDLQProvider.requireSameClusterAsDlqTopic`）。**省略 `targetTopic` 时同样校验**：服务端先按每条死信
 > 推断目的地（即其原 Topic），对推断出的每一个目的地跑同一次校验，任一跨集群即整批 `409` 拒绝，
 > 不会出现「重投了一半」。§9.4 的按 `msgIds` 重投走同一套校验。
+
+AI / CLI 的 `rmq.message.redelivery_dlq` 工具在执行结果中提供相同的有界 `failures` 明细和
+`failuresTruncated` 标记：最多保留 100 条，`failed` 仍为失败总数；`scanIncomplete` 只描述扫描完整性。
+无法解析目的 Topic 时，明细省略 `targetTopic`。新服务总是返回这两个字段（无失败时为 `[]` / `false`），
+它们在工具 schema 中为可选项，以兼容仅返回聚合字段的旧服务。rmqctl 默认摘要以及 JSON / YAML 输出均保留明细，
+不会自动重试。
 
 ### 9.3 分页获取死信消息明细
 
@@ -3268,6 +3275,40 @@ POST /api/ai/tools/:name/execute
     }
   ]
 }
+```
+
+---
+
+### 15.14 获取追问建议
+
+```
+POST /api/ai/conversations/:id/followups
+```
+
+对会话的「最后一问 + 最后一答」跑一次小补全，返回运营者最可能接着问的追问，前端渲染成可一键发送的
+按钮。与其他 POST 一样仅管理员可调用（要花模型 token），会话归属校验与其他会话端点一致。
+
+**空数组是正常返回**：没有可建议的内容、模型未配置就绪、读取会话尾部失败或补全调用失败，一律返回
+`[]` 且只在服务端记 warn，不以错误状态码返回——建议失败不该把一次已经完成的对话变成错误提示。
+最后一答最多取 4000 字符，返回最多 3 条、每条最多 60 字符，模型自带的编号 / 项目符号 / 引号会被剥掉
+（这些字符会随芯片一起被当作下一个问题发出去）。
+
+**Path Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `number` | 是 | AI 会话 ID |
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `(root)` | `string[]` | 0~3 条追问文本，顺序即建议展示顺序；无建议时为 `[]` |
+
+**示例：**
+
+```json
+["查看该 Group 的堆积明细", "把位点重置到最近", "对比两个集群的 NameServer 配置"]
 ```
 
 ---
