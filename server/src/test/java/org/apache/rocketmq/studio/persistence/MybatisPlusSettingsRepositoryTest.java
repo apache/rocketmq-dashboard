@@ -6,6 +6,8 @@
  */
 package org.apache.rocketmq.studio.persistence;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.persistence.entity.RmqDataSource;
@@ -18,6 +20,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DuplicateKeyException;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -163,6 +167,24 @@ class MybatisPlusSettingsRepositoryTest {
                 .build();
 
         assertThat(repository.replaceDataSource(replacement)).isFalse();
+    }
+
+    @Test
+    void shouldTreatDataSourceSearchAndTypeAsLiteralTextTest() {
+        Page<RmqDataSource> databasePage = new Page<RmqDataSource>(1, 20)
+                .setRecords(List.of())
+                .setTotal(0);
+        when(dataSourceMapper.selectPage(any(Page.class), any(QueryWrapper.class)))
+                .thenReturn(databasePage);
+
+        repository.findDataSources(" prod_% ", " prom_% ", 1, 20);
+
+        @SuppressWarnings("rawtypes")
+        ArgumentCaptor<QueryWrapper> queryCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(dataSourceMapper).selectPage(any(Page.class), queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getSqlSegment()).contains("LOWER(json) LIKE");
+        assertThat(queryCaptor.getValue().getParamNameValuePairs().values())
+                .contains("%prod\\_\\%%", "prom\\_\\%");
     }
 
     @Test
