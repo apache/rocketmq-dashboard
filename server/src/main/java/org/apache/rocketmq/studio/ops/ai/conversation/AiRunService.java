@@ -477,8 +477,12 @@ public class AiRunService {
      * the non-null columns the stale read still carries — {@code status}, {@code end_seq} and
      * {@code gmt_modified} — are written back over the terminal ones. The nullable terminal facts
      * (duration, tokens, finished_at) survive: MyBatis-Plus defaults to {@code FieldStrategy.NOT_NULL},
-     * so a null field never reaches the SET clause. Only the speed column is touched, the same
-     * partial-update shape {@code rememberRuntimeSession} uses.
+     * so a null field never reaches the SET clause. The write touches only the speed column and the
+     * bookkeeping timestamp, the same partial-update shape {@code rememberRuntimeSession} uses.
+     * {@code gmt_modified} is stamped explicitly, from the same service clock as every other write
+     * to the row: the column is declared {@code ON UPDATE CURRENT_TIMESTAMP}, so leaving it null
+     * would not leave it alone — the database would rewrite it in its session timezone, a different
+     * clock than the UTC cutoff the orphan sweep compares against.
      *
      * @throws BusinessException 404 when the run does not exist or belongs to somebody else
      */
@@ -488,6 +492,7 @@ public class AiRunService {
         RmqAiRun update = new RmqAiRun();
         update.setId(run.getId());
         update.setTokensPerSecond(tokensPerSecond);
+        update.setGmtModified(LocalDateTime.now(clock));
         runRepository.update(update);
         run.setTokensPerSecond(tokensPerSecond);
         return run;

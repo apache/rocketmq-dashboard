@@ -43,6 +43,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
@@ -439,12 +440,15 @@ class AiRunServiceTest {
     }
 
     @Test
-    void reportSpeedShouldTouchOnlyTheSpeedColumnTest() {
+    void reportSpeedShouldStampGmtModifiedWithoutTouchingFinalizeColumnsTest() {
         // The client reports the speed as its stream closes, which also happens mid-run when the
         // connection drops while the run keeps executing. A full-row write read before the worker
         // finalises would race finalizeRun's terminal update and write the stale RUNNING state back
         // over it, resurrecting the run as active and locking the conversation with 409s until the
-        // orphan sweep reaps the row. The update must therefore carry only the id and the speed.
+        // orphan sweep reaps the row. The update must therefore carry only the id, the speed and
+        // the bookkeeping timestamp, stamped from the service clock — an unstamped partial update
+        // lets the DDL's ON UPDATE CURRENT_TIMESTAMP rewrite gmt_modified in the database session's
+        // timezone, which is not the clock the orphan cutoff is compared against.
         RmqAiRun running = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.RUNNING);
         when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(running));
 
@@ -462,7 +466,7 @@ class AiRunServiceTest {
         assertThat(update.getEndSeq()).isNull();
         assertThat(update.getInputTokens()).isNull();
         assertThat(update.getOutputTokens()).isNull();
-        assertThat(update.getGmtModified()).isNull();
+        assertThat(update.getGmtModified()).isEqualTo(LocalDateTime.parse("2026-09-18T10:00:00"));
     }
 
     @Test
