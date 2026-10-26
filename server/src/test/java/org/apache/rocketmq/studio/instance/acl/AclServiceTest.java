@@ -1431,6 +1431,53 @@ class AclServiceTest {
     }
 
     @Test
+    void pushAclToBrokerSkipsRulesWithoutAResourceTypeInsteadOfWideningThemTest() throws Exception {
+        // A rule whose resourceType is absent does not say whether its resource names a topic or a
+        // group. The push used to map every such rule to the ANY resource ("*"), widening a named
+        // grant (e.g. "Allow SUB on topic-a") to the whole cluster on the broker, while rules with
+        // an unrepresentable pattern were already skipped with a reason.
+        AclUserVO stored = AclUserVO.builder()
+                .id(11L)
+                .username("orders")
+                .secretKey("secret-4")
+                .build();
+        when(aclRepository.findUsers()).thenReturn(List.of(stored));
+        when(aclRepository.findUserById(11L)).thenReturn(Optional.of(stored));
+        when(aclRepository.findRulePage("user:orders", null, null, null, null, 1, 200))
+                .thenReturn(PageResult.of(List.of(
+                        AclRuleVO.builder().principal("user:orders").resource("topic-a")
+                                .resourceType("Topic").resourcePattern("LITERAL")
+                                .actions(List.of("PUB")).decision("ALLOW").build(),
+                        AclRuleVO.builder().principal("user:orders").resource("topic-a")
+                                .resourcePattern("LITERAL")
+                                .actions(List.of("SUB")).decision("ALLOW").build(),
+                        AclRuleVO.builder().principal("user:orders").resource("*")
+                                .resourceType("Cluster").resourcePattern("LITERAL")
+                                .actions(List.of("GET")).decision("ALLOW").build()),
+                        3, 1, 200));
+        when(clusterProvider.discoverBrokers("instance-a", null)).thenReturn(List.of());
+
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster("10.0.0.1:10911"));
+        when(admin.getUser("10.0.0.1:10911", "orders"))
+                .thenThrow(new MQBrokerException(207, "no such user"));
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(call -> call.getArgument(1, MqAdminExtFactory.AdminAction.class).apply(admin));
+
+        PushAclToBrokerResultVO result = aclService.pushAclToBroker("instance-a");
+
+        PushAclToBrokerResultVO.AccountOutcome account = result.getAccounts().get(0);
+        assertThat(account.getPolicyCount()).isEqualTo(2);
+        assertThat(account.getSkipped()).singleElement()
+                .asString().contains("topic-a").contains("no broker ACL equivalent");
+        ArgumentCaptor<AclInfo> aclCaptor = ArgumentCaptor.forClass(AclInfo.class);
+        verify(admin).updateAcl(eq("10.0.0.1:10911"), aclCaptor.capture());
+        assertThat(aclCaptor.getValue().getPolicies().get(0).getEntries())
+                .extracting(AclInfo.PolicyEntryInfo::getResource)
+                .containsExactly("Topic:topic-a", "*");
+    }
+
+    @Test
     void pushAclToBrokerReportsBrokerFailuresWithoutHidingOtherAccountsTest() throws Exception {
         AclUserVO stored = AclUserVO.builder().id(8L).username("reader").secretKey("secret-2").build();
         when(aclRepository.findUsers()).thenReturn(List.of(stored));
