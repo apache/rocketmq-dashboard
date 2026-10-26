@@ -166,6 +166,13 @@ public class InstanceService {
             }
 
             clearCounts(instance);
+            // A cancelled batch is routine (the caller stopped waiting or the deadline passed),
+            // so the interrupt the worker raises at the checkpoint must not be counted or logged as
+            // a provider failure: the instance keeps the same unavailable counts as a timeout.
+            if (outcome.failure() instanceof InterruptedException) {
+                log.debug("Resource count lookup cancelled for instance {}", instance.getId());
+                continue;
+            }
             switch (outcome.status()) {
                 case REJECTED -> rejected++;
                 case TIMED_OUT -> timedOut++;
@@ -198,10 +205,20 @@ public class InstanceService {
      * unique name first, so a name that happens to equal another instance's numeric id would
      * otherwise shadow it and attribute the counts to the wrong instance.
      */
-    private InstanceResourceCountRunner.ResourceCounts loadCounts(InstanceVO instance) {
+    private InstanceResourceCountRunner.ResourceCounts loadCounts(InstanceVO instance)
+            throws InterruptedException {
         InstanceVendor vendor = instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor();
         InstanceProvider provider = providerRegistry.forVendor(vendor);
         int topicCount = provider.countTopics(instance.getName());
+        // The batch deadline or a caller cancellation interrupts this worker, but a provider that
+        // ignores the interrupt can still return a count afterwards. Check the flag between the two
+        // lookups so a batch nobody waits for does not start the second remote call.
+        // Thread.interrupted() consumes the flag the way any InterruptedException producer does, so
+        // the pooled worker does not hand a stale interrupt to its next count task.
+        if (Thread.interrupted()) {
+            throw new InterruptedException(
+                    "resource count batch cancelled after counting topics of " + instance.getName());
+        }
         int consumerGroupCount = provider.countGroups(instance.getName());
         return new InstanceResourceCountRunner.ResourceCounts(topicCount, consumerGroupCount);
     }

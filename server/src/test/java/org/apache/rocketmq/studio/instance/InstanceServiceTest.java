@@ -440,11 +440,10 @@ class InstanceServiceTest {
             if (interrupted) {
                 Thread.currentThread().interrupt();
             }
-            return 7;
-        });
-        when(instanceProvider.countGroups("slow")).thenAnswer(invocation -> {
+            // Signal the finished lookup here: this test is about the returned response, and it must
+            // not require the cancelled batch to reach the consumer-group lookup.
             providerFinished.countDown();
-            return 5;
+            return 7;
         });
 
         try {
@@ -465,6 +464,62 @@ class InstanceServiceTest {
                 assertThat(instance.getTopicCount()).isZero();
                 assertThat(instance.getConsumerGroupCount()).isZero();
             });
+        } finally {
+            releaseProvider.countDown();
+        }
+    }
+
+    @Test
+    void cancelledCountBatchShouldNotStartTheGroupLookupTest() throws Exception {
+        InstanceVO slow = InstanceVO.builder().name("slow").build();
+        slow.setId(25L);
+        when(instanceRepository.findAll()).thenReturn(List.of(slow));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+
+        CountDownLatch topicCountStarted = new CountDownLatch(1);
+        CountDownLatch releaseProvider = new CountDownLatch(1);
+        CountDownLatch groupCountStarted = new CountDownLatch(1);
+        when(instanceProvider.countTopics("slow")).thenAnswer(invocation -> {
+            topicCountStarted.countDown();
+            boolean interrupted = false;
+            while (true) {
+                try {
+                    releaseProvider.await();
+                    break;
+                } catch (InterruptedException exception) {
+                    // A provider that outlives Future.cancel(true): it keeps waiting and restores
+                    // the interrupt instead of aborting the in-flight lookup.
+                    interrupted = true;
+                }
+            }
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            return 7;
+        });
+        // Lenient because the fixed path never reaches this lookup; on the buggy path it is invoked.
+        org.mockito.Mockito.lenient().when(instanceProvider.countGroups("slow")).thenAnswer(invocation -> {
+            groupCountStarted.countDown();
+            return 5;
+        });
+
+        try {
+            List<InstanceVO> result = instanceService.listInstances(null, null, true);
+
+            // The batch deadline passed while the first lookup was still running, so the caller
+            // keeps its existing unavailable response.
+            assertThat(topicCountStarted.await(1, TimeUnit.SECONDS)).isTrue();
+            assertThat(result).singleElement().satisfies(instance -> {
+                assertThat(instance.isResourceCountsAvailable()).isFalse();
+                assertThat(instance.getConsumerGroupCount()).isZero();
+            });
+
+            releaseProvider.countDown();
+            // The worker finishes the first lookup with the interruption still pending. Wait for that
+            // detached worker within a bound (the unwanted lookup must never complete, so the wait
+            // cannot be latched on it) and then require that it never started.
+            groupCountStarted.await(2, TimeUnit.SECONDS);
+            verify(instanceProvider, never()).countGroups("slow");
         } finally {
             releaseProvider.countDown();
         }
