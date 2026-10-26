@@ -81,14 +81,18 @@ public class MybatisPlusAiConversationRepository implements AiConversationReposi
     }
 
     @Override
-    public void clearRuntimeSessionId(Long id) {
+    public void clearRuntimeSessionId(Long id, LocalDateTime now) {
         if (id == null) {
             return;
         }
         // updateById skips null fields, so "forget this value" has to name the column itself.
+        // gmt_modified is named too: it is ON UPDATE CURRENT_TIMESTAMP, so a SET clause without it
+        // lets the database stamp it in the session's timezone — the wrong clock for the
+        // gmt_modified ordering findPage promises. The caller owns the clock, as with the alert mappers.
         conversationMapper.update(null, new UpdateWrapper<RmqAiConversation>()
                 .eq("id", id)
-                .set("runtime_session_id", null));
+                .set("runtime_session_id", null)
+                .set("gmt_modified", now));
     }
 
     @Override

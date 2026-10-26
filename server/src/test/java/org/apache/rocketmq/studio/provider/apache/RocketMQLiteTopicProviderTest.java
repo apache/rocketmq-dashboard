@@ -93,8 +93,9 @@ class RocketMQLiteTopicProviderTest {
         when(guard.requireInstance(any())).thenAnswer(call -> InstanceVO.builder()
                 .name(ResourceOwnershipGuard.requireText(call.getArgument(0), "instanceId")).build());
         when(guard.topicResource(anyString())).thenCallRealMethod();
-        when(guard.check(any(), any(), eq(true))).thenReturn(new ResourceOwnershipGuard.Ownership(
-                1L, PARENT, "cluster-a", "cluster-a", "LITE"));
+        when(guard.checkSlot(any(), any(), org.mockito.ArgumentMatchers.isNull(), eq(true)))
+                .thenReturn(new ResourceOwnershipGuard.Ownership(
+                        1L, PARENT, "cluster-a", "cluster-a", "LITE", "ns:1"));
         when(guard.withOwned(any(), any(), any())).thenAnswer(call ->
                 ((java.util.function.Supplier<?>) call.getArgument(2)).get());
         doAnswer(call -> ((MqAdminExtFactory.AdminAction<?>) call.getArgument(1)).apply(admin))
@@ -377,7 +378,7 @@ class RocketMQLiteTopicProviderTest {
                 .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(400));
         assertThatThrownBy(() -> provider.extendTTL(" ", PARENT, 60_000L))
                 .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(400));
-        when(guard.check(any(), any(), eq(true))).thenThrow(new BusinessException(409, "Ownership conflict"));
+        when(guard.checkSlot(any(), any(), org.mockito.ArgumentMatchers.isNull(), eq(true))).thenThrow(new BusinessException(409, "Ownership conflict"));
         assertThatThrownBy(() -> provider.extendTTL("cluster-a", PARENT, 60_000L))
                 .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(409));
         org.mockito.Mockito.verifyNoInteractions(runtime, admin);
