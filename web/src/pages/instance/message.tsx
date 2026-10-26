@@ -1331,7 +1331,9 @@ const MessagePageContent = ({
         </Space>
       </Card>
 
-      {queryMode === 'queue' && <QueueBrowserResults state={queueBrowser} />}
+      {queryMode === 'queue' && (
+        <QueueBrowserResults state={queueBrowser} onOpenMessage={openDetail} />
+      )}
 
       {topicError && (
         <Alert

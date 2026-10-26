@@ -103,9 +103,11 @@ CREATE TABLE IF NOT EXISTS rmq_instance (
   credential_id bigint(20) unsigned COMMENT '引用 rmq_cloud_credential.id',
   admin_credential_ref VARCHAR(128) COMMENT 'External Apache admin credential reference; no secret material',
   region_id VARCHAR(128),
+  nameserver_id bigint(20) unsigned COMMENT '绑定的 rmq_nameserver.id；应用层校验存在性，不加外键；APACHE 实例创建时必填且不可修改',
   PRIMARY KEY (`id`),
   UNIQUE KEY uk_instance_name (name),
   INDEX idx_instance_credential_id (credential_id),
+  INDEX idx_instance_nameserver_id (nameserver_id),
   CONSTRAINT fk_instance_cloud_credential FOREIGN KEY (credential_id)
     REFERENCES rmq_cloud_credential(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -127,6 +129,7 @@ CREATE TABLE IF NOT EXISTS rmq_instance_topic (
   `gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
   cluster_id VARCHAR(64) NOT NULL,
   instance_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '归属实例 ID（rmq_instance.name；空字符串表示历史未归属记录）',
+  domain VARCHAR(128) NOT NULL DEFAULT '' COMMENT '唯一性域：ns:<nameserver_id> 或 cloud:<cloud_instance_id>',
   name VARCHAR(255) NOT NULL,
   topic_type VARCHAR(32) DEFAULT 'NORMAL',
   read_queue_nums INT DEFAULT 8,
@@ -136,9 +139,10 @@ CREATE TABLE IF NOT EXISTS rmq_instance_topic (
   status VARCHAR(32) DEFAULT 'ACTIVE',
   created_by VARCHAR(64),
   PRIMARY KEY (`id`),
-  UNIQUE KEY uk_topic_name (name),
+  UNIQUE KEY uk_topic_domain (domain, cluster_id, name),
   INDEX idx_topic_instance (instance_id),
-  INDEX idx_topic_cluster (cluster_id)
+  INDEX idx_topic_cluster (cluster_id),
+  INDEX idx_topic_domain (domain)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 4. Consumer Group 管理记录
@@ -148,6 +152,7 @@ CREATE TABLE IF NOT EXISTS rmq_instance_group (
   `gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
   cluster_id VARCHAR(64) NOT NULL,
   instance_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '归属实例 ID（rmq_instance.name；空字符串表示历史未归属记录）',
+  domain VARCHAR(128) NOT NULL DEFAULT '' COMMENT '唯一性域：ns:<nameserver_id> 或 cloud:<cloud_instance_id>',
   name VARCHAR(255) NOT NULL,
   consume_type VARCHAR(32) DEFAULT 'CONCURRENTLY',
   message_model VARCHAR(32) DEFAULT 'CLUSTERING',
@@ -155,9 +160,10 @@ CREATE TABLE IF NOT EXISTS rmq_instance_group (
   status VARCHAR(32) DEFAULT 'ACTIVE',
   created_by VARCHAR(64),
   PRIMARY KEY (`id`),
-  UNIQUE KEY uk_group_name (name),
+  UNIQUE KEY uk_group_domain (domain, cluster_id, name),
   INDEX idx_group_instance (instance_id),
-  INDEX idx_group_cluster (cluster_id)
+  INDEX idx_group_cluster (cluster_id),
+  INDEX idx_group_domain (domain)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 5. K8s 证书管理

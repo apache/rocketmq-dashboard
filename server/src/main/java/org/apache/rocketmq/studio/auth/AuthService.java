@@ -541,6 +541,8 @@ public class AuthService {
                 || !session.getLastSeenAt().plus(LAST_SEEN_UPDATE_INTERVAL).isAfter(current)) {
             sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
                     .eq("id", session.getId())
+                    // A delayed request must not overwrite activity a newer request already recorded.
+                    .and(activity -> activity.isNull("last_seen_at").or().lt("last_seen_at", current))
                     .set("last_seen_at", current));
         }
         return Optional.of(userInfo(user));

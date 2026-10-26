@@ -44,6 +44,9 @@ public interface AiEventRepository {
      */
     List<RmqAiEvent> findByConversationIdAfterSeq(Long conversationId, int afterSeq, int limit);
 
+    /** Latest bounded rows before an admitted run, returned in ascending seq order. */
+    List<RmqAiEvent> findRecentBeforeSeq(Long conversationId, int beforeSeq, int limit);
+
     int deleteByConversationId(Long conversationId);
 
     int deleteByConversationIds(List<Long> conversationIds);

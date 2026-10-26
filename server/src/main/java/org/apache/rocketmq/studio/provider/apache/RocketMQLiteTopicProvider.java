@@ -370,7 +370,7 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
         var instance = ownershipGuard.requireInstance(instanceId);
         String topicPattern = ResourceOwnershipGuard.requireText(rawTopicPattern, "topicPattern");
         var resource = ownershipGuard.topicResource(topicPattern);
-        ownershipGuard.check(instance, resource, true);
+        ownershipGuard.checkSlot(instance, resource, null, true);
         ownershipGuard.requireSupportedProvider(instance);
         if (resource.kind() != ResourceOwnershipGuard.Kind.TOPIC) {
             throw new BusinessException(409, "TTL can only be updated for a registered Lite parent topic");
@@ -380,7 +380,7 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
         }
         long minutes = Math.min(Math.max(Math.round(ttlMillis / 60000.0), 1), MAX_LITE_TTL_MINUTES);
         ownershipGuard.withOwned(instance, List.of(resource), () -> runtimeAdminClientResolver.execute(instance, admin -> {
-            var owner = ownershipGuard.check(instance, resource, true);
+            var owner = ownershipGuard.checkSlot(instance, resource, null, true);
             var target = ApacheWriteTargetResolver.resolve(admin, instance, owner.clusterId());
             // Read every master's config before writing any of them: a master that cannot be
             // examined must fail the request up front instead of being silently skipped, which

@@ -44,6 +44,7 @@ import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CsvUtil;
 import org.apache.rocketmq.studio.common.util.MessagePropertyDisplay;
+import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.studio.instance.group.CreateConsumerGroupDTO;
 import org.apache.rocketmq.studio.instance.group.ImportConsumerGroupsResultVO;
@@ -353,7 +354,7 @@ public class MetadataService {
         if (retrySourceTopic != null && !retrySourceTopic.equals(original.getTopic())) {
             resources.add(ownershipGuard.topicResource(retrySourceTopic));
         }
-        resources.forEach(resource -> ownershipGuard.check(instance, resource, true));
+        resources.forEach(resource -> ownershipGuard.checkOwnerInDomain(instance, resource, true));
         return ownershipGuard.withOwned(instance, resources, () -> sendMessage(request, retrySourceTopic));
     }
 
@@ -504,14 +505,51 @@ public class MetadataService {
 
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId, String search,
                                                               int page, int pageSize) {
+        return listConsumerGroupsPage(instanceId, clusterId, search, null, page, pageSize);
+    }
+
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId, String search,
+                                                              String subscriptionMode, int page, int pageSize) {
         validatePagination(page, pageSize);
         instanceId = normalizeInstanceId(instanceId);
+        String normalizedMode = normalizeSubscriptionMode(subscriptionMode);
         if (!StringUtils.hasText(instanceId) && StringUtils.hasText(clusterId)) {
+            // Legacy cluster-scoped read without an instance: filter the mode over the full
+            // inventory so the total describes the filtered result set, not one filtered page.
+            if (normalizedMode != null) {
+                List<ConsumerGroupVO> groups = metadataProvider.listConsumerGroups(
+                        normalizeFilter(clusterId), normalizeFilter(search)).stream()
+                        .filter(group -> group.getSubscriptionMode() != null
+                                && normalizedMode.equals(group.getSubscriptionMode().name()))
+                        .toList();
+                long offset = Pagination.pageOffset(page, pageSize);
+                int from = (int) Math.min(offset, groups.size());
+                int to = from + (int) Math.min(pageSize, groups.size() - from);
+                return PageResult.of(groups.subList(from, to), groups.size(), page, pageSize);
+            }
             return metadataProvider.listConsumerGroupsPage(normalizeFilter(clusterId),
                     normalizeFilter(search), page, pageSize);
         }
         return resolve(instanceId).listConsumerGroupsPage(instanceId, normalizeFilter(clusterId),
-                normalizeFilter(search), page, pageSize);
+                normalizeFilter(search), normalizedMode, page, pageSize);
+    }
+
+    /**
+     * Canonicalises the requested mode so the in-memory path over a full inventory and the SQL
+     * path over the page agree on the same spelling; an unknown value is passed through and simply
+     * matches nothing on both.
+     */
+    private static String normalizeSubscriptionMode(String subscriptionMode) {
+        if (!StringUtils.hasText(subscriptionMode) || "ALL".equals(subscriptionMode.trim())) {
+            return null;
+        }
+        String trimmed = subscriptionMode.trim();
+        for (SubscriptionMode mode : SubscriptionMode.values()) {
+            if (mode.name().equalsIgnoreCase(trimmed)) {
+                return mode.name();
+            }
+        }
+        return trimmed;
     }
 
 
@@ -754,7 +792,9 @@ public class MetadataService {
         InstanceVO instance = ownershipGuard.requireInstance(instanceId);
         // Ownership guard applies to open-source Apache instances only; cloud calls are isolated by their own instance id.
         if (instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE) {
-            ownershipGuard.check(instance, resource, required);
+            if (required) {
+                ownershipGuard.checkOwnerInDomain(instance, resource, true);
+            }
             ownershipGuard.requireSupportedProvider(instance);
         }
         return instance.getName();

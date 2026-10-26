@@ -36,4 +36,14 @@ public class AiRunStatsVO {
 
     /** Client-reported generation speed in tokens per second, or null when never reported. */
     private Double tokensPerSecond;
+
+    /**
+     * Provider-reported usage of this run's terminal call, or null when the engine reported none.
+     * Denormalised for the composer's context meter: the last run's input plus output is the closest
+     * real measure of what the next call of a resumed session will carry, and estimating it client
+     * side from the transcript text silently diverges from what the provider actually counts.
+     */
+    private Integer inputTokens;
+
+    private Integer outputTokens;
 }
