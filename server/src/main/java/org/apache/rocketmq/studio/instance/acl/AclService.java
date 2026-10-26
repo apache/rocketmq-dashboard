@@ -43,6 +43,8 @@ import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -108,12 +110,12 @@ public class AclService {
                     .filter(rule -> equalsIgnoreCase(rule.getScope(), scope))
                     .filter(rule -> equalsIgnoreCase(rule.getDecision(), decision))
                     .toList();
-            return paginateRules(filtered, normalizedPage, normalizedPageSize);
+            return toUtcWire(paginateRules(filtered, normalizedPage, normalizedPageSize));
         }
         log.info("Listing ACL rules for principal={}, resource={}, scope={}, decision={}, page={}, pageSize={}",
                 principal, resource, scope, decision, normalizedPage, normalizedPageSize);
-        return aclRepository.findRulePage(principal, resource, scope, decision, null,
-                normalizedPage, normalizedPageSize);
+        return toUtcWire(aclRepository.findRulePage(principal, resource, scope, decision, null,
+                normalizedPage, normalizedPageSize));
     }
 
 
@@ -132,6 +134,8 @@ public class AclService {
         rule.setGmtCreate(LocalDateTime.now());
         AclRuleVO saved = aclRepository.saveRule(rule);
         auditRule("CREATE_ACL_RULE", saved);
+        // Write paths echo the stored row (the stored server-local base) for form prefill; the
+        // read paths are what the pages render, so only they convert to the UTC wire.
         return saved;
     }
 
@@ -140,14 +144,14 @@ public class AclService {
             throw new BusinessException(400, "ACL rule id is required");
         }
         if (isTencentInstance(instanceId)) {
-            return tencentAclService.listRules(instanceId, null).stream()
+            return toUtcWire(tencentAclService.listRules(instanceId, null).stream()
                     .filter(rule -> id.equals(rule.getPrincipal())
                             || rule.getId() != null && id.equals(rule.getId().toString()))
                     .findFirst()
-                    .orElseThrow(() -> new BusinessException(404, "ACL rule not found: " + id));
+                    .orElseThrow(() -> new BusinessException(404, "ACL rule not found: " + id)));
         }
-        return aclRepository.findRuleById(EntityIds.parseId(id))
-                .orElseThrow(() -> new BusinessException(404, "ACL rule not found: " + id));
+        return toUtcWire(aclRepository.findRuleById(EntityIds.parseId(id))
+                .orElseThrow(() -> new BusinessException(404, "ACL rule not found: " + id)));
     }
 
     public AclUserVO getUser(String id, String instanceId) {
@@ -193,12 +197,12 @@ public class AclService {
     public List<AclUserVO> listUsers(String instanceId) {
         if (isTencentInstance(instanceId)) {
             return tencentAclService.listUsers(instanceId).stream()
-                    .map(this::maskCredentials)
+                    .map(this::forWire)
                     .toList();
         }
         log.info("Listing ACL users");
         return aclRepository.findUsers().stream()
-                .map(this::maskCredentials)
+                .map(this::forWire)
                 .toList();
     }
 
@@ -218,12 +222,12 @@ public class AclService {
             int from = (int) Math.min(Pagination.pageOffset(page, pageSize), users.size());
             int to = Math.min(from + pageSize, users.size());
             return PageResult.of(
-                    users.subList(from, to).stream().map(this::maskCredentials).toList(),
+                    users.subList(from, to).stream().map(this::forWire).toList(),
                     users.size(), page, pageSize);
         }
         PageResult<AclUserVO> result = aclRepository.findUserPage(
                 StringUtils.hasText(keyword) ? keyword.trim() : null, page, pageSize);
-        return PageResult.of(result.getItems().stream().map(this::maskCredentials).toList(),
+        return PageResult.of(result.getItems().stream().map(this::forWire).toList(),
                 result.getTotal(), result.getPage(), result.getSize());
     }
 
@@ -242,6 +246,8 @@ public class AclService {
         user.setGmtCreate(LocalDateTime.now());
         AclUserVO saved = aclRepository.saveUser(user);
         auditUser("CREATE_ACL_USER", saved);
+        // Write paths echo the stored row (the stored server-local base); only the read paths
+        // that the pages render convert to the UTC wire.
         return saved;
     }
 
@@ -574,7 +580,7 @@ public class AclService {
         // Both vendor paths reveal a secret, so both are audited; the detail never carries it.
         recordAudit("REVEAL_ACL_USER_CREDENTIALS", "ACL_USER", String.valueOf(id), null,
                 "instanceId=" + instanceId);
-        return user;
+        return withUtcWire(user);
     }
 
     /**
@@ -738,6 +744,7 @@ public class AclService {
         };
     }
 
+    /** Write paths echo the stored row, so masking must not also shift its creation stamp. */
     private AclUserVO maskCredentials(AclUserVO user) {
         return AclUserVO.builder()
                 .id(user.getId())
@@ -751,6 +758,73 @@ public class AclService {
                 .whiteRemoteAddress(user.getWhiteRemoteAddress())
                 .gmtCreate(user.getGmtCreate())
                 .build();
+    }
+
+    /**
+     * The read-path wire shape: a masked copy whose creation stamp is UTC. maskCredentials already
+     * builds a fresh row, so the shift lands on the copy and the stored base stays server-local.
+     */
+    private AclUserVO forWire(AclUserVO user) {
+        AclUserVO masked = maskCredentials(user);
+        masked.setGmtCreate(toUtcWire(masked.getGmtCreate()));
+        return masked;
+    }
+
+    /**
+     * ACL timestamps are stored as zone-less server-local values (every source produces that
+     * shape: the local repositories write {@code LocalDateTime.now()}, the Tencent adapter
+     * converts cloud epochs with the server zone). The pages render them in the viewer's zone,
+     * so the JSON wire carries a UTC wall clock — the alert / K8s-cert convention — instead of a
+     * zone-less value the browser would parse as its own zone. The stored base is not converted,
+     * and these mappers return copies so repository- or adapter-owned rows stay untouched.
+     */
+    private static LocalDateTime toUtcWire(LocalDateTime serverLocal) {
+        return serverLocal == null ? null : serverLocal.atZone(ZoneId.systemDefault())
+                .withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
+    }
+
+    private static AclRuleVO toUtcWire(AclRuleVO rule) {
+        if (rule == null) {
+            return null;
+        }
+        return AclRuleVO.builder()
+                .id(rule.getId())
+                .principal(rule.getPrincipal())
+                .resource(rule.getResource())
+                .resourceType(rule.getResourceType())
+                .resourcePattern(rule.getResourcePattern())
+                .actions(rule.getActions() == null ? null : List.copyOf(rule.getActions()))
+                .decision(rule.getDecision())
+                .scope(rule.getScope())
+                .aclVersion(rule.getAclVersion())
+                .gmtCreate(toUtcWire(rule.getGmtCreate()))
+                .build();
+    }
+
+    private static AclUserVO withUtcWire(AclUserVO user) {
+        if (user == null) {
+            return null;
+        }
+        return AclUserVO.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .accessKey(user.getAccessKey())
+                .secretKey(user.getSecretKey())
+                .admin(user.isAdmin())
+                .permRead(user.getPermRead())
+                .permWrite(user.getPermWrite())
+                .clusters(user.getClusters() == null ? null : List.copyOf(user.getClusters()))
+                .whiteRemoteAddress(user.getWhiteRemoteAddress())
+                .gmtCreate(toUtcWire(user.getGmtCreate()))
+                .build();
+    }
+
+    private static PageResult<AclRuleVO> toUtcWire(PageResult<AclRuleVO> page) {
+        if (page == null) {
+            return null;
+        }
+        return PageResult.of(page.getItems().stream().map(AclService::toUtcWire).toList(),
+                page.getTotal(), page.getPage(), page.getSize());
     }
 
     private static int normalizePage(Integer page) {

@@ -45,7 +45,7 @@ import {
 } from '../../api/cloudCredential';
 import type { CloudCredential } from '../../api/cloudCredential';
 import type { InstanceVendor } from '../../api/instance';
-import { downloadBlob } from '../../utils/download';
+import { downloadBlob, localExportDateStamp } from '../../utils/download';
 
 const vendorTagColor: Record<string, string> = {
   ALIYUN: 'orange',
@@ -153,7 +153,7 @@ export const CloudCredentialTab = () => {
       const csv = await exportCloudCredentials(vendorFilter, debouncedSearch);
       downloadBlob(
         new Blob([csv], { type: 'text/csv;charset=utf-8' }),
-        `rocketmq-cloud-credentials-${new Date().toISOString().slice(0, 10)}.csv`,
+        `rocketmq-cloud-credentials-${localExportDateStamp()}.csv`,
       );
     } catch {
       message.error(t('settings.credentialExportFailed'));

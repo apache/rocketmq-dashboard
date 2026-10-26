@@ -48,7 +48,7 @@ import type { DataSource } from '../../api/settings';
 import { STATUS_MAP } from '../../constants/theme';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
-import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { buildCsv, downloadCsv, localExportDateStamp, type CsvColumn } from '../../utils/download';
 
 const { Text } = Typography;
 
@@ -126,15 +126,20 @@ export const DataSourceTab = () => {
   const [typeFilter, setTypeFilter] = useState<string | undefined>();
   const [instances, setInstances] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadedQueryKey, setLoadedQueryKey] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingDataSource, setEditingDataSource] = useState<DataSource | null>(null);
   const [dsForm] = Form.useForm();
   const authValue = Form.useWatch('auth', dsForm);
   const [testingKeys, setTestingKeys] = useState<Set<string>>(() => new Set());
+  const modalTestSessionRef = useRef(0);
   const [submitting, setSubmitting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const requestSeqRef = useRef(0);
   const [deleteRefreshVersion, setDeleteRefreshVersion] = useState(0);
+  const queryKey = JSON.stringify([debouncedSearch, typeFilter, page, pageSize]);
+  const listActionsDisabled =
+    loading || search.trim() !== debouncedSearch || loadedQueryKey !== queryKey;
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -166,10 +171,12 @@ export const DataSourceTab = () => {
         }
         setDataSources(result.items);
         setTotal(result.total);
+        setLoadedQueryKey(queryKey);
       } catch {
         if (requestId === requestSeqRef.current) {
           setDataSources([]);
           setTotal(0);
+          setLoadedQueryKey(null);
           message.error(t('settings.dataSourceLoadFailed'));
         }
       } finally {
@@ -178,7 +185,7 @@ export const DataSourceTab = () => {
         }
       }
     })();
-  }, [debouncedSearch, page, pageSize, t, typeFilter]);
+  }, [debouncedSearch, page, pageSize, queryKey, t, typeFilter]);
 
   useEffect(() => {
     void loadDataSources();
@@ -187,6 +194,7 @@ export const DataSourceTab = () => {
   useEffect(
     () => () => {
       requestSeqRef.current += 1;
+      modalTestSessionRef.current += 1;
     },
     [],
   );
@@ -208,7 +216,11 @@ export const DataSourceTab = () => {
   const handleTestConnection = async (
     data: Pick<DataSource, 'type' | 'url' | 'auth'> & Partial<DataSource>,
     key: string,
+    modalSession = modalTestSessionRef.current,
   ) => {
+    const isCurrent = () => key !== 'modal' || modalSession === modalTestSessionRef.current;
+    if (!isCurrent()) return;
+    if (key !== 'modal' && listActionsDisabled) return;
     if (key !== 'modal' && authNeedsSecret(data.auth)) {
       message.warning(t('settings.dataSourceAuthTestHint'));
       return;
@@ -216,20 +228,41 @@ export const DataSourceTab = () => {
     setTestingKeys((previous) => new Set(previous).add(key));
     try {
       const result = await testDataSource(data);
+      if (!isCurrent()) return;
       if (result.success) message.success(result.message);
       else message.error(result.message);
     } catch {
-      message.error(t('settings.connectionTestFailed'));
+      if (isCurrent()) message.error(t('settings.connectionTestFailed'));
     } finally {
-      setTestingKeys((previous) => {
-        const next = new Set(previous);
-        next.delete(key);
-        return next;
-      });
+      if (isCurrent()) {
+        setTestingKeys((previous) => {
+          const next = new Set(previous);
+          next.delete(key);
+          return next;
+        });
+      }
     }
   };
 
+  const resetModalTest = () => {
+    // A closed dialog's request must not notify or clear a newer dialog's spinner.
+    modalTestSessionRef.current += 1;
+    setTestingKeys((previous) => {
+      const next = new Set(previous);
+      next.delete('modal');
+      return next;
+    });
+  };
+
+  const closeModal = () => {
+    resetModalTest();
+    setModalOpen(false);
+    setEditingDataSource(null);
+    dsForm.resetFields();
+  };
+
   const openCreateModal = () => {
+    resetModalTest();
     setEditingDataSource(null);
     dsForm.resetFields();
     dsForm.setFieldValue('auth', 'None');
@@ -237,6 +270,8 @@ export const DataSourceTab = () => {
   };
 
   const openEditModal = (dataSource: DataSource) => {
+    if (listActionsDisabled) return;
+    resetModalTest();
     setEditingDataSource(dataSource);
     dsForm.setFieldsValue(dataSource);
     setModalOpen(true);
@@ -263,8 +298,7 @@ export const DataSourceTab = () => {
       message.success(
         t(editingDataSource ? 'settings.dataSourceUpdated' : 'settings.dataSourceAdded'),
       );
-      setModalOpen(false);
-      dsForm.resetFields();
+      closeModal();
     } catch (error) {
       if (error && typeof error === 'object' && 'errorFields' in error) {
         return; // validation failure; antd already shows field-level errors
@@ -276,6 +310,7 @@ export const DataSourceTab = () => {
   };
 
   const handleDelete = async (dataSource: DataSource) => {
+    if (listActionsDisabled) return;
     try {
       await deleteDataSource(dataSource.key);
       // Refresh through the effect so a completed deletion uses the current filters/page,
@@ -305,6 +340,7 @@ export const DataSourceTab = () => {
   };
 
   const handleExport = async () => {
+    if (listActionsDisabled || total === 0) return;
     setExporting(true);
     try {
       const exported = await listAllDataSources({
@@ -316,7 +352,7 @@ export const DataSourceTab = () => {
         instanceNames: formatInstanceIds(source.instanceIds),
         statusLabel: formatStatus(source.status),
       }));
-      const filename = `rocketmq-data-sources-${new Date().toISOString().slice(0, 10)}.csv`;
+      const filename = `rocketmq-data-sources-${localExportDateStamp()}.csv`;
       downloadCsv(filename, buildCsv(DATA_SOURCE_EXPORT_COLUMNS, rows));
       message.success(t('settings.dataSourceExported', { total: rows.length }));
     } catch {
@@ -363,7 +399,7 @@ export const DataSourceTab = () => {
             size="small"
             icon={<ApiOutlined />}
             loading={testingKeys.has(record.key)}
-            disabled={authNeedsSecret(record.auth)}
+            disabled={listActionsDisabled || authNeedsSecret(record.auth)}
             title={authNeedsSecret(record.auth) ? t('settings.dataSourceAuthTestHint') : undefined}
             onClick={() => void handleTestConnection(record, record.key)}
           >
@@ -373,6 +409,7 @@ export const DataSourceTab = () => {
             type="link"
             size="small"
             icon={<EditOutlined />}
+            disabled={listActionsDisabled}
             onClick={() => openEditModal(record)}
           >
             {t('common.edit')}
@@ -383,7 +420,13 @@ export const DataSourceTab = () => {
             okText={t('settings.confirmAction')}
             cancelText={t('common.cancel')}
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+            <Button
+              type="link"
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              disabled={listActionsDisabled}
+            >
               {t('common.delete')}
             </Button>
           </Popconfirm>
@@ -424,7 +467,7 @@ export const DataSourceTab = () => {
             icon={<DownloadSimple size={14} />}
             onClick={() => void handleExport()}
             loading={exporting}
-            disabled={loading || total === 0}
+            disabled={listActionsDisabled || total === 0}
           >
             {t('common.export')}
           </Button>
@@ -466,11 +509,7 @@ export const DataSourceTab = () => {
       <Modal
         title={t(editingDataSource ? 'settings.editDataSource' : 'settings.addDataSource')}
         open={modalOpen}
-        onCancel={() => {
-          setModalOpen(false);
-          setEditingDataSource(null);
-          dsForm.resetFields();
-        }}
+        onCancel={closeModal}
         onOk={() => void handleSubmit()}
         confirmLoading={submitting}
         destroyOnHidden
@@ -574,9 +613,10 @@ export const DataSourceTab = () => {
             icon={<ApiOutlined />}
             loading={testingKeys.has('modal')}
             onClick={() => {
+              const modalSession = modalTestSessionRef.current;
               void dsForm
                 .validateFields(testFieldNames(authValue))
-                .then((values) => handleTestConnection(values, 'modal'))
+                .then((values) => handleTestConnection(values, 'modal', modalSession))
                 .catch(() => undefined);
             }}
             style={{ marginTop: 8 }}

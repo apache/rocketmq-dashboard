@@ -16,7 +16,18 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Layout, Menu, Breadcrumb, Avatar, Dropdown, Empty, Modal, message } from 'antd';
+import {
+  Layout,
+  Menu,
+  Breadcrumb,
+  Avatar,
+  Dropdown,
+  Empty,
+  Modal,
+  Drawer,
+  Grid,
+  message,
+} from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   House,
@@ -40,6 +51,7 @@ import {
   PaperPlaneTilt,
   Notebook,
   Warning,
+  List,
 } from '@phosphor-icons/react';
 import { useLang } from '../i18n/LangContext';
 import { useTheme } from '../theme/useTheme';
@@ -73,6 +85,14 @@ const MainLayout = () => {
   const [searchText, setSearchText] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const screens = Grid.useBreakpoint();
+  // Below the md breakpoint a 220px permanent sider leaves no room for content: the navigation
+  // moves into a drawer behind a hamburger, which is also the only way a touch device can reach it.
+  // `=== false`, not `!screens.md`: before the first matchMedia resolution the map is empty, and
+  // treating "unknown" as mobile flashed the drawer layout (and broke jsdom, which has no
+  // matchMedia at all).
+  const isMobile = screens.md === false;
   const searchInputRef = useRef<HTMLInputElement>(null);
   const { lang, setLang, t } = useLang();
   const clearAuth = useAuthStore((state) => state.logout);
@@ -127,7 +147,9 @@ const MainLayout = () => {
   }, []);
 
   const instanceScopedMatch = useMemo(
-    () => location.pathname.match(/^\/instance\/[^/]+\/(topic|consumer|message|acl|dlq)$/),
+    // 与 useInstanceFilter 的 INSTANCE_SCOPED_PATH 保持同一口径：尾斜杠路由
+    // （/instance/<id>/topic/）同样算实例维度页，否则菜单高亮与面包屑末级标题会降级。
+    () => location.pathname.match(/^\/instance\/[^/]+\/(topic|consumer|message|acl|dlq)\/*$/),
     [location.pathname],
   );
   const selectedInstanceId = useMemo(() => {
@@ -411,6 +433,45 @@ const MainLayout = () => {
   );
   const isAiRoute = location.pathname === '/ai';
 
+  // Shared between the permanent sider and the mobile drawer so the two cannot drift apart.
+  const logoBlock = (showTitle: boolean) => (
+    <div
+      style={{
+        height: 48,
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        borderBottom: `1px solid ${borderColor}`,
+        fontSize: 15,
+        fontWeight: 600,
+        color: logoColor,
+        letterSpacing: '-0.01em',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+      }}
+    >
+      <span style={{ fontSize: 20 }}>🚀</span>
+      {showTitle && <span>RocketMQ Studio</span>}
+    </div>
+  );
+
+  const navMenu = (closeOnNavigate: boolean) => (
+    <Menu
+      theme={darkMode ? 'dark' : 'light'}
+      mode="inline"
+      selectedKeys={[selectedMenuKey]}
+      defaultOpenKeys={['instance-group', 'cluster-ops-group']}
+      items={menuItems}
+      onClick={({ key }) => {
+        navigate(key);
+        if (closeOnNavigate) setDrawerOpen(false);
+      }}
+      style={{ borderRight: 'none', background: 'transparent' }}
+    />
+  );
+
   return (
     <>
       <a
@@ -436,53 +497,48 @@ const MainLayout = () => {
         {t('layout.skipToMain')}
       </a>
       <Layout style={{ height: '100vh', minHeight: 0, overflow: 'hidden' }}>
-        <Sider
-          theme={darkMode ? 'dark' : 'light'}
-          collapsible
-          collapsed={collapsed}
-          onCollapse={setCollapsed}
-          width={220}
-          collapsedWidth={64}
-          style={{
-            background: siderBg,
-            borderRight: `1px solid ${borderColor}`,
-            boxShadow: darkMode ? '2px 0 8px rgba(0,0,0,0.2)' : '2px 0 8px rgba(0,0,0,0.03)',
-            height: '100vh',
-            overflow: 'hidden',
-          }}
-        >
-          {/* Logo */}
-          <div
+        {isMobile ? (
+          <Drawer
+            placement="left"
+            open={drawerOpen}
+            onClose={() => setDrawerOpen(false)}
+            width={240}
+            closable={false}
+            styles={{
+              body: {
+                padding: 0,
+                background: siderBg,
+                display: 'flex',
+                flexDirection: 'column',
+                minHeight: 0,
+              },
+            }}
+          >
+            {logoBlock(true)}
+            <div className="sider-menu-scroll">{navMenu(true)}</div>
+          </Drawer>
+        ) : (
+          <Sider
+            theme={darkMode ? 'dark' : 'light'}
+            collapsible
+            collapsed={collapsed}
+            onCollapse={setCollapsed}
+            width={220}
+            collapsedWidth={64}
             style={{
-              height: 48,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              borderBottom: `1px solid ${borderColor}`,
-              fontSize: 15,
-              fontWeight: 600,
-              color: logoColor,
-              letterSpacing: '-0.01em',
-              whiteSpace: 'nowrap',
+              background: siderBg,
+              borderRight: `1px solid ${borderColor}`,
+              boxShadow: darkMode ? '2px 0 8px rgba(0,0,0,0.2)' : '2px 0 8px rgba(0,0,0,0.03)',
+              height: '100vh',
               overflow: 'hidden',
             }}
           >
-            <span style={{ fontSize: 20 }}>🚀</span>
-            {!collapsed && <span>RocketMQ Studio</span>}
-          </div>
-
-          {/* Navigation Menu */}
-          <Menu
-            theme={darkMode ? 'dark' : 'light'}
-            mode="inline"
-            selectedKeys={[selectedMenuKey]}
-            defaultOpenKeys={['instance-group', 'cluster-ops-group']}
-            items={menuItems}
-            onClick={({ key }) => navigate(key)}
-            style={{ borderRight: 'none', background: 'transparent' }}
-          />
-        </Sider>
+            {logoBlock(!collapsed)}
+            {/* The menu scrolls on short viewports: antd's sider children do not scroll by
+                default, so with the sider's overflow hidden the lower entries were unreachable. */}
+            <div className="sider-menu-scroll">{navMenu(false)}</div>
+          </Sider>
+        )}
 
         <Layout style={{ background: 'transparent', height: '100vh', overflow: 'hidden' }}>
           {/* Top bar */}
@@ -492,17 +548,52 @@ const MainLayout = () => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              padding: '0 24px',
+              gap: 12,
+              padding: isMobile ? '0 12px' : '0 24px',
               background: topBarBg,
               backdropFilter: 'blur(8px)',
               borderBottom: `1px solid ${borderColor}`,
             }}
           >
-            {/* Left: Breadcrumb */}
-            <Breadcrumb items={breadcrumbItems} style={{ fontSize: 14 }} />
+            {/* Left: hamburger (mobile only) + Breadcrumb */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                flex: 1,
+                minWidth: 0,
+                overflow: 'hidden',
+              }}
+            >
+              {isMobile && (
+                <button
+                  type="button"
+                  aria-label={t('layout.openMenu')}
+                  onClick={() => setDrawerOpen(true)}
+                  style={{
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 32,
+                    height: 32,
+                    flexShrink: 0,
+                    borderRadius: 6,
+                    border: 0,
+                    padding: 0,
+                    background: 'transparent',
+                    color: darkMode ? '#a1a1aa' : '#52525b',
+                  }}
+                >
+                  <List size={18} />
+                </button>
+              )}
+              <Breadcrumb items={breadcrumbItems} style={{ fontSize: 14, minWidth: 0 }} />
+            </div>
 
             {/* Right: Search + Lang + Theme + User */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16 }}>
               {/* Search button */}
               <button
                 type="button"
@@ -511,9 +602,10 @@ const MainLayout = () => {
                 style={{
                   display: 'flex',
                   alignItems: 'center',
+                  justifyContent: isMobile ? 'center' : undefined,
                   gap: 8,
-                  width: 280,
-                  padding: '6px 8px 6px 14px',
+                  width: isMobile ? 32 : 280,
+                  padding: isMobile ? 6 : '6px 8px 6px 14px',
                   borderRadius: 999,
                   border: `1px solid ${borderColor}`,
                   cursor: 'pointer',
@@ -525,8 +617,10 @@ const MainLayout = () => {
                 }}
               >
                 <MagnifyingGlass size={15} />
-                <span style={{ flex: 1, textAlign: 'left' }}>{t('common.search')}</span>
-                <kbd style={kbdStyle}>⌘K</kbd>
+                {!isMobile && (
+                  <span style={{ flex: 1, textAlign: 'left' }}>{t('common.search')}</span>
+                )}
+                {!isMobile && <kbd style={kbdStyle}>⌘K</kbd>}
               </button>
 
               {/* Language toggle */}
@@ -654,7 +748,7 @@ const MainLayout = () => {
             boxShadow: '0 24px 80px -24px rgba(0, 0, 0, 0.35)',
           },
         }}
-        width={640}
+        width={isMobile ? 'calc(100vw - 32px)' : 640}
         style={{ top: '14vh' }}
         afterOpenChange={(open) => {
           if (open) searchInputRef.current?.focus();
@@ -726,7 +820,7 @@ const MainLayout = () => {
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
                     gap: 8,
                   }}
                 >

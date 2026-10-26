@@ -45,6 +45,7 @@ final class NativeAlertRulePolicy {
     private static final Set<String> AVAILABILITY_METRICS = Set.of(
             "nameserver.availability", "broker.availability", "proxy.availability", "cloud.instance.availability");
     private static final Set<String> NOTIFICATION_CHANNELS = Set.of("dingtalk", "sms", "email");
+    static final Set<String> NATIVE_OPERATORS = Set.of(">", ">=", "<", "<=", "==", "!=", "UNAVAILABLE");
 
     private NativeAlertRulePolicy() {
     }
@@ -69,7 +70,15 @@ final class NativeAlertRulePolicy {
         if (!StringUtils.hasText(rule.getInstanceId())) {
             throw new BusinessException(400, "instanceId is required for native alert rules");
         }
-        if ("UNAVAILABLE".equals(rule.getOperator()) && !AVAILABILITY_METRICS.contains(rule.getMetric())) {
+        // AlertRuleEvaluator trims the operator before comparing and NativeAlertRuleTestService stores the
+        // trimmed value, so the whitelist has to judge the trimmed operator as well. Otherwise " > " is
+        // rejected here while every consumer downstream would have accepted it.
+        String operator = StringUtils.hasText(rule.getOperator()) ? rule.getOperator().trim() : null;
+        if (operator == null || !NATIVE_OPERATORS.contains(operator)) {
+            throw new BusinessException(400,
+                    "operator must be one of >, >=, <, <=, ==, != or UNAVAILABLE for native alert rules");
+        }
+        if ("UNAVAILABLE".equals(operator) && !AVAILABILITY_METRICS.contains(rule.getMetric())) {
             throw new BusinessException(400, "UNAVAILABLE is only supported for native availability metrics");
         }
         if (StringUtils.hasText(rule.getConsumerGroup()) && !GROUP_SCOPED_METRICS.contains(rule.getMetric())) {

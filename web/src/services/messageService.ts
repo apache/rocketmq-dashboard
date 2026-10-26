@@ -130,8 +130,12 @@ export async function listDLQGroups(
     if (page < 1 || pageSize < 1 || pageSize > 100) {
       return Promise.reject(new Error('Invalid page or pageSize'));
     }
+    const normalizedSearch = search?.trim().toLowerCase();
     const groups = (mockDLQGroups as unknown as DLQGroup[]).filter(
-      (group) => !search || group.groupName.includes(search) || group.dlqTopic.includes(search),
+      (group) =>
+        !normalizedSearch ||
+        group.groupName.toLowerCase().includes(normalizedSearch) ||
+        group.dlqTopic.toLowerCase().includes(normalizedSearch),
     );
     const from = Math.min((page - 1) * pageSize, groups.length);
     return {

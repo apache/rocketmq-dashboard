@@ -108,7 +108,10 @@ export const listAllStudioUsers = async (
     });
     allUsers.push(...result.items);
     const total = result.total ?? allUsers.length;
-    if (result.items.length === 0 || allUsers.length >= total) return allUsers;
+    if (allUsers.length >= total) return allUsers;
+    if (result.items.length === 0) {
+      throw new Error(`Incomplete user list: received ${allUsers.length} of ${total}`);
+    }
     page += 1;
   }
   throw new Error(`Studio user export exceeded ${STUDIO_USER_MAX_EXPORT_PAGES} pages`);

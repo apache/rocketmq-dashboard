@@ -42,9 +42,11 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 
 /**
@@ -189,7 +191,37 @@ public class RocketMQClusterProvider implements ClusterProvider {
     @Override
     public List<ProxyVO> discoverProxies(String instanceId) {
         if (!StringUtils.hasText(instanceId)) throw new BusinessException(400, "Instance is required");
-        return runtimeAdminClientResolver.execute(instanceId, this::discoverProxiesViaHeartbeatSyncer);
+        String configuredCluster = runtimeAdminClientResolver.configuredClusterName(instanceId);
+        return runtimeAdminClientResolver.execute(instanceId, admin -> {
+            if (configuredCluster == null) {
+                return discoverProxiesViaHeartbeatSyncer(admin, null);
+            }
+            ClusterInfo info = admin.examineBrokerClusterInfo();
+            Map<String, Set<String>> clusters = info == null ? null : info.getClusterAddrTable();
+            Set<String> members = clusters == null ? null : clusters.get(configuredCluster);
+            if (info == null || info.getBrokerAddrTable() == null || members == null) {
+                // The caliber discoverClustersAt keeps: a topology or a cluster membership the
+                // NameServer does not report is an empty discovery, not a failure — only the RPC
+                // failure below throws.
+                return Collections.emptyList();
+            }
+            // A NameServer may serve several physical clusters. Query only the selected
+            // cluster's brokers instead of letting the global group lookup choose one.
+            Map<String, ProxyVO> proxies = new TreeMap<>();
+            for (String brokerName : new TreeSet<>(members)) {
+                BrokerData broker = info.getBrokerAddrTable().get(brokerName);
+                if (broker == null || broker.getBrokerAddrs() == null || broker.getBrokerAddrs().isEmpty()) {
+                    continue;
+                }
+                String address = broker.selectBrokerAddr();
+                if (StringUtils.hasText(address)) {
+                    for (ProxyVO proxy : discoverProxiesViaHeartbeatSyncer(admin, address)) {
+                        proxies.putIfAbsent(proxy.getAddr(), proxy);
+                    }
+                }
+            }
+            return new ArrayList<>(proxies.values());
+        });
     }
 
     @Override
@@ -391,10 +423,11 @@ public class RocketMQClusterProvider implements ClusterProvider {
         return adminFactory.execute(namesrvAddr, null, action);
     }
 
-    private List<ProxyVO> discoverProxiesViaHeartbeatSyncer(MQAdminExt admin) {
+    private List<ProxyVO> discoverProxiesViaHeartbeatSyncer(MQAdminExt admin, String brokerAddress) {
         try {
-            ConsumerConnection connection =
-                    admin.examineConsumerConnectionInfo(HEARTBEAT_SYNCER_CONSUMER_GROUP);
+            ConsumerConnection connection = brokerAddress == null
+                    ? admin.examineConsumerConnectionInfo(HEARTBEAT_SYNCER_CONSUMER_GROUP)
+                    : admin.examineConsumerConnectionInfo(HEARTBEAT_SYNCER_CONSUMER_GROUP, brokerAddress);
             if (connection == null || connection.getConnectionSet() == null) {
                 return Collections.emptyList();
             }
@@ -435,9 +468,12 @@ public class RocketMQClusterProvider implements ClusterProvider {
         }
 
         String[] addrs = namesrvAddr.split("[;,]");
+        Set<String> seen = new LinkedHashSet<>();
         for (String addr : addrs) {
             String trimmed = addr.trim();
-            if (!trimmed.isEmpty()) {
+            if (!trimmed.isEmpty() && seen.add(trimmed)) {
+                // Deduplicate: the admin connection treats a repeated segment as one node, so
+                // the reported rows must not repeat it either.
                 nameServers.add(NameServerVO.builder()
                         .addr(trimmed)
                         .status(ClusterStatus.healthy)

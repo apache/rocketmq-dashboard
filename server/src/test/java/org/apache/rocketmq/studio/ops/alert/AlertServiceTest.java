@@ -49,6 +49,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -68,7 +70,29 @@ class AlertServiceTest {
     @org.junit.jupiter.api.BeforeEach
     void setUpTest() {
         alertService = new AlertService(alertRepository, alertStateRepository, new AlertRuleAssetService(),
-                operationAuditService, new MetricProfileService(new PrometheusProperties()));
+                operationAuditService, new MetricProfileService(new PrometheusProperties()),
+                org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class));
+    }
+
+    @Test
+    void createNativeRuleShouldRejectMissingOperatorBeforePersistenceTest() {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("Orders lag");
+        request.setMetric("consumer.lag.total");
+        request.setInstanceId("local");
+        request.setConsumerGroup("orders");
+        request.setThreshold(100);
+        request.setEnabled(true);
+        lenient().when(alertRepository.insertRule(any(AlertRuleVO.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThatThrownBy(() -> alertService.createRule(AlertDomain.BUSINESS, request.toAlertRuleVO()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("operator")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verify(alertRepository, never()).insertRule(any(AlertRuleVO.class));
+        verifyNoInteractions(operationAuditService);
     }
 
     @Test
@@ -543,7 +567,8 @@ class AlertServiceTest {
         PrometheusProperties properties = new PrometheusProperties();
         properties.setProfile(profileId);
         return new AlertService(alertRepository, alertStateRepository, new AlertRuleAssetService(),
-                operationAuditService, new MetricProfileService(properties));
+                operationAuditService, new MetricProfileService(properties),
+                org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class));
     }
 
     private MetricProfileVO.MetricMappingVO activeLagMapping(String profileId) {
@@ -1354,32 +1379,49 @@ class AlertServiceTest {
     }
 
     @Test
-    void listAlertsShouldReturnAlertsForLevelTest() {
+    void listAlertsShouldDelegateToTheBoundedPageQueryTest() {
         SystemAlertVO alert1 = SystemAlertVO.builder().id(1L).level(AlertLevel.error)
                 .title("Broker Down").acknowledged(false).build();
         SystemAlertVO alert2 = SystemAlertVO.builder().id(2L).level(AlertLevel.error)
                 .title("High Latency").acknowledged(false).build();
-        when(alertRepository.findAlerts("error")).thenReturn(Arrays.asList(alert1, alert2));
+        when(alertRepository.findAlertsPage(any())).thenReturn(PageResult.of(
+                Arrays.asList(alert1, alert2), 2, 1, 100));
 
-        List<SystemAlertVO> result = alertService.listAlerts("error");
+        List<SystemAlertVO> result = alertService.listAlerts(
+                "error", AlertDomain.CLUSTER, "local", "FIRING");
 
-        assertThat(result).hasSize(2);
-        assertThat(result.get(0).getLevel()).isEqualTo(AlertLevel.error);
-        assertThat(result.get(0).getTitle()).isEqualTo("Broker Down");
-        verify(alertRepository).findAlerts("error");
+        assertThat(result).containsExactly(alert1, alert2);
+        org.mockito.ArgumentCaptor<SystemAlertQuery> query =
+                org.mockito.ArgumentCaptor.forClass(SystemAlertQuery.class);
+        verify(alertRepository).findAlertsPage(query.capture());
+        assertThat(query.getValue().level()).isEqualTo("error");
+        assertThat(query.getValue().domain()).isEqualTo(AlertDomain.CLUSTER);
+        assertThat(query.getValue().instanceId()).isEqualTo("local");
+        assertThat(query.getValue().transition()).isEqualTo("FIRING");
+        // The listing is bounded by the same ceiling the paginated endpoint enforces.
+        assertThat(query.getValue().page()).isEqualTo(1);
+        assertThat(query.getValue().pageSize()).isEqualTo(100);
     }
 
     @Test
     void listAlertsShouldReturnAllAlertsWhenLevelIsNullTest() {
         SystemAlertVO alert = SystemAlertVO.builder().id(1L).level(AlertLevel.warning)
                 .title("Slow Consumer").build();
-        when(alertRepository.findAlerts(null)).thenReturn(List.of(alert));
+        when(alertRepository.findAlertsPage(any())).thenReturn(PageResult.of(
+                List.of(alert), 1, 1, 100));
 
-        List<SystemAlertVO> result = alertService.listAlerts(null);
+        List<SystemAlertVO> result = alertService.listAlerts(null, null, null, null);
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getLevel()).isEqualTo(AlertLevel.warning);
-        verify(alertRepository).findAlerts(null);
+        org.mockito.ArgumentCaptor<SystemAlertQuery> query =
+                org.mockito.ArgumentCaptor.forClass(SystemAlertQuery.class);
+        verify(alertRepository).findAlertsPage(query.capture());
+        assertThat(query.getValue().level()).isNull();
+        assertThat(query.getValue().domain()).isNull();
+        assertThat(query.getValue().instanceId()).isNull();
+        assertThat(query.getValue().transition()).isNull();
+        assertThat(query.getValue().pageSize()).isEqualTo(100);
     }
 
     @Test

@@ -63,6 +63,18 @@ describe('TagList', () => {
     expect(screen.getByText('SMS')).toBeInTheDocument();
   });
 
+  it('exposes hidden labels on keyboard focus', async () => {
+    render(<TagList items={items} max={1} />);
+    const overflow = screen.getByText('+2');
+
+    expect(overflow).toHaveAttribute('tabindex', '0');
+    expect(overflow).toHaveAttribute('aria-label', '+2: Email, SMS');
+    fireEvent.focus(overflow);
+
+    expect(await screen.findByText('Email')).toBeInTheDocument();
+    expect(screen.getByText('SMS')).toBeInTheDocument();
+  });
+
   it('keeps every item when max is above the item countTest', () => {
     render(<TagList items={items} max={5} />);
     expect(screen.getByText('SMS')).toBeInTheDocument();

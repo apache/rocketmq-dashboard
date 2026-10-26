@@ -186,6 +186,40 @@ describe('Audit page', () => {
     expect(screen.getByText('timestamp: 1784246400000')).toBeInTheDocument();
   });
 
+  it('renders the audit timestamp in the viewer timezone from the offset-less UTC wire format', async () => {
+    // The backend serializes audit timestamps as UTC wall clocks without an offset (the stored
+    // base stays server-local). Parsing them as browser-local would shift every audit time by
+    // the server-viewer offset while the CSV export of the same rows stays correct.
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    try {
+      vi.mocked(opsService.listAuditRecords).mockResolvedValueOnce({
+        items: [
+          {
+            id: 3,
+            timestamp: '2026-08-01T02:00:00',
+            operator: 'ops-chen',
+            operationType: 'RELOAD_PROXY_CONFIG',
+            resourceType: 'PROXY',
+            target: '10.0.30.10:8081',
+            clusterId: 'prod-cn',
+            detail: '',
+            result: 'SUCCESS',
+            errorMessage: '',
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      });
+
+      renderWithProviders(<AuditPage />);
+
+      expect(await screen.findByText('2026-08-01 10:00:00')).toBeInTheDocument();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('opens a resource timeline from a non-empty audit target', async () => {
     const user = userEvent.setup();
     renderWithProviders(<AuditPage />);
@@ -377,6 +411,30 @@ describe('Audit page', () => {
     expect(
       await screen.findByText('Failed to clean audit logs, please retry later'),
     ).toBeInTheDocument();
+  });
+
+  it('drops records and summary from a previous filter when both refreshed reads fail', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AuditPage />);
+
+    expect(
+      await screen.findByRole('button', { name: '查看 topic-a 操作时间线' }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText('80')).toBeInTheDocument();
+    vi.mocked(opsService.listAuditRecords).mockRejectedValueOnce(new Error('records offline'));
+    vi.mocked(opsService.getAuditSummary).mockRejectedValueOnce(new Error('summary offline'));
+
+    await user.type(screen.getByPlaceholderText('搜索操作人或操作对象'), 'unavailable');
+
+    await waitFor(() => expect(opsService.listAuditRecords).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(opsService.getAuditSummary).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: '查看 topic-a 操作时间线' }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByText('80')).not.toBeInTheDocument();
+    expect(screen.getByText('获取数据失败')).toBeInTheDocument();
   });
 
   it('ignores stale filter-option responses after cleanup refreshes', async () => {

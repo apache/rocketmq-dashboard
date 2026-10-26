@@ -170,6 +170,18 @@ const DLQPage = () => {
     setLoading(true);
   }
 
+  // The search term filters the group list of one instance only, so switching
+  // instances has to drop it — otherwise the first request for the new instance
+  // is filtered by a term that can never match there. Kept separate from the
+  // `scopeKey` block above on purpose: that key also moves when a completed
+  // retry bumps `refreshKey`, and a reload of the same instance must keep the
+  // term the user is still working with.
+  const [prevInstanceId, setPrevInstanceId] = useState(selectedInstanceId);
+  if (prevInstanceId !== selectedInstanceId) {
+    setPrevInstanceId(selectedInstanceId);
+    setSearch('');
+  }
+
   useEffect(() => {
     const requestId = ++groupRequestIdRef.current;
 
@@ -436,8 +448,35 @@ const DLQPage = () => {
         msgIds,
       });
       if (detailResendRequestIdRef.current !== requestId) return;
+      // The server reports `matched` separately from `resent`: a selected message that can no
+      // longer be resolved (purged, broker gone) is dropped with failed=0, and a queue that could
+      // not be scanned is reported separately too. Mirror the time-range resend handler: never show
+      // the success toast unless every selected message was matched and resent.
+      const unmatched = msgIds.length - result.matched;
       if (result.failed > 0) {
         showResendFailures(result);
+        // `showResendFailures` only reports resent + failed, so the partial-match information
+        // would be dropped on this path. Emit the same supplementary warning as the branches
+        // below, mirroring the time-range resend handler which also warns on top of the failure
+        // summary when its scan was incomplete.
+        if (unmatched > 0 || result.scanIncomplete) {
+          message.warning(
+            t(unmatched > 0 ? 'dlq.resendUnmatchedSummary' : 'dlq.resendScanIncompleteSummary', {
+              resent: result.resent,
+              unmatched,
+              queues: result.failedQueueCount ?? 0,
+            }),
+          );
+        }
+      } else if (unmatched > 0) {
+        message.warning(t('dlq.resendUnmatchedSummary', { resent: result.resent, unmatched }));
+      } else if (result.scanIncomplete) {
+        message.warning(
+          t('dlq.resendScanIncompleteSummary', {
+            resent: result.resent,
+            queues: result.failedQueueCount ?? 0,
+          }),
+        );
       } else {
         message.success(`重发完成：成功 ${result.resent} 条`);
       }
