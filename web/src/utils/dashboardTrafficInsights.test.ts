@@ -266,4 +266,72 @@ describe('buildDashboardTrafficInsights', () => {
       }),
     );
   });
+
+  it('does not raise concentration severity from a rounded display share', () => {
+    const belowWarning = buildDashboardTrafficInsights(
+      dashboard([
+        baseCluster({ id: 'large', tpsIn: 1499, tpsOut: 0 }),
+        baseCluster({ id: 'small', tpsIn: 1001, tpsOut: 0 }),
+      ]),
+    );
+    expect(belowWarning.topClusterSharePercent).toBe(60);
+    expect(belowWarning.issues.some((item) => item.code === 'TRAFFIC_CONCENTRATION')).toBe(false);
+
+    const belowCritical = buildDashboardTrafficInsights(
+      dashboard([
+        baseCluster({ id: 'large', tpsIn: 1874, tpsOut: 0 }),
+        baseCluster({ id: 'small', tpsIn: 626, tpsOut: 0 }),
+      ]),
+    );
+    expect(belowCritical.topClusterSharePercent).toBe(75);
+    expect(belowCritical.issues.find((item) => item.code === 'TRAFFIC_CONCENTRATION')?.level).toBe(
+      'warning',
+    );
+  });
+
+  it('classifies unhealthy traffic using its unrounded share', () => {
+    const result = buildDashboardTrafficInsights(
+      dashboard([
+        baseCluster({ id: 'healthy', tpsIn: 1876, tpsOut: 0 }),
+        baseCluster({ id: 'degraded', status: 'warning', tpsIn: 624, tpsOut: 0 }),
+      ]),
+    );
+    expect(result.unhealthyTrafficPercent).toBe(25);
+    const unhealthyIssues = result.issues.filter((item) => item.code === 'UNHEALTHY_TRAFFIC');
+    expect(unhealthyIssues).toHaveLength(2);
+    expect(unhealthyIssues.every((item) => item.level === 'warning')).toBe(true);
+    expect(unhealthyIssues.some((item) => item.clusterId === 'degraded')).toBe(true);
+  });
+
+  it('compares unrounded trend changes with the warning and notice thresholds', () => {
+    const drop = buildDashboardTrafficInsights(
+      dashboard([baseCluster({ throughput: [1000, 1000, 1000, 700.4, 700.4, 700.4] })]),
+    );
+    expect(drop.trendDeltaPercent).toBe(-30);
+    expect(drop.issues.some((item) => item.code === 'RECENT_TRAFFIC_DROP')).toBe(false);
+
+    const spike = buildDashboardTrafficInsights(
+      dashboard([baseCluster({ throughput: [1000, 1000, 1000, 1499.6, 1499.6, 1499.6] })]),
+    );
+    expect(spike.trendDeltaPercent).toBe(50);
+    expect(spike.issues.some((item) => item.code === 'RECENT_TRAFFIC_SPIKE')).toBe(false);
+
+    const stable = buildDashboardTrafficInsights(
+      dashboard([baseCluster({ throughput: [1000, 1000, 1000, 1099.6, 1099.6, 1099.6] })]),
+    );
+    expect(stable.trendDeltaPercent).toBe(10);
+    expect(stable.trendDirection).toBe('stable');
+  });
+
+  it('does not report broker skew caused only by rounded per-broker TPS', () => {
+    const result = buildDashboardTrafficInsights(
+      dashboard([
+        baseCluster({ id: 'hot', brokers: 1, tpsIn: 249.99, tpsOut: 0 }),
+        baseCluster({ id: 'wide', brokers: 3, tpsIn: 150.01, tpsOut: 0 }),
+      ]),
+    );
+    expect(result.rows[0].perBrokerTps).toBe(250);
+    expect(result.averagePerBrokerTps).toBe(100);
+    expect(result.issues.some((item) => item.code === 'BROKER_LOAD_SKEW')).toBe(false);
+  });
 });
