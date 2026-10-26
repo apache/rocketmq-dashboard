@@ -32,6 +32,7 @@ import {
 } from 'antd';
 import { MagnifyingGlass, Eye, ArrowsCounterClockwise, Download } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
+import type { SortOrder } from 'antd/es/table/interface';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
@@ -66,6 +67,25 @@ export const formatDateTime = (value?: string | number | null): string => {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
+
+/**
+ * Orders groups by their last enqueue stamp while keeping a group without one (no dead-letter
+ * message yet, or stats that could not be read) after the stamped groups. An empty-string
+ * substitute would sort before every real timestamp, so an ascending sort would open with rows
+ * that carry no stamp at all.
+ */
+function compareLastEnqueueTime(left: DLQGroup, right: DLQGroup, sortOrder?: SortOrder): number {
+  const leftMissing = !left.lastEnqueueTime;
+  const rightMissing = !right.lastEnqueueTime;
+  if (leftMissing || rightMissing) {
+    if (leftMissing === rightMissing) return 0;
+    // Ant Design reverses the comparator for descending order, so invert this
+    // branch to keep a missing stamp after the stamped ones in either order.
+    const missingAfterStamped = sortOrder === 'descend' ? -1 : 1;
+    return leftMissing ? missingAfterStamped : -missingAfterStamped;
+  }
+  return left.lastEnqueueTime.localeCompare(right.lastEnqueueTime);
+}
 
 const DLQ_EXPORT_COLUMNS: CsvColumn<DLQGroup>[] = [
   { header: 'Group Name', value: (group) => group.groupName },
@@ -583,7 +603,7 @@ const DLQPage = () => {
       dataIndex: 'lastEnqueueTime',
       key: 'lastEnqueueTime',
       width: 156,
-      sorter: (a, b) => (a.lastEnqueueTime || '').localeCompare(b.lastEnqueueTime || ''),
+      sorter: (a, b, sortOrder) => compareLastEnqueueTime(a, b, sortOrder),
       render: (time?: string | null) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
           {formatUtcDateTime(time)}
