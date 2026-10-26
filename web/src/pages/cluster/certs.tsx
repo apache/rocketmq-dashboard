@@ -237,6 +237,7 @@ const K8sCertsPage = () => {
           valid: { color: 'green', label: t('cert.statusValid') },
           expiring: { color: 'orange', label: t('cert.statusExpiring') },
           expired: { color: 'red', label: t('cert.statusExpired') },
+          not_yet_valid: { color: 'blue', label: t('cert.statusNotYetValid') },
         };
         const cfg = status ? (map[status] ?? { color: 'default', label: status }) : null;
         return cfg ? <Tag color={cfg.color}>{cfg.label}</Tag> : '-';
