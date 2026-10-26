@@ -481,12 +481,16 @@ const SystemAlertsPage = () => {
   };
 
   const deleteSilence = async (id: number) => {
+    const requestId = silenceRequestId.current;
     setDeletingSilenceId(id);
     try {
       await deleteAlertSilence(id);
-      const nextPage = silences.length === 1 && silencePage > 1 ? silencePage - 1 : silencePage;
-      setSilencePage(nextPage);
-      await loadSilences(nextPage);
+      // A newer page request owns the dialog, even if its response is still pending.
+      if (requestId === silenceRequestId.current) {
+        const nextPage = silences.length === 1 && silencePage > 1 ? silencePage - 1 : silencePage;
+        setSilencePage(nextPage);
+        await loadSilences(nextPage);
+      }
       message.success(t('sysAlerts.silenceEnded'));
     } catch {
       message.error(t('sysAlerts.silenceEndFailed'));

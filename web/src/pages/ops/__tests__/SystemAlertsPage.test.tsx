@@ -1008,6 +1008,79 @@ describe('SystemAlertsPage', () => {
     });
   });
 
+  it('keepsTheCurrentMaintenancePageWhenAnEarlierDeletionCompletesTest', async () => {
+    const deletion = deferred<void>();
+    vi.mocked(deleteAlertSilence).mockReturnValueOnce(deletion.promise);
+    vi.mocked(listAlertSilencesPage).mockImplementation(async ({ page = 1 } = {}) => ({
+      items: Array.from({ length: 10 }, (_, index) => ({
+        id: (page - 1) * 10 + index + 1,
+        domain: 'CLUSTER' as const,
+        instanceId: `page-${page}-item-${index + 1}`,
+        startsAt: '2026-08-10T01:00',
+        endsAt: '2026-08-10T02:00',
+        createdBy: 'admin',
+      })),
+      total: 30,
+      page,
+      size: 10,
+    }));
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: '维护窗口' }));
+    await user.click(await screen.findByRole('listitem', { name: '2' }));
+    await screen.findByText(/CLUSTER.*page-2-item-1\b/);
+    await user.click(screen.getAllByRole('button', { name: /结\s*束/ })[0]);
+    await waitFor(() => expect(deleteAlertSilence).toHaveBeenCalledWith(11));
+
+    await user.click(screen.getByRole('listitem', { name: '3' }));
+    expect(await screen.findByText(/CLUSTER.*page-3-item-1\b/)).toBeInTheDocument();
+    await act(async () => deletion.resolve());
+
+    expect(listAlertSilencesPage).toHaveBeenLastCalledWith({ page: 3, pageSize: 10 });
+    expect(screen.getByText(/CLUSTER.*page-3-item-1\b/)).toBeInTheDocument();
+    expect(screen.queryByText(/CLUSTER.*page-2-item-1\b/)).not.toBeInTheDocument();
+  });
+
+  it('keepsAPendingMaintenancePageRequestWhenAnEarlierDeletionCompletesTest', async () => {
+    const deletion = deferred<void>();
+    const pageThree = deferred<Awaited<ReturnType<typeof listAlertSilencesPage>>>();
+    vi.mocked(deleteAlertSilence).mockReturnValueOnce(deletion.promise);
+    const pageResult = (page: number) => ({
+      items: Array.from({ length: 10 }, (_, index) => ({
+        id: (page - 1) * 10 + index + 1,
+        domain: 'CLUSTER' as const,
+        instanceId: `page-${page}-item-${index + 1}`,
+        startsAt: '2026-08-10T01:00',
+        endsAt: '2026-08-10T02:00',
+        createdBy: 'admin',
+      })),
+      total: 30,
+      page,
+      size: 10,
+    });
+    vi.mocked(listAlertSilencesPage).mockImplementation(async ({ page = 1 } = {}) =>
+      page === 3 ? pageThree.promise : pageResult(page),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: '维护窗口' }));
+    await user.click(await screen.findByRole('listitem', { name: '2' }));
+    await screen.findByText(/CLUSTER.*page-2-item-1\b/);
+    await user.click(screen.getAllByRole('button', { name: /结\s*束/ })[0]);
+    await waitFor(() => expect(deleteAlertSilence).toHaveBeenCalledWith(11));
+    await user.click(screen.getByRole('listitem', { name: '3' }));
+    expect(listAlertSilencesPage).toHaveBeenLastCalledWith({ page: 3, pageSize: 10 });
+
+    await act(async () => deletion.resolve());
+
+    expect(listAlertSilencesPage).toHaveBeenCalledTimes(3);
+    expect(listAlertSilencesPage).toHaveBeenLastCalledWith({ page: 3, pageSize: 10 });
+    await act(async () => pageThree.resolve(pageResult(3)));
+    expect(screen.getByText(/CLUSTER.*page-3-item-1\b/)).toBeInTheDocument();
+    expect(screen.queryByText(/CLUSTER.*page-2-item-1\b/)).not.toBeInTheDocument();
+    expect(deleteAlertSilence).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps the newest maintenance-window page when an older request resolves later', async () => {
     const pageTwo = deferred<Awaited<ReturnType<typeof listAlertSilencesPage>>>();
     const pageThree = deferred<Awaited<ReturnType<typeof listAlertSilencesPage>>>();
