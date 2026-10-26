@@ -1027,6 +1027,11 @@ public class TencentInstanceProvider implements InstanceProvider {
                 .consumeType(toConsumeType(subscription.getConsumeType(), messageModel))
                 .messageModel(messageModel)
                 .diffTotal(subscription.getConsumerLag() == null ? 0L : subscription.getConsumerLag())
+                // DescribeTopic's SubscriptionData carries the real ConsumerLag but no TPS
+                // field, so the VO's consumeTps default would render a measured-looking "0"
+                // in the TPS column. The lag stays available (metricsAvailable defaults true);
+                // only the TPS metric is flagged unavailable.
+                .tpsAvailable(false)
                 .build();
     }
 

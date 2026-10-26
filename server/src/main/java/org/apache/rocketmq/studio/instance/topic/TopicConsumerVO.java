@@ -34,4 +34,11 @@ public class TopicConsumerVO {
     private long diffTotal;
     @Builder.Default
     private boolean metricsAvailable = true;
+    /**
+     * Whether the provider actually measured {@code consumeTps}. Tencent's subscription data
+     * carries the real backlog but no TPS field, so it keeps {@code metricsAvailable} (the lag
+     * gate) true while flagging the TPS column unavailable.
+     */
+    @Builder.Default
+    private boolean tpsAvailable = true;
 }
