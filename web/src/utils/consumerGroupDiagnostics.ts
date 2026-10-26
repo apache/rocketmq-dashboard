@@ -158,11 +158,17 @@ const topicCount = (group: ConsumerGroup, subscriptions: SubscriptionEntry[]): n
 };
 
 const lagSkewRatio = (knownQueueLags: number[]): number => {
-  const positive = knownQueueLags.filter((lag) => lag > 0);
-  if (positive.length <= 1) return 0;
-  const min = Math.min(...positive);
-  if (min === 0) return 0;
-  return Math.round((Math.max(...positive) / min) * 100) / 100;
+  let positiveCount = 0;
+  let minPositive = Number.POSITIVE_INFINITY;
+  let maxPositive = 0;
+  for (const lag of knownQueueLags) {
+    if (lag <= 0) continue;
+    positiveCount += 1;
+    minPositive = Math.min(minPositive, lag);
+    maxPositive = Math.max(maxPositive, lag);
+  }
+  if (positiveCount <= 1) return 0;
+  return Math.round((maxPositive / minPositive) * 100) / 100;
 };
 
 const maxStatus = (issues: ConsumerGroupHealthIssue[]): ConsumerGroupHealthStatus =>
@@ -427,8 +433,12 @@ export const analyzeConsumerGroupHealth = (
       unknownQueueCount,
       totalKnownLag,
       reportedLag: summaryReportedLag,
-      maxQueueLag: knownQueueLags.length > 0 ? Math.max(...knownQueueLags) : null,
-      maxHeartbeatAgeSeconds: heartbeatAges.length > 0 ? Math.max(...heartbeatAges) : null,
+      maxQueueLag:
+        knownQueueLags.length > 0
+          ? knownQueueLags.reduce((max, lag) => Math.max(max, lag), 0)
+          : null,
+      maxHeartbeatAgeSeconds:
+        heartbeatAges.length > 0 ? heartbeatAges.reduce((max, age) => Math.max(max, age), 0) : null,
       staleClientCount: issues.filter((item) => item.code === 'STALE_HEARTBEAT').length,
     },
     issues,
