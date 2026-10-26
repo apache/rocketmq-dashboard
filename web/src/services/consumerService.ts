@@ -27,6 +27,16 @@ const consumerGroupsState = mockConsumerGroups as unknown as (ConsumerGroup & {
   consumeMessageOrderly?: boolean;
   consumeBroadcastEnable?: boolean;
 })[];
+const fixtureGroupsByName = new Map(mockConsumerGroups.map((group) => [group.name, group]));
+
+function hasActiveFixtureGroup(name: string, instanceId?: string): boolean {
+  const fixture = fixtureGroupsByName.get(name);
+  return (
+    fixture !== undefined &&
+    mockConsumerGroups.includes(fixture) &&
+    (!instanceId || fixture.instanceId === instanceId)
+  );
+}
 const EXPORT_PAGE_SIZE = 100;
 const MAX_EXPORT_PAGES = 100;
 const GROUP_EXPORT_COLUMNS: CsvColumn<ConsumerGroup>[] = [
@@ -182,6 +192,7 @@ export async function getConsumerProgress(
   instanceId?: string,
 ): Promise<QueueProgress[]> {
   if (isMockMode()) {
+    if (!hasActiveFixtureGroup(name, instanceId)) return [];
     return ((mockQueueProgress[name] as unknown as QueueProgress[]) ?? []).map(copyQueueProgress);
   }
   return metadataApi.getConsumerProgress(name, instanceId);
@@ -267,6 +278,7 @@ export async function getConsumerSubscriptions(
   instanceId?: string,
 ): Promise<SubscriptionEntry[]> {
   if (isMockMode()) {
+    if (!hasActiveFixtureGroup(name, instanceId)) return [];
     return ((mockSubscriptions[name] as unknown as SubscriptionEntry[]) ?? []).map(
       copySubscription,
     );
@@ -382,9 +394,11 @@ export async function previewConsumerOffsetReset(
 }
 
 function buildMockResetOffsetPreview(data: ResetConsumerOffsetRequest): ResetConsumerOffsetPreview {
-  const progressRows = ((mockQueueProgress[data.name] as unknown as QueueProgress[]) ?? []).filter(
-    (progress) => !progress.topic || progress.topic === data.topic,
-  );
+  const progressRows = hasActiveFixtureGroup(data.name, data.instanceId)
+    ? ((mockQueueProgress[data.name] as unknown as QueueProgress[]) ?? []).filter(
+        (progress) => !progress.topic || progress.topic === data.topic,
+      )
+    : [];
   const queues = progressRows.map((progress) =>
     buildMockResetOffsetQueuePreview(data.topic, progress),
   );
