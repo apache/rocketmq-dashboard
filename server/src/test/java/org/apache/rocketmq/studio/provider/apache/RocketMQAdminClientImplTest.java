@@ -1167,6 +1167,76 @@ class RocketMQAdminClientImplTest {
         verify(topicMapper).updateById(existing);
     }
 
+    @ParameterizedTest
+    @CsvSource({"0, 4", "2, 5", "3, 7"})
+    void updateTopicWithoutPermissionPreservesEachBrokersPermissionTest(int firstPerm, int secondPerm) throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        RmqTopic existing = new RmqTopic();
+        existing.setName("orders");
+        existing.setWriteQueueNums(8);
+        existing.setReadQueueNums(8);
+        existing.setPerm(6);
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+        Map<String, Integer> permissions = Map.of("10.0.0.1:10911", firstPerm, "10.0.0.2:10911", secondPerm);
+        for (var entry : permissions.entrySet()) {
+            when(adminExt.examineTopicConfig(entry.getKey(), "orders"))
+                    .thenReturn(new TopicConfig("orders", 8, 8, entry.getValue()));
+        }
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("orders");
+        topic.setWriteQueues(16);
+        topic.setReadQueues(12);
+        topic.setRemark("updated remark");
+
+        adminClient.updateTopic(topic);
+
+        ArgumentCaptor<String> addresses = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<TopicConfig> configs = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt, times(2)).createAndUpdateTopicConfig(addresses.capture(), configs.capture());
+        for (int i = 0; i < addresses.getAllValues().size(); i++) {
+            TopicConfig sent = configs.getAllValues().get(i);
+            assertThat(sent.getPerm()).isEqualTo(permissions.get(addresses.getAllValues().get(i)));
+            assertThat(sent.getWriteQueueNums()).isEqualTo(16);
+            assertThat(sent.getReadQueueNums()).isEqualTo(12);
+        }
+        assertThat(existing.getPerm()).isEqualTo(6);
+        assertThat(existing.getRemark()).isEqualTo("updated remark");
+        verify(topicMapper).updateById(existing);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"RO, 4", "WO, 2", "RW, 6"})
+    void updateTopicWithPermissionOverridesEachBrokersPermissionTest(TopicPerm requested, int expected) throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        RmqTopic existing = new RmqTopic();
+        existing.setName("orders");
+        existing.setWriteQueueNums(8);
+        existing.setReadQueueNums(8);
+        existing.setPerm(6);
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+        when(adminExt.examineTopicConfig("10.0.0.1:10911", "orders"))
+                .thenReturn(new TopicConfig("orders", 8, 8, 0));
+        when(adminExt.examineTopicConfig("10.0.0.2:10911", "orders"))
+                .thenReturn(new TopicConfig("orders", 8, 8, 5));
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("orders");
+        topic.setWriteQueues(8);
+        topic.setReadQueues(8);
+        topic.setPerm(requested);
+
+        adminClient.updateTopic(topic);
+
+        ArgumentCaptor<TopicConfig> configs = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt, times(2)).createAndUpdateTopicConfig(anyString(), configs.capture());
+        assertThat(configs.getAllValues()).allSatisfy(config -> assertThat(config.getPerm()).isEqualTo(expected));
+        assertThat(existing.getPerm()).isEqualTo(expected);
+        verify(topicMapper).updateById(existing);
+    }
+
     @Test
     void updateTopicReadsAllConfigurationsBeforeWritingTest() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
@@ -1205,7 +1275,7 @@ class RocketMQAdminClientImplTest {
         existing.setName("orders");
         existing.setWriteQueueNums(8);
         existing.setReadQueueNums(8);
-        existing.setPerm(6);
+        existing.setPerm(4);
         when(topicMapper.selectOne(any())).thenReturn(existing);
         var reads = lenient().when(adminExt.examineTopicConfig(anyString(), eq("orders")));
         if (absentException) {
@@ -1225,6 +1295,7 @@ class RocketMQAdminClientImplTest {
         verify(adminExt, times(2)).createAndUpdateTopicConfig(anyString(), configs.capture());
         assertThat(configs.getAllValues()).allSatisfy(config -> {
             assertThat(config.getTopicName()).isEqualTo("orders");
+            assertThat(config.getPerm()).isEqualTo(4);
             assertThat(config.getReadQueueNums()).isEqualTo(12);
             assertThat(config.getWriteQueueNums()).isEqualTo(16);
             assertThat(config.getTopicSysFlag()).isZero();
