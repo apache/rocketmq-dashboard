@@ -21,6 +21,9 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +31,26 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class DLQMessageExcelRowTest {
+
+    @Test
+    void shouldNameTheZoneOfTheStoreTimeItFormatsTest() {
+        // The console renders this epoch in the viewer's zone; the export writes the server's
+        // wall clock, so the cell must carry the offset it was formatted in — otherwise the two
+        // views of the same message silently disagree whenever the zones differ.
+        long storeTime = 1_700_000_000_000L;
+        DLQMessageVO message = DLQMessageVO.builder()
+                .msgId("msg-tz")
+                .storeTime(storeTime)
+                .build();
+
+        Map<String, String> cells = firstDataRowByColumnName(List.of(message));
+
+        Instant instant = Instant.ofEpochMilli(storeTime);
+        String expected = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                .withZone(ZoneId.systemDefault()).format(instant)
+                + " " + ZoneId.systemDefault().getRules().getOffset(instant);
+        assertThat(cells).containsEntry("Store Time", expected);
+    }
 
     @Test
     void shouldExportTheMessageRedeliveryCountTest() {

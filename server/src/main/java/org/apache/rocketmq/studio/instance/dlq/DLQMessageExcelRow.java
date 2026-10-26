@@ -20,7 +20,6 @@ import com.alibaba.excel.annotation.ExcelProperty;
 import lombok.Data;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 
@@ -38,8 +37,13 @@ public class DLQMessageExcelRow {
     private static final int MAX_EXCEL_CELL_CHARS = 32_767;
     private static final String TRUNCATION_SUFFIX = "...[truncated]";
 
+    /**
+     * The store time is a server-zone wall clock while the console renders the same epoch in the
+     * viewer's zone, so the cell names the offset it was formatted in — the two views of the same
+     * message never silently disagree, matching the labeled timestamp column of the audit CSV.
+     */
     private static final DateTimeFormatter STORE_TIME_FORMAT =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss XXX");
 
     @ExcelProperty("Message ID")
     private String msgId;
@@ -66,8 +70,8 @@ public class DLQMessageExcelRow {
         row.setTopic(vo.getTopic());
         row.setQueueId(vo.getQueueId());
         row.setOffset(vo.getOffset());
-        row.setStoreTime(LocalDateTime.ofInstant(
-                Instant.ofEpochMilli(vo.getStoreTime()), ZoneId.systemDefault()).format(STORE_TIME_FORMAT));
+        row.setStoreTime(Instant.ofEpochMilli(vo.getStoreTime())
+                .atZone(ZoneId.systemDefault()).format(STORE_TIME_FORMAT));
         row.setReconsumeTimes(vo.getReconsumeTimes());
         row.setKeys(vo.getKeys());
         row.setBody(abbreviateForExcelCell(vo.getBody()));
