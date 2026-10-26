@@ -2458,7 +2458,7 @@ POST /api/system-alerts/clear-acknowledged
 ### 13.1 获取审计日志列表
 
 ```
-GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operationType={type}&resourceType={resourceType}&target={target}&clusterId={clusterId}&clusterIdMissing={missing}&startDate={start}&endDate={end}&result={result}
+GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operator={operator}&operationType={type}&resourceType={resourceType}&target={target}&clusterId={clusterId}&clusterIdMissing={missing}&startDate={start}&endDate={end}&result={result}
 ```
 
 **Query Parameters:**
@@ -2468,6 +2468,7 @@ GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operationTyp
 | `page` | `number` | 否 | 页码，默认 1 |
 | `pageSize` | `number` | 否 | 每页条数，默认 20 |
 | `search` | `string` | 否 | 模糊搜索（匹配 operator / target / detail） |
+| `operator` | `string` | 否 | 操作人过滤，使用等值匹配而非模糊搜索；取值来自筛选项接口的 `operators` |
 | `operationType` | `string` | 否 | 操作类型过滤 |
 | `resourceType` | `string` | 否 | 资源类型过滤 |
 | `target` | `string` | 否 | 操作对象精确过滤，使用等值匹配而非模糊搜索 |
@@ -2516,6 +2517,7 @@ GET /api/audit-logs/filter-options
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
+| `operators` | `string[]` | 数据库中已存在的操作人原始值 |
 | `operationTypes` | `string[]` | 数据库中已存在的操作类型原始值 |
 | `resourceTypes` | `string[]` | 数据库中已存在的资源类型原始值 |
 | `clusterIds` | `string[]` | 数据库中已存在的非空集群 ID |
@@ -2526,7 +2528,7 @@ GET /api/audit-logs/filter-options
 ### 13.3 导出审计日志
 
 ```
-GET /api/audit-logs/export?search={search}&operationType={type}&resourceType={resourceType}&target={target}&clusterId={clusterId}&clusterIdMissing={missing}&startDate={start}&endDate={end}&result={result}
+GET /api/audit-logs/export?search={search}&operator={operator}&operationType={type}&resourceType={resourceType}&target={target}&clusterId={clusterId}&clusterIdMissing={missing}&startDate={start}&endDate={end}&result={result}
 ```
 
 查询参数与列表接口相同，但不包含 `page` 和 `pageSize`。接口返回全部匹配记录，不受当前表格分页影响。

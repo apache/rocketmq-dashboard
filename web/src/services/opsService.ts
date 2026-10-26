@@ -71,6 +71,7 @@ function distinctSorted(values: Array<string | null | undefined>): string[] {
 
 function getMockAuditFilterOptions(): AuditFilterOptions {
   return {
+    operators: distinctSorted(auditRecordsState.map((record) => record.operator)),
     operationTypes: distinctSorted(auditRecordsState.map((record) => record.operationType)),
     resourceTypes: distinctSorted(auditRecordsState.map((record) => record.resourceType)),
     clusterIds: distinctSorted(auditRecordsState.map((record) => record.clusterId)),
@@ -89,6 +90,7 @@ function filterAuditRecords(params: AuditFilter): AuditRecord[] {
     ) {
       return false;
     }
+    if (params.operator && record.operator !== params.operator) return false;
     if (params.operationType && record.operationType !== params.operationType) return false;
     if (params.resourceType && record.resourceType !== params.resourceType) return false;
     if (params.target && record.target !== params.target) return false;

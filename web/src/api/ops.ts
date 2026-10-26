@@ -196,6 +196,7 @@ export interface AuditQuery {
   page?: number;
   pageSize?: number;
   search?: string;
+  operator?: string;
   operationType?: string;
   resourceType?: string;
   target?: string;
