@@ -197,18 +197,18 @@ public class RocketMQClusterProvider implements ClusterProvider {
                 return discoverProxiesViaHeartbeatSyncer(admin, null);
             }
             ClusterInfo info = admin.examineBrokerClusterInfo();
-            if (info == null || info.getBrokerAddrTable() == null) {
-                throw new BusinessException(503, "Broker topology is unavailable");
-            }
-            Map<String, Set<String>> clusters = info.getClusterAddrTable();
-            if (clusters == null || clusters.containsKey(configuredCluster)
-                    && clusters.get(configuredCluster) == null) {
-                throw new BusinessException(503, "Broker cluster membership is unavailable");
+            Map<String, Set<String>> clusters = info == null ? null : info.getClusterAddrTable();
+            Set<String> members = clusters == null ? null : clusters.get(configuredCluster);
+            if (info == null || info.getBrokerAddrTable() == null || members == null) {
+                // The caliber discoverClustersAt keeps: a topology or a cluster membership the
+                // NameServer does not report is an empty discovery, not a failure — only the RPC
+                // failure below throws.
+                return Collections.emptyList();
             }
             // A NameServer may serve several physical clusters. Query only the selected
             // cluster's brokers instead of letting the global group lookup choose one.
             Map<String, ProxyVO> proxies = new TreeMap<>();
-            for (String brokerName : new TreeSet<>(clusters.getOrDefault(configuredCluster, Set.of()))) {
+            for (String brokerName : new TreeSet<>(members)) {
                 BrokerData broker = info.getBrokerAddrTable().get(brokerName);
                 if (broker == null || broker.getBrokerAddrs() == null || broker.getBrokerAddrs().isEmpty()) {
                     continue;

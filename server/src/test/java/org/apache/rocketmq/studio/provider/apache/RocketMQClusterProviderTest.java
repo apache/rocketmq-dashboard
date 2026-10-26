@@ -619,7 +619,7 @@ class RocketMQClusterProviderTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"topology", "brokers", "clusters", "membership"})
-    void scopedProxyDiscoveryRejectsUnavailableMembershipTest(String unavailable) throws Exception {
+    void scopedProxyDiscoveryTreatsUnavailableMembershipAsEmptyTest(String unavailable) throws Exception {
         DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
         RocketMQClusterProvider provider = scopedProvider(admin, "DefaultCluster");
         ClusterInfo topology = sharedTopology();
@@ -632,8 +632,9 @@ class RocketMQClusterProviderTest {
         }
         when(admin.examineBrokerClusterInfo()).thenReturn(topology);
 
-        assertThatThrownBy(() -> provider.discoverProxies("selected"))
-                .isInstanceOfSatisfying(BusinessException.class, error -> assertThat(error.getCode()).isEqualTo(503));
+        // discoverClustersAt answers a topology it cannot read with an empty list, not an error;
+        // the scoped lookup keeps that caliber so one missing membership cannot fail the page.
+        assertThat(provider.discoverProxies("selected")).isEmpty();
         verify(admin, never()).examineConsumerConnectionInfo(anyString());
         verify(admin, never()).examineConsumerConnectionInfo(anyString(), anyString());
     }
