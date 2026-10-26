@@ -83,9 +83,8 @@ export function handleSessionUnauthorized(): void {
   // Carry the page the operator was on so the login flow can return to it after
   // re-authenticating; an expired session while already on /login must not self-reference.
   const current = `${window.location.pathname}${window.location.search}`;
-  const target = current && current !== '/login'
-    ? `/login?redirect=${encodeURIComponent(current)}`
-    : '/login';
+  const target =
+    current && current !== '/login' ? `/login?redirect=${encodeURIComponent(current)}` : '/login';
   window.location.href = target;
 }
 

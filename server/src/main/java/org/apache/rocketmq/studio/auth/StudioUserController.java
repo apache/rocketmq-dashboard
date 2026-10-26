@@ -45,6 +45,11 @@ public class StudioUserController {
         return Result.ok(authService.getSessionOverview());
     }
 
+    @GetMapping("/login-lockouts")
+    public Result<List<StudioLoginLockoutVO>> listLoginLockouts() {
+        return Result.ok(authService.listLoginLockouts());
+    }
+
     @GetMapping("/{userId}/sessions")
     public Result<List<StudioUserSessionDetailVO>> listActiveSessions(@PathVariable Long userId) {
         return Result.ok(authService.listActiveSessionsForUser(userId));
@@ -83,6 +88,12 @@ public class StudioUserController {
         return Result.ok(StudioUserVO.from(authService.setUserEnabled(userId, request.getEnabled())));
     }
 
+    @PostMapping("/{userId}/role")
+    public Result<StudioUserVO> updateRole(@PathVariable Long userId,
+                                           @Valid @RequestBody UpdateStudioUserRoleDTO request) {
+        return Result.ok(StudioUserVO.from(authService.setUserAdmin(userId, request.getAdmin())));
+    }
+
     @PostMapping("/{userId}/password")
     public Result<Void> resetPassword(@PathVariable Long userId,
                                       @Valid @RequestBody ResetPasswordDTO request) {
@@ -97,6 +108,12 @@ public class StudioUserController {
                 .userId(userId)
                 .revokedSessionCount(revokedSessionCount)
                 .build());
+    }
+
+    @DeleteMapping("/{userId}")
+    public Result<Void> deleteUser(@PathVariable Long userId) {
+        authService.deleteUser(userId);
+        return Result.ok();
     }
 
     @PostMapping("/sessions/revoke-all")

@@ -165,6 +165,9 @@
 | 121 | POST | `/api/ai/conversations/:id/followups` | AI 追问建议（一次小补全；无内容或失败返回空数组） |
 | 122 | POST | `/api/studio-users/sessions/revoke-all` | 注销其他账号的全部有效会话 |
 | 123 | DELETE | `/api/studio-users/sessions/:sessionId` | 注销单条会话 |
+| 124 | POST | `/api/studio-users/:userId/role` | 修改账号的管理员角色 |
+| 125 | DELETE | `/api/studio-users/:userId` | 删除账号及其全部会话 |
+| 126 | GET | `/api/studio-users/login-lockouts` | 登录锁定快照 |
 
 ## 通用响应格式
 
@@ -3521,9 +3524,10 @@ GET /api/metrics/grafana/dashboards/export
 
 ---
 
-## 17. Studio 会话注销 Studio User Sessions
+## 17. Studio 账号与会话 Studio Users and Sessions
 
-> 本节只记录会话注销与其归因字段；`/api/studio-users` 的账号管理面尚未整体入档。
+> 本节记录账号角色变更、账号删除、登录锁定快照与会话注销；`/api/studio-users` 的账号列表与创建面
+> 尚未整体入档。
 
 ### 17.1 注销其他账号的全部会话
 
@@ -3565,6 +3569,49 @@ DELETE /api/studio-users/sessions/:sessionId
 |------|------|------|
 | `clientIp` | `string?` | 签发会话的客户端地址；经反向代理时取 `X-Forwarded-For` 首跳。本次改动之前签发的会话为 `null` |
 | `userAgent` | `string?` | 签发会话的客户端 User-Agent。本次改动之前签发的会话为 `null` |
+
+### 17.4 修改账号角色
+
+```
+POST /api/studio-users/:userId/role
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `admin` | `boolean` | 是 | 是否授予管理员角色；缺省返回 **400** |
+
+最后一名处于启用状态的管理员不能被降级（**409**）。仅管理员可调用。角色变更后该账号已有的会话
+按服务端策略处理，不隐式续期。
+
+**Response `data`:** 变更后的 `StudioUser`（字段同账号列表单条）。
+
+### 17.5 删除账号
+
+```
+DELETE /api/studio-users/:userId
+```
+
+永久删除账号及其全部会话。**不能删除当前登录账号**（**400**，提示改为禁用）；最后一名处于启用
+状态的管理员同样不能被删除（**409**）。仅管理员可调用。**Response `data`:** `null`。
+
+### 17.6 登录锁定快照
+
+```
+GET /api/studio-users/login-lockouts
+```
+
+当前被登录失败限流锁定的用户名与剩余秒数，按剩余时间排序。锁定**一律自行到期解除**，没有解锁
+端点；快照只反映**本实例**的内存态（限流器与其他登录保护状态一样是进程内的），多副本部署下每个
+副本各有一份。仅管理员可调用。
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `username` | `string` | 被锁定的用户名 |
+| `remainingSeconds` | `number` | 剩余锁定秒数 |
 
 ---
 

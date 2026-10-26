@@ -363,7 +363,9 @@ describe('Consumer page', () => {
 
     const modeSelect = screen.getAllByRole('combobox')[1];
     fireEvent.mouseDown(modeSelect.parentElement!);
-    await user.click(await screen.findByText('Pop', { selector: '.ant-select-item-option-content' }));
+    await user.click(
+      await screen.findByText('Pop', { selector: '.ant-select-item-option-content' }),
+    );
 
     await waitFor(() =>
       expect(consumerService.listConsumerGroupPage).toHaveBeenLastCalledWith({
