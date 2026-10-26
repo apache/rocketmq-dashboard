@@ -21,6 +21,7 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.util.LikePatterns;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertRule;
@@ -82,19 +83,20 @@ public class MybatisPlusAlertRepository implements AlertRepository {
 
     private QueryWrapper<RmqAlertRule> ruleQuery(String search, Boolean enabled) {
         return new QueryWrapper<RmqAlertRule>()
-                .like(StringUtils.hasText(search), "name", search)
+                .like(StringUtils.hasText(search), "name", LikePatterns.escape(search))
                 .eq(enabled != null, "enabled", enabled)
                 .orderByAsc("name", "id");
     }
 
     @Override
     public PageResult<AlertRuleVO> findRulesPage(AlertRuleQuery query) {
+        String literalSearch = StringUtils.hasText(query.search()) ? LikePatterns.escape(query.search().trim()) : null;
         QueryWrapper<RmqAlertRule> conditions = new QueryWrapper<RmqAlertRule>()
                 .eq(query.enabled() != null, "enabled", query.enabled())
                 .and(StringUtils.hasText(query.search()), wrapper -> wrapper
-                        .like("name", query.search().trim())
+                        .like("name", literalSearch)
                         .or()
-                        .like("metric", query.search().trim()))
+                        .like("metric", literalSearch))
                 .orderByAsc("name")
                 .orderByAsc("id");
         if (query.domain() == AlertDomain.BUSINESS) {
