@@ -288,6 +288,9 @@ class RocketMQMetadataProviderTest {
         assertThat(captor.getAllValues().get(0).getSqlSegment()).contains("message_model =");
         assertThat(captor.getAllValues().get(1).getSqlSegment())
                 .contains("message_model IS NULL", "message_model <>");
+    }
+
+    @Test
     void topicListAndPageShouldSearchLiteralNameCharactersTest() {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         when(topicMapper.selectList(any())).thenReturn(List.of());
