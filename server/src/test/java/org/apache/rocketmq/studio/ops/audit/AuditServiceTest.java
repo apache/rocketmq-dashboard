@@ -118,11 +118,11 @@ class AuditServiceTest {
                     .timestamp(LocalDateTime.of(2026, 8, 1, 10, 0, 0))
                     .build();
             when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(), isNull(),
-                    eq(false), isNull(), isNull(), isNull(), eq(1), eq(20)))
+                    isNull(), eq(false), isNull(), isNull(), isNull(), eq(1), eq(20)))
                     .thenReturn(PageResult.of(List.of(stored), 1, 1, 20));
 
             PageResult<AuditRecordVO> result = auditService.queryLogs(
-                    1, 20, null, null, null, null, null, false, null, null, null);
+                    1, 20, null, null, null, null, null, null, false, null, null, null);
 
             assertThat(result.getItems().get(0).getTimestamp())
                     .isEqualTo(LocalDateTime.of(2026, 8, 1, 2, 0, 0));
@@ -145,9 +145,9 @@ class AuditServiceTest {
                     .latestAt(LocalDateTime.of(2026, 8, 1, 10, 0, 0))
                     .build();
             when(auditRepository.summarize(isNull(), isNull(), isNull(), isNull(),
-                    isNull(), isNull(), isNull())).thenReturn(stored);
+                    isNull(), isNull(), isNull(), isNull())).thenReturn(stored);
 
-            AuditSummaryVO result = auditService.summarize(null, null, null, null, null, null, null);
+            AuditSummaryVO result = auditService.summarize(null, null, null, null, null, null, null, null);
 
             assertThat(result.getLatestAt()).isEqualTo(LocalDateTime.of(2026, 8, 1, 2, 0, 0));
         } finally {

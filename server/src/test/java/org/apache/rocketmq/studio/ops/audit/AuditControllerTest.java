@@ -184,6 +184,22 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void queryLogsShouldForwardAnExplicitMissingClusterScopeTest() throws Exception {
+        when(auditService.queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), eq("SETTINGS"),
+                eq("general"), isNull(), eq(true), isNull(), isNull(), isNull()))
+                .thenReturn(PageResult.of(List.of(), 0, 1, 20));
+
+        mockMvc.perform(get("/api/audit-logs")
+                        .param("resourceType", "SETTINGS")
+                        .param("target", "general")
+                        .param("clusterIdMissing", "true"))
+                .andExpect(status().isOk());
+
+        verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), eq("SETTINGS"),
+                eq("general"), isNull(), eq(true), isNull(), isNull(), isNull());
+    }
+
+    @Test
     void exportLogsShouldForwardFilters() throws Exception {
         String csv = "\uFEFFtimestamp,operator\r\n\"2026-08-01T09:30\",\"admin\"\r\n";
         when(auditService.exportLogs(eq("topic"), eq("admin"), eq("DELETE"), eq("TOPIC"), eq("topic-a"),

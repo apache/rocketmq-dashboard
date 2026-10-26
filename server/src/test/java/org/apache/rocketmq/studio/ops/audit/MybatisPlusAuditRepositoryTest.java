@@ -87,6 +87,72 @@ class MybatisPlusAuditRepositoryTest {
     }
 
     @Test
+    void findPageUsesEqualityForExactTargetTest() {
+        when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findPage(null, null, null, "TOPIC", "orders", "prod-cn", false,
+                null, null, null, 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getSqlSegment())
+                .contains("resource_type =", "resource_name =", "cluster_id =")
+                .doesNotContain("resource_name LIKE");
+    }
+
+    @Test
+    void findPageUsesEqualityForExactOperatorTest() {
+        when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findPage(null, "ops-zhang", null, null, null, null, false,
+                null, null, null, 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        // The operator is an identity, not a fragment: a LIKE would also hand back every
+        // "ops-zhang2" row, so one operator's filter would show another's audit trail.
+        assertThat(queryCaptor.getValue().getSqlSegment())
+                .contains("operator =")
+                .doesNotContain("operator LIKE");
+        assertThat(((QueryWrapper<RmqOperationAudit>) queryCaptor.getValue())
+                .getParamNameValuePairs().values())
+                .contains("ops-zhang");
+    }
+
+    @Test
+    void findPageCanRestrictTimelineToRecordsWithoutAClusterTest() {
+        when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findPage(null, null, null, "SETTINGS", "general", null, true,
+                null, null, null, 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getSqlSegment())
+                .contains("resource_name =", "cluster_id IS NULL", "OR cluster_id =");
+    }
+
+    @Test
+    void findPageMissingClusterScopeOverridesClusterIdTest() {
+        when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findPage(null, null, null, "SETTINGS", "general", "ignored-cluster", true,
+                null, null, null, 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getSqlSegment())
+                .contains("cluster_id IS NULL", "OR cluster_id =");
+        assertThat(((QueryWrapper<RmqOperationAudit>) queryCaptor.getValue())
+                .getParamNameValuePairs().values())
+                .doesNotContain("ignored-cluster");
+    }
+
+    @Test
     void findFilterOptionsPreservesPersistedValuesAndCachesTheResultTest() {
         when(auditMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of(
                 Map.of("operation", "DELETE_TOPIC", "resource_type", "TOPIC",

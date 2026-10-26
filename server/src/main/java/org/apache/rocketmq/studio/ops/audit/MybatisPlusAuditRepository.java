@@ -53,7 +53,7 @@ public class MybatisPlusAuditRepository implements AuditRepository {
     private volatile CachedFilterOptions cachedFilterOptions;
 
     @Override
-public PageResult<AuditRecordVO> findPage(String search, String operator, String operationType,
+    public PageResult<AuditRecordVO> findPage(String search, String operator, String operationType,
                                               String resourceType, String target, String clusterId,
                                               boolean clusterIdMissing,
                                               LocalDateTime startDate, LocalDateTime endDate,
@@ -194,8 +194,8 @@ public PageResult<AuditRecordVO> findPage(String search, String operator, String
      * hotspot queries so a card can never disagree with the rows it describes.
      */
     private void applyFilters(QueryWrapper<RmqOperationAudit> query, String search,
-                               String operator, String operationType, String resourceType, String target,
-                              String clusterId, boolean clusterIdMissing,
+                              String operator, String operationType, String resourceType,
+                              String target, String clusterId, boolean clusterIdMissing,
                               LocalDateTime startDate, LocalDateTime endDate, String result) {
         query.and(StringUtils.hasText(search), w -> w
                         .like("operator", search)
