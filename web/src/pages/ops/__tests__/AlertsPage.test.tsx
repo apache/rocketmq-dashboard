@@ -335,6 +335,43 @@ describe('AlertsPage', () => {
     expect(await screen.findByText(formatUtcDateTime(lastTriggered))).toBeInTheDocument();
   });
 
+  it('keeps a never-triggered rule out of the first position when sorting by the last trigger', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const lastTriggered = '2026-08-23T10:35:38.590731';
+    vi.mocked(listAlertRulesPage).mockResolvedValue(
+      pageResult([
+        { ...cloneRule(alertRules[0]), id: 1, name: 'aaa-never-triggered', lastTriggered: null },
+        { ...cloneRule(alertRules[1]), id: 2, name: 'zzz-last-fired', lastTriggered },
+      ]),
+    );
+
+    renderPage();
+
+    await screen.findByText('zzz-last-fired');
+    await expectRuleRowInteractive('zzz-last-fired');
+    const neverTriggeredCell = within(getRuleRow('aaa-never-triggered')).getByText('从未触发');
+    expect(neverTriggeredCell).toBeInTheDocument();
+
+    // The column renders '从未触发' for the rule without a stamp, so ascending it must not claim
+    // the oldest position as if it had fired before every rule that carries one.
+    const sortByLastTrigger = () =>
+      user.click(
+        within(screen.getByRole('columnheader', { name: /最近触发/ })).getByText('最近触发'),
+      );
+    await sortByLastTrigger();
+    const rowOrder = () => screen.getAllByRole('row').map((row) => row.textContent ?? '');
+    const indexOf = (name: string) => rowOrder().findIndex((text) => text.includes(name));
+    await waitFor(() =>
+      expect(indexOf('aaa-never-triggered')).toBeGreaterThan(indexOf('zzz-last-fired')),
+    );
+
+    // Descending as well: a rule that never fired is not the most recent one either.
+    await sortByLastTrigger();
+    await waitFor(() =>
+      expect(indexOf('aaa-never-triggered')).toBeGreaterThan(indexOf('zzz-last-fired')),
+    );
+  });
+
   it('allows the unavailable operator only for availability metrics', () => {
     expect(supportsUnavailableOperator('nameserver.availability')).toBe(true);
     expect(supportsUnavailableOperator('broker.availability')).toBe(true);

@@ -181,6 +181,23 @@ export const formatThresholdCondition = (
   return `${rule.operator} ${rule.threshold}${rule.thresholdUnit ?? ''}`;
 };
 
+/**
+ * Sorts alert rules by their last trigger instant. A rule that never fired carries no stamp - the
+ * column renders "Never" for it - and must not sort as if it had fired before every stamped rule.
+ * Ant Design negates the comparator for a descending column, so an absent stamp is ordered last in
+ * both directions instead of being compared as an empty string.
+ */
+const compareLastTriggered = (
+  left: AlertRule,
+  right: AlertRule,
+  sortOrder?: 'ascend' | 'descend' | null,
+): number => {
+  if (!left.lastTriggered && !right.lastTriggered) return 0;
+  if (!left.lastTriggered) return sortOrder === 'descend' ? -1 : 1;
+  if (!right.lastTriggered) return sortOrder === 'descend' ? 1 : -1;
+  return left.lastTriggered.localeCompare(right.lastTriggered);
+};
+
 const previewValueForMetric = (metric?: string, threshold?: string | number | null): string => {
   if (metric && nativeRatioMetrics.has(metric)) {
     const value = Number(threshold);
@@ -765,7 +782,8 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     {
       title: t('alerts.lastTriggered'),
       width: 156,
-      sorter: (a, b) => (a.lastTriggered ?? '').localeCompare(b.lastTriggered ?? ''),
+      sorter: (a, b, sortOrder?: 'ascend' | 'descend' | null) =>
+        compareLastTriggered(a, b, sortOrder),
       render: (_, record) =>
         record.lastTriggered ? (
           // The backend stamps lastTriggered with ZoneOffset.UTC without an offset suffix;
