@@ -1435,7 +1435,7 @@ GET /api/groups/export?names={name1,name2}
 ### 6.10 分页获取消费组列表
 
 ```
-GET /api/groups/page?instanceId={instanceId}&clusterId={clusterId}&search={search}&page={page}&pageSize={pageSize}
+GET /api/groups/page?instanceId={instanceId}&clusterId={clusterId}&search={search}&subscriptionMode={subscriptionMode}&page={page}&pageSize={pageSize}
 ```
 
 **Query Parameters:**
@@ -1445,6 +1445,7 @@ GET /api/groups/page?instanceId={instanceId}&clusterId={clusterId}&search={searc
 | `instanceId` | `string` | 否 | 所属实例 ID，不传时按默认平台集群查询 |
 | `clusterId` | `string` | 否 | 按集群过滤 |
 | `search` | `string` | 否 | 按名称模糊搜索 |
+| `subscriptionMode` | `string` | 否 | 按订阅模式过滤：`Push` / `Pop`（大小写不敏感）。`Pop` 为等值匹配；`Push` 与列表展示同口径，同时匹配 `message_model` 为空或存历史遗留值（如 `CLUSTERING`）的记录。不传或传 `ALL` 表示不过滤 |
 | `page` | `number` | 否 | 页码，默认 `1` |
 | `pageSize` | `number` | 否 | 每页条数，默认 `20` |
 

@@ -534,11 +534,22 @@ public class MetadataService {
                 normalizeFilter(search), normalizedMode, page, pageSize);
     }
 
+    /**
+     * Canonicalises the requested mode so the in-memory path over a full inventory and the SQL
+     * path over the page agree on the same spelling; an unknown value is passed through and simply
+     * matches nothing on both.
+     */
     private static String normalizeSubscriptionMode(String subscriptionMode) {
         if (!StringUtils.hasText(subscriptionMode) || "ALL".equals(subscriptionMode.trim())) {
             return null;
         }
-        return subscriptionMode.trim();
+        String trimmed = subscriptionMode.trim();
+        for (SubscriptionMode mode : SubscriptionMode.values()) {
+            if (mode.name().equalsIgnoreCase(trimmed)) {
+                return mode.name();
+            }
+        }
+        return trimmed;
     }
 
 

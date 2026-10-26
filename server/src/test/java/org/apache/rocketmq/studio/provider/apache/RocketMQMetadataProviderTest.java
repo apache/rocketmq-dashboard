@@ -269,6 +269,28 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void listConsumerGroupsPageShouldFilterTheSubscriptionModeTheWayItIsDisplayedTest() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        when(groupMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
+                .thenReturn(new Page<>(1, 20, 0));
+        RocketMQMetadataProvider provider = newProvider();
+
+        provider.listConsumerGroupsPage("instance-a", null, null, "Pop", 1, 20);
+        provider.listConsumerGroupsPage("instance-a", null, null, "Push", 1, 20);
+
+        org.mockito.ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor =
+                org.mockito.ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(groupMapper, times(2)).selectPage(any(Page.class), captor.capture());
+        // Pop is a stored value, so it stays an equality. Push is what the read path shows for
+        // every row that is not Pop — a null, a blank, or a legacy "CLUSTERING" — so its filter
+        // has to match that set; message_model = 'Push' would hide those rows while the list
+        // still labels them Push.
+        assertThat(captor.getAllValues().get(0).getSqlSegment()).contains("message_model =");
+        assertThat(captor.getAllValues().get(1).getSqlSegment())
+                .contains("message_model IS NULL", "message_model <>");
+    }
+
+    @Test
     void getTopicRoutesShouldUseSelectedInstanceRuntimeClient() {
         List<BrokerRouteVO> routes = List.of(BrokerRouteVO.builder().brokerName("broker-a").build());
         when(runtimeAdminClientResolver.execute(eq("instance-a"), any())).thenReturn(routes);

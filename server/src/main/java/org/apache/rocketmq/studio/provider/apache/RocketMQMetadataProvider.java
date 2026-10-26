@@ -279,6 +279,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         // restriction, so the count and the page both describe the filtered result set.
         boolean modeRestricted = StringUtils.hasText(subscriptionMode)
                 && !"ALL".equals(subscriptionMode);
+        boolean popOnly = modeRestricted && SubscriptionMode.Pop.name().equalsIgnoreCase(subscriptionMode);
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
                 .and(instanceId != null, scope -> {
                     scope.eq(RmqGroup::getInstanceId, normalizeMetadataScope(instanceId));
@@ -290,7 +291,18 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 })
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
                 .like(StringUtils.hasText(search), RmqGroup::getName, search)
-                .eq(modeRestricted, RmqGroup::getMessageModel, subscriptionMode)
+                .and(modeRestricted, scope -> {
+                    if (popOnly) {
+                        scope.eq(RmqGroup::getMessageModel, SubscriptionMode.Pop.name());
+                    } else {
+                        // parseSubscriptionMode answers Push for every value that is not Pop — a
+                        // null, a blank, or a legacy "CLUSTERING" — so the Push filter has to match
+                        // that same set. message_model = 'Push' would drop exactly the rows the
+                        // list shows as Push, and the page total would disagree with the page.
+                        scope.isNull(RmqGroup::getMessageModel)
+                                .or().ne(RmqGroup::getMessageModel, SubscriptionMode.Pop.name());
+                    }
+                })
                 .orderByAsc(RmqGroup::getName, RmqGroup::getId);
         Page<RmqGroup> result = groupMapper.selectPage(new Page<>(page, pageSize), query);
         List<ConsumerGroupVO> groups = result.getRecords().stream()
