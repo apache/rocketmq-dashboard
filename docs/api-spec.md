@@ -2413,6 +2413,9 @@ GET /api/system-alerts?level={level}
 
 **Response `data`:** `SystemAlert[]`
 
+> 最多返回**最新 100 条**匹配记录（与分页端点同一个上限）；`rmq_system_alert` 没有保留期清理，
+> 无界读取会随表一起增长，需要完整视图走分页端点 `GET /api/system-alerts/page`。
+
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `id` | `string` | 告警 ID |
