@@ -865,11 +865,13 @@ class RocketMQMetadataProviderTest {
         try {
             ConsumerGroupVO returned = provider.listConsumerGroups("instance-a", null, null).get(0);
             assertThat(connectionStarted.getCount()).isZero();
-            assertThat(returned.getOnlineInstances()).isZero();
+            // A cancelled enrichment is an unread inventory, not a measured zero: the group must
+            // carry the documented -1 sentinel instead of claiming no clients are online.
+            assertThat(returned.getOnlineInstances()).isEqualTo(-1);
 
             releaseConnection.countDown();
             assertThat(statsRead.await(5, TimeUnit.SECONDS)).isTrue();
-            assertThat(returned.getOnlineInstances()).isZero();
+            assertThat(returned.getOnlineInstances()).isEqualTo(-1);
             assertThat(returned.getInstances()).isEmpty();
         } finally {
             releaseConnection.countDown();

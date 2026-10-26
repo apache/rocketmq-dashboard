@@ -319,7 +319,11 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             boolean consumeStatsAvailable, long totalLag, int delaySeconds,
             boolean consumptionTimestampAvailable) {
         private static GroupLiveSnapshot empty() {
-            return new GroupLiveSnapshot(List.of(), 0, false, 0L, 0, false);
+            // The snapshot every group starts from. It is also what is applied when the batch
+            // deadline cancels the future before it runs, so the online count must stay the
+            // documented -1 "inventory unavailable" sentinel (see ConsumerGroupVO) instead of a
+            // fabricated 0 that reads as "no clients online". Workers overwrite it with real data.
+            return new GroupLiveSnapshot(List.of(), -1, false, 0L, 0, false);
         }
     }
 
