@@ -3389,6 +3389,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '无法获取实例能力，直接消费暂不可用',
     en: 'Instance capabilities are unavailable; direct consumption is disabled',
   },
+  'message.directConsumeCloudInventoryUnavailable': {
+    zh: '云实例无法枚举在线消费组与客户端，直接消费暂不可用',
+    en: 'Cloud instances cannot enumerate online consumer groups and clients; direct consumption is unavailable',
+  },
 
   // ─── DLQ (detailed) ───
   'dlq.subtitle': {
