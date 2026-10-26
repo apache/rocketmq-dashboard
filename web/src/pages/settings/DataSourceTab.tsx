@@ -132,6 +132,7 @@ export const DataSourceTab = () => {
   const [dsForm] = Form.useForm();
   const authValue = Form.useWatch('auth', dsForm);
   const [testingKeys, setTestingKeys] = useState<Set<string>>(() => new Set());
+  const modalTestSessionRef = useRef(0);
   const [submitting, setSubmitting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const requestSeqRef = useRef(0);
@@ -193,6 +194,7 @@ export const DataSourceTab = () => {
   useEffect(
     () => () => {
       requestSeqRef.current += 1;
+      modalTestSessionRef.current += 1;
     },
     [],
   );
@@ -214,7 +216,10 @@ export const DataSourceTab = () => {
   const handleTestConnection = async (
     data: Pick<DataSource, 'type' | 'url' | 'auth'> & Partial<DataSource>,
     key: string,
+    modalSession = modalTestSessionRef.current,
   ) => {
+    const isCurrent = () => key !== 'modal' || modalSession === modalTestSessionRef.current;
+    if (!isCurrent()) return;
     if (key !== 'modal' && listActionsDisabled) return;
     if (key !== 'modal' && authNeedsSecret(data.auth)) {
       message.warning(t('settings.dataSourceAuthTestHint'));
@@ -223,20 +228,41 @@ export const DataSourceTab = () => {
     setTestingKeys((previous) => new Set(previous).add(key));
     try {
       const result = await testDataSource(data);
+      if (!isCurrent()) return;
       if (result.success) message.success(result.message);
       else message.error(result.message);
     } catch {
-      message.error(t('settings.connectionTestFailed'));
+      if (isCurrent()) message.error(t('settings.connectionTestFailed'));
     } finally {
-      setTestingKeys((previous) => {
-        const next = new Set(previous);
-        next.delete(key);
-        return next;
-      });
+      if (isCurrent()) {
+        setTestingKeys((previous) => {
+          const next = new Set(previous);
+          next.delete(key);
+          return next;
+        });
+      }
     }
   };
 
+  const resetModalTest = () => {
+    // A closed dialog's request must not notify or clear a newer dialog's spinner.
+    modalTestSessionRef.current += 1;
+    setTestingKeys((previous) => {
+      const next = new Set(previous);
+      next.delete('modal');
+      return next;
+    });
+  };
+
+  const closeModal = () => {
+    resetModalTest();
+    setModalOpen(false);
+    setEditingDataSource(null);
+    dsForm.resetFields();
+  };
+
   const openCreateModal = () => {
+    resetModalTest();
     setEditingDataSource(null);
     dsForm.resetFields();
     dsForm.setFieldValue('auth', 'None');
@@ -245,6 +271,7 @@ export const DataSourceTab = () => {
 
   const openEditModal = (dataSource: DataSource) => {
     if (listActionsDisabled) return;
+    resetModalTest();
     setEditingDataSource(dataSource);
     dsForm.setFieldsValue(dataSource);
     setModalOpen(true);
@@ -271,8 +298,7 @@ export const DataSourceTab = () => {
       message.success(
         t(editingDataSource ? 'settings.dataSourceUpdated' : 'settings.dataSourceAdded'),
       );
-      setModalOpen(false);
-      dsForm.resetFields();
+      closeModal();
     } catch (error) {
       if (error && typeof error === 'object' && 'errorFields' in error) {
         return; // validation failure; antd already shows field-level errors
@@ -483,11 +509,7 @@ export const DataSourceTab = () => {
       <Modal
         title={t(editingDataSource ? 'settings.editDataSource' : 'settings.addDataSource')}
         open={modalOpen}
-        onCancel={() => {
-          setModalOpen(false);
-          setEditingDataSource(null);
-          dsForm.resetFields();
-        }}
+        onCancel={closeModal}
         onOk={() => void handleSubmit()}
         confirmLoading={submitting}
         destroyOnHidden
@@ -591,9 +613,10 @@ export const DataSourceTab = () => {
             icon={<ApiOutlined />}
             loading={testingKeys.has('modal')}
             onClick={() => {
+              const modalSession = modalTestSessionRef.current;
               void dsForm
                 .validateFields(testFieldNames(authValue))
-                .then((values) => handleTestConnection(values, 'modal'))
+                .then((values) => handleTestConnection(values, 'modal', modalSession))
                 .catch(() => undefined);
             }}
             style={{ marginTop: 8 }}

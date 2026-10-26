@@ -53,6 +53,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -276,7 +277,13 @@ public class AiRunExecutor {
     private void execute(RunContext context) {
         RmqAiRun run = context.getRun();
         Outcome outcome = new Outcome();
+        ScheduledFuture<?> deadline = null;
         try {
+            long timeoutMillis = context.getTimeout().toMillis();
+            long reserve = Math.min(5_000L, timeoutMillis / 10);
+            deadline = scheduler.schedule(() -> {
+                if (!context.isTerminal()) context.getHandle().stop(AbortReason.TIMEOUT);
+            }, Math.max(1L, timeoutMillis - reserve), TimeUnit.MILLISECONDS);
             markRunning(context);
             streamWithLostResumeRetry(context, outcome);
         } catch (LlmGatewayException exception) {
@@ -294,6 +301,7 @@ public class AiRunExecutor {
             outcome.unexpected = error;
             throw error;
         } finally {
+            if (deadline != null) deadline.cancel(false);
             try {
                 finalizeRun(context, decide(context, outcome));
             } catch (RuntimeException exception) {
@@ -359,6 +367,10 @@ public class AiRunExecutor {
     }
 
     private void stream(RunContext context, String prompt, Outcome outcome, boolean allowResume) {
+        if (context.getHandle().isStopRequested()) {
+            throw new LlmGatewayException(504, PROVIDER_TIMEOUT_CODE,
+                    "Agent run was cancelled before the next provider call", "Retry the request.");
+        }
         Consumer<AgentEvent> events = event -> onAgentEvent(context, outcome, event);
         if (isHttpEngine(context.getEngine())) {
             streamHttp(context, prompt, events);
@@ -604,7 +616,7 @@ public class AiRunExecutor {
             return;
         }
         try {
-            conversationRepository.clearRuntimeSessionId(conversation.getId());
+            conversationRepository.clearRuntimeSessionId(conversation.getId(), LocalDateTime.now(clock));
             conversation.setRuntimeSessionId(null);
         } catch (RuntimeException exception) {
             log.warn("could not forget the runtime session id of conversation {}: {}",

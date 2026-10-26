@@ -353,7 +353,7 @@ public class MetadataService {
         if (retrySourceTopic != null && !retrySourceTopic.equals(original.getTopic())) {
             resources.add(ownershipGuard.topicResource(retrySourceTopic));
         }
-        resources.forEach(resource -> ownershipGuard.check(instance, resource, true));
+        resources.forEach(resource -> ownershipGuard.checkOwnerInDomain(instance, resource, true));
         return ownershipGuard.withOwned(instance, resources, () -> sendMessage(request, retrySourceTopic));
     }
 
@@ -754,7 +754,9 @@ public class MetadataService {
         InstanceVO instance = ownershipGuard.requireInstance(instanceId);
         // Ownership guard applies to open-source Apache instances only; cloud calls are isolated by their own instance id.
         if (instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE) {
-            ownershipGuard.check(instance, resource, required);
+            if (required) {
+                ownershipGuard.checkOwnerInDomain(instance, resource, true);
+            }
             ownershipGuard.requireSupportedProvider(instance);
         }
         return instance.getName();

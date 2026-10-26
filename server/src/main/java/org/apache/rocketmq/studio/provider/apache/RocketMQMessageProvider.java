@@ -558,12 +558,12 @@ public class RocketMQMessageProvider implements MessageProvider {
         String messageId = ResourceOwnershipGuard.requireText(request.getMsgId(), "msgId");
         Resource topicResource = ownershipGuard.topicResource(topic);
         Resource groupResource = new Resource(Kind.GROUP, group);
-        ownershipGuard.check(instance, topicResource, true);
-        ownershipGuard.check(instance, groupResource, true);
+        ownershipGuard.checkOwnerInDomain(instance, topicResource, true);
+        ownershipGuard.checkOwnerInDomain(instance, groupResource, true);
         return ownershipGuard.withOwned(instance, List.of(topicResource, groupResource), () ->
                 runtimeAdminClientResolver.execute(instance.getName(), admin -> {
-                    var topicOwner = ownershipGuard.check(instance, topicResource, true);
-                    var groupOwner = ownershipGuard.check(instance, groupResource, true);
+                    var topicOwner = ownershipGuard.checkOwnerInDomain(instance, topicResource, true);
+                    var groupOwner = ownershipGuard.checkOwnerInDomain(instance, groupResource, true);
                     if (!topicOwner.clusterId().equals(groupOwner.clusterId())) {
                         throw new BusinessException(409, "Group and topic are not in the same target cluster");
                     }

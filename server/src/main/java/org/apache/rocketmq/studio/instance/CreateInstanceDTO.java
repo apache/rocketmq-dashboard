@@ -41,6 +41,8 @@ public class CreateInstanceDTO {
 
     private String regionId;
 
+    private Long nameserverId;
+
     public InstanceVO toInstanceVO() {
         InstanceVO vo = InstanceVO.builder()
                 .name(name)
@@ -52,6 +54,7 @@ public class CreateInstanceDTO {
                 .credentialId(credentialId)
                 .adminCredentialRef(adminCredentialRef)
                 .regionId(regionId)
+                .nameserverId(nameserverId)
                 .build();
         return vo;
     }

@@ -68,6 +68,16 @@ beforeAll(() => {
   });
 });
 
+// The ack info, suppression reason, labels and delivery/related sections live in the table's
+// expand row now, so assertions on them expand the alert's row first.
+function expandRowContaining(text: string) {
+  const row = screen.getAllByRole('row').find((candidate) => candidate.textContent?.includes(text));
+  if (!row) throw new Error(`no row containing ${text}`);
+  const icon = row.querySelector('.ant-table-row-expand-icon');
+  if (!icon) throw new Error('no expand icon in row');
+  fireEvent.click(icon);
+}
+
 const renderPage = () =>
   render(
     <App>
@@ -262,6 +272,7 @@ describe('SystemAlertsPage', () => {
       await screen.findByText(formatUtcDateTime('2026-08-23T10:35:38.590731')),
     ).toBeInTheDocument();
     expect(screen.getByText('已恢复')).toBeInTheDocument();
+    expandRowContaining('Disk recovered');
     expect(
       screen.getByText(`确认：admin · ${formatUtcDateTime('2026-08-23T10:40:00.000000')}`),
     ).toBeInTheDocument();
@@ -594,6 +605,7 @@ describe('SystemAlertsPage', () => {
     renderPage();
 
     expect(await screen.findByText('通知已抑制')).toBeInTheDocument();
+    expandRowContaining('通知已抑制');
     expect(screen.getByText('通知已由上游集群故障抑制：Broker unavailable')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '投递记录' }));
     expect(await screen.findAllByText('通知已由上游集群故障抑制：Broker unavailable')).toHaveLength(
@@ -1114,5 +1126,58 @@ describe('SystemAlertsPage', () => {
     // The last page stays readable, but numbers derived from the failed read must not look current.
     expect(screen.getByText('Broker unavailable')).toBeInTheDocument();
     expect(levelFilterItem(/严重/).textContent).not.toMatch(/[0-9]/);
+  });
+
+  it('showsEachLevelCountInsideItsOwnSegmentLabelTest', async () => {
+    renderPage();
+
+    // One error and one warning on the page: each count sits INSIDE its own segment label, so it
+    // cannot be misread as belonging to the neighbouring level the way a superscript badge could.
+    expect(await screen.findByTestId('sys-alert-level-count-error')).toHaveTextContent('1');
+    expect(screen.getByTestId('sys-alert-level-count-warning')).toHaveTextContent('1');
+    expect(screen.queryByTestId('sys-alert-level-count-info')).not.toBeInTheDocument();
+    expect(document.querySelector('.ant-segmented .ant-badge')).toBeNull();
+  });
+  it('acknowledgesSelectedAlertsInOneBatchTest', async () => {
+    vi.mocked(listSystemAlertsPage).mockResolvedValue({
+      items: [
+        {
+          id: 21,
+          level: 'error',
+          title: 'Batch one',
+          description: 'first',
+          time: '2026-08-23T10:35:38',
+          acknowledged: false,
+        },
+        {
+          id: 22,
+          level: 'warning',
+          title: 'Batch two',
+          description: 'second',
+          time: '2026-08-23T10:36:38',
+          acknowledged: false,
+        },
+      ],
+      total: 2,
+      page: 1,
+      size: 20,
+    });
+    vi.mocked(acknowledgeAlert).mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Batch one');
+    const batchButton = screen.getByRole('button', { name: /批量确认（0）/ });
+    expect(batchButton).toBeDisabled();
+
+    const checkboxes = screen.getAllByRole('checkbox');
+    expect(checkboxes).toHaveLength(3); // header + two rows
+    await user.click(checkboxes[1]);
+    await user.click(checkboxes[2]);
+    await user.click(screen.getByRole('button', { name: /批量确认（2）/ }));
+
+    await waitFor(() => expect(acknowledgeAlert).toHaveBeenCalledTimes(2));
+    expect(acknowledgeAlert).toHaveBeenCalledWith(21);
+    expect(acknowledgeAlert).toHaveBeenCalledWith(22);
   });
 });

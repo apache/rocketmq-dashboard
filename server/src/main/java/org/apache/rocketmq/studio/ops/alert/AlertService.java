@@ -26,6 +26,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.util.StringUtils;
 
@@ -65,6 +68,7 @@ public class AlertService {
     private final AlertRuleAssetService alertRuleAssetService;
     private final OperationAuditService operationAuditService;
     private final MetricProfileService metricProfileService;
+    private final PlatformTransactionManager transactionManager;
 
 
     public List<AlertRuleVO> listRules() {
@@ -337,7 +341,6 @@ public class AlertService {
         recordAudit("DELETE_ALERT_RULE", "ALERT_RULE", String.valueOf(id), null, null);
     }
 
-    @Transactional
     public AlertRuleBulkResultVO bulkToggleRules(List<Long> ids, boolean enabled) {
         List<Long> normalizedIds = normalizeBulkIds(ids);
         Map<Long, AlertRuleVO> rulesById = rulesById(normalizedIds);
@@ -352,16 +355,20 @@ public class AlertService {
             }
             try {
                 rule.setEnabled(enabled);
-                // replaceRule performs an existence-checked update; a rule deleted between the
-                // snapshot load and this call is reported as a failure instead of being recreated.
-                if (!alertRepository.replaceRule(rule)) {
+                if (!executeBulkMutation(() -> {
+                    // A concurrently deleted rule must not be recreated.
+                    if (!alertRepository.replaceRule(rule)) {
+                        return false;
+                    }
+                    if (!enabled) {
+                        alertStateRepository.deleteByRuleId(id);
+                    }
+                    auditRule("TOGGLE_ALERT_RULE", rule, "enabled=" + enabled + ", bulk=true");
+                    return true;
+                })) {
                     failures.put(id, "Alert rule not found");
                     continue;
                 }
-                if (!enabled) {
-                    alertStateRepository.deleteByRuleId(id);
-                }
-                auditRule("TOGGLE_ALERT_RULE", rule, "enabled=" + enabled + ", bulk=true");
                 succeeded.add(id);
                 updated.add(rule);
             } catch (RuntimeException failure) {
@@ -372,26 +379,29 @@ public class AlertService {
                 .succeededIds(succeeded).failures(failures).updatedRules(updated).build();
     }
 
-    @Transactional
     public AlertRuleBulkResultVO bulkToggleRules(AlertDomain domain, List<Long> ids, boolean enabled) {
         requireDomain(domain);
         return bulkUpdateRules(domain, ids, rule -> rule.setEnabled(enabled),
                 "TOGGLE_ALERT_RULE", "enabled=" + enabled + ", bulk=true");
     }
 
-    @Transactional
     public AlertRuleBulkResultVO bulkDeleteRules(List<Long> ids) {
         List<Long> normalizedIds = normalizeBulkIds(ids);
         List<Long> succeeded = new ArrayList<>();
         Map<Long, String> failures = new LinkedHashMap<>();
         for (Long id : normalizedIds) {
             try {
-                if (!alertRepository.deleteRule(id)) {
+                if (!executeBulkMutation(() -> {
+                    if (!alertRepository.deleteRule(id)) {
+                        return false;
+                    }
+                    alertStateRepository.deleteByRuleId(id);
+                    recordAudit("DELETE_ALERT_RULE", "ALERT_RULE", String.valueOf(id), null, "bulk=true");
+                    return true;
+                })) {
                     failures.put(id, "Alert rule not found");
                     continue;
                 }
-                alertStateRepository.deleteByRuleId(id);
-                recordAudit("DELETE_ALERT_RULE", "ALERT_RULE", String.valueOf(id), null, "bulk=true");
                 succeeded.add(id);
             } catch (RuntimeException failure) {
                 failures.put(id, failure.getMessage() == null ? "Delete failed" : failure.getMessage());
@@ -401,7 +411,6 @@ public class AlertService {
                 .succeededIds(succeeded).failures(failures).updatedRules(List.of()).build();
     }
 
-    @Transactional
     public AlertRuleBulkResultVO bulkDeleteRules(AlertDomain domain, List<Long> ids) {
         requireDomain(domain);
         List<Long> normalizedIds = normalizeBulkIds(ids);
@@ -415,12 +424,17 @@ public class AlertService {
                 continue;
             }
             try {
-                if (!alertRepository.deleteRule(id)) {
+                if (!executeBulkMutation(() -> {
+                    if (!alertRepository.deleteRule(id)) {
+                        return false;
+                    }
+                    alertStateRepository.deleteByRuleId(id);
+                    recordAudit("DELETE_ALERT_RULE", "ALERT_RULE", String.valueOf(id), null, "bulk=true");
+                    return true;
+                })) {
                     failures.put(id, "Alert rule not found");
                     continue;
                 }
-                alertStateRepository.deleteByRuleId(id);
-                recordAudit("DELETE_ALERT_RULE", "ALERT_RULE", String.valueOf(id), null, "bulk=true");
                 succeeded.add(id);
             } catch (RuntimeException failure) {
                 failures.put(id, failure.getMessage() == null ? "Delete failed" : failure.getMessage());
@@ -445,14 +459,19 @@ public class AlertService {
             }
             try {
                 update.accept(rule);
-                if (!alertRepository.replaceRule(rule)) {
+                if (!executeBulkMutation(() -> {
+                    if (!alertRepository.replaceRule(rule)) {
+                        return false;
+                    }
+                    if (!rule.isEnabled()) {
+                        alertStateRepository.deleteByRuleId(id);
+                    }
+                    auditRule(auditOperation, rule, auditDetail);
+                    return true;
+                })) {
                     failures.put(id, "Alert rule not found");
                     continue;
                 }
-                if (!rule.isEnabled()) {
-                    alertStateRepository.deleteByRuleId(id);
-                }
-                auditRule(auditOperation, rule, auditDetail);
                 succeeded.add(id);
                 updated.add(rule);
             } catch (RuntimeException failure) {
@@ -461,6 +480,14 @@ public class AlertService {
         }
         return AlertRuleBulkResultVO.builder()
                 .succeededIds(succeeded).failures(failures).updatedRules(updated).build();
+    }
+
+    private boolean executeBulkMutation(java.util.function.BooleanSupplier mutation) {
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        // Catch failures only after rollback; a failed item must not affect other items,
+        // even when the bulk operation is invoked from an existing transaction.
+        transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        return Boolean.TRUE.equals(transaction.execute(status -> mutation.getAsBoolean()));
     }
 
     private AlertRuleVO findRuleInDomain(AlertDomain domain, Long id) {
