@@ -616,7 +616,7 @@ public class AiRunExecutor {
             return;
         }
         try {
-            conversationRepository.clearRuntimeSessionId(conversation.getId());
+            conversationRepository.clearRuntimeSessionId(conversation.getId(), LocalDateTime.now(clock));
             conversation.setRuntimeSessionId(null);
         } catch (RuntimeException exception) {
             log.warn("could not forget the runtime session id of conversation {}: {}",
