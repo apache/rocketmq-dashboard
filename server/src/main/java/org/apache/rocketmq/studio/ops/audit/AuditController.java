@@ -27,8 +27,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
-
 @RestController
 @RequestMapping("/api/audit-logs")
 @RequiredArgsConstructor
@@ -90,9 +88,8 @@ public class AuditController {
     }
 
     @PostMapping("/cleanup")
-    public Result<Map<String, Integer>> cleanupLogs(@Valid @RequestBody(required = false) AuditCleanupDTO request) {
+    public Result<AuditCleanupResultVO> cleanupLogs(@Valid @RequestBody(required = false) AuditCleanupDTO request) {
         int beforeDays = request == null || request.getBeforeDays() == null ? 30 : request.getBeforeDays();
-        int deleted = auditService.cleanupLogs(beforeDays);
-        return Result.ok(Map.of("deleted", deleted));
+        return Result.ok(auditService.cleanupLogs(beforeDays));
     }
 }

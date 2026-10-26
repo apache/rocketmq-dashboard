@@ -312,10 +312,23 @@ class AuditServiceTest {
     void cleanupLogsUsesBoundedRepositoryBatchesTest() {
         when(auditRepository.deleteBefore(any(LocalDateTime.class), eq(500), eq(20))).thenReturn(500);
 
-        int deleted = auditService.cleanupLogs(90);
+        AuditCleanupResultVO result = auditService.cleanupLogs(90);
 
-        assertThat(deleted).isEqualTo(500);
+        assertThat(result.getDeleted()).isEqualTo(500);
+        assertThat(result.isTruncated()).isFalse();
         verify(auditRepository).deleteBefore(any(LocalDateTime.class), eq(500), eq(20));
+    }
+
+    @Test
+    void cleanupLogsReportsTheCeilingInsteadOfACompleteSweepTest() {
+        // 500 rows in each of the 20 batches is the most one call can remove, so a deletion count
+        // equal to that ceiling means the sweep ran out of budget and older rows may still exist.
+        when(auditRepository.deleteBefore(any(LocalDateTime.class), eq(500), eq(20))).thenReturn(10_000);
+
+        AuditCleanupResultVO result = auditService.cleanupLogs(90);
+
+        assertThat(result.getDeleted()).isEqualTo(10_000);
+        assertThat(result.isTruncated()).isTrue();
     }
 
     @Test
