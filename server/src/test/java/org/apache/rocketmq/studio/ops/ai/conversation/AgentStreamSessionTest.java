@@ -111,6 +111,35 @@ class AgentStreamSessionTest {
         }
     }
 
+    @Test
+    void replayOverflowMustStillBufferFramesWithoutAPersistedCounterpartTest() {
+        RecordingEmitter emitter = new RecordingEmitter();
+        AgentStreamSession session = new AgentStreamSession(1L, emitter, MAPPER, other -> {
+        }, null);
+        session.noteWatermark(1);
+
+        // Fill the replay buffer to its bound with frames that have a persisted twin: the client
+        // re-reads those from the timeline when the run finishes, so the session may drop them.
+        assertThat(session.deliver(2L, new LiveEvent.TextDelta("first-replayable"))).isTrue();
+        for (long seq = 3; seq <= AgentStreamSession.MAX_BUFFERED_DURING_REPLAY + 1; seq++) {
+            assertThat(session.deliver(seq, new LiveEvent.TextDelta("replayable"))).isTrue();
+        }
+        // Once the bound is reached, further replayable frames are dropped...
+        assertThat(session.deliver(999_999L, new LiveEvent.TextDelta("dropped-replayable"))).isTrue();
+
+        // ...but a delta with no persisted counterpart (seq 0) is never dropped: it cannot be
+        // replayed from the database either, and losing it is worse than showing it twice.
+        assertThat(session.deliver(0L, new LiveEvent.TextDelta("live-delta"))).isTrue();
+
+        session.finishReplay();
+
+        String wire = emitter.wire();
+        assertThat(wire).contains("live-delta");
+        assertThat(wire).doesNotContain("dropped-replayable");
+        // Room for the unreplayable delta came from evicting the oldest replayable frame.
+        assertThat(wire).doesNotContain("first-replayable");
+    }
+
     private static void awaitBlocked(Thread thread) {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
         while (System.nanoTime() < deadline) {
