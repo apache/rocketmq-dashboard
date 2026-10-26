@@ -386,6 +386,23 @@ describe('Cluster page', () => {
     expect(within(dialog).getByText('8080')).toBeInTheDocument();
   });
 
+  it('reports a failed proxy restart instead of staying silent', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ClusterPage />);
+
+    await user.click(screen.getByRole('tab', { name: /Proxy 管理/ }));
+    const proxyRow = await screen.findByRole('row', { name: /10\.101\.2\.21:8081/ });
+    clusterServiceMocks.restartProxy.mockRejectedValueOnce(new Error('proxy unreachable'));
+    await user.click(within(proxyRow).getByRole('button', { name: /重\s*启/ }));
+
+    await user.click(await screen.findByRole('button', { name: /确\s*认/ }));
+    // A rejected onOk is dropped by antd's confirm wrapper: without a catch the operator gets
+    // no outcome at all — no toast, and the dialog never signals what happened.
+    expect(await screen.findByText(/重启 Proxy "10\.101\.2\.21:8081" 失败/)).toBeInTheDocument();
+    expect(screen.queryByText(/Proxy 重启已提交/)).not.toBeInTheDocument();
+    expect(clusterServiceMocks.restartProxy).toHaveBeenCalledTimes(1);
+  });
+
   it('centers the broker status column', async () => {
     renderWithProviders(<ClusterPage />);
     const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });

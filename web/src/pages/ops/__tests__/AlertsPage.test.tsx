@@ -1297,6 +1297,29 @@ describe('AlertsPage', () => {
     expect(await screen.findByText('所选告警规则已删除')).toBeInTheDocument();
   });
 
+  it('shows a failure message and keeps the selection when the bulk delete request fails', async () => {
+    vi.mocked(bulkDeleteAlertRules).mockRejectedValue(new Error('network error'));
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Broker disk usage');
+    await user.click(within(getRuleRow('Broker disk usage')).getByRole('checkbox'));
+    await user.click(within(getRuleRow('Consumer lag')).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: '批量删除' }));
+    await user.click(await screen.findByRole('button', { name: 'OK' }));
+
+    await waitFor(() => expect(bulkDeleteAlertRules).toHaveBeenCalledWith([1, 2]));
+    expect(await screen.findByText('2 条告警规则删除失败')).toBeInTheDocument();
+    // A request-level failure must not clear the selection: every selected rule still
+    // exists on the server, so the operator can retry without re-checking rows.
+    expect(within(getRuleRow('Broker disk usage')).getByRole('checkbox')).toBeChecked();
+    expect(within(getRuleRow('Consumer lag')).getByRole('checkbox')).toBeChecked();
+    // The confirmation dialog closes once the outcome (even a failed one) is reported,
+    // instead of sitting open with no feedback the way a rejected onOk does.
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'OK' })).not.toBeInTheDocument(),
+    );
+  });
+
   it('stays on the page after a bulk delete clears a full page while more pages remain', async () => {
     // 45 rules in total: page 2 holds a full page of 20 rules (ids 21-40). Deleting that full
     // page leaves 25 rules across 2 pages, so page 2 is still valid and the view must refresh

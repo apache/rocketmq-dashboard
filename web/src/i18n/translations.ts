@@ -1430,6 +1430,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '删除完成：成功 {success}，失败 {failed}',
     en: 'Delete completed: {success} succeeded, {failed} failed',
   },
+  'alerts.bulkDeleteFailed': {
+    zh: '{count} 条告警规则删除失败',
+    en: '{count} alert rules failed to delete',
+  },
   'alerts.bulkEnableSuccess': {
     zh: '已启用 {count} 条告警规则',
     en: 'Enabled {count} alert rules',
@@ -2560,6 +2564,10 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'All configurations and progress will be removed. This cannot be undone.',
   },
   'consumer.deleted': { zh: '消费组 {name} 已删除', en: 'Consumer group {name} deleted' },
+  'consumer.deleteFailed': {
+    zh: '删除消费组失败，请稍后重试',
+    en: 'Failed to delete consumer group. Please try again later.',
+  },
   'consumer.searchPlaceholder': { zh: '搜索 Group 名称或 Topic', en: 'Search group name or topic' },
   'consumer.allModes': { zh: '全部模式', en: 'All Modes' },
   'consumer.push': { zh: 'Push', en: 'Push' },
@@ -3017,6 +3025,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'cluster.restartProxySubmitted': {
     zh: 'Proxy 重启已提交: {addr}',
     en: 'Proxy restart submitted: {addr}',
+  },
+  'cluster.restartProxyFailed': {
+    zh: '重启 Proxy "{addr}" 失败，请稍后重试',
+    en: 'Failed to restart Proxy "{addr}". Please try again later.',
   },
   'cluster.restartBrokerConfirm': {
     zh: '确定要重启 Broker "{name}" 吗？',

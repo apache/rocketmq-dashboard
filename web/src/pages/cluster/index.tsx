@@ -1823,9 +1823,16 @@ const ClusterPage = () => {
                   okText: t('common.confirm'),
                   cancelText: t('common.cancel'),
                   onOk: async () => {
-                    await restartProxy({ clusterId: record.clusterId, addr: record.addr });
-                    await requestRefresh('operation');
-                    message.success(t('cluster.restartProxySubmitted', { addr: record.addr }));
+                    // antd's confirm wrapper drops a rejected onOk: without this catch a failed
+                    // restart leaves the operator with no outcome at all — no toast, and a dialog
+                    // that resets its spinner as if nothing had been requested.
+                    try {
+                      await restartProxy({ clusterId: record.clusterId, addr: record.addr });
+                      await requestRefresh('operation');
+                      message.success(t('cluster.restartProxySubmitted', { addr: record.addr }));
+                    } catch {
+                      message.error(t('cluster.restartProxyFailed', { addr: record.addr }));
+                    }
                   },
                 });
               }}
