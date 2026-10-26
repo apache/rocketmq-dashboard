@@ -2560,7 +2560,8 @@ POST /api/audit-logs/cleanup
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `deleted` | `number` | 清理数量 |
+| `deleted` | `number` | 本次清理删除的记录数 |
+| `truncated` | `boolean` | 为 `true` 表示本次清理达到单次上限即停、仍有更早的记录留存；重复调用直到返回 `false` 即清完 |
 
 ---
 
