@@ -59,6 +59,7 @@ import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import TopicConfigComparisonModal from '../../components/TopicConfigComparisonModal';
+import ResourceRuleHelp from '../../components/ResourceRuleHelp';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, CLUSTER_TYPE_MAP } from '../../constants/theme';
 import type { Topic, BrokerRoute, ConsumerGroupInfo, TopicConsumerPage } from '../../api/metadata';
@@ -84,7 +85,7 @@ import {
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
 import { isLagAvailable } from '../../utils/consumerLag';
-import { downloadCsv } from '../../utils/download';
+import { downloadCsv, localExportDateStamp } from '../../utils/download';
 import { formatDateTime, formatNumber } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import {
@@ -684,7 +685,7 @@ const TopicPageContent = ({
       search: searchText.trim() || undefined,
     })
       .then((csv) => {
-        downloadCsv(`rocketmq-topics-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+        downloadCsv(`rocketmq-topics-${localExportDateStamp()}.csv`, csv);
         message.success('Topic 导出完成');
       })
       .catch(() => {
@@ -1526,7 +1527,16 @@ const TopicPageContent = ({
           style={{ marginTop: 16 }}
         >
           <Form.Item
-            label="Topic 名称"
+            label={
+              editingTopic ? (
+                'Topic 名称'
+              ) : (
+                <Space size={4}>
+                  Topic 名称
+                  <ResourceRuleHelp />
+                </Space>
+              )
+            }
             name="name"
             rules={[
               { required: true, message: '请输入 Topic 名称' },

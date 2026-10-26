@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App, Modal, message } from 'antd';
+import { App, ConfigProvider, Modal, message, theme } from 'antd';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
@@ -124,6 +124,14 @@ const renderWithProviders = (ui: React.ReactElement, initialEntry = '/instance/c
       </LangProvider>
     </App>,
   );
+
+// Comparing raw CSS text would depend on how each side spells a colour, so both the element's
+// value and the expected token go through the same parser before they are compared.
+const normalizeBackground = (value: string): string => {
+  const probe = document.createElement('span');
+  probe.style.background = value;
+  return probe.style.background;
+};
 
 beforeAll(installBrowserMocks);
 
@@ -535,6 +543,21 @@ describe('Consumer page', () => {
     confirmSpy.mockRestore();
   });
 
+  // 创建规则从「资源模型」页的判定流程图搬到了创建表单上的问号弹窗（用户约定 2026-10-26）。
+  it('explains the naming rule from a question mark on the create form', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    await screen.findByText('remote-cg');
+    const createButton = screen.getByRole('button', { name: '创建 Group' });
+    await waitFor(() => expect(createButton).toBeEnabled());
+    await user.click(createButton);
+    const dialog = await screen.findByRole('dialog');
+
+    await user.click(within(dialog).getByRole('button', { name: '查看资源命名与归属规则' }));
+    expect(await screen.findByText('资源命名与归属规则')).toBeInTheDocument();
+  });
+
   it('submits the canonical global delivery order type', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
@@ -884,8 +907,44 @@ describe('Consumer page', () => {
     await waitFor(() => expect(within(panel).getAllByText('消费风险').length).toBeGreaterThan(0));
     expect(within(panel).getByText('订阅表达式不一致')).toBeInTheDocument();
     expect(within(panel).getByText('Queue 堆积分布严重倾斜')).toBeInTheDocument();
+    // The summary row must name its units: "Queue 覆盖: 9 / 2 Topic" read like a completion ratio
+    // of two unrelated dimensions, and "Queue 堆积" reported offset availability, not lag.
+    expect(within(panel).getByText('Queue 进度:')).toBeInTheDocument();
+    expect(within(panel).getByText('Queue 位点:')).toBeInTheDocument();
+    expect(within(panel).getByText(/个 Queue \/ .*个 Topic/)).toBeInTheDocument();
+    expect(within(panel).queryByText('Queue 覆盖:')).not.toBeInTheDocument();
     expect(within(panel).getAllByText('客户端心跳过期').length).toBeGreaterThan(0);
     expect(within(panel).getByText('处理建议')).toBeInTheDocument();
+  });
+
+  it('renders the health summary card on the theme fill token so dark mode stays readable', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <ConfigProvider theme={{ algorithm: theme.darkAlgorithm }}>
+        <App>
+          <LangProvider>
+            <MemoryRouter initialEntries={['/instance/consumer']}>
+              <ConsumerPage />
+            </MemoryRouter>
+          </LangProvider>
+        </App>
+      </ConfigProvider>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    await user.click(await screen.findByRole('tab', { name: /健康诊断/ }));
+    const panel = await screen.findByRole('tabpanel', { name: /健康诊断/ });
+    const summaryCard = (await within(panel).findByText('健康分:')).closest('.ant-card');
+
+    // A fixed light grey leaves the dark theme's light text unreadable on it, so the summary
+    // card has to follow the theme's fill token instead.
+    const darkFill = theme.getDesignToken({ algorithm: theme.darkAlgorithm }).colorFillQuaternary;
+    expect(normalizeBackground((summaryCard as HTMLElement).style.background)).toBe(
+      normalizeBackground(darkFill),
+    );
+    expect(normalizeBackground((summaryCard as HTMLElement).style.background)).not.toBe(
+      normalizeBackground('#fafafa'),
+    );
   });
 
   it('filters queue progress to the topic of the clicked distribution button', async () => {
@@ -1969,6 +2028,38 @@ describe('Consumer page', () => {
       { timeout: 4000 },
     );
     expect(await within(row).findByText('42')).toBeInTheDocument();
+  });
+
+  it('renders a placeholder for an online instance whose protocol is unknown', async () => {
+    // The Apache provider derives online instances from a broker connection set, which
+    // carries no protocol marker — the API legitimately returns the field absent.
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([
+        {
+          ...group,
+          instances: [{ clientId: 'client-no-proto', address: '10.0.0.9:1234' }],
+        },
+      ]),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    const dialog = await screen.findByRole('dialog', { name: /remote-cg/ });
+    const instanceRow = await within(dialog).findByText('client-no-proto');
+    const row = instanceRow.closest('tr') as HTMLElement;
+
+    // Locate the protocol cell through its header instead of a hardcoded column index, so
+    // the assertion keeps working when the instance columns are reordered.
+    const headers = Array.from(row.closest('table')!.querySelectorAll('thead th')).map((th) =>
+      th.textContent?.trim(),
+    );
+    const protocolIndex = headers.indexOf('协议');
+    expect(protocolIndex).toBeGreaterThan(-1);
+
+    const cells = within(row).getAllByRole('cell');
+    expect(cells[protocolIndex].textContent?.trim()).toBe('-');
+    expect(cells[protocolIndex].querySelector('.ant-tag')).toBeNull();
   });
 
   it('edits retry settings from the detail modal settings tab', async () => {

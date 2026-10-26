@@ -16,11 +16,20 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type Key } from 'react';
-import { Copy, DownloadSimple, Plus, Pencil, Trash, UploadSimple } from '@phosphor-icons/react';
+import {
+  Copy,
+  DownloadSimple,
+  Plus,
+  Pencil,
+  Trash,
+  UploadSimple,
+  Info,
+} from '@phosphor-icons/react';
 import {
   Alert,
   Button,
   Card,
+  Collapse,
   Table,
   Switch,
   Tag,
@@ -34,6 +43,7 @@ import {
   Flex,
   message,
   Popconfirm,
+  Tooltip,
   Typography,
   theme,
   Pagination,
@@ -66,7 +76,7 @@ import {
 } from '../../services/opsService';
 import { attachThresholdUnit, normalizeDuration, normalizeMetric } from './alertRulePayload';
 import { tableScrollX } from '../../utils/table';
-import { formatUtcDateTime, ratioToPercent } from '../../utils/format';
+import { formatUtcDateTime, parseAlertTimestamp, ratioToPercent } from '../../utils/format';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
 import { downloadBlob } from '../../utils/download';
@@ -79,6 +89,30 @@ import {
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { describeApiError } from '../../utils/apiError';
 const { TextArea } = Input;
+
+/**
+ * A form label with its help text in a tooltip instead of an `extra` line under the control: the
+ * create-rule modal stacks a dozen fields, and every `extra` sentence bought one more row of height
+ * for text nobody reads while filling the form. The icon keeps the help discoverable and the row
+ * keeps the height of the control alone.
+ */
+const helpLabel = (text: string, help: string) => (
+  <Space size={4}>
+    <span>{text}</span>
+    <Tooltip title={help}>
+      {/* Decorative for the accessible name: an aria-label here would become part of the field's
+          label and break every getByLabelText / role-name query on it. `title` carries the text
+          for assistive tech without entering the name computation. */}
+      <span
+        title={help}
+        aria-hidden
+        style={{ display: 'inline-flex', alignItems: 'center', color: '#9ca3af' }}
+      >
+        <Info size={12} />
+      </span>
+    </Tooltip>
+  </Space>
+);
 
 const channelColors: Record<string, string> = {
   dingtalk: 'blue',
@@ -415,9 +449,13 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
 
   // eslint-disable-next-line react-hooks/purity
   const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
-  const triggered24h = rules.filter(
-    (r) => r.lastTriggered && new Date(r.lastTriggered).getTime() > dayAgo,
-  ).length;
+  // lastTriggered is a UTC LocalDateTime without an offset suffix (see the column below), so the
+  // comparison must parse it as UTC — the same convention formatUtcDateTime renders it with.
+  const triggered24h = rules.filter((r) => {
+    if (!r.lastTriggered) return false;
+    const triggeredAt = parseAlertTimestamp(r.lastTriggered);
+    return Number.isFinite(triggeredAt) && triggeredAt > dayAgo;
+  }).length;
 
   const openCreateModal = () => {
     setEditingRule(null);
@@ -1126,16 +1164,14 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
               name="name"
               label={t('alerts.ruleName')}
               rules={[{ required: true, message: t('alerts.ruleNameRequired') }]}
-              style={{ gridColumn: '1 / -1' }}
             >
               <Input placeholder={t('alerts.ruleNamePlaceholder')} />
             </Form.Item>
 
             <Form.Item
               name="instanceId"
-              label={t('alerts.instance')}
+              label={helpLabel(t('alerts.instance'), t('alerts.instanceBindingHelp'))}
               rules={[{ required: true, message: t('alerts.instanceRequired') }]}
-              extra={t('alerts.instanceBindingHelp')}
             >
               <Select
                 placeholder={t('alerts.instanceRequired')}
@@ -1184,15 +1220,16 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
               <>
                 <Form.Item
                   name="consumerGroup"
-                  label={t('alerts.consumerGroupOptional')}
-                  extra={t('alerts.consumerGroupHelp')}
+                  label={helpLabel(
+                    t('alerts.consumerGroupOptional'),
+                    t('alerts.consumerGroupHelp'),
+                  )}
                 >
                   <Input placeholder={t('alerts.consumerGroupPlaceholder')} />
                 </Form.Item>
                 <Form.Item
                   name="topic"
-                  label={t('alerts.topicOptional')}
-                  extra={t('alerts.topicHelp')}
+                  label={helpLabel(t('alerts.topicOptional'), t('alerts.topicHelp'))}
                 >
                   <Input placeholder={t('alerts.topicPlaceholder')} />
                 </Form.Item>
@@ -1203,15 +1240,13 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
               <>
                 <Form.Item
                   name="clusterName"
-                  label={t('alerts.clusterOptional')}
-                  extra={t('alerts.clusterHelp')}
+                  label={helpLabel(t('alerts.clusterOptional'), t('alerts.clusterHelp'))}
                 >
                   <Input placeholder={t('alerts.clusterPlaceholder')} />
                 </Form.Item>
                 <Form.Item
                   name="brokerName"
-                  label={t('alerts.brokerOptional')}
-                  extra={t('alerts.brokerHelp')}
+                  label={helpLabel(t('alerts.brokerOptional'), t('alerts.brokerHelp'))}
                 >
                   <Input placeholder={t('alerts.brokerPlaceholder')} />
                 </Form.Item>
@@ -1299,9 +1334,8 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
             </Form.Item>
             <Form.Item
               name="windowSeconds"
-              label={t('alerts.windowSeconds')}
+              label={helpLabel(t('alerts.windowSeconds'), t('alerts.windowRetentionHelp'))}
               initialValue={0}
-              extra={t('alerts.windowRetentionHelp')}
             >
               <InputNumber min={0} precision={0} style={{ width: '100%' }} />
             </Form.Item>
@@ -1416,123 +1450,151 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
               label={t('alerts.ruleDescription')}
               style={{ gridColumn: '1 / -1' }}
             >
-              <TextArea placeholder={t('alerts.ruleDescriptionPlaceholder')} rows={3} />
+              <TextArea placeholder={t('alerts.ruleDescriptionPlaceholder')} rows={2} />
             </Form.Item>
-            <Form.Item
-              name="notificationTemplate"
-              label={t('alerts.notificationTemplate')}
-              style={{ gridColumn: '1 / -1' }}
-              extra={
-                <div style={{ paddingTop: 24 }}>
-                  <Flex align="center" justify="space-between" gap={8} style={{ marginBottom: 8 }}>
-                    <div>{t('alerts.notificationTemplateVariables')}</div>
-                    <Button size="small" onClick={applyDefaultNotificationTemplate}>
-                      {t('alerts.notificationTemplateApplyDefault')}
-                    </Button>
-                  </Flex>
-                  <Flex gap={6} wrap="wrap">
-                    {notificationTemplateVariables.map((variable) => (
-                      <Tag
-                        key={variable}
-                        role="button"
-                        tabIndex={0}
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => insertNotificationTemplateVariable(variable)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            insertNotificationTemplateVariable(variable);
-                          }
-                        }}
-                      >
-                        {`$\{${variable}}`}
-                      </Tag>
-                    ))}
-                  </Flex>
-                </div>
-              }
-            >
-              <TextArea
-                ref={notificationTemplateRef}
-                placeholder="[${level}] ${title} - ${description}\nLabels: ${labels}"
-                rows={4}
-                maxLength={4000}
-                showCount
-              />
-            </Form.Item>
+
+            {/* The template editor plus its preview is the tallest block in this modal and the
+                least often touched, so both live in a collapsed panel. The panel header keeps the
+                readiness tag, so a broken template is still visible while collapsed. */}
             <div style={{ gridColumn: '1 / -1' }}>
-              <Card
+              <Collapse
                 size="small"
-                title={t('alerts.notificationTemplatePreview')}
-                variant="borderless"
-                extra={
-                  <Tag
-                    color={notificationTemplatePreview.status === 'ready' ? 'success' : 'warning'}
-                  >
-                    {notificationTemplatePreview.status === 'ready'
-                      ? t('alerts.notificationTemplateReady')
-                      : t('alerts.notificationTemplateAttention')}
-                  </Tag>
-                }
-                style={{ background: token.colorFillQuaternary }}
-                styles={{ body: { padding: 12 } }}
-              >
-                <Typography.Paragraph
-                  style={{
-                    whiteSpace: 'pre-wrap',
-                    overflowWrap: 'anywhere',
-                    padding: 12,
-                    marginBottom: 12,
-                    border: `1px solid ${token.colorBorderSecondary}`,
-                    borderRadius: 8,
-                    background: token.colorBgContainer,
-                    minHeight: 72,
-                  }}
-                >
-                  {notificationTemplatePreview.rendered ||
-                    t('alerts.notificationTemplateEmptyPreview')}
-                </Typography.Paragraph>
-                <Flex gap={6} wrap="wrap" style={{ marginBottom: 12 }}>
-                  <Tag>
-                    {t('alerts.notificationTemplateLength', {
-                      length: notificationTemplatePreview.length,
-                      max: notificationTemplatePreview.maxLength,
-                    })}
-                  </Tag>
-                  <Tag
-                    color={notificationTemplatePreview.usedVariables.length ? 'blue' : 'default'}
-                  >
-                    {t('alerts.notificationTemplateUsedVariables', {
-                      variables: notificationTemplatePreview.usedVariables.join(', ') || '-',
-                    })}
-                  </Tag>
-                  {notificationTemplatePreview.unknownVariables.map((variable) => (
-                    <Tag key={variable} color="orange">{`\${${variable}}`}</Tag>
-                  ))}
-                </Flex>
-                {notificationTemplatePreview.issues.length > 0 ? (
-                  <Alert
-                    showIcon
-                    type={notificationTemplatePreview.status === 'ready' ? 'info' : 'warning'}
-                    message={t('alerts.notificationTemplateIssues')}
-                    description={
-                      <Space direction="vertical" size={2}>
-                        {notificationTemplatePreview.issues.map((issue) => (
-                          <Typography.Text key={`${issue.code}-${issue.variables?.join(',')}`}>
-                            {templateIssueText(issue)}
-                          </Typography.Text>
-                        ))}
+                items={[
+                  {
+                    key: 'notification-template',
+                    label: (
+                      <Space size={8}>
+                        <span>{t('alerts.notificationTemplate')}</span>
+                        <Tag
+                          color={
+                            notificationTemplatePreview.status === 'ready' ? 'success' : 'warning'
+                          }
+                          style={{ marginInlineEnd: 0 }}
+                        >
+                          {notificationTemplatePreview.status === 'ready'
+                            ? t('alerts.notificationTemplateReady')
+                            : t('alerts.notificationTemplateAttention')}
+                        </Tag>
                       </Space>
-                    }
-                  />
-                ) : (
-                  <Alert
-                    showIcon
-                    type="success"
-                    message={t('alerts.notificationTemplateNoIssue')}
-                  />
-                )}
-              </Card>
+                    ),
+                    children: (
+                      <>
+                        <Flex
+                          align="center"
+                          justify="space-between"
+                          gap={8}
+                          style={{ marginBottom: 8 }}
+                        >
+                          <div>{t('alerts.notificationTemplateVariables')}</div>
+                          <Button size="small" onClick={applyDefaultNotificationTemplate}>
+                            {t('alerts.notificationTemplateApplyDefault')}
+                          </Button>
+                        </Flex>
+                        <Flex gap={6} wrap="wrap" style={{ marginBottom: 8 }}>
+                          {notificationTemplateVariables.map((variable) => (
+                            <Tag
+                              key={variable}
+                              role="button"
+                              tabIndex={0}
+                              style={{ cursor: 'pointer' }}
+                              onClick={() => insertNotificationTemplateVariable(variable)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  insertNotificationTemplateVariable(variable);
+                                }
+                              }}
+                            >
+                              {`$\{${variable}}`}
+                            </Tag>
+                          ))}
+                        </Flex>
+                        <Form.Item name="notificationTemplate" noStyle>
+                          <TextArea
+                            ref={notificationTemplateRef}
+                            aria-label={t('alerts.notificationTemplate')}
+                            placeholder="[${level}] ${title} - ${description}\nLabels: ${labels}"
+                            rows={3}
+                            maxLength={4000}
+                            showCount
+                          />
+                        </Form.Item>
+                        <Card
+                          size="small"
+                          title={t('alerts.notificationTemplatePreview')}
+                          variant="borderless"
+                          style={{ background: token.colorFillQuaternary, marginTop: 12 }}
+                          styles={{ body: { padding: 12 } }}
+                        >
+                          <Typography.Paragraph
+                            style={{
+                              whiteSpace: 'pre-wrap',
+                              overflowWrap: 'anywhere',
+                              padding: 12,
+                              marginBottom: 12,
+                              border: `1px solid ${token.colorBorderSecondary}`,
+                              borderRadius: 8,
+                              background: token.colorBgContainer,
+                            }}
+                          >
+                            {notificationTemplatePreview.rendered ||
+                              t('alerts.notificationTemplateEmptyPreview')}
+                          </Typography.Paragraph>
+                          <Flex gap={6} wrap="wrap" style={{ marginBottom: 12 }}>
+                            <Tag>
+                              {t('alerts.notificationTemplateLength', {
+                                length: notificationTemplatePreview.length,
+                                max: notificationTemplatePreview.maxLength,
+                              })}
+                            </Tag>
+                            <Tag
+                              color={
+                                notificationTemplatePreview.usedVariables.length
+                                  ? 'blue'
+                                  : 'default'
+                              }
+                            >
+                              {t('alerts.notificationTemplateUsedVariables', {
+                                variables:
+                                  notificationTemplatePreview.usedVariables.join(', ') || '-',
+                              })}
+                            </Tag>
+                            {notificationTemplatePreview.unknownVariables.map((variable) => (
+                              <Tag key={variable} color="orange">{`\${${variable}}`}</Tag>
+                            ))}
+                          </Flex>
+                          {notificationTemplatePreview.issues.length > 0 ? (
+                            <Alert
+                              showIcon
+                              type={
+                                notificationTemplatePreview.status === 'ready' ? 'info' : 'warning'
+                              }
+                              message={t('alerts.notificationTemplateIssues')}
+                              description={
+                                <Space direction="vertical" size={2}>
+                                  {notificationTemplatePreview.issues.map((issue) => (
+                                    <Typography.Text
+                                      key={`${issue.code}-${issue.variables?.join(',')}`}
+                                    >
+                                      {templateIssueText(issue)}
+                                    </Typography.Text>
+                                  ))}
+                                </Space>
+                              }
+                            />
+                          ) : (
+                            <Alert
+                              showIcon
+                              type="success"
+                              message={t('alerts.notificationTemplateNoIssue')}
+                            />
+                          )}
+                        </Card>
+                      </>
+                    ),
+                  },
+                ]}
+              />
             </div>
           </div>
         </Form>

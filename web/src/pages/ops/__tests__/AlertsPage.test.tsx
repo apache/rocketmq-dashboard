@@ -268,8 +268,9 @@ describe('AlertsPage', () => {
 
     expect(screen.getByRole('button', { name: 'Test Run' })).toBeInTheDocument();
     expect(screen.getByText('Window aggregation')).toBeInTheDocument();
+    // The retention help moved from an `extra` line into the field label's tooltip.
     expect(
-      screen.getByText(
+      screen.getByTitle(
         'Aggregation uses only metric snapshots currently retained locally. History outside the current retention period is unavailable; changing retention does not invalidate the rule.',
       ),
     ).toBeInTheDocument();
@@ -284,7 +285,7 @@ describe('AlertsPage', () => {
     await user.click(await screen.findByRole('button', { name: '新建规则' }));
 
     expect(
-      screen.getByText(
+      screen.getByTitle(
         '聚合只使用本地当前保留的指标快照。当前保留周期之外的历史数据不可用；调整保留时间不会使规则失效。',
       ),
     ).toBeInTheDocument();
@@ -847,6 +848,8 @@ describe('AlertsPage', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: '新建规则' }));
+    // The template editor and its variable chips live in a collapsed panel.
+    await user.click(screen.getByText('通知模板'));
 
     expect(screen.getByText('可用变量')).toBeInTheDocument();
     expect(screen.getByText('${ruleName}')).toBeInTheDocument();
@@ -858,6 +861,8 @@ describe('AlertsPage', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: '新建规则' }));
+    // The template editor lives in a collapsed panel; its header carries the readiness tag.
+    await user.click(screen.getByText('通知模板'));
     const template = screen.getByRole('textbox', { name: '通知模板' });
     await user.type(template, 'Alert: ');
     await user.click(screen.getByText('${ruleName}'));
@@ -871,6 +876,7 @@ describe('AlertsPage', () => {
 
     await user.click(await screen.findByRole('button', { name: '新建规则' }));
     await user.type(screen.getByRole('textbox', { name: '规则名称' }), 'Disk hot');
+    await user.click(screen.getByText('通知模板'));
     const template = screen.getByRole('textbox', { name: '通知模板' });
     fireEvent.change(template, { target: { value: '[${level}] ${ruleName} ${owner}' } });
 
@@ -882,7 +888,8 @@ describe('AlertsPage', () => {
         within(preview as HTMLElement).getByText('[WARNING] Disk hot ${owner}'),
       ).toBeInTheDocument();
     });
-    expect(within(preview as HTMLElement).getByText('需关注')).toBeInTheDocument();
+    // The readiness tag moved to the collapse panel header; the preview card keeps the render.
+    expect(screen.getByText('需关注')).toBeInTheDocument();
     expect(
       within(preview as HTMLElement).getByText('未知变量不会被替换：owner'),
     ).toBeInTheDocument();
@@ -896,6 +903,7 @@ describe('AlertsPage', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: '新建规则' }));
+    await user.click(screen.getByText('通知模板'));
     const template = screen.getByRole('textbox', { name: '通知模板' });
     await user.click(screen.getByRole('button', { name: '填入默认模板' }));
 
@@ -1203,6 +1211,29 @@ describe('AlertsPage', () => {
     await screen.findByText('Second page rule 5');
     expect(screen.queryByText('Second page rule 20')).not.toBeInTheDocument();
     expect(screen.queryByText('Page one rule 1')).not.toBeInTheDocument();
+  });
+
+  it('counts the 24h-triggered stat against the UTC timestamp, not the browser zone', async () => {
+    // Pin the viewer zone off UTC so a browser-zone parse is observably wrong, and pin the
+    // clock so the fixture's age is exact. The stat must read the same value the adjacent
+    // Last-Triggered column renders — UTC, per the formatUtcDateTime convention.
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-08-24T12:00:00Z'));
+    try {
+      // 2026-08-23T13:00:00 UTC is 23h before the pinned now. Parsed as Shanghai wall time
+      // it becomes 05:00Z — 31h old — which is what the browser-zone parse wrongly excludes.
+      vi.mocked(listAlertRulesPage).mockResolvedValue(
+        pageResult([{ ...cloneRule(alertRules[0]), lastTriggered: '2026-08-23T13:00:00' }]),
+      );
+
+      renderPage();
+
+      const statLabel = await screen.findByText('本页 24h 触发');
+      expect(statLabel.nextElementSibling).toHaveTextContent('1');
+    } finally {
+      nowSpy.mockRestore();
+      vi.unstubAllEnvs();
+    }
   });
 
   it('clamps to the last valid page when a bulk delete empties the current one', async () => {

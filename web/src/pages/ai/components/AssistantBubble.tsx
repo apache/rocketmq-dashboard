@@ -146,7 +146,9 @@ const AssistantBubble = ({
             width: 36,
             height: 36,
             borderRadius: '50%',
-            background: '#ffffff',
+            // Theme surface instead of a fixed white: the avatar matches the neighbouring bubble
+            // card, which already sits on colorBgElevated (white in light mode, elevated in dark).
+            background: token.colorBgElevated,
             border: `1px solid ${token.colorBorderSecondary}`,
             flexShrink: 0,
             display: 'flex',
@@ -199,7 +201,11 @@ const AssistantBubble = ({
       <Card
         size="small"
         style={{
-          maxWidth: '75%',
+          // A fixed column, not a shrink-to-fit one: capped by maxWidth alone the bubble grew a
+          // character at a time for the whole stream and jumped again on every code block or tool
+          // card, because both contribute their max-content width to the Card's intrinsic size.
+          width: '75%',
+          flexShrink: 0,
           background: token.colorBgElevated,
           borderColor: token.colorBorderSecondary,
           boxShadow: `0 1px 4px ${token.colorTextQuaternary}`,

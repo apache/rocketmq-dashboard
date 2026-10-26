@@ -49,6 +49,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -68,7 +70,29 @@ class AlertServiceTest {
     @org.junit.jupiter.api.BeforeEach
     void setUpTest() {
         alertService = new AlertService(alertRepository, alertStateRepository, new AlertRuleAssetService(),
-                operationAuditService, new MetricProfileService(new PrometheusProperties()));
+                operationAuditService, new MetricProfileService(new PrometheusProperties()),
+                org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class));
+    }
+
+    @Test
+    void createNativeRuleShouldRejectMissingOperatorBeforePersistenceTest() {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("Orders lag");
+        request.setMetric("consumer.lag.total");
+        request.setInstanceId("local");
+        request.setConsumerGroup("orders");
+        request.setThreshold(100);
+        request.setEnabled(true);
+        lenient().when(alertRepository.insertRule(any(AlertRuleVO.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThatThrownBy(() -> alertService.createRule(AlertDomain.BUSINESS, request.toAlertRuleVO()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("operator")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verify(alertRepository, never()).insertRule(any(AlertRuleVO.class));
+        verifyNoInteractions(operationAuditService);
     }
 
     @Test
@@ -543,7 +567,8 @@ class AlertServiceTest {
         PrometheusProperties properties = new PrometheusProperties();
         properties.setProfile(profileId);
         return new AlertService(alertRepository, alertStateRepository, new AlertRuleAssetService(),
-                operationAuditService, new MetricProfileService(properties));
+                operationAuditService, new MetricProfileService(properties),
+                org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class));
     }
 
     private MetricProfileVO.MetricMappingVO activeLagMapping(String profileId) {

@@ -56,16 +56,8 @@ const AuditSummaryCards = ({ summary, loading }: Props) => {
   // Show the placeholder while any fetch is in flight so a filter change does
   // not keep painting a stale summary until the refreshed aggregate arrives.
   if (loading) return <Skeleton active paragraph={{ rows: 4 }} />;
-  const data = summary || {
-    total: 0,
-    successful: 0,
-    failed: 0,
-    partial: 0,
-    uniqueOperators: 0,
-    latestAt: null,
-    byOperation: [],
-    byResourceType: [],
-  };
+  if (!summary) return <Empty description={t('common.fetchDataFailed')} />;
+  const data = summary;
   const successRate = data.total ? Math.round((data.successful / data.total) * 100) : 0;
   // 成功率配色按阈值走，不再写死绿色（用户约定 2026-10-16）：47% 曾照样显示绿色，读起来像健康。
   const successColor = successRate >= 95 ? '#52c41a' : successRate >= 80 ? '#faad14' : '#cf1322';

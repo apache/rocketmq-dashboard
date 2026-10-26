@@ -54,6 +54,7 @@ import java.util.Map;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.TimeZone;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -62,6 +63,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -422,6 +424,220 @@ class AclServiceTest {
         assertThat(users.get(0).getAccessKey()).isEqualTo("access-key-123456");
         assertThat(users.get(0).getSecretKey()).isEqualTo("secret-key-987654");
         verify(aclRepository).findUsers();
+    }
+
+    @Test
+    void listUsersShouldSerializeGmtCreateAsUtcWallTimeTest() {
+        // gmtCreate is stored as a zone-less server-local wall clock and the page renders it in
+        // the viewer's zone, so the wire carries UTC — the same convention the audit page uses.
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            AclUserVO stored = AclUserVO.builder()
+                    .username("orders")
+                    .accessKey("access-key-123456")
+                    .secretKey("secret-key-987654")
+                    .gmtCreate(LocalDateTime.of(2026, 7, 23, 10, 0, 0))
+                    .build();
+            when(aclRepository.findUsers()).thenReturn(List.of(stored));
+
+            List<AclUserVO> result = aclService.listUsers(null);
+
+            assertThat(result.get(0).getGmtCreate())
+                    .isEqualTo(LocalDateTime.of(2026, 7, 23, 2, 0, 0));
+            // The stored row itself keeps the server-local base.
+            assertThat(stored.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 10, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void listRulesShouldSerializeGmtCreateAsUtcWallTimeTest() {
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            AclRuleVO stored = AclRuleVO.builder()
+                    .principal("user1")
+                    .resource("topic-1")
+                    .decision("ALLOW")
+                    .gmtCreate(LocalDateTime.of(2026, 7, 23, 10, 0, 0))
+                    .build();
+            when(aclRepository.findRulePage(null, null, null, null, null, 1, 20))
+                    .thenReturn(PageResult.of(List.of(stored), 1, 1, 20));
+
+            PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null, null,
+                    null, null);
+
+            assertThat(result.getItems().get(0).getGmtCreate())
+                    .isEqualTo(LocalDateTime.of(2026, 7, 23, 2, 0, 0));
+            assertThat(stored.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 10, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void listRulesShouldSerializeTencentGmtCreateAsUtcWallTimeTest() {
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            InstanceVO instance = InstanceVO.builder()
+                    .name("tencent-instance")
+                    .vendor(InstanceVendor.TENCENT)
+                    .type(InstanceType.CLOUD)
+                    .build();
+            when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(instance));
+            AclRuleVO stored = AclRuleVO.builder()
+                    .principal("role-a")
+                    .resource("topic-a")
+                    .gmtCreate(LocalDateTime.of(2026, 7, 23, 10, 0, 0))
+                    .build();
+            when(tencentAclService.listRules("tencent-instance", null)).thenReturn(List.of(stored));
+
+            PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null,
+                    "tencent-instance", 1, 20);
+
+            assertThat(result.getItems().get(0).getGmtCreate())
+                    .isEqualTo(LocalDateTime.of(2026, 7, 23, 2, 0, 0));
+            assertThat(stored.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 10, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void getRuleShouldSerializeTheStoredCreationStampAsUtcWallTimeTest() {
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            AclRuleVO stored = AclRuleVO.builder()
+                    .principal("user1")
+                    .resource("topic-1")
+                    .decision("ALLOW")
+                    .gmtCreate(LocalDateTime.of(2026, 7, 23, 10, 0, 0))
+                    .build();
+            stored.setId(7L);
+            when(aclRepository.findRuleById(7L)).thenReturn(Optional.of(stored));
+
+            AclRuleVO result = aclService.getRule("7", null);
+
+            assertThat(result.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 2, 0, 0));
+            assertThat(stored.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 10, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void pageUsersShouldMaskAndSerializeGmtCreateAsUtcWallTimeTest() {
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            AclUserVO stored = AclUserVO.builder()
+                    .id(11L)
+                    .username("orders")
+                    .accessKey("access-key-123456")
+                    .secretKey("secret-key-987654")
+                    .gmtCreate(LocalDateTime.of(2026, 7, 23, 10, 0, 0))
+                    .build();
+            when(aclRepository.findUserPage(isNull(), eq(1), eq(20)))
+                    .thenReturn(PageResult.of(List.of(stored), 1, 1, 20));
+
+            PageResult<AclUserVO> result = aclService.pageUsers(null, 1, 20, null);
+
+            assertThat(result.getItems().get(0).getGmtCreate())
+                    .isEqualTo(LocalDateTime.of(2026, 7, 23, 2, 0, 0));
+            assertThat(result.getItems().get(0).getAccessKey()).isEqualTo("acce****3456");
+            assertThat(stored.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 10, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void listUsersShouldSerializeTencentGmtCreateAsUtcWallTimeTest() {
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            InstanceVO instance = InstanceVO.builder()
+                    .name("tencent-instance")
+                    .vendor(InstanceVendor.TENCENT)
+                    .type(InstanceType.CLOUD)
+                    .build();
+            when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(instance));
+            AclUserVO stored = AclUserVO.builder()
+                    .username("role-user")
+                    .accessKey("access-key-123456")
+                    .secretKey("secret-key-987654")
+                    .gmtCreate(LocalDateTime.of(2026, 7, 23, 10, 0, 0))
+                    .build();
+            when(tencentAclService.listUsers("tencent-instance")).thenReturn(List.of(stored));
+
+            List<AclUserVO> result = aclService.listUsers("tencent-instance");
+
+            assertThat(result.get(0).getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 2, 0, 0));
+            assertThat(stored.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 10, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void getUserCredentialsShouldKeepTheSecretRawAndShiftTheCreationStampTest() {
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            AclUserVO stored = AclUserVO.builder()
+                    .id(1L)
+                    .username("orders")
+                    .accessKey("access-key-123456")
+                    .secretKey("secret-key-987654")
+                    .gmtCreate(LocalDateTime.of(2026, 7, 23, 10, 0, 0))
+                    .build();
+            when(aclRepository.findUserById(1L)).thenReturn(Optional.of(stored));
+
+            AclUserVO result = aclService.getUserCredentials("1", null);
+
+            // The reveal dialog shows the raw credentials exactly once; only the creation stamp
+            // moves to the UTC wire, and the stored row keeps its server-local base.
+            assertThat(result.getAccessKey()).isEqualTo("access-key-123456");
+            assertThat(result.getSecretKey()).isEqualTo("secret-key-987654");
+            assertThat(result.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 2, 0, 0));
+            assertThat(stored.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 10, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void updateUserShouldEchoTheStoredCreationStampUnshiftedTest() {
+        // The write paths echo the stored row (masked) so create and update agree: an update
+        // response must not carry a UTC stamp next to a create response's server-local one.
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            AclUserVO saved = AclUserVO.builder()
+                    .id(1L)
+                    .username("orders")
+                    .accessKey("access-key-123456")
+                    .secretKey("secret-key-987654")
+                    .gmtCreate(LocalDateTime.of(2026, 7, 23, 10, 0, 0))
+                    .build();
+            when(aclRepository.findUserById(1L)).thenReturn(Optional.of(saved));
+            when(aclRepository.replaceUser(any(AclUserVO.class)))
+                    .thenAnswer(invocation -> Optional.of(invocation.getArgument(0)));
+
+            UpdateAclUserDTO command = new UpdateAclUserDTO();
+            command.setId("1");
+            command.setUsername("orders");
+            AclUserVO result = aclService.updateUser(command, null);
+
+            assertThat(result.getAccessKey()).isEqualTo("acce****3456");
+            assertThat(result.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 10, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
     }
 
     @ParameterizedTest
@@ -806,7 +1022,9 @@ class AclServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"999.999.999.999", "10.0.0.0/8", "192.168.100-1.*", "192.168.1.{}"})
+    @ValueSource(strings = {"999.999.999.999", "10.0.0.0/8", "192.168.100-1.*", "192.168.1.{}",
+        "192.168.1.0-0", "192.168.0-0.*", "192.168.1.000-000", "192.168.000-000.*",
+        "2001:db8::0-0", "2001:db8::0-0:*", "2001:db8::0000-0000", "2001:db8::0000-0000:*"})
     void createAndUpdatePlainAccessConfigShouldRejectInvalidWhiteRemoteAddress(String whiteRemoteAddress) {
         PlainAccessConfigVO config = PlainAccessConfigVO.builder()
                 .accessKey("ak-1")
@@ -823,7 +1041,9 @@ class AclServiceTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"*", "192.168.*.*", "192.168.1-100.*", "192.168.1.{1,2,3}",
-        "192.168.1.10,192.168.1.11", "2001:db8::1"})
+        "192.168.1.10,192.168.1.11", "2001:db8::1",
+        "192.168.0.*", "192.168.0-1.*", "192.168.1-1.*", "192.168.1.0",
+        "2001:db8::0:*", "2001:db8::0-1:*", "2001:db8::1-1:*", "2001:db8::0"})
     void createAndUpdatePlainAccessConfigShouldAcceptValidWhiteRemoteAddress(String whiteRemoteAddress) {
         PlainAccessConfigVO config = PlainAccessConfigVO.builder()
                 .accessKey("ak-1")

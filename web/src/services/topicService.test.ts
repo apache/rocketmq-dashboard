@@ -25,7 +25,13 @@ import {
   sendTopicMessage,
 } from './topicService';
 
-vi.mock('./dataMode', () => ({ isMockMode: () => true }));
+const { mode, metadataApi } = vi.hoisted(() => ({
+  mode: { mock: true },
+  metadataApi: { listTopicsPage: vi.fn() },
+}));
+
+vi.mock('./dataMode', () => ({ isMockMode: () => mode.mock }));
+vi.mock('../api/metadata', () => metadataApi);
 vi.mock('../config', () => ({
   API_BASE_URL: '/api',
 }));
@@ -99,6 +105,20 @@ describe('topic service mock data', () => {
     expect(topics).not.toHaveLength(0);
     expect(topics.every((topic) => topic.instanceId === 'instance-proxy-1')).toBe(true);
     expect(exportedTopics).toEqual(directTopics);
+  });
+
+  it('rejects an empty API page while the reported topic total is still unseen', async () => {
+    mode.mock = false;
+    metadataApi.listTopicsPage
+      .mockResolvedValueOnce({ items: [{ name: 'topic-a' }], total: 2, page: 1, size: 100 })
+      .mockResolvedValueOnce({ items: [], total: 2, page: 2, size: 100 });
+    try {
+      await expect(listAllTopics()).rejects.toThrow('Incomplete topic list');
+      expect(metadataApi.listTopicsPage).toHaveBeenCalledTimes(2);
+    } finally {
+      mode.mock = true;
+      metadataApi.listTopicsPage.mockReset();
+    }
   });
 
   it('rejects duplicate topic creates across mock instances and clusters', async () => {

@@ -44,6 +44,7 @@ import {
   Progress,
   Switch,
   message,
+  theme,
 } from 'antd';
 import {
   Plus,
@@ -66,6 +67,7 @@ import type { Dayjs } from 'dayjs';
 
 import PageHeader from '../../components/PageHeader';
 import { InstanceSelect } from '../../components/InstanceSelect';
+import ResourceRuleHelp from '../../components/ResourceRuleHelp';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, PROTOCOL_MAP } from '../../constants/theme';
 import { formatDateTime, formatDelay, formatUtcDateTime } from '../../utils/format';
@@ -102,7 +104,7 @@ import {
   validateConsumerGroupCsvImport,
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
-import { downloadCsv } from '../../utils/download';
+import { downloadCsv, localExportDateStamp } from '../../utils/download';
 import { formatLag, isLagAvailable, lagSortValue } from '../../utils/consumerLag';
 import { formatOnlineInstances, onlineInstancesCount } from '../../utils/consumerConnections';
 import { tableScrollX } from '../../utils/table';
@@ -246,6 +248,7 @@ const ConsumerPageContent = ({
   reloadInstances,
 }: ConsumerPageContentProps) => {
   const { t, lang } = useLang();
+  const { token } = theme.useToken();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const hasSelectedInstance = Boolean(selectedInstanceId);
@@ -527,7 +530,7 @@ const ConsumerPageContent = ({
         search: search.trim() || undefined,
         subscriptionMode: modeFilter !== 'ALL' ? modeFilter : undefined,
       });
-      downloadCsv(`rocketmq-consumer-groups-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+      downloadCsv(`rocketmq-consumer-groups-${localExportDateStamp()}.csv`, csv);
       message.success('Group 导出完成');
     } catch {
       message.error('导出 Group 失败，请稍后重试');
@@ -1229,7 +1232,13 @@ const ConsumerPageContent = ({
       dataIndex: 'protocol',
       key: 'protocol',
       width: 80,
-      render: (protocol: string) => {
+      render: (protocol?: string) => {
+        // The Apache provider cannot tell the protocol from a broker connection set,
+        // so the field is legitimately absent — render a placeholder, not an empty tag.
+        // Plain '-' matches the other optional columns of this page.
+        if (!protocol) {
+          return '-';
+        }
         const config = PROTOCOL_MAP[protocol] || { labelKey: protocol, color: 'default' };
         return <Tag color={config.color}>{t(config.labelKey)}</Tag>;
       },
@@ -1997,14 +2006,18 @@ const ConsumerPageContent = ({
                     <Card
                       size="small"
                       style={{
-                        background: '#fafafa',
+                        // Theme fill instead of a fixed light grey, which left this summary
+                        // card unreadable in dark mode.
+                        background: token.colorFillQuaternary,
                         borderRadius: 8,
                       }}
                       styles={{ body: { padding: '8px 16px' } }}
                     >
                       <Space size={24} wrap>
                         <Space size={4}>
-                          <Text type="secondary">健康分:</Text>
+                          <Tooltip title={t('consumer.health.scoreHint')}>
+                            <Text type="secondary">{t('consumer.health.scoreLabel')}</Text>
+                          </Tooltip>
                           <Text
                             strong
                             style={{ color: healthStatusColor(selectedGroupHealth.status) }}
@@ -2013,7 +2026,9 @@ const ConsumerPageContent = ({
                           </Text>
                         </Space>
                         <Space size={4}>
-                          <Text type="secondary">已知堆积:</Text>
+                          <Tooltip title={t('consumer.health.knownLagHint')}>
+                            <Text type="secondary">{t('consumer.health.knownLagLabel')}</Text>
+                          </Tooltip>
                           <Text
                             strong
                             style={{ color: lagColor(selectedGroupHealth.summary.totalKnownLag) }}
@@ -2022,26 +2037,39 @@ const ConsumerPageContent = ({
                           </Text>
                         </Space>
                         <Space size={4}>
-                          <Text type="secondary">报告堆积:</Text>
+                          <Tooltip title={t('consumer.health.reportedLagHint')}>
+                            <Text type="secondary">{t('consumer.health.reportedLagLabel')}</Text>
+                          </Tooltip>
                           <Text strong>
                             {selectedGroupHealth.summary.reportedLag === null
                               ? UNAVAILABLE_LAG_LABEL
                               : selectedGroupHealth.summary.reportedLag.toLocaleString()}
                           </Text>
                         </Space>
+                        {/* "覆盖" read like a completion ratio of two unrelated dimensions; the
+                            label now names both units and the tooltip states the caliber. */}
                         <Space size={4}>
-                          <Text type="secondary">Queue 覆盖:</Text>
+                          <Tooltip title={t('consumer.health.queueProgressHint')}>
+                            <Text type="secondary">{t('consumer.health.queueProgressLabel')}</Text>
+                          </Tooltip>
                           <Text strong>
-                            {selectedGroupHealth.summary.queueCount} /{' '}
-                            {selectedGroupHealth.summary.subscribedTopicCount} Topic
+                            {t('consumer.health.queueProgressValue', {
+                              queues: selectedGroupHealth.summary.queueCount,
+                              topics: selectedGroupHealth.summary.subscribedTopicCount,
+                            })}
                           </Text>
                         </Space>
+                        {/* The old label said 堆积 but the value reports offset availability. */}
                         <Space size={4}>
-                          <Text type="secondary">Queue 堆积:</Text>
+                          <Tooltip title={t('consumer.health.queueOffsetHint')}>
+                            <Text type="secondary">{t('consumer.health.queueOffsetLabel')}</Text>
+                          </Tooltip>
                           <Text strong>
                             {selectedGroupHealth.summary.unknownQueueCount > 0
-                              ? `${selectedGroupHealth.summary.unknownQueueCount} 个不可用`
-                              : '均可计算'}
+                              ? t('consumer.health.offsetsUnknown', {
+                                  count: selectedGroupHealth.summary.unknownQueueCount,
+                                })
+                              : t('consumer.health.offsetsOk')}
                           </Text>
                         </Space>
                         <Space size={4}>
@@ -2054,7 +2082,9 @@ const ConsumerPageContent = ({
                           </Text>
                         </Space>
                         <Space size={4}>
-                          <Text type="secondary">心跳:</Text>
+                          <Tooltip title={t('consumer.health.heartbeatHint')}>
+                            <Text type="secondary">{t('consumer.health.heartbeatLabel')}</Text>
+                          </Tooltip>
                           <Text strong>
                             {selectedGroupHealth.summary.onlineInstances < 0
                               ? '连接信息不可用'
@@ -2148,7 +2178,9 @@ const ConsumerPageContent = ({
                       size="small"
                       style={{
                         marginBottom: 16,
-                        background: '#fafafa',
+                        // Theme fill instead of a fixed light grey, which left this summary
+                        // card unreadable in dark mode.
+                        background: token.colorFillQuaternary,
                         borderRadius: 8,
                       }}
                       styles={{ body: { padding: '8px 16px' } }}
@@ -2457,7 +2489,12 @@ const ConsumerPageContent = ({
           }}
         >
           <Form.Item
-            label="Group 名称"
+            label={
+              <Space size={4}>
+                Group 名称
+                <ResourceRuleHelp />
+              </Space>
+            }
             name="name"
             rules={[
               { required: true, message: '请输入 Group 名称' },

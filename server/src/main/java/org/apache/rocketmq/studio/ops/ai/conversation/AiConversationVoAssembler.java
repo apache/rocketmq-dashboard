@@ -182,6 +182,8 @@ public final class AiConversationVoAssembler {
             runs.add(AiRunStatsVO.builder()
                     .id(run.getId())
                     .tokensPerSecond(run.getTokensPerSecond())
+                    .inputTokens(run.getInputTokens())
+                    .outputTokens(run.getOutputTokens())
                     .build());
         }
         AiTimelineVO vo = toTimelineVo(items, page.nextAfter(), page.activeRun());

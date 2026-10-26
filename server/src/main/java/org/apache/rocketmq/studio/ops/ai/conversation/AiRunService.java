@@ -103,6 +103,13 @@ public class AiRunService {
     static final String REFUSED_INVALID_CODE = "ai.request.invalid";
     static final String REFUSED_CODE = "ai.run.refused";
 
+    /**
+     * Ceiling on the pages one attach may replay: {@value #MAX_REPLAY_PAGES} pages of
+     * {@value AiConversationService#DEFAULT_TIMELINE_LIMIT} rows. Far beyond any real backlog; exists
+     * so a misbehaving repository that keeps returning full pages cannot pin the request thread.
+     */
+    private static final int MAX_REPLAY_PAGES = 25;
+
     static final String OVERLOADED_MESSAGE = "AI chat capacity is temporarily exhausted";
     static final String OVERLOADED_HINT = "Wait for the active answer to finish, then retry.";
 
@@ -278,29 +285,64 @@ public class AiRunService {
      * reconnect path: the client that lost its connection, a second tab, or a page reload that found an
      * {@code activeRun}.
      *
-     * <p>The observer is registered before the replay is flushed and every live frame carries the seq of
-     * the row it belongs to, so the two hazards of replay-then-tail are both covered: nothing is lost in
-     * the gap, and nothing already replayed is delivered twice.
+     * <p>The observer is registered before the replay is even queried and every live frame carries the
+     * seq of the row it belongs to, so the two hazards of replay-then-tail are both covered: nothing is
+     * lost in the gap — frames published during the replay are buffered by the session and drained,
+     * deduplicated, afterwards — and nothing already replayed is delivered twice.
      */
     public SseEmitter attach(Long runId, int afterSeq) {
         String owner = AiConversationService.currentOwner();
         RmqAiRun run = requireOwnedRun(runId, owner);
         AgentStreamSession session = runExecutor.newSession(run.getId(),
                 runExecutor.streamTimeoutMillis(run.getEngine()));
-        AgentEventProjector projector = new AgentEventProjector(run.getId());
-        List<RmqAiEvent> rows = eventRepository.findByConversationIdAfterSeq(run.getConversationId(),
-                Math.max(0, afterSeq), AiConversationService.DEFAULT_TIMELINE_LIMIT);
-        boolean terminalReplayed = false;
-        for (RmqAiEvent row : rows) {
-            session.noteWatermark(row.getSeq());
-            Optional<TimelineEvent> event = AiEventCodec.read(objectMapper, row);
-            if (event.isEmpty()) {
-                continue;
-            }
-            terminalReplayed = terminalReplayed || event.get() instanceof TimelineEvent.RunStatus;
-            projector.replay(event.get()).ifPresent(session::sendReplayed);
-        }
+        // Registered BEFORE the replay query, not after the replay flush: the session buffers live
+        // frames that arrive while it is REPLAYING and deduplicates them against the replay
+        // watermark when it drains, so a frame published during the replay cannot fall into the gap
+        // between the query and the registration. Registering later would silently lose exactly the
+        // rows the run persisted while the reconnecting client was catching up.
         boolean live = registry.attach(run.getId(), session);
+        AgentEventProjector projector = new AgentEventProjector(run.getId());
+        // The replay pages through the whole backlog, not just the first slice: the query is capped at
+        // DEFAULT_TIMELINE_LIMIT rows, and a tool-heavy turn that kept writing while the client was
+        // away produces more than one page of it. Stopping after the first page would strand the rows
+        // in between — already persisted, so their live frames are gone, and beyond the client's own
+        // cursor, so it would never fetch them either.
+        int cursor = Math.max(0, afterSeq);
+        boolean terminalReplayed = false;
+        int replayedRows = 0;
+        try {
+            for (int page = 0; page < MAX_REPLAY_PAGES; page++) {
+                List<RmqAiEvent> rows = eventRepository.findByConversationIdAfterSeq(run.getConversationId(),
+                        cursor, AiConversationService.DEFAULT_TIMELINE_LIMIT);
+                for (RmqAiEvent row : rows) {
+                    session.noteWatermark(row.getSeq());
+                    cursor = row.getSeq();
+                    Optional<TimelineEvent> event = AiEventCodec.read(objectMapper, row);
+                    if (event.isEmpty()) {
+                        continue;
+                    }
+                    terminalReplayed = terminalReplayed || event.get() instanceof TimelineEvent.RunStatus;
+                    projector.replay(event.get(), run.getDurationMs()).ifPresent(session::sendReplayed);
+                }
+                replayedRows += rows.size();
+                if (rows.size() < AiConversationService.DEFAULT_TIMELINE_LIMIT) {
+                    break;
+                }
+            }
+        } catch (RuntimeException exception) {
+            // The session this method created never reaches a response now, so no transport
+            // callback will ever close it; closing it here is what stops its heartbeat, which
+            // would otherwise keep firing into a buffer nobody drains for the life of the process.
+            session.complete();
+            throw exception;
+        }
+        // A short page means the backlog is exhausted; running out of pages with every one of
+        // them full means the replay was truncated. Say so, because a reload that silently
+        // dropped the older events looks like a complete one.
+        if (replayedRows >= MAX_REPLAY_PAGES * AiConversationService.DEFAULT_TIMELINE_LIMIT) {
+            log.warn("attach replay of run {} hit the {} page ceiling after {} rows; older events are not replayed",
+                    run.getId(), MAX_REPLAY_PAGES, replayedRows);
+        }
         session.finishReplay();
         if (!live) {
             // Nothing is generating here any more, so no further frame will ever arrive. A run reaped by
@@ -314,7 +356,7 @@ public class AiRunService {
             session.complete();
         }
         log.debug("attached an observer to agent run {} after seq {} ({} replayed row(s), live={})",
-                run.getId(), afterSeq, rows.size(), live);
+                run.getId(), afterSeq, replayedRows, live);
         return session.emitter();
     }
 
@@ -435,8 +477,12 @@ public class AiRunService {
      * the non-null columns the stale read still carries — {@code status}, {@code end_seq} and
      * {@code gmt_modified} — are written back over the terminal ones. The nullable terminal facts
      * (duration, tokens, finished_at) survive: MyBatis-Plus defaults to {@code FieldStrategy.NOT_NULL},
-     * so a null field never reaches the SET clause. Only the speed column is touched, the same
-     * partial-update shape {@code rememberRuntimeSession} uses.
+     * so a null field never reaches the SET clause. The write touches only the speed column and the
+     * bookkeeping timestamp, the same partial-update shape {@code rememberRuntimeSession} uses.
+     * {@code gmt_modified} is stamped explicitly, from the same service clock as every other write
+     * to the row: the column is declared {@code ON UPDATE CURRENT_TIMESTAMP}, so leaving it null
+     * would not leave it alone — the database would rewrite it in its session timezone, a different
+     * clock than the UTC cutoff the orphan sweep compares against.
      *
      * @throws BusinessException 404 when the run does not exist or belongs to somebody else
      */
@@ -446,6 +492,7 @@ public class AiRunService {
         RmqAiRun update = new RmqAiRun();
         update.setId(run.getId());
         update.setTokensPerSecond(tokensPerSecond);
+        update.setGmtModified(LocalDateTime.now(clock));
         runRepository.update(update);
         run.setTokensPerSecond(tokensPerSecond);
         return run;

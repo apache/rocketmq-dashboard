@@ -41,7 +41,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'nav.ai': { zh: 'AI 交互', en: 'AI Chat' },
   'nav.settings': { zh: '设置', en: 'Settings' },
 
-  // ─── Common ───
+  // ─── Common ──
   'common.search': { zh: '搜索...', en: 'Search...' },
   'common.searchPlaceholder': { zh: '搜索页面、功能...', en: 'Search pages, features...' },
   'common.create': { zh: '新建', en: 'Create' },
@@ -463,6 +463,23 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'No {vendor} credentials. ',
   },
   'instance.addInSettings': { zh: '去设置中添加', en: 'Add in settings' },
+  'instance.nameserver': { zh: 'nameserver 集群', en: 'NameServer cluster' },
+  'instance.nameserverRequired': {
+    zh: '请选择 nameserver 集群',
+    en: 'Select a NameServer cluster',
+  },
+  'instance.nameserverExtra': {
+    zh: '实例的名字唯一性以该集群为边界，创建后不可更改',
+    en: 'Name uniqueness is scoped to this cluster and the binding cannot change later',
+  },
+  'instance.nameserverImmutable': {
+    zh: '创建时绑定，不可更改',
+    en: 'Bound at creation, cannot be changed',
+  },
+  'instance.selectNameserver': { zh: '选择 nameserver 集群', en: 'Select a NameServer cluster' },
+  'instance.noNameserver': { zh: '还没有注册 nameserver，', en: 'No NameServer registered yet, ' },
+  'instance.addInClusterPage': { zh: '去集群管理注册', en: 'register one in Cluster Management' },
+  'instance.nameserverColumn': { zh: 'nameserver 集群', en: 'NameServer cluster' },
   'instance.regionRequired': { zh: '请选择地域', en: 'Select a region' },
   'instance.selectRegion': { zh: '选择地域', en: 'Select a region' },
   'instance.cloudInstance': { zh: '云上实例', en: 'Cloud Instance' },
@@ -890,6 +907,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '查询历史加载失败',
     en: 'Failed to load query history',
   },
+  'messageHistory.summaryLoadFailed': {
+    zh: '查询历史统计加载失败',
+    en: 'Failed to load query history summary',
+  },
   'messageHistory.resultCount': { zh: '结果数', en: 'Results' },
   'messageHistory.operator': { zh: '操作者', en: 'Operator' },
   'messageHistory.queryTime': { zh: '查询时间', en: 'Query Time' },
@@ -906,6 +927,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'dlq.resendFailedSummary': {
     zh: '重投失败：成功 {resent}，失败 {failed}',
     en: 'Resend failed: {resent} succeeded, {failed} failed',
+  },
+  'dlq.resendUnmatchedSummary': {
+    zh: '重投不完整：成功 {resent}，{unmatched} 条无法定位',
+    en: 'Resend incomplete: {resent} succeeded, {unmatched} could not be located',
+  },
+  'dlq.resendScanIncompleteSummary': {
+    zh: '重投不完整：成功 {resent}，{queues} 个队列无法扫描',
+    en: 'Resend incomplete: {resent} succeeded, {queues} queues could not be scanned',
   },
   'dlq.failureDetails': { zh: '失败消息明细', en: 'Failed message details' },
   'dlq.failureMessageId': { zh: '消息 ID', en: 'Message ID' },
@@ -1495,8 +1524,29 @@ const translations: Record<string, Record<Lang, string>> = {
   'sysAlerts.suppressionFilter': { zh: '通知抑制筛选', en: 'Filter by notification suppression' },
   'sysAlerts.allDeliveryStatuses': { zh: '全部投递状态', en: 'All delivery statuses' },
   'sysAlerts.notificationSuppressed': { zh: '通知已抑制', en: 'Notifications suppressed' },
+  'sysAlerts.labelCount': { zh: '标签 {count}', en: '{count} labels' },
+  'sysAlerts.colTitle': { zh: '告警标题', en: 'Alert' },
+  'sysAlerts.level': { zh: '级别', en: 'Level' },
+  'sysAlerts.status': { zh: '状态', en: 'Status' },
+  'sysAlerts.description': { zh: '描述', en: 'Description' },
+  'sysAlerts.labels': { zh: '标签', en: 'Labels' },
+  'sysAlerts.time': { zh: '时间', en: 'Time' },
+  'sysAlerts.batchAck': { zh: '批量确认（{count}）', en: 'Acknowledge {count}' },
+  'sysAlerts.batchHint': {
+    zh: '勾选后可批量确认；展开行查看确认信息、抑制原因、标签与投递/关联明细',
+    en: 'Select rows to acknowledge in batch; expand a row for ack info, suppression reason, labels and delivery/related details',
+  },
+  'sysAlerts.levelCountHint': {
+    zh: '当前页中该级别的告警条数（不是全库总数）',
+    en: 'Alerts of this level on the current page, not the server-wide total',
+  },
+  'queueBrowser.pulledTitle': { zh: '已拉取消息（{count}）', en: 'Pulled messages ({count})' },
+  'queueBrowser.closeEntry': { zh: '移除该条', en: 'Remove this entry' },
   'sysAlerts.notificationNotSuppressed': { zh: '未被抑制', en: 'Not suppressed' },
-  'sysAlerts.nativeCollectionEnabled': { zh: '原生采集已启用', en: 'Native collection enabled' },
+  'sysAlerts.collectorImplementations': {
+    zh: '采集器组件：集群 {cluster}，业务 {business}',
+    en: 'Collector components: {cluster} cluster, {business} business',
+  },
   'sysAlerts.domainCluster': { zh: '集群', en: 'Cluster' },
   'sysAlerts.domainBusiness': { zh: '业务', en: 'Business' },
   'sysAlerts.acknowledgedBy': { zh: '确认：{user}', en: 'Acknowledged by: {user}' },
@@ -1868,8 +1918,17 @@ const translations: Record<string, Record<Lang, string>> = {
   'ai.composer.modelLabel': { zh: '模型', en: 'Model' },
   'ai.composer.agentLabel': { zh: 'Agent', en: 'Agent' },
   'ai.composer.contextUsage': {
-    zh: '上下文约 {used} / {total} tokens（{percent}%）',
-    en: 'Context ≈ {used} / {total} tokens ({percent}%)',
+    zh: '上下文约 {used} / {total} tokens（{percent}%），剩余约 {remaining}；{source}',
+    en: 'Context ≈ {used} / {total} tokens ({percent}%), ≈ {remaining} left; {source}',
+  },
+  'ai.composer.contextRemaining': { zh: '剩 {remaining}', en: '{remaining} left' },
+  'ai.composer.contextSourceUsage': {
+    zh: '数字来自模型上报的 usage',
+    en: 'measured from the provider usage',
+  },
+  'ai.composer.contextSourceEstimate': {
+    zh: '按正文估算（模型未上报 usage）',
+    en: 'estimated from the transcript (the engine reported no usage)',
   },
   'ai.providerNotReady': { zh: 'AI 助手未启用', en: 'AI assistant is not enabled' },
   'ai.goToSettings': { zh: '去配置', en: 'Configure' },
@@ -1948,6 +2007,23 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'The tool input is outside the loaded event window',
   },
   'ai.tool.outputPending': { zh: '工具执行中，暂无结果', en: 'The tool is still running' },
+  'ai.tool.elapsedHint': {
+    zh: '本次工具调用的经过时间；重连到一个仍在执行的调用时从重连时刻起算',
+    en: 'Elapsed time of this tool call; counts from the reconnect when rejoining a call already in flight',
+  },
+  'ai.tool.mayTimeout': { zh: '可能超时', en: 'May be timing out' },
+  'ai.tool.outputRaw': { zh: '原文', en: 'Raw text' },
+  'ai.tool.outputStructured': { zh: '结构化视图', en: 'Structured view' },
+  'ai.queue.title': {
+    zh: '排队中 {count} 条（当前回答结束后按顺序发送）',
+    en: '{count} queued (sent in order when the current answer finishes)',
+  },
+  'ai.queue.first': { zh: '下一个发', en: 'Send next' },
+  'ai.queue.edit': { zh: '编辑', en: 'Edit' },
+  'ai.queue.remove': { zh: '删除', en: 'Remove' },
+  'ai.followups.title': { zh: '推荐追问', en: 'Suggested follow-ups' },
+  'ai.minimap.jump': { zh: '跳到第 {n} 条消息', en: 'Jump to message {n}' },
+  'layout.openMenu': { zh: '打开导航', en: 'Open navigation' },
   'ai.notice.warn': { zh: '注意', en: 'Notice' },
 
   // ─── AI page shell ───
@@ -2405,6 +2481,42 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Manage consumer-group subscriptions and progress, {count} groups in total',
   },
   'consumer.totalGroups': { zh: '共 {count} 个 Group', en: '{count} groups in total' },
+  'consumer.health.scoreLabel': { zh: '健康分:', en: 'Health score:' },
+  'consumer.health.scoreHint': {
+    zh: '100 起扣：每个 critical 问题 -25、warning -12，下限 0；扣分项见下方问题清单',
+    en: 'Starts at 100; each critical issue costs 25 and each warning 12, floored at 0. The deductions are the issues listed below',
+  },
+  'consumer.health.knownLagLabel': { zh: '已知堆积:', en: 'Known lag:' },
+  'consumer.health.knownLagHint': {
+    zh: '逐 Queue 位点差中可计算部分之和；不含不可用 Queue，与报告堆积口径不同',
+    en: 'Sum of per-queue lag over the queues whose offsets are computable; excludes unavailable queues, so its caliber differs from the reported lag',
+  },
+  'consumer.health.reportedLagLabel': { zh: '报告堆积:', en: 'Reported lag:' },
+  'consumer.health.reportedLagHint': {
+    zh: '消费组/Provider 上报的组维度总堆积；与已知堆积可能因不可用 Queue 或重试队列而不一致',
+    en: 'Group-level lag reported by the group or provider; may disagree with the known lag when some queues are unavailable or retry queues exist',
+  },
+  'consumer.health.queueProgressLabel': { zh: 'Queue 进度:', en: 'Queue progress:' },
+  'consumer.health.queueProgressValue': {
+    zh: '{queues} 个 Queue / {topics} 个 Topic',
+    en: '{queues} queues / {topics} topics',
+  },
+  'consumer.health.queueProgressHint': {
+    zh: '分子是诊断拿到的队列进度行数（观测到的 Queue 数），分母是订阅 Topic 去重数；不是完成率。核对覆盖是否完整请对照各 Topic 读队列数之和',
+    en: 'Numerator is the number of queue-progress rows observed, denominator the distinct subscribed topic count; it is not a completion ratio. Compare against the sum of read queues per topic to judge completeness',
+  },
+  'consumer.health.queueOffsetLabel': { zh: 'Queue 位点:', en: 'Queue offsets:' },
+  'consumer.health.queueOffsetHint': {
+    zh: '逐 Queue 堆积是否可计算；不可用通常因组离线或云端不提供 per-queue 位点',
+    en: 'Whether per-queue lag is computable; unavailable usually means the group is offline or the cloud exposes no per-queue offsets',
+  },
+  'consumer.health.offsetsOk': { zh: '均可计算', en: 'all computable' },
+  'consumer.health.offsetsUnknown': { zh: '{count} 个不可用', en: '{count} unavailable' },
+  'consumer.health.heartbeatLabel': { zh: '心跳:', en: 'Heartbeat:' },
+  'consumer.health.heartbeatHint': {
+    zh: '超过心跳阈值未上报的客户端数；阈值内显示正常',
+    en: 'Clients whose heartbeat exceeded the stale threshold; 正常 means none did',
+  },
   'consumer.importDone': { zh: '已导入 {created} 个 Group', en: 'Imported {created} groups' },
   'consumer.importDoneSkipped': {
     zh: '已导入 {created} 个 Group，{invalid} 行无效已跳过',
@@ -2729,22 +2841,31 @@ const translations: Record<string, Record<Lang, string>> = {
   'settings.deepseekOfficial': { zh: 'DeepSeek 官方', en: 'DeepSeek official' },
 
   // ─── Certs ───
+  'cert.pageTitle': { zh: 'K8s 证书配置', en: 'K8s Certificate Config' },
   'cert.clusterName': { zh: 'K8s 集群名称', en: 'K8s Cluster Name' },
-  'cert.certName': { zh: '证书名称', en: 'Certificate Name' },
+  'cert.k8sId': { zh: 'k8s ID', en: 'k8s ID' },
+  'cert.typeLabel': { zh: '类型', en: 'Type' },
   'cert.issuer': { zh: '签发者', en: 'Issuer' },
   'cert.expiryTime': { zh: '到期时间', en: 'Expiry Time' },
   'cert.daysRemaining': { zh: '剩余天数', en: 'Days Remaining' },
+  'cert.status': { zh: '状态', en: 'Status' },
+  'cert.action': { zh: '操作', en: 'Actions' },
   'cert.statusValid': { zh: '有效', en: 'Valid' },
   'cert.statusExpiring': { zh: '即将过期', en: 'Expiring' },
   'cert.statusExpired': { zh: '已过期', en: 'Expired' },
   'cert.confirmDelete': { zh: '确认删除', en: 'Confirm Delete' },
   'cert.deleteConfirm': {
-    zh: '确定要删除证书"{name}"吗？',
-    en: 'Are you sure to delete certificate "{name}"?',
+    zh: '确定要删除证书「{name}」吗？',
+    en: 'Are you sure you want to delete certificate "{name}"?',
   },
-  'cert.deleted': { zh: '证书已删除: {name}', en: 'Certificate deleted: {name}' },
-  'cert.addCert': { zh: '添加证书', en: 'Add Certificate' },
-  'cert.searchPlaceholder': { zh: '搜索证书名称或集群', en: 'Search cert name or cluster' },
+  'cert.deleted': { zh: '证书「{name}」已删除', en: 'Certificate "{name}" deleted' },
+  'cert.certCreated': { zh: '证书「{name}」已添加', en: 'Certificate "{name}" added' },
+  'cert.addCert': { zh: '新增证书', en: 'Add Certificate' },
+  'cert.add': { zh: '添加', en: 'Add' },
+  'cert.delete': { zh: '删除', en: 'Delete' },
+  'cert.cancel': { zh: '取消', en: 'Cancel' },
+  'cert.all': { zh: '全部', en: 'All' },
+  'cert.searchPlaceholder': { zh: '搜索 k8s ID 或集群', en: 'Search k8s ID or cluster' },
   'cert.editCert': { zh: '编辑证书 — {name}', en: 'Edit Certificate — {name}' },
   'cert.certUpdated': { zh: '证书「{name}」已更新', en: 'Certificate "{name}" updated' },
   'cert.namespace': { zh: '命名空间', en: 'Namespace' },
@@ -2752,6 +2873,32 @@ const translations: Record<string, Record<Lang, string>> = {
   'cert.namespacePlaceholder': { zh: '例：kube-system', en: 'e.g. kube-system' },
   'cert.featureWip': { zh: '添加证书功能开发中', en: 'Add certificate feature is in development' },
   'cert.totalCount': { zh: '共 {count} 个证书', en: '{count} certificates total' },
+  'cert.localMetadataTitle': {
+    zh: '当前证书记录仅保存为 Studio 本地配置',
+    en: 'Certificate records are only kept as Studio local configuration',
+  },
+  'cert.localMetadataDescription': {
+    zh: '这些操作不会连接 Kubernetes 集群或修改集群中的证书资源。请在集群侧管理实际证书。',
+    en: 'These operations do not connect to the Kubernetes cluster or modify certificate resources in it. Manage the real certificates on the cluster side.',
+  },
+  'cert.requestFailed': { zh: '请求失败，请稍后重试', en: 'Request failed, please retry later' },
+  'cert.k8sIdRequired': { zh: '请输入 k8s ID', en: 'Please enter the k8s ID' },
+  'cert.k8sIdPlaceholder': { zh: '例如：kubernetes-daily', en: 'e.g. kubernetes-daily' },
+  'cert.clusterNameRequired': { zh: '请输入集群名称', en: 'Please enter the cluster name' },
+  'cert.clusterNamePlaceholder': {
+    zh: '例如：kubernetes（120.26.99.191:6443）',
+    en: 'e.g. kubernetes (120.26.99.191:6443)',
+  },
+  'cert.certPemLabel': { zh: '证书内容（PEM）', en: 'Certificate Content (PEM)' },
+  'cert.certPemHelp': {
+    zh: '粘贴 PEM 格式证书，签发者、有效期与 SAN 将自动解析；留空时有效期按一年占位',
+    en: 'Paste the PEM certificate; issuer, validity and SANs are parsed automatically. Leave blank to default to a one-year validity.',
+  },
+  'cert.keyPemLabel': { zh: '私钥内容（PEM）', en: 'Private Key (PEM)' },
+  'cert.keyPemHelp': {
+    zh: '仅保存，不会在页面展示或返回',
+    en: 'Stored only; never displayed or returned in the UI',
+  },
 
   // ─── Cluster ───
   'cluster.brokerCount': { zh: 'Broker 数', en: 'Broker Count' },
@@ -2822,6 +2969,18 @@ const translations: Record<string, Record<Lang, string>> = {
   'cluster.flushDiskType': { zh: '刷盘方式', en: 'Flush Disk Type' },
   'cluster.syncFlush': { zh: '同步刷盘', en: 'Sync Flush' },
   'cluster.asyncFlush': { zh: '异步刷盘', en: 'Async Flush' },
+  'cluster.flushDiskRestartWarning': {
+    zh: '刷盘类型已修改：该配置需要重启 Broker 后才生效，下发后请安排滚动重启',
+    en: 'Flush disk type changed: it only takes effect after the Broker restarts, so plan a rolling restart after applying',
+  },
+  'cluster.flushDiskRestartConfirmTitle': {
+    zh: '刷盘类型修改需重启生效',
+    en: 'The flush disk change needs a restart',
+  },
+  'cluster.flushDiskRestartConfirmContent': {
+    zh: '本次修改包含 flushDiskType（{from} → {to}）。运行中的 Broker 会忽略该变更直到重启，确认继续下发？',
+    en: 'This update includes flushDiskType ({from} → {to}). A running Broker ignores it until restarted. Apply anyway?',
+  },
   'cluster.autoCreateTopic': { zh: '自动创建 Topic', en: 'Auto Create Topic' },
   'cluster.autoCreateSubGroup': { zh: '自动创建订阅组', en: 'Auto Create Subscription Group' },
   'cluster.maxMessageSize': { zh: '最大消息大小 (MB)', en: 'Max Message Size (MB)' },
@@ -2982,6 +3141,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'userMgmt.myAccount': { zh: '我的账号', en: 'My Account' },
   'userMgmt.changeMyPassword': { zh: '修改我的密码', en: 'Change My Password' },
   'userMgmt.sessionOverview': { zh: '会话概览', en: 'Session Overview' },
+  'userMgmt.sessionOverviewLoadFailed': {
+    zh: '加载会话概览失败',
+    en: 'Failed to load session overview',
+  },
   'userMgmt.activeSessions': { zh: '活跃会话', en: 'Active Sessions' },
   'userMgmt.activeUsers': { zh: '活跃用户', en: 'Active Users' },
   'userMgmt.expiringWithin': {
@@ -3926,6 +4089,92 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  // ─── ResourceModel（资源命名与归属：创建表单问号弹窗内的说明）───
+  'resourceModel.svgTopologyAria': {
+    zh: '生产与预发两套 nameserver 环境下 Topic 名字的归属示意',
+    en: 'Topic ownership across the production and staging NameServer environments',
+  },
+  'resourceModel.svgDomainProd': {
+    zh: 'nameserver 集群「生产」',
+    en: 'NameServer cluster "production"',
+  },
+  'resourceModel.svgDomainStaging': {
+    zh: 'nameserver 集群「预发」',
+    en: 'NameServer cluster "staging"',
+  },
+  'resourceModel.svgChipOrdersTrade': { zh: 'orders · 交易', en: 'orders · trade' },
+  'resourceModel.svgChipPaymentsTrade': { zh: 'payments · 交易', en: 'payments · trade' },
+  'resourceModel.svgChipOrdersLogistics': { zh: 'orders · 物流', en: 'orders · logistics' },
+  'resourceModel.svgChipOrdersStaging': { zh: 'orders · 预发', en: 'orders · staging' },
+  'resourceModel.svgMergeNote1': {
+    zh: '同一个名字用在生产的两个 broker 集群上时，路由会合并：',
+    en: 'One name on both production clusters merges routes:',
+  },
+  'resourceModel.svgMergeNote2': {
+    zh: '客户端的消息会在两个 broker 集群之间负载均衡',
+    en: 'clients load-balance messages across both clusters',
+  },
+  'resourceModel.svgInstTrade': { zh: '实例「交易」', en: 'Instance "trade"' },
+  'resourceModel.svgInstLogistics': { zh: '实例「物流」', en: 'Instance "logistics"' },
+  'resourceModel.svgInstStaging': { zh: '实例「预发」', en: 'Instance "staging"' },
+  'resourceModel.svgBoundNote': { zh: '创建时绑定，不可更改', en: 'fixed at creation' },
+  'resourceModel.svgConflictLine1': {
+    zh: '实例「物流」在 broker-a 上创建 orders',
+    en: 'Instance "logistics" creates orders on broker-a',
+  },
+  'resourceModel.svgConflictLine2': {
+    zh: 'Studio 会提示这个名字已经属于实例「交易」',
+    en: 'Studio reports the name belongs to Instance "trade"',
+  },
+  'resourceModel.svgCrossDomainNote': {
+    zh: '另一套环境，名字可以重复',
+    en: 'Names may repeat here',
+  },
+  'resourceModel.svgCrossDomainNote2': {
+    zh: '路由各自独立，不会合并',
+    en: 'routes stay separate, never merged',
+  },
+  'resourceModel.svgCrossLine1': {
+    zh: '预发的 orders 与生产的 orders 同名',
+    en: 'staging orders shares the name',
+  },
+  'resourceModel.svgCrossLine2': { zh: '两者各自独立，互不影响', en: 'The two stay independent' },
+
+  'resourceModel.rulesTitle': { zh: '归属规则', en: 'Ownership rules' },
+  'resourceModel.rule1': {
+    zh: '· 一个名字在同一个 broker 集群上只属于一个实例。如果它已经属于别的实例，创建时会告诉你它属于谁。',
+    en: '· A name belongs to one instance per broker cluster. If another instance already uses it, the create form tells you which one.',
+  },
+  'resourceModel.rule2': {
+    zh: '· 同一个实例再次创建同名资源，相当于按这次填写的队列数等参数更新它。',
+    en: '· Creating the same name again from the owning instance updates it with the queue counts and other settings you submit.',
+  },
+  'resourceModel.rule3': {
+    zh: '· 实例在创建时选定 nameserver 集群，之后不能更改；直连模式的接入地址必须始终指向该集群。',
+    en: '· An instance picks its NameServer cluster at creation and keeps it forever; a direct endpoint must always address that same cluster.',
+  },
+  'resourceModel.rule4': {
+    zh: '· 云实例（阿里云、腾讯云）各自是一套独立的环境，与开源实例之间不会出现名字冲突。',
+    en: '· Cloud instances (Alibaba Cloud, Tencent Cloud) are each an environment of their own and never collide with open-source instances.',
+  },
+
+  'resourceModel.helpAria': {
+    zh: '查看资源命名与归属规则',
+    en: 'Show the naming and ownership rules',
+  },
+  'resourceModel.modalTitle': {
+    zh: '资源命名与归属规则',
+    en: 'Naming and ownership rules',
+  },
+  'resourceModel.modalIntro': {
+    zh:
+      '一个名字在「nameserver 集群 + broker 集群」这个范围内唯一。实例在创建时选定 nameserver ' +
+      '集群，之后不能更改；云实例各自是一套独立的环境。',
+    en:
+      'A name is unique within one NameServer cluster plus one broker cluster. An instance picks its ' +
+      'NameServer cluster at creation and keeps it forever; each cloud instance is an environment of its own.',
+  },
+
   // ─── BrokerCluster ───
 };
 

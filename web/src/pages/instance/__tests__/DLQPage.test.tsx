@@ -504,12 +504,16 @@ describe('DLQ page', () => {
 
     const orderRow = (await screen.findByText('cg-order')).closest('tr');
     if (!orderRow) throw new Error('DLQ group row not found');
-    await user.click(within(orderRow).getByRole('button', { name: /消息明细/ }));
+    const orderDetailButton = within(orderRow).getByRole('button', { name: /消息明细/ });
+    await expectInteractive(orderDetailButton);
+    await user.click(orderDetailButton);
     expect(await screen.findByText('order-dead-letter-1')).toBeInTheDocument();
 
     const paymentRow = (await screen.findByText('-cg-"payment"')).closest('tr');
     if (!paymentRow) throw new Error('second DLQ group row not found');
-    await user.click(within(paymentRow).getByRole('button', { name: /消息明细/ }));
+    const paymentDetailButton = within(paymentRow).getByRole('button', { name: /消息明细/ });
+    await expectInteractive(paymentDetailButton);
+    await user.click(paymentDetailButton);
 
     // the drawer already belongs to the second group while its request is still open: the first
     // group's rows and the total that enables the export must be gone before the response lands
@@ -957,7 +961,10 @@ describe('DLQ page', () => {
 
     const orderRow = (await screen.findByText('cg-order')).closest('tr');
     if (!orderRow) throw new Error('DLQ group row not found');
-    await user.click(within(orderRow).getByRole('button', { name: '重投消息' }));
+    const resendButton = within(orderRow).getByRole('button', { name: '重投消息' });
+    // The row text can appear before antd removes the table's loading overlay.
+    await expectInteractive(resendButton);
+    await user.click(resendButton);
     await user.type(screen.getByPlaceholderText('输入目标 Topic 名称'), 'orders-retry');
     await user.click(screen.getByRole('button', { name: '确认重投' }));
 
@@ -1090,6 +1097,63 @@ describe('DLQ page', () => {
     expect(messageService.listDLQGroups).toHaveBeenCalledTimes(2);
   });
 
+  it('clears the search term when the selected instance changes', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('cg-order');
+    const searchInput = screen.getByPlaceholderText('搜索 Group 名称或 DLQ Topic');
+    await user.type(searchInput, 'ord');
+    await waitFor(() =>
+      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith('instance-1', 'ord', 1, 20),
+    );
+
+    await user.click(screen.getAllByRole('combobox')[0]);
+    await user.click(
+      await screen.findByText('instance-2', { selector: '.ant-select-item-option-content' }),
+    );
+
+    // The old term is meaningless for the new instance: it must not filter the
+    // next request, and the input has to show the cleared value.
+    await waitFor(() => {
+      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith('instance-2', undefined, 1, 20);
+    });
+    expect(searchInput).toHaveDisplayValue('');
+  });
+
+  it('keeps the search term when a completed retry reloads the same instance', async () => {
+    vi.mocked(messageService.resendDLQ).mockResolvedValue({
+      matched: 1,
+      resent: 1,
+      failed: 0,
+      outcome: 'SUCCESS',
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('cg-order');
+    const searchInput = screen.getByPlaceholderText('搜索 Group 名称或 DLQ Topic');
+    await user.type(searchInput, 'ord');
+    await waitFor(() =>
+      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith('instance-1', 'ord', 1, 20),
+    );
+
+    const orderRow = screen.getByText('cg-order').closest('tr');
+    if (!orderRow) throw new Error('DLQ group row not found');
+    await user.click(within(orderRow).getByRole('button', { name: '重投消息' }));
+    await user.type(screen.getByPlaceholderText('输入目标 Topic 名称'), 'orders-retry');
+    await user.click(screen.getByRole('button', { name: '确认重投' }));
+
+    // A finished retry bumps `refreshKey`, which is part of the reset scope key.
+    // That reload still targets the same instance, so the term the user is
+    // working with has to survive both the request and the input.
+    await waitFor(() => expect(messageService.resendDLQ).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith('instance-1', 'ord', 1, 20),
+    );
+    expect(searchInput).toHaveDisplayValue('ord');
+  });
+
   it('ignores a stale group response after changing instances', async () => {
     let resolveFirstInstance!: (page: DLQGroupPage) => void;
     vi.mocked(messageService.listDLQGroups)
@@ -1113,5 +1177,152 @@ describe('DLQ page', () => {
 
     expect(screen.queryByText('cg-order')).not.toBeInTheDocument();
     expect(screen.getByText('-cg-"payment"')).toBeInTheDocument();
+  });
+
+  it('warns instead of celebrating when the selected resend could not match every message', async () => {
+    vi.mocked(messageService.listDLQMessages).mockResolvedValue({
+      items: [
+        {
+          msgId: 'dlq-gone',
+          topic: '%DLQ%cg-order',
+          queueId: 0,
+          offset: 7,
+          storeTime: 1_700_000_000_000,
+          keys: null,
+          body: 'payload',
+          bodyBase64: null,
+          properties: {},
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    // The selection was captured before the messages were purged: the server reports matched=0,
+    // resent=0, failed=0 with outcome PARTIAL, and the old logic fell through to the success toast.
+    vi.mocked(messageService.resendDLQSelected).mockResolvedValue({
+      matched: 0,
+      resent: 0,
+      failed: 0,
+      outcome: 'PARTIAL',
+      scanIncomplete: false,
+      failedQueueCount: 0,
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    const orderRow = (await screen.findByText('cg-order')).closest('tr');
+    if (!orderRow) throw new Error('DLQ group row not found');
+    await user.click(within(orderRow).getByRole('button', { name: /消息明细/ }));
+    const messageRow = (await screen.findByText('dlq-gone')).closest('tr');
+    if (!messageRow) throw new Error('DLQ message row not found');
+    await user.click(within(messageRow).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: /批量重发选中/ }));
+
+    expect(await screen.findByText(/1 条无法定位/)).toBeInTheDocument();
+    expect(screen.queryByText(/重发完成：成功 0 条/)).not.toBeInTheDocument();
+  });
+
+  it('warns when a queue could not be scanned for the selected resend', async () => {
+    vi.mocked(messageService.listDLQMessages).mockResolvedValue({
+      items: [
+        {
+          msgId: 'dlq-scanned',
+          topic: '%DLQ%cg-order',
+          queueId: 0,
+          offset: 9,
+          storeTime: 1_700_000_000_000,
+          keys: null,
+          body: 'payload',
+          bodyBase64: null,
+          properties: {},
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    // The message matched, but one queue refused the scan: the caller has to hear that the result
+    // is incomplete, exactly like the time-range resend path reports it.
+    vi.mocked(messageService.resendDLQSelected).mockResolvedValue({
+      matched: 1,
+      resent: 0,
+      failed: 0,
+      outcome: 'PARTIAL',
+      scanIncomplete: true,
+      failedQueueCount: 2,
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    const orderRow = (await screen.findByText('cg-order')).closest('tr');
+    if (!orderRow) throw new Error('DLQ group row not found');
+    await user.click(within(orderRow).getByRole('button', { name: /消息明细/ }));
+    const messageRow = (await screen.findByText('dlq-scanned')).closest('tr');
+    if (!messageRow) throw new Error('DLQ message row not found');
+    await user.click(within(messageRow).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: /批量重发选中/ }));
+
+    expect(await screen.findByText(/2 个队列无法扫描/)).toBeInTheDocument();
+    expect(screen.queryByText(/重发完成：成功 0 条/)).not.toBeInTheDocument();
+  });
+
+  it('keeps the unmatched warning when the selected resend also reports failures', async () => {
+    vi.mocked(messageService.listDLQMessages).mockResolvedValue({
+      items: [
+        {
+          msgId: 'dlq-failed',
+          topic: '%DLQ%cg-order',
+          queueId: 0,
+          offset: 11,
+          storeTime: 1_700_000_000_000,
+          keys: null,
+          body: 'payload',
+          bodyBase64: null,
+          properties: {},
+        },
+        {
+          msgId: 'dlq-unmatched',
+          topic: '%DLQ%cg-order',
+          queueId: 1,
+          offset: 12,
+          storeTime: 1_700_000_000_000,
+          keys: null,
+          body: 'payload',
+          bodyBase64: null,
+          properties: {},
+        },
+      ],
+      total: 2,
+      page: 1,
+      size: 20,
+    });
+    // Both rows are selected: one fails outright and one can no longer be resolved. The failure
+    // summary reports only resent + failed, so the unmatched count still has to be surfaced —
+    // this is the path the bare `failed > 0` branch used to swallow.
+    vi.mocked(messageService.resendDLQSelected).mockResolvedValue({
+      matched: 1,
+      resent: 0,
+      failed: 1,
+      outcome: 'PARTIAL',
+      scanIncomplete: true,
+      failedQueueCount: 3,
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    const orderRow = (await screen.findByText('cg-order')).closest('tr');
+    if (!orderRow) throw new Error('DLQ group row not found');
+    await user.click(within(orderRow).getByRole('button', { name: /消息明细/ }));
+    for (const msgId of ['dlq-failed', 'dlq-unmatched']) {
+      const messageRow = (await screen.findByText(msgId)).closest('tr');
+      if (!messageRow) throw new Error(`DLQ message row not found: ${msgId}`);
+      await user.click(within(messageRow).getByRole('checkbox'));
+    }
+    await user.click(screen.getByRole('button', { name: /批量重发选中/ }));
+
+    expect(await screen.findByText(/重投部分完成：成功 0，失败 1/)).toBeInTheDocument();
+    expect(await screen.findByText(/1 条无法定位/)).toBeInTheDocument();
+    expect(screen.queryByText(/重发完成：成功 0 条/)).not.toBeInTheDocument();
   });
 });

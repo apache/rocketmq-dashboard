@@ -18,6 +18,7 @@ import type {
 } from '../api/metadata';
 import { mockConsumerGroups, mockQueueProgress, mockSubscriptions } from '../mock/consumers';
 import { formatOnlineInstances } from '../utils/consumerConnections';
+import { isLagAvailable } from '../utils/consumerLag';
 import { buildCsv, type CsvColumn } from '../utils/download';
 
 const consumerGroupsState = mockConsumerGroups as unknown as (ConsumerGroup & {
@@ -38,7 +39,10 @@ const GROUP_EXPORT_COLUMNS: CsvColumn<ConsumerGroup>[] = [
     header: 'Online Instances',
     value: (group) => formatOnlineInstances(group.onlineInstances, 'unknown'),
   },
-  { header: 'Total Lag', value: (group) => group.totalLag },
+  {
+    header: 'Total Lag',
+    value: (group) => (isLagAvailable(group.totalLag) ? group.totalLag : 'unknown'),
+  },
   { header: 'Delay Seconds', value: (group) => group.delaySeconds },
   { header: 'Subscription Data Type', value: (group) => group.subscriptionDataType },
   { header: 'Delivery Order Type', value: (group) => group.deliveryOrderType },
@@ -53,8 +57,8 @@ function copyConsumerInstance(
 ): ConsumerGroup['instances'][number] {
   return {
     ...instance,
-    subscribedTopics: [...instance.subscribedTopics],
-    topicLag: { ...instance.topicLag },
+    ...(instance.subscribedTopics ? { subscribedTopics: [...instance.subscribedTopics] } : {}),
+    ...(instance.topicLag ? { topicLag: { ...instance.topicLag } } : {}),
   };
 }
 
@@ -161,8 +165,11 @@ export async function listAllConsumerGroups(
     });
     groups.push(...result.items);
     const total = result.total ?? groups.length;
-    if (result.items.length === 0 || groups.length >= total) {
+    if (groups.length >= total) {
       return groups.map(normalizeConsumerGroup);
+    }
+    if (result.items.length === 0) {
+      throw new Error(`Incomplete consumer group list: received ${groups.length} of ${total}`);
     }
     page += 1;
   }

@@ -35,6 +35,15 @@ describe('estimateTokens', () => {
   it('returns zero for an empty delta', () => {
     expect(estimateTokens('')).toBe(0);
   });
+
+  it('counts supplementary characters as one character, not two', () => {
+    // Four rocket/arrows emoji are 8 UTF-16 code units but 4 characters, so the
+    // "one token per four other characters" rule must yield 1, not 2.
+    expect(estimateTokens('🚀🚀🚀🚀')).toBe(1);
+    // A supplementary character is not CJK for the pattern, and must not inflate the
+    // latin remainder either: 1 emoji + 4 latin chars = 5 chars = 1.25 tokens.
+    expect(estimateTokens('🚀abcd')).toBe(1.25);
+  });
 });
 
 describe('createStreamSpeedTracker', () => {
