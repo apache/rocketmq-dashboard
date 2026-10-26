@@ -266,7 +266,8 @@ delivery is running. Deployments with slower receivers can tune `studio.alerting
 Email delivery uses Spring's standard SMTP configuration. Configure `STUDIO_ALERTING_SMTP_HOST`,
 `STUDIO_ALERTING_SMTP_PORT`, `STUDIO_ALERTING_SMTP_USERNAME`, `STUDIO_ALERTING_SMTP_PASSWORD`,
 `STUDIO_ALERTING_SMTP_AUTH`, and `STUDIO_ALERTING_SMTP_STARTTLS`; recipient addresses are configured in
-General Settings. Missing SMTP configuration leaves the outbox row retryable and records the delivery failure.
+General Settings. Commas and legacy semicolons separate addresses outside quoted display names and
+parenthesized comments; separators inside these parts belong to the address. Missing SMTP configuration leaves the outbox row retryable and records the delivery failure.
 
 Socket timeouts are bounded by default and tunable through `STUDIO_ALERTING_SMTP_CONNECTION_TIMEOUT` (5000 ms),
 `STUDIO_ALERTING_SMTP_READ_TIMEOUT` (10000 ms) and `STUDIO_ALERTING_SMTP_WRITE_TIMEOUT` (10000 ms). They matter
