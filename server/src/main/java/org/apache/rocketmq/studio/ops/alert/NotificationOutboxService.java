@@ -8,6 +8,7 @@ package org.apache.rocketmq.studio.ops.alert;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
@@ -459,8 +460,10 @@ public class NotificationOutboxService {
 
     private static void validateDingTalkResponse(String response) {
         try {
-            JsonNode body = JSON.readTree(response);
-            if (body != null && body.path("errcode").canConvertToInt() && body.path("errcode").asInt() == 0) {
+            // Keep nonzero fractions intact: integer conversion truncates them, and
+            // double parsing can underflow a small nonzero error code to zero.
+            JsonNode body = JSON.reader().with(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS).readTree(response);
+            if (body != null && body.path("errcode").isNumber() && body.path("errcode").decimalValue().signum() == 0) {
                 return;
             }
             String error = body == null ? null : body.path("errmsg").asText(null);
