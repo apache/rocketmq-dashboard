@@ -844,6 +844,37 @@ describe('Consumer page', () => {
     expect(screen.queryByText('SQL')).not.toBeInTheDocument();
   });
 
+  it('shows measured aggregate backlog risk without queue observations Test', async () => {
+    const backloggedGroup: ConsumerGroup = {
+      ...group,
+      totalLag: 10_000,
+      consumeStatsAvailable: true,
+      instances: [],
+    };
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(groupPage([backloggedGroup]));
+    vi.mocked(consumerService.refreshConsumerGroup).mockResolvedValue(backloggedGroup);
+    vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
+      {
+        topic: 'remote-topic',
+        expression: '*',
+        type: 'TAG',
+        filterMode: 'TAG',
+        consistency: 'consistent',
+      },
+    ]);
+    vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    const healthTab = await screen.findByRole('tab', { name: /健康诊断/ });
+    await expectInteractive(healthTab);
+    await user.click(healthTab);
+    const panel = await screen.findByRole('tabpanel', { name: /健康诊断/ });
+    await waitFor(() => expect(consumerService.getConsumerProgress).toHaveBeenCalled());
+    expect(await within(panel).findByText('Group 总堆积过高')).toBeInTheDocument();
+    expect(within(panel).queryByText('未发现消费组健康风险')).not.toBeInTheDocument();
+  });
+
   it('shows group health diagnostics from subscriptions, progress and clients', async () => {
     const riskyGroup: ConsumerGroup = {
       ...group,

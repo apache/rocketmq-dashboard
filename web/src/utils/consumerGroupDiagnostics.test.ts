@@ -167,3 +167,62 @@ describe('consumer group diagnostics', () => {
     );
   });
 });
+
+describe('measured group lag without queue observations', () => {
+  it.each([1_000, 10_000])('retains measured aggregate risk at %i messages', (totalLag) => {
+    const diagnostics = analyzeConsumerGroupHealth(
+      group({ totalLag, consumeStatsAvailable: true, instances: [] }),
+      [subscription()],
+      [],
+      { now: '2026-08-31T12:01:00Z' },
+    );
+    expect(diagnostics.summary.reportedLag).toBe(totalLag);
+    expect(diagnostics.issues).toContainEqual(expect.objectContaining({
+      code: 'HIGH_GROUP_LAG',
+      severity: totalLag >= 10_000 ? 'critical' : 'warning',
+    }));
+  });
+});
+
+describe('independent backlog observations', () => {
+  it.each([
+    { totalLag: 10_000, queueLag: 17, expected: 'critical' },
+    { totalLag: 17, queueLag: 10_000, expected: 'critical' },
+    { totalLag: 10_000, queueLag: 10_000, expected: 'critical' },
+    { totalLag: -1, queueLag: 1_000, expected: 'warning' },
+  ])('uses positive evidence once for $totalLag / $queueLag', ({ totalLag, queueLag, expected }) => {
+    const diagnostics = analyzeConsumerGroupHealth(
+      group({ totalLag, consumeStatsAvailable: true, instances: [] }),
+      [subscription()],
+      [queue({ diffTotal: queueLag })],
+    );
+    const findings = diagnostics.issues.filter((item) => item.code === 'HIGH_GROUP_LAG');
+    expect(findings).toHaveLength(1);
+    expect(findings[0].severity).toBe(expected);
+  });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])('does not invent high backlog from %s', (totalLag) => {
+    const diagnostics = analyzeConsumerGroupHealth(group({ totalLag, instances: [] }), [subscription()], []);
+    expect(diagnostics.issues.some((item) => item.code === 'HIGH_GROUP_LAG')).toBe(false);
+  });
+
+  it('retains independent queue evidence when aggregate statistics are unavailable', () => {
+    const diagnostics = analyzeConsumerGroupHealth(
+      group({ totalLag: 10_000, consumeStatsAvailable: false, instances: [] }),
+      [subscription()],
+      [queue({ diffTotal: 1_000 })],
+    );
+    expect(diagnostics.issues.filter((item) => item.code === 'HIGH_GROUP_LAG')).toEqual([
+      expect.objectContaining({ severity: 'warning' }),
+    ]);
+  });
+
+  it('does not trust an explicitly unavailable aggregate', () => {
+    const diagnostics = analyzeConsumerGroupHealth(
+      group({ totalLag: 10_000, consumeStatsAvailable: false, instances: [] }),
+      [subscription()],
+      [],
+    );
+    expect(diagnostics.issues.some((item) => item.code === 'HIGH_GROUP_LAG')).toBe(false);
+  });
+});
