@@ -39,7 +39,14 @@ import java.util.regex.Pattern;
 public class MetricsService {
     private static final long MAX_RANGE_SECONDS = 31L * 24 * 60 * 60;
     private static final long MAX_SAMPLE_POINTS = 11_000L;
-    private static final Pattern NUMBER_PATTERN = Pattern.compile("\\d+(?:\\.\\d+)?");
+    /**
+     * Prometheus accepts a float literal for step — sign, a decimal point on either side of the
+     * digits, and an exponent — and {@link BigDecimal}'s grammar accepts exactly that, so the
+     * syntax gate stays aligned with the backends that receive the step unchanged. Positivity
+     * and the sample budget are enforced downstream on the parsed value.
+     */
+    private static final Pattern NUMBER_PATTERN =
+            Pattern.compile("[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?");
     private static final Pattern DURATION_PART_PATTERN = Pattern.compile("(\\d+)(ms|s|m|h|d|w|y)");
     private static final Map<String, BigDecimal> UNIT_TO_MILLIS = Map.of(
             "ms", BigDecimal.ONE,
