@@ -772,6 +772,52 @@ describe('DataSourceTab', () => {
     });
   });
 
+  it('creates each data source once per modal confirmation', async () => {
+    const pendingCreate = deferred<DataSource>();
+    vi.mocked(createDataSource).mockReturnValueOnce(pendingCreate.promise);
+
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+
+    await screen.findByText('Prometheus prod');
+    await user.click(screen.getByRole('button', { name: /添加数据源/ }));
+    await user.type(screen.getByLabelText('名称'), 'Prometheus dupe');
+    await selectAntdOption(user, '类型', 'Prometheus');
+    await user.type(screen.getByLabelText('URL'), 'http://prometheus:9090');
+
+    const confirmButton = screen.getByRole('button', { name: 'OK' });
+    fireEvent.click(confirmButton);
+    // The modal must lock with the first click: `submitting` alone flips only after
+    // validateFields resolves and React re-renders, so a second OK in that window would
+    // create the same data source twice.
+    expect(confirmButton).toHaveClass('ant-btn-loading');
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => expect(createDataSource).toHaveBeenCalledTimes(1));
+    expect(createDataSource).toHaveBeenCalledTimes(1);
+    expect(createDataSource).toHaveBeenCalledWith({
+      name: 'Prometheus dupe',
+      type: 'Prometheus',
+      url: 'http://prometheus:9090',
+      auth: 'None',
+    });
+
+    await act(async () => {
+      pendingCreate.resolve({
+        key: 'prom-dupe',
+        name: 'Prometheus dupe',
+        type: 'Prometheus',
+        url: 'http://prometheus:9090',
+        auth: 'None',
+      });
+      await pendingCreate.promise;
+    });
+  });
+
   it('offers Cortex and ARMS alongside the other backend types', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     render(

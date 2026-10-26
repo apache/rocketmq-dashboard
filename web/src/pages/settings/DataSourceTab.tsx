@@ -134,6 +134,10 @@ export const DataSourceTab = () => {
   const [testingKeys, setTestingKeys] = useState<Set<string>>(() => new Set());
   const modalTestSessionRef = useRef(0);
   const [submitting, setSubmitting] = useState(false);
+  // `submitting` only renders after validateFields resolves and React re-renders, so a second
+  // OK click inside that window would put the same create/update write on the wire twice.
+  // The ref locks the modal synchronously, before any await.
+  const submittingRef = useRef(false);
   const [exporting, setExporting] = useState(false);
   const requestSeqRef = useRef(0);
   const [deleteRefreshVersion, setDeleteRefreshVersion] = useState(0);
@@ -278,12 +282,14 @@ export const DataSourceTab = () => {
   };
 
   const handleSubmit = async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
     try {
       // Credentials are supplied per metrics query and are only used here by the
       // connection test. Saving metadata must not require re-entering them.
       const values = await dsForm.validateFields(saveFieldNames);
       const dataSourceValues = withoutSecrets(values);
-      setSubmitting(true);
       const saved = editingDataSource
         ? await updateDataSource({ ...editingDataSource, ...dataSourceValues })
         : await createDataSource(dataSourceValues);
@@ -305,6 +311,7 @@ export const DataSourceTab = () => {
       }
       message.error(t('settings.dataSourceSaveFailed'));
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
