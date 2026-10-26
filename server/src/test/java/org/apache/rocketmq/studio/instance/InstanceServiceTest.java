@@ -524,6 +524,7 @@ class InstanceServiceTest {
             releaseProvider.countDown();
         }
     }
+
     @Test
     void createInstanceShouldThrowWhenRequestIsNull() {
         assertThatThrownBy(() -> instanceService.createInstance(null))
