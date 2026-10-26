@@ -67,6 +67,7 @@ import type { Dayjs } from 'dayjs';
 
 import PageHeader from '../../components/PageHeader';
 import { InstanceSelect } from '../../components/InstanceSelect';
+import ResourceRuleHelp from '../../components/ResourceRuleHelp';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, PROTOCOL_MAP } from '../../constants/theme';
 import { formatDateTime, formatDelay, formatUtcDateTime } from '../../utils/format';
@@ -2488,7 +2489,12 @@ const ConsumerPageContent = ({
           }}
         >
           <Form.Item
-            label="Group 名称"
+            label={
+              <Space size={4}>
+                Group 名称
+                <ResourceRuleHelp />
+              </Space>
+            }
             name="name"
             rules={[
               { required: true, message: '请输入 Group 名称' },

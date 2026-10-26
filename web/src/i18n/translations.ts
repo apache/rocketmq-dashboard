@@ -41,7 +41,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'nav.ai': { zh: 'AI 交互', en: 'AI Chat' },
   'nav.settings': { zh: '设置', en: 'Settings' },
 
-  // ─── Common ───
+  // ─── Common ──
   'common.search': { zh: '搜索...', en: 'Search...' },
   'common.searchPlaceholder': { zh: '搜索页面、功能...', en: 'Search pages, features...' },
   'common.create': { zh: '新建', en: 'Create' },
@@ -463,6 +463,23 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'No {vendor} credentials. ',
   },
   'instance.addInSettings': { zh: '去设置中添加', en: 'Add in settings' },
+  'instance.nameserver': { zh: 'nameserver 集群', en: 'NameServer cluster' },
+  'instance.nameserverRequired': {
+    zh: '请选择 nameserver 集群',
+    en: 'Select a NameServer cluster',
+  },
+  'instance.nameserverExtra': {
+    zh: '实例的名字唯一性以该集群为边界，创建后不可更改',
+    en: 'Name uniqueness is scoped to this cluster and the binding cannot change later',
+  },
+  'instance.nameserverImmutable': {
+    zh: '创建时绑定，不可更改',
+    en: 'Bound at creation, cannot be changed',
+  },
+  'instance.selectNameserver': { zh: '选择 nameserver 集群', en: 'Select a NameServer cluster' },
+  'instance.noNameserver': { zh: '还没有注册 nameserver，', en: 'No NameServer registered yet, ' },
+  'instance.addInClusterPage': { zh: '去集群管理注册', en: 'register one in Cluster Management' },
+  'instance.nameserverColumn': { zh: 'nameserver 集群', en: 'NameServer cluster' },
   'instance.regionRequired': { zh: '请选择地域', en: 'Select a region' },
   'instance.selectRegion': { zh: '选择地域', en: 'Select a region' },
   'instance.cloudInstance': { zh: '云上实例', en: 'Cloud Instance' },
@@ -4072,6 +4089,92 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  // ─── ResourceModel（资源命名与归属：创建表单问号弹窗内的说明）───
+  'resourceModel.svgTopologyAria': {
+    zh: '生产与预发两套 nameserver 环境下 Topic 名字的归属示意',
+    en: 'Topic ownership across the production and staging NameServer environments',
+  },
+  'resourceModel.svgDomainProd': {
+    zh: 'nameserver 集群「生产」',
+    en: 'NameServer cluster "production"',
+  },
+  'resourceModel.svgDomainStaging': {
+    zh: 'nameserver 集群「预发」',
+    en: 'NameServer cluster "staging"',
+  },
+  'resourceModel.svgChipOrdersTrade': { zh: 'orders · 交易', en: 'orders · trade' },
+  'resourceModel.svgChipPaymentsTrade': { zh: 'payments · 交易', en: 'payments · trade' },
+  'resourceModel.svgChipOrdersLogistics': { zh: 'orders · 物流', en: 'orders · logistics' },
+  'resourceModel.svgChipOrdersStaging': { zh: 'orders · 预发', en: 'orders · staging' },
+  'resourceModel.svgMergeNote1': {
+    zh: '同一个名字用在生产的两个 broker 集群上时，路由会合并：',
+    en: 'One name on both production clusters merges routes:',
+  },
+  'resourceModel.svgMergeNote2': {
+    zh: '客户端的消息会在两个 broker 集群之间负载均衡',
+    en: 'clients load-balance messages across both clusters',
+  },
+  'resourceModel.svgInstTrade': { zh: '实例「交易」', en: 'Instance "trade"' },
+  'resourceModel.svgInstLogistics': { zh: '实例「物流」', en: 'Instance "logistics"' },
+  'resourceModel.svgInstStaging': { zh: '实例「预发」', en: 'Instance "staging"' },
+  'resourceModel.svgBoundNote': { zh: '创建时绑定，不可更改', en: 'fixed at creation' },
+  'resourceModel.svgConflictLine1': {
+    zh: '实例「物流」在 broker-a 上创建 orders',
+    en: 'Instance "logistics" creates orders on broker-a',
+  },
+  'resourceModel.svgConflictLine2': {
+    zh: 'Studio 会提示这个名字已经属于实例「交易」',
+    en: 'Studio reports the name belongs to Instance "trade"',
+  },
+  'resourceModel.svgCrossDomainNote': {
+    zh: '另一套环境，名字可以重复',
+    en: 'Names may repeat here',
+  },
+  'resourceModel.svgCrossDomainNote2': {
+    zh: '路由各自独立，不会合并',
+    en: 'routes stay separate, never merged',
+  },
+  'resourceModel.svgCrossLine1': {
+    zh: '预发的 orders 与生产的 orders 同名',
+    en: 'staging orders shares the name',
+  },
+  'resourceModel.svgCrossLine2': { zh: '两者各自独立，互不影响', en: 'The two stay independent' },
+
+  'resourceModel.rulesTitle': { zh: '归属规则', en: 'Ownership rules' },
+  'resourceModel.rule1': {
+    zh: '· 一个名字在同一个 broker 集群上只属于一个实例。如果它已经属于别的实例，创建时会告诉你它属于谁。',
+    en: '· A name belongs to one instance per broker cluster. If another instance already uses it, the create form tells you which one.',
+  },
+  'resourceModel.rule2': {
+    zh: '· 同一个实例再次创建同名资源，相当于按这次填写的队列数等参数更新它。',
+    en: '· Creating the same name again from the owning instance updates it with the queue counts and other settings you submit.',
+  },
+  'resourceModel.rule3': {
+    zh: '· 实例在创建时选定 nameserver 集群，之后不能更改；直连模式的接入地址必须始终指向该集群。',
+    en: '· An instance picks its NameServer cluster at creation and keeps it forever; a direct endpoint must always address that same cluster.',
+  },
+  'resourceModel.rule4': {
+    zh: '· 云实例（阿里云、腾讯云）各自是一套独立的环境，与开源实例之间不会出现名字冲突。',
+    en: '· Cloud instances (Alibaba Cloud, Tencent Cloud) are each an environment of their own and never collide with open-source instances.',
+  },
+
+  'resourceModel.helpAria': {
+    zh: '查看资源命名与归属规则',
+    en: 'Show the naming and ownership rules',
+  },
+  'resourceModel.modalTitle': {
+    zh: '资源命名与归属规则',
+    en: 'Naming and ownership rules',
+  },
+  'resourceModel.modalIntro': {
+    zh:
+      '一个名字在「nameserver 集群 + broker 集群」这个范围内唯一。实例在创建时选定 nameserver ' +
+      '集群，之后不能更改；云实例各自是一套独立的环境。',
+    en:
+      'A name is unique within one NameServer cluster plus one broker cluster. An instance picks its ' +
+      'NameServer cluster at creation and keeps it forever; each cloud instance is an environment of its own.',
+  },
+
   // ─── BrokerCluster ───
 };
 
