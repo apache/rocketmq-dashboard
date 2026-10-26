@@ -92,7 +92,7 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
         form.add("query", query.getMetric());
         form.add("start", Long.toString(query.getStart()));
         form.add("end", Long.toString(query.getEnd()));
-        form.add("step", query.getStep());
+        form.add("step", query.getStep().strip());
 
         log.debug("Querying {} range: start={}, end={}, step={}",
                 settings.getBackendType(), query.getStart(), query.getEnd(), query.getStep());
