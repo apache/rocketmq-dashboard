@@ -171,6 +171,9 @@ const ClusterPage = () => {
   const [initialFlushDisk, setInitialFlushDisk] = useState<string | null>(null);
   const [configPreviewLoading, setConfigPreviewLoading] = useState(false);
   const [configSubmitting, setConfigSubmitting] = useState(false);
+  // Synchronous lock: the OK button's spinner only renders after React re-renders, so a second
+  // confirmation click inside the validateFields await would start a duplicate write.
+  const configSubmittingRef = useRef(false);
   const [nsRegistry, setNsRegistry] = useState<NameserverRegistryEntry[]>([]);
   const [selectedProxy, setSelectedProxy] = useState<ProxyDetail | null>(null);
   const [nsConfigDiffState, setNsConfigDiffState] = useState<{
@@ -772,15 +775,32 @@ const ClusterPage = () => {
     }
   };
 
+  const releaseConfigSubmitLock = () => {
+    configSubmittingRef.current = false;
+    setConfigSubmitting(false);
+  };
+
   const handleConfigSubmit = async () => {
+    if (configSubmittingRef.current) return;
+    configSubmittingRef.current = true;
+    // Following the nsSubmittingRef convention from the nameserver dialog: the spinner on the
+    // OK button does not stop a click fired before React re-renders, so the lock has to be taken
+    // synchronously here, before any await. The write's finally releases it; the paths that never
+    // reach the write release it themselves, and cancelling the flush-disk confirmation releases
+    // it too so the dialog is not left dead.
+    setConfigSubmitting(true);
     let values: ClusterConfigFormValues;
     try {
       values = await configForm.validateFields();
     } catch {
+      releaseConfigSubmitLock();
       return;
     }
     const request = buildConfigUpdateRequest(values);
-    if (!request) return;
+    if (!request) {
+      releaseConfigSubmitLock();
+      return;
+    }
 
     // The flush disk type is the one knob here that a running Broker ignores until it restarts,
     // so applying it gets an explicit second confirmation naming the change — a silent success
@@ -793,6 +813,7 @@ const ClusterPage = () => {
           to: String(values.flushDiskType),
         }),
         onOk: () => applyConfigUpdate(request),
+        onCancel: releaseConfigSubmitLock,
       });
       return;
     }
@@ -802,11 +823,6 @@ const ClusterPage = () => {
   const applyConfigUpdate = async (
     request: NonNullable<ReturnType<typeof buildConfigUpdateRequest>>,
   ) => {
-    if (configSubmittingRef.current) return;
-    configSubmittingRef.current = true;
-    // Following the nsSubmittingRef convention from the nameserver dialog: the spinner on the
-    // OK button does not stop a click fired before React re-renders, and the preview must not
-    // read the cluster while a write is changing it.
     // A write can change only some Brokers. Any preview from before the write,
     // including one still in flight, no longer describes the cluster afterward.
     configPreviewRequest.invalidate();
@@ -1452,6 +1468,7 @@ const ClusterPage = () => {
                 size="small"
                 icon={<EyeOutlined />}
                 loading={configPreviewLoading}
+                disabled={configSubmitting}
                 onClick={() => void handleConfigPreview()}
               >
                 {t('cluster.configPreview')}
