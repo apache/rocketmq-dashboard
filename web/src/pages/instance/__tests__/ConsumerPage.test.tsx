@@ -543,6 +543,21 @@ describe('Consumer page', () => {
     confirmSpy.mockRestore();
   });
 
+  // 创建规则从「资源模型」页的判定流程图搬到了创建表单上的问号弹窗（用户约定 2026-10-26）。
+  it('explains the naming rule from a question mark on the create form', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    await screen.findByText('remote-cg');
+    const createButton = screen.getByRole('button', { name: '创建 Group' });
+    await waitFor(() => expect(createButton).toBeEnabled());
+    await user.click(createButton);
+    const dialog = await screen.findByRole('dialog');
+
+    await user.click(within(dialog).getByRole('button', { name: '查看资源命名与归属规则' }));
+    expect(await screen.findByText('创建时的归属规则')).toBeInTheDocument();
+  });
+
   it('submits the canonical global delivery order type', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {

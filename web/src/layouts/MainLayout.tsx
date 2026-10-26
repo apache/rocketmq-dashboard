@@ -40,6 +40,7 @@ import {
   PaperPlaneTilt,
   Notebook,
   Warning,
+  TreeStructure,
 } from '@phosphor-icons/react';
 import { useLang } from '../i18n/LangContext';
 import { useTheme } from '../theme/useTheme';
@@ -233,6 +234,11 @@ const MainLayout = () => {
             label: t('nav.alertDeliveries'),
           },
           { key: '/ops/dashboard', icon: <ChartBar size={16} />, label: t('nav.dashboard') },
+          {
+            key: '/studio/resource-model',
+            icon: <TreeStructure size={16} />,
+            label: t('nav.resourceModel'),
+          },
         ],
       },
       {
@@ -274,6 +280,7 @@ const MainLayout = () => {
       '/ai': t('nav.ai'),
       '/settings': t('nav.settings'),
       '/studio/users': t('userMgmt.title'),
+      '/studio/resource-model': t('nav.resourceModel'),
     }),
     [t],
   );

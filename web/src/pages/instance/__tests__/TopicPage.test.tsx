@@ -300,6 +300,18 @@ describe('TopicPage', () => {
     expect(within(dialog).getAllByText(/每个 Broker 节点写/).length).toBe(1);
   });
 
+  // 创建规则从「资源模型」页的判定流程图搬到了创建表单上的问号弹窗（用户约定 2026-10-26）。
+  it('explains the naming rule from a question mark on the create form', async () => {
+    renderWithProviders('/instance/instance-proxy-1/topic');
+    await screen.findByText('topic-01');
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+
+    await user.click(screen.getByRole('button', { name: /创建 Topic/ }));
+    const dialog = await screen.findByRole('dialog', { name: /创建 Topic/ });
+    await user.click(within(dialog).getByRole('button', { name: '查看资源命名与归属规则' }));
+    expect(await screen.findByText('创建时的归属规则')).toBeInTheDocument();
+  });
+
   it('gives each of the four row actions its own color', async () => {
     renderWithProviders('/instance/instance-proxy-1/topic');
     await screen.findByText('topic-01');

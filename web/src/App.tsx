@@ -55,6 +55,7 @@ const ProducerPage = lazy(() => import('./pages/studio/Producer'));
 const OpsPage = lazy(() => import('./pages/studio/Ops'));
 const AlertRuleAssetsPage = lazy(() => import('./pages/studio/AlertRuleAssets'));
 const UserManagementPage = lazy(() => import('./pages/studio/UserManagement'));
+const ResourceModelPage = lazy(() => import('./pages/studio/ResourceModel'));
 
 type AuthGateState = 'checking' | 'allowed' | 'denied' | 'error';
 
@@ -236,6 +237,7 @@ function App() {
               element={<Navigate to="/ops/business-alerts" replace />}
             />
             <Route path="studio/users" element={<UserManagementPage />} />
+            <Route path="studio/resource-model" element={<ResourceModelPage />} />
             <Route path="ops/alert-rule-templates" element={<AlertRuleAssetsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

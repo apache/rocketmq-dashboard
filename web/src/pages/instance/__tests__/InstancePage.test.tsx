@@ -21,6 +21,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as aliyunCatalogApi from '../../../api/aliyunCatalog';
+import * as clusterApi from '../../../api/cluster';
 import * as cloudCredentialApi from '../../../api/cloudCredential';
 import * as tencentCatalogApi from '../../../api/tencentCatalog';
 import type { CloudCredential, CloudCredentialPage } from '../../../api/cloudCredential';
@@ -39,6 +40,9 @@ vi.mock('../../../api/cloudCredential', () => ({
   listCloudCredentials: vi.fn(),
 }));
 
+vi.mock('../../../api/cluster', () => ({
+  listNameserverRegistry: vi.fn(),
+}));
 vi.mock('../../../api/tencentCatalog', () => ({
   listTencentInstances: vi.fn(),
   listTencentRegions: vi.fn(),
@@ -123,6 +127,19 @@ describe('InstancePage', () => {
     vi.mocked(aliyunCatalogApi.listAliyunInstances).mockResolvedValue([]);
     vi.mocked(tencentCatalogApi.listTencentRegions).mockResolvedValue([]);
     vi.mocked(tencentCatalogApi.listTencentInstances).mockResolvedValue([]);
+    vi.mocked(clusterApi.listNameserverRegistry).mockResolvedValue([
+      {
+        id: 7,
+        name: 'ns-test',
+        namesrvAddr: 'ns-test:9876',
+        k8sNamespace: null,
+        k8sId: null,
+        status: 'healthy',
+        description: null,
+        gmtCreate: null,
+        gmtModified: null,
+      },
+    ]);
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       instance(1, 'production-proxy'),
       instance(2, 'development-direct', 'DIRECT'),
@@ -351,6 +368,19 @@ describe('InstancePage', () => {
     expect(await screen.findByText('云凭据列表加载失败')).toBeInTheDocument();
     expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledTimes(1);
   });
+
+  // 创建规则从「资源模型」页的判定流程图搬到了创建表单上的问号弹窗（用户约定 2026-10-26）。
+  it('offersTheNamingRuleFromTheCreateInstanceFormTest', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('production-proxy');
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+
+    await user.click(within(dialog).getByRole('button', { name: '查看资源命名与归属规则' }));
+    expect(await screen.findByText('创建时的归属规则')).toBeInTheDocument();
+  });
+
   it('loads server-filtered results when the search or type changes', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
@@ -496,7 +526,7 @@ describe('InstancePage', () => {
     await user.click(screen.getByRole('button', { name: /添加实例/ }));
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText('实例 ID'), 'new-proxy');
-    const createTypeSelect = within(dialog).getByRole('combobox');
+    const createTypeSelect = within(dialog).getAllByRole('combobox')[1];
     fireEvent.mouseDown(createTypeSelect.parentElement!);
     const proxyOptions = await screen.findAllByText('Proxy Cluster 模式', {
       selector: '.ant-select-item-option-content',
@@ -532,7 +562,7 @@ describe('InstancePage', () => {
     await user.click(screen.getByRole('button', { name: /添加实例/ }));
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText('实例 ID'), 'new-proxy');
-    const createTypeSelect = within(dialog).getByRole('combobox');
+    const createTypeSelect = within(dialog).getAllByRole('combobox')[1];
     fireEvent.mouseDown(createTypeSelect.parentElement!);
     const proxyOptions = await screen.findAllByText('Proxy Cluster 模式', {
       selector: '.ant-select-item-option-content',
@@ -546,6 +576,7 @@ describe('InstancePage', () => {
         name: 'new-proxy',
         type: 'PROXY_CLUSTER',
         endpoint: 'proxy-new:8080',
+        nameserverId: 7,
       }),
     );
     expect(instanceService.listInstances).toHaveBeenLastCalledWith({
@@ -565,7 +596,7 @@ describe('InstancePage', () => {
     await user.click(screen.getByRole('button', { name: /添加实例/ }));
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText('实例 ID'), 'local-proxy');
-    const createTypeSelect = within(dialog).getByRole('combobox');
+    const createTypeSelect = within(dialog).getAllByRole('combobox')[1];
     fireEvent.mouseDown(createTypeSelect.parentElement!);
     await user.click(
       await screen.findByText('Proxy Local 模式', {
@@ -580,6 +611,7 @@ describe('InstancePage', () => {
         name: 'local-proxy',
         type: 'PROXY_LOCAL',
         endpoint: 'broker-proxy:8080',
+        nameserverId: 7,
       }),
     );
   });
@@ -697,7 +729,7 @@ describe('InstancePage', () => {
     await user.click(screen.getByRole('button', { name: /添加实例/ }));
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText('实例 ID'), 'new-proxy');
-    const createTypeSelect = within(dialog).getByRole('combobox');
+    const createTypeSelect = within(dialog).getAllByRole('combobox')[1];
     fireEvent.mouseDown(createTypeSelect.parentElement!);
     const proxyOptions = await screen.findAllByText('Proxy Cluster 模式', {
       selector: '.ant-select-item-option-content',

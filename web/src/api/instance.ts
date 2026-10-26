@@ -42,6 +42,8 @@ export interface Instance {
   adminCredentialRef?: string;
   regionId?: string;
   regionName?: string;
+  nameserverId?: number | null;
+  nameserverName?: string | null;
   topicCount: number;
   consumerGroupCount: number;
   resourceCountsAvailable?: boolean;
@@ -59,6 +61,7 @@ export interface CreateInstanceRequest {
   credentialId?: number;
   adminCredentialRef?: string;
   regionId?: string;
+  nameserverId?: number;
 }
 
 export interface UpdateInstanceRequest {
