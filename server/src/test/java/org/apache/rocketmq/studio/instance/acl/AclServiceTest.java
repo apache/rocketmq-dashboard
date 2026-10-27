@@ -55,6 +55,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.TimeZone;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -1475,6 +1476,90 @@ class AclServiceTest {
         assertThat(aclCaptor.getValue().getPolicies().get(0).getEntries())
                 .extracting(AclInfo.PolicyEntryInfo::getResource)
                 .containsExactly("Topic:topic-a", "*");
+    }
+
+    @Test
+    void pushAclToBrokerPushesEveryRulePageOfAnAccountTest() throws Exception {
+        // The push used to read a single repository page (200 rules) and drop the rest while
+        // reporting success, leaving the broker under-authorized for any account with more rules.
+        AclUserVO stored = AclUserVO.builder()
+                .id(21L)
+                .username("orders")
+                .secretKey("secret-5")
+                .build();
+        List<AclRuleVO> rules = IntStream.range(0, 250)
+                .mapToObj(index -> AclRuleVO.builder().principal("user:orders")
+                        .resource("topic-" + index)
+                        .resourceType("Topic").resourcePattern("LITERAL")
+                        .actions(List.of("PUB")).decision("ALLOW").build())
+                .toList();
+        when(aclRepository.findUsers()).thenReturn(List.of(stored));
+        when(aclRepository.findUserById(21L)).thenReturn(Optional.of(stored));
+        when(aclRepository.findRulePage("user:orders", null, null, null, null, 1, 200))
+                .thenReturn(PageResult.of(rules.subList(0, 200), 250, 1, 200));
+        when(aclRepository.findRulePage("user:orders", null, null, null, null, 2, 200))
+                .thenReturn(PageResult.of(rules.subList(200, 250), 250, 2, 200));
+        when(clusterProvider.discoverBrokers("instance-a", null)).thenReturn(List.of());
+
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster("10.0.0.1:10911"));
+        when(admin.getUser("10.0.0.1:10911", "orders"))
+                .thenThrow(new MQBrokerException(207, "no such user"));
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(call -> call.getArgument(1, MqAdminExtFactory.AdminAction.class).apply(admin));
+
+        PushAclToBrokerResultVO result = aclService.pushAclToBroker("instance-a");
+
+        assertThat(result.getPushed()).isEqualTo(1);
+        PushAclToBrokerResultVO.AccountOutcome account = result.getAccounts().get(0);
+        assertThat(account.getPolicyCount()).isEqualTo(250);
+        assertThat(account.getSkipped()).isEmpty();
+        verify(aclRepository).findRulePage("user:orders", null, null, null, null, 2, 200);
+        ArgumentCaptor<AclInfo> aclCaptor = ArgumentCaptor.forClass(AclInfo.class);
+        verify(admin).updateAcl(eq("10.0.0.1:10911"), aclCaptor.capture());
+        assertThat(aclCaptor.getValue().getPolicies().get(0).getEntries())
+                .hasSize(250)
+                .extracting(AclInfo.PolicyEntryInfo::getResource)
+                .contains("Topic:topic-249");
+    }
+
+    @Test
+    void pushAclToBrokerStopsPagingWhenARepositoryPageComesBackEmptyTest() throws Exception {
+        // The page walk is bounded by the repository total, but a total that overstates what the
+        // repository can actually serve must not spin: an empty page ends the walk.
+        AclUserVO stored = AclUserVO.builder()
+                .id(22L)
+                .username("orders")
+                .secretKey("secret-6")
+                .build();
+        List<AclRuleVO> rules = IntStream.range(0, 250)
+                .mapToObj(index -> AclRuleVO.builder().principal("user:orders")
+                        .resource("topic-" + index)
+                        .resourceType("Topic").resourcePattern("LITERAL")
+                        .actions(List.of("PUB")).decision("ALLOW").build())
+                .toList();
+        when(aclRepository.findUsers()).thenReturn(List.of(stored));
+        when(aclRepository.findUserById(22L)).thenReturn(Optional.of(stored));
+        when(aclRepository.findRulePage("user:orders", null, null, null, null, 1, 200))
+                .thenReturn(PageResult.of(rules.subList(0, 200), 500, 1, 200));
+        when(aclRepository.findRulePage("user:orders", null, null, null, null, 2, 200))
+                .thenReturn(PageResult.of(rules.subList(200, 250), 500, 2, 200));
+        when(aclRepository.findRulePage("user:orders", null, null, null, null, 3, 200))
+                .thenReturn(PageResult.empty(3, 200));
+        when(clusterProvider.discoverBrokers("instance-a", null)).thenReturn(List.of());
+
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster("10.0.0.1:10911"));
+        when(admin.getUser("10.0.0.1:10911", "orders"))
+                .thenThrow(new MQBrokerException(207, "no such user"));
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(call -> call.getArgument(1, MqAdminExtFactory.AdminAction.class).apply(admin));
+
+        PushAclToBrokerResultVO result = aclService.pushAclToBroker("instance-a");
+
+        assertThat(result.getPushed()).isEqualTo(1);
+        assertThat(result.getAccounts().get(0).getPolicyCount()).isEqualTo(250);
+        verify(aclRepository).findRulePage("user:orders", null, null, null, null, 3, 200);
     }
 
     @Test

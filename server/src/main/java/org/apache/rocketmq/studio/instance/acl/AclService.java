@@ -67,7 +67,8 @@ public class AclService {
     private static final String USER_TYPE_NORMAL = "Normal";
     private static final String USER_STATUS_NORMAL = "Normal";
     private static final String POLICY_TYPE_CUSTOM = "Custom";
-    private static final int MAX_RULES_PER_ACCOUNT = 200;
+    /** Page size for reading an account's stored rules while building the broker push. */
+    private static final int PUSH_RULE_PAGE_SIZE = 200;
 
     /**
      * Minimum broker version that supports ACL 2.0 (the RocketMQ {@code auth} module with
@@ -344,7 +345,9 @@ public class AclService {
     /**
      * Pushes every stored ACL account to the master brokers of an Apache instance through the
      * broker's ACL 2.0 admin API (account credentials via createUser/updateUser, policies via
-     * updateAcl). The push is additive: each account is upserted under its {@code User:<username>}
+     * updateAcl). Every stored rule of an account is read, walking all repository pages, so an
+     * account with more rules than one page is still pushed in full. The push is additive: each
+     * account is upserted under its {@code User:<username>}
      * subject and accounts the dashboard does not know about stay on the broker. Rules the broker
      * model cannot express (non-literal resource patterns, actions outside PUB/SUB/GET) are
      * reported per account instead of failing the whole push, and every account/broker pair keeps
@@ -361,10 +364,8 @@ public class AclService {
         List<PushPlan> plans = new ArrayList<>();
         for (AclUserVO user : aclRepository.findUsers()) {
             AclUserVO credentials = getUserCredentials(String.valueOf(user.getId()), instanceId);
-            List<AclRuleVO> rules = aclRepository.findRulePage(
-                    principalOf(user.getUsername()), null, null, null, null, 1,
-                    MAX_RULES_PER_ACCOUNT).getItems();
-            plans.add(buildPushPlan(user, credentials, rules));
+            plans.add(buildPushPlan(user, credentials,
+                    collectPushRules(principalOf(user.getUsername()))));
         }
         log.info("Pushing {} ACL account(s) of instance {} to the brokers", plans.size(), instanceId);
         return runtimeAdminClientResolver.execute(instanceId, admin -> {
@@ -420,6 +421,25 @@ public class AclService {
 
     private record PushPlan(String username, String subject, UserInfo userInfo,
                             List<AclInfo.PolicyEntryInfo> entries, List<String> skipped) {
+    }
+
+    /**
+     * Reads every stored rule of an account, walking all repository pages. The push used to read a
+     * single page and drop whatever came after it while still reporting success, which left the
+     * broker under-authorized whenever an account held more rules than one page.
+     */
+    private List<AclRuleVO> collectPushRules(String principal) {
+        List<AclRuleVO> rules = new ArrayList<>();
+        for (int page = 1; ; page++) {
+            PageResult<AclRuleVO> batch = aclRepository.findRulePage(principal, null, null, null,
+                    null, page, PUSH_RULE_PAGE_SIZE);
+            rules.addAll(batch.getItems());
+            // The walk ends once the reported total is covered; an empty page also ends it so a
+            // total that overstates what the repository serves cannot spin the loop.
+            if (batch.getItems().isEmpty() || rules.size() >= batch.getTotal()) {
+                return rules;
+            }
+        }
     }
 
     private PushPlan buildPushPlan(AclUserVO user, AclUserVO credentials, List<AclRuleVO> rules) {
