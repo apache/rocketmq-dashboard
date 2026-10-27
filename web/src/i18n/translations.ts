@@ -3111,6 +3111,26 @@ const translations: Record<string, Record<Lang, string>> = {
       'messages; range 1-43200 (30 days). Adjust it later from the LiteTopic page, where Extend TTL ' +
       'takes milliseconds (60000 ms = 1 minute)',
   },
+  'topic.liteDeleteWarning': {
+    zh: '「{name}」是 Lite 父主题，删除会在 Broker 上级联删除它的全部子 Lite 会话。',
+    en:
+      '"{name}" is a Lite parent topic; deleting it cascades to all of its child Lite ' +
+      'sessions on the broker.',
+  },
+  'topic.liteDeleteCounts': {
+    zh: '子 Lite 会话 {topicCount} 个，绑定消费组 {consumerCount} 个。',
+    en: '{topicCount} child Lite sessions, {consumerCount} bound consumer groups.',
+  },
+  'topic.liteDeleteGroupNote': {
+    zh: '绑定消费组不会被删除。',
+    en: 'Bound consumer groups are not deleted.',
+  },
+  'topic.liteDeleteBatchWarning': {
+    zh: '选中项包含 {count} 个 Lite 父主题，删除会在 Broker 上级联删除它们的全部子 Lite 会话。',
+    en:
+      'The selection includes {count} Lite parent topics; deleting them cascades to all of ' +
+      'their child Lite sessions on the broker.',
+  },
   'topic.remarkPlaceholder': {
     zh: '可选，描述 Topic 用途',
     en: 'Optional, describe the topic purpose',
@@ -4049,6 +4069,16 @@ const translations: Record<string, Record<Lang, string>> = {
   'liteTopic.instanceRequired': {
     zh: '请选择 Topic 所属的实例',
     en: 'Select the instance that owns the topic',
+  },
+  'liteTopic.deleteParent': { zh: '删除', en: 'Delete' },
+  'liteTopic.deleteModalTitle': { zh: '删除 Lite 父主题', en: 'Delete Lite Parent' },
+  'liteTopic.deleteSuccess': {
+    zh: 'Lite 父主题「{name}」已删除',
+    en: 'Lite parent "{name}" deleted',
+  },
+  'liteTopic.deleteFailed': {
+    zh: '删除 Lite 父主题失败，请稍后重试',
+    en: 'Failed to delete the Lite parent topic',
   },
   'liteTopic.sessionStatus': { zh: '会话状态', en: 'Session Status' },
   'liteTopic.creationCount': { zh: '创建数量', en: 'Creation Count' },

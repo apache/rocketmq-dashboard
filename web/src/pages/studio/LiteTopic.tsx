@@ -43,6 +43,7 @@ import {
   ClockCounterClockwise,
   Eye,
   PencilSimple,
+  Trash,
   Gauge,
   Info,
   DownloadSimple,
@@ -63,7 +64,9 @@ import {
   type LiteTopicSession,
 } from '../../api/liteTopic';
 import { listInstances, supportsApacheRuntime, type Instance } from '../../api/instance';
+import { deleteTopic } from '../../services/topicService';
 import { buildCsv, downloadCsv, localExportDateStamp, type CsvColumn } from '../../utils/download';
+import { tableScrollX } from '../../utils/table';
 
 const formatDuration = (ms: number | undefined | null): string => {
   if (ms == null) return '-';
@@ -180,12 +183,21 @@ const LiteTopicPage: React.FC = () => {
   const [ttlInstanceOptions, setTtlInstanceOptions] = useState<Instance[]>([]);
   const [ttlInstancesLoading, setTtlInstancesLoading] = useState(false);
 
+  // Delete Lite parent modal
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<LiteTopicItem | null>(null);
+  const [deleteInstanceId, setDeleteInstanceId] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteInstanceOptions, setDeleteInstanceOptions] = useState<Instance[]>([]);
+  const [deleteInstancesLoading, setDeleteInstancesLoading] = useState(false);
+
   const mountedRef = useRef(false);
   const bootstrapRequestId = useRef(0);
   const displayRequestId = useRef(0);
   const displayQueryRef = useRef<{ pattern?: string; namespace?: string }>({});
   const sessionRequestId = useRef(0);
   const ttlInstanceRequestId = useRef(0);
+  const deleteInstanceRequestId = useRef(0);
 
   useEffect(() => {
     messageRef.current = message;
@@ -405,6 +417,54 @@ const LiteTopicPage: React.FC = () => {
     }
   };
 
+  const handleOpenDelete = (record: LiteTopicItem) => {
+    const requestId = ++deleteInstanceRequestId.current;
+    setDeleteTarget(record);
+    setDeleteInstanceId('');
+    setDeleteModalOpen(true);
+    setDeleteInstanceOptions([]);
+    // The delete is ownership-checked against the owning instance, so the modal needs
+    // the Apache-vendor instance list; auto-select when only one candidate exists.
+    setDeleteInstancesLoading(true);
+    listInstances()
+      .then((instances) => {
+        if (requestId !== deleteInstanceRequestId.current) return;
+        const candidates = instances.filter(supportsApacheRuntime);
+        setDeleteInstanceOptions(candidates);
+        setDeleteInstanceId((current) =>
+          current === '' && candidates.length === 1 ? String(candidates[0].name) : current,
+        );
+      })
+      .catch(() => {
+        if (requestId === deleteInstanceRequestId.current) setDeleteInstanceOptions([]);
+      })
+      .finally(() => {
+        if (requestId === deleteInstanceRequestId.current) setDeleteInstancesLoading(false);
+      });
+  };
+
+  const closeDelete = () => {
+    ++deleteInstanceRequestId.current;
+    setDeleteModalOpen(false);
+    setDeleteInstancesLoading(false);
+  };
+
+  const handleDeleteParent = async () => {
+    const target = deleteTarget;
+    if (!target?.topicPattern || !deleteInstanceId) return;
+    setDeleteLoading(true);
+    try {
+      await deleteTopic(target.topicPattern, deleteInstanceId);
+      message.success(t('liteTopic.deleteSuccess', { name: target.topicPattern }));
+      closeDelete();
+      void fetchData(patternFilter || undefined, namespaceFilter || undefined);
+    } catch {
+      message.error(t('liteTopic.deleteFailed'));
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   const getTTLStatusTag = (status: string | undefined) => {
     const map: Record<string, { color: string; label: string }> = {
       ACTIVE: { color: 'success', label: t('liteTopic.active') },
@@ -457,6 +517,7 @@ const LiteTopicPage: React.FC = () => {
       title: t('liteTopic.namespace'),
       dataIndex: 'namespace',
       key: 'namespace',
+      width: 110,
       render: (text: string) => text || '-',
       ellipsis: true,
     },
@@ -464,6 +525,7 @@ const LiteTopicPage: React.FC = () => {
       title: t('liteTopic.pattern'),
       dataIndex: 'topicPattern',
       key: 'topicPattern',
+      width: 160,
       render: (text: string) => <span style={{ fontWeight: 500, color: '#1677ff' }}>{text}</span>,
       ellipsis: true,
     },
@@ -471,6 +533,7 @@ const LiteTopicPage: React.FC = () => {
       title: t('liteTopic.topicCount'),
       dataIndex: 'topicCount',
       key: 'topicCount',
+      width: 110,
       render: (val: number) => <span style={{ fontWeight: 500 }}>{val ?? '-'}</span>,
       sorter: (a, b) => (a.topicCount || 0) - (b.topicCount || 0),
     },
@@ -478,6 +541,7 @@ const LiteTopicPage: React.FC = () => {
       title: t('liteTopic.consumers'),
       dataIndex: 'consumerCount',
       key: 'consumerCount',
+      width: 110,
       render: (val: number) => <span style={{ fontWeight: 500 }}>{val ?? '-'}</span>,
       sorter: (a, b) => (a.consumerCount || 0) - (b.consumerCount || 0),
     },
@@ -485,6 +549,7 @@ const LiteTopicPage: React.FC = () => {
       title: t('liteTopic.backlog'),
       dataIndex: 'totalBacklog',
       key: 'totalBacklog',
+      width: 110,
       render: (val: number) => {
         const num = val ?? 0;
         const color = num > 10000 ? '#ff4d4f' : num > 0 ? '#fa8c16' : '#52c41a';
@@ -496,6 +561,7 @@ const LiteTopicPage: React.FC = () => {
       title: t('liteTopic.avgTtl'),
       dataIndex: 'averageTTL',
       key: 'averageTTL',
+      width: 110,
       render: (val: number) => formatDuration(val),
       sorter: (a, b, sortOrder?: 'ascend' | 'descend' | null) =>
         unmeasuredSortKey(a.averageTTL, sortOrder) - unmeasuredSortKey(b.averageTTL, sortOrder),
@@ -504,12 +570,14 @@ const LiteTopicPage: React.FC = () => {
       title: t('liteTopic.status'),
       dataIndex: 'ttlStatus',
       key: 'ttlStatus',
+      width: 90,
       render: (status: string) => getTTLStatusTag(status),
     },
     {
       title: t('liteTopic.lastActive'),
       dataIndex: 'lastActiveTime',
       key: 'lastActiveTime',
+      width: 150,
       render: (val: number) => formatTime(val),
       sorter: (a, b, sortOrder?: 'ascend' | 'descend' | null) =>
         unmeasuredSortKey(a.lastActiveTime, sortOrder) -
@@ -518,6 +586,7 @@ const LiteTopicPage: React.FC = () => {
     {
       title: t('liteTopic.actions'),
       key: 'action',
+      width: 290,
       render: (_: unknown, record: LiteTopicItem) => (
         <Space size="small">
           <Button
@@ -544,6 +613,18 @@ const LiteTopicPage: React.FC = () => {
               {t('liteTopic.viewSessions')}
             </Button>
           )}
+          <Button
+            type="link"
+            size="small"
+            danger
+            icon={<Trash size={14} />}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleOpenDelete(record);
+            }}
+          >
+            {t('liteTopic.deleteParent')}
+          </Button>
         </Space>
       ),
     },
@@ -958,6 +1039,7 @@ const LiteTopicPage: React.FC = () => {
       <Card variant="borderless" style={{ borderRadius: 8 }}>
         <Table
           columns={columns}
+          scroll={{ x: tableScrollX(columns) }}
           dataSource={filteredTopicList}
           rowKey={(record) => JSON.stringify([record.namespace, record.topicPattern])}
           loading={loading}
@@ -1059,6 +1141,51 @@ const LiteTopicPage: React.FC = () => {
               value={extendTTLForm.newTTL}
               onChange={(val) => setExtendTTLForm({ ...extendTTLForm, newTTL: val })}
               min={1}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Delete Lite parent Modal */}
+      <Modal
+        title={t('liteTopic.deleteModalTitle')}
+        open={deleteModalOpen}
+        onOk={handleDeleteParent}
+        onCancel={closeDelete}
+        confirmLoading={deleteLoading}
+        okText={t('liteTopic.deleteParent')}
+        okButtonProps={{ danger: true }}
+        cancelText={t('common.cancel')}
+        destroyOnHidden
+      >
+        <Form layout="vertical" style={{ marginTop: 16 }}>
+          <div style={{ marginBottom: 16 }}>
+            <div>{t('topic.liteDeleteWarning', { name: deleteTarget?.topicPattern || '' })}</div>
+            {deleteTarget?.topicCount != null && deleteTarget?.consumerCount != null && (
+              <div>
+                {t('topic.liteDeleteCounts', {
+                  topicCount: deleteTarget.topicCount,
+                  consumerCount: deleteTarget.consumerCount,
+                })}
+              </div>
+            )}
+            <div>{t('topic.liteDeleteGroupNote')}</div>
+          </div>
+          <Form.Item
+            label={t('liteTopic.instance')}
+            required
+            validateStatus={deleteInstanceId ? '' : 'error'}
+            help={deleteInstanceId ? undefined : t('liteTopic.instanceRequired')}
+          >
+            <Select
+              value={deleteInstanceId || undefined}
+              onChange={(val) => setDeleteInstanceId(val)}
+              loading={deleteInstancesLoading}
+              placeholder={t('liteTopic.instancePlaceholder')}
+              options={deleteInstanceOptions.map((instance) => ({
+                value: String(instance.name),
+                label: instance.name,
+              }))}
             />
           </Form.Item>
         </Form>

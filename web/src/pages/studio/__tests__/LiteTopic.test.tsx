@@ -16,7 +16,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { App } from 'antd';
@@ -35,6 +35,10 @@ const apiMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../api/liteTopic', () => apiMocks);
+
+const topicServiceMocks = vi.hoisted(() => ({ deleteTopic: vi.fn() }));
+
+vi.mock('../../../services/topicService', () => topicServiceMocks);
 
 const instanceApiMocks = vi.hoisted(() => ({ listInstances: vi.fn() }));
 
@@ -287,19 +291,21 @@ describe('LiteTopic Page', () => {
     const indexOf = (pattern: string) => rowOrder().findIndex((text) => text.includes(pattern));
 
     // Ascending: a value the column renders as '-' must not sort as a zero TTL, which would
-    // place that pattern as if it had expired before every measurable one.
-    await user.click(screen.getByText('平均 TTL'));
+    // place that pattern as if it had expired before every measurable one. The click goes
+    // through the columnheader role: with scroll.x the table keeps an aria-hidden measure row
+    // that clones each header cell, so a plain text query would match twice.
+    await user.click(screen.getByRole('columnheader', { name: '平均 TTL' }));
     await waitFor(() =>
       expect(indexOf('aaa-unmeasured-*')).toBeGreaterThan(indexOf('zzz-measured-*')),
     );
 
     // The unset value stays last in the descending direction too instead of swapping to the top.
-    await user.click(screen.getByText('平均 TTL'));
+    await user.click(screen.getByRole('columnheader', { name: '平均 TTL' }));
     await waitFor(() =>
       expect(indexOf('aaa-unmeasured-*')).toBeGreaterThan(indexOf('zzz-measured-*')),
     );
 
-    await user.click(screen.getByText('最后活跃'));
+    await user.click(screen.getByRole('columnheader', { name: '最后活跃' }));
     await waitFor(() =>
       expect(indexOf('aaa-unmeasured-*')).toBeGreaterThan(indexOf('zzz-measured-*')),
     );
@@ -883,5 +889,71 @@ describe('LiteTopic Page', () => {
     expect(screen.queryByText('old-*')).not.toBeInTheDocument();
     expect(screen.queryByText('90 / 100')).not.toBeInTheDocument();
     expect(await screen.findByText('获取配额信息失败')).toBeInTheDocument();
+  });
+
+  it('shows the child-session blast radius before deleting a Lite parent', async () => {
+    // Deleting the parent cascades to every child Lite session on the broker, so the
+    // confirm dialog has to show the row's counts before the parent is gone.
+    apiMocks.queryLiteTopicList.mockResolvedValue([
+      {
+        namespace: 'default',
+        topicPattern: 'order-*',
+        topicCount: 5,
+        consumerCount: 2,
+        sessionIds: ['session-1'],
+      },
+    ]);
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('order-*');
+    await user.click(await screen.findByRole('button', { name: /删\s*除/ }));
+
+    expect(await screen.findByText(/级联删除/)).toBeInTheDocument();
+    expect(screen.getByText(/子 Lite 会话 5 个/)).toBeInTheDocument();
+    expect(screen.getByText(/绑定消费组 2 个/)).toBeInTheDocument();
+    expect(screen.getByText(/绑定消费组不会被删除/)).toBeInTheDocument();
+  });
+
+  it('sends the owning instance id when deleting a Lite parent', async () => {
+    // The delete is ownership-checked against the owning instance; mirror the
+    // Extend-TTL modal: only Apache-vendor instances are candidates, and a sole
+    // candidate is auto-selected.
+    instanceApiMocks.listInstances.mockResolvedValue([
+      { id: 1, name: 'apache-main', vendor: 'APACHE' },
+      { id: 2, name: 'cloud-1', vendor: 'ALIYUN' },
+    ] as unknown as Instance[]);
+    apiMocks.queryLiteTopicList.mockResolvedValue([
+      {
+        namespace: 'default',
+        topicPattern: 'order-*',
+        topicCount: 5,
+        consumerCount: 2,
+        sessionIds: ['session-1'],
+      },
+    ]);
+    topicServiceMocks.deleteTopic.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('order-*');
+    await user.click(await screen.findByRole('button', { name: /删\s*除/ }));
+
+    await waitFor(() => {
+      expect(topicServiceMocks.deleteTopic).not.toHaveBeenCalled();
+      const selected = document.querySelector('.ant-modal .ant-select-selection-item');
+      expect(selected?.textContent).toBe('apache-main');
+    });
+
+    const dialog = (await screen.findByText('删除 Lite 父主题')).closest(
+      '.ant-modal',
+    ) as HTMLElement;
+    await user.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+
+    await waitFor(() => {
+      expect(topicServiceMocks.deleteTopic).toHaveBeenCalledWith('order-*', 'apache-main');
+    });
+    // The list reloads once after the parent is deleted.
+    await waitFor(() => expect(apiMocks.queryLiteTopicList.mock.calls.length).toBeGreaterThan(1));
   });
 });
