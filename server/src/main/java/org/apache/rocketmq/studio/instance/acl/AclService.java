@@ -246,8 +246,9 @@ public class AclService {
         user.setGmtCreate(LocalDateTime.now());
         AclUserVO saved = aclRepository.saveUser(user);
         auditUser("CREATE_ACL_USER", saved);
-        // Write paths echo the stored row (the stored server-local base); only the read paths
-        // that the pages render convert to the UTC wire.
+        // The create path is not patched into the visible table (the page reloads instead), so
+        // it echoes the stored server-local base; only responses the pages patch in — like
+        // updateUser above — convert to the UTC wire.
         return saved;
     }
 
@@ -279,7 +280,9 @@ public class AclService {
         AclUserVO saved = aclRepository.replaceUser(merged)
                 .orElseThrow(() -> new BusinessException(404, "ACL user not found: " + user.getId()));
         auditUser("UPDATE_ACL_USER", saved);
-        return maskCredentials(saved);
+        // The page patches the visible row straight from this response before the read-path
+        // reload lands, so it has to carry the read-path wire shape: masked, UTC-stamped.
+        return forWire(saved);
     }
 
     public void deleteUser(String id, String instanceId) {
@@ -759,7 +762,7 @@ public class AclService {
         };
     }
 
-    /** Write paths echo the stored row, so masking must not also shift its creation stamp. */
+    /** The create path echoes the stored row, so masking must not also shift its creation stamp. */
     private AclUserVO maskCredentials(AclUserVO user) {
         return AclUserVO.builder()
                 .id(user.getId())
