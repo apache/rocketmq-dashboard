@@ -1044,7 +1044,8 @@ const ConsumerPageContent = ({
       key: 'totalLag',
       width: 96,
       align: 'right',
-      sorter: (a, b) => lagSortValue(a.totalLag) - lagSortValue(b.totalLag),
+      sorter: (a, b, sortOrder) =>
+        lagSortValue(a.totalLag, sortOrder) - lagSortValue(b.totalLag, sortOrder),
       render: (lag: number) =>
         isLagAvailable(lag) ? (
           lag.toLocaleString()
