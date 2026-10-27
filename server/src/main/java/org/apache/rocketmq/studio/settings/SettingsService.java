@@ -22,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.cluster.metrics.MetricsBackendType;
+import org.apache.rocketmq.studio.cluster.metrics.PrometheusQueryUri;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.util.UrlHostGuard;
@@ -46,6 +47,7 @@ import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
@@ -397,7 +399,7 @@ public class SettingsService {
             if (!StringUtils.hasText(request.getUsername()) || !StringUtils.hasText(request.getPassword())) {
                 throw new IllegalArgumentException("Basic authentication requires username and password");
             }
-            headers.setBasicAuth(request.getUsername().trim(), request.getPassword());
+            headers.setBasicAuth(request.getUsername().trim(), request.getPassword(), StandardCharsets.UTF_8);
             return;
         }
         if (AUTH_BEARER.equals(auth)) {
@@ -421,12 +423,7 @@ public class SettingsService {
         if (!StringUtils.hasText(baseUrl)) {
             throw new IllegalArgumentException("Data source URL is required");
         }
-        String normalized = baseUrl.strip();
-        while (normalized.endsWith("/")) {
-            normalized = normalized.substring(0, normalized.length() - 1);
-        }
-
-        URI baseUri = new URI(normalized);
+        URI baseUri = new URI(baseUrl.strip());
         if (!"http".equalsIgnoreCase(baseUri.getScheme()) && !"https".equalsIgnoreCase(baseUri.getScheme())) {
             throw new IllegalArgumentException("Data source URL must start with http:// or https://");
         }
@@ -435,9 +432,9 @@ public class SettingsService {
                     "Data source URL must not point to a local or private address");
         }
         String queryPath = backend.getInstantQueryPath();
-        return UriComponentsBuilder.fromUriString(normalized + queryPath)
+        return UriComponentsBuilder.fromUri(PrometheusQueryUri.appendPath(baseUri, queryPath))
                 .queryParam("query", PROMETHEUS_TEST_QUERY)
-                .build()
+                .build(true)
                 .toUri();
     }
 
