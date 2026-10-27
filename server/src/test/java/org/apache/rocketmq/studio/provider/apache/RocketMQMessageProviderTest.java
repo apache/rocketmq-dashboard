@@ -680,6 +680,128 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void queryByTopicReportsTruncationWhenTheTailScanBudgetClampsTheWindowTest() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        // The window is wider than the guarded tail budget, so the scan plan clamps the
+        // start forward and older messages inside the window are never read.
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 0L, 0L,
+                2 * TOPIC_TAIL_SCAN_BUDGET, 2 * TOPIC_TAIL_SCAN_BUDGET);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(TOPIC_TAIL_SCAN_BUDGET), eq(32)))
+                .thenReturn(new PullResult(PullStatus.NO_NEW_MSG, 2 * TOPIC_TAIL_SCAN_BUDGET, 0L,
+                        2 * TOPIC_TAIL_SCAN_BUDGET, List.of()));
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                "instance-a", "TopicA", null, null, null, 100L, 200L);
+
+        assertThat(result.mayBeTruncated()).isTrue();
+        assertThat(result.messages()).isEmpty();
+    }
+
+    @Test
+    void queryByTopicReportsTruncationWhenThePullBudgetIsExhaustedTest() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 0L, 0L, 200L, 200L);
+        when(pullConsumer.pull(eq(queue), eq("*"), anyLong(), eq(32))).thenAnswer(invocation ->
+                new PullResult(PullStatus.NO_MATCHED_MSG, (Long) invocation.getArgument(2) + 1,
+                        0L, 200L, null));
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                "instance-a", "TopicA", null, null, null, 100L, 200L);
+
+        assertThat(result.mayBeTruncated()).isTrue();
+        assertThat(result.messages()).isEmpty();
+    }
+
+    @Test
+    void queryByTopicReportsTruncationWhenAQueueReturnsNoPullResultTest() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 10L, 10L, 50L, 50L);
+        when(pullConsumer.pull(queue, "*", 10L, 32)).thenReturn(null);
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                "instance-a", "TopicA", null, null, null, 100L, 200L);
+
+        assertThat(result.mayBeTruncated()).isTrue();
+        assertThat(result.messages()).isEmpty();
+    }
+
+    @Test
+    void queryByTopicReportsTruncationWhenPullOffsetDoesNotAdvanceTest() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        PullResult stalledResult = new PullResult(PullStatus.FOUND, 10, 0, 10, List.of());
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 10L, 10L, 11L, 11L);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(10L), eq(32))).thenReturn(stalledResult);
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                "instance-a", "TopicA", null, null, null, 100L, 200L);
+
+        assertThat(result.mayBeTruncated()).isTrue();
+        assertThat(result.messages()).isEmpty();
+    }
+
+    @Test
+    void queryByTopicReportsTruncationWhenOffsetIllegalKeepsRecurringTest() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 10L, 10L, 50L, 50L);
+        for (long offset : new long[] {10L, 11L, 12L, 13L}) {
+            when(pullConsumer.pull(queue, "*", offset, 32))
+                    .thenReturn(new PullResult(PullStatus.OFFSET_ILLEGAL, offset + 1, 0L, 50L, null));
+        }
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                "instance-a", "TopicA", null, null, null, 100L, 200L);
+
+        assertThat(result.mayBeTruncated()).isTrue();
+        assertThat(result.messages()).isEmpty();
+    }
+
+    @Test
+    void queryByTopicReportsTruncationWhenTheResultBudgetDropsOlderCandidatesTest() throws Exception {
+        MessageQueue olderQueue = new MessageQueue("TopicA", "broker-a", 0);
+        MessageQueue newerQueue = new MessageQueue("TopicA", "broker-a", 1);
+        PullResult olderPullResult = new PullResult(PullStatus.FOUND, 11L, 10L, 10L,
+                IntStream.range(0, 200)
+                        .mapToObj(index -> topicMessage("older-" + index, 150L))
+                        .toList());
+        PullResult newerPullResult = new PullResult(PullStatus.FOUND, 11L, 10L, 10L,
+                List.of(topicMessage("newer", 250L)));
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA"))
+                .thenReturn(new LinkedHashSet<>(List.of(olderQueue, newerQueue)));
+        mockQueueWindow(pullConsumer, olderQueue, 100L, 300L, 10L, 10L, 11L, 11L);
+        mockQueueWindow(pullConsumer, newerQueue, 100L, 300L, 10L, 10L, 11L, 11L);
+        when(pullConsumer.pull(olderQueue, "*", 10L, 32)).thenReturn(olderPullResult);
+        when(pullConsumer.pull(newerQueue, "*", 10L, 32)).thenReturn(newerPullResult);
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                "instance-a", "TopicA", null, null, null, 100L, 300L);
+
+        assertThat(result.mayBeTruncated()).isTrue();
+        assertThat(result.messages()).hasSize(200);
+    }
+
+    @Test
+    void queryByTopicStaysCompleteWhenTheScannedWindowIsExhaustedTest() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 10L, 10L, 50L, 50L);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(10L), eq(32)))
+                .thenReturn(new PullResult(PullStatus.FOUND, 50L, 10L, 50L,
+                        List.of(topicMessage("msg-in-window", 150L))));
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                "instance-a", "TopicA", null, null, null, 100L, 200L);
+
+        assertThat(result.mayBeTruncated()).isFalse();
+        assertThat(result.messages()).extracting(MessageRecordVO::getMsgId)
+                .containsExactly("msg-in-window");
+    }
+
+    @Test
     void queryByTopicSortsMessagesAcrossQueuesNewestFirst() throws Exception {
         MessageQueue olderQueue = new MessageQueue("TopicA", "broker-a", 0);
         MessageQueue newerQueue = new MessageQueue("TopicA", "broker-a", 1);
