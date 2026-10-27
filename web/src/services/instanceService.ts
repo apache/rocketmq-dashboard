@@ -32,7 +32,14 @@ function invalidateInflightListRequests(): void {
 
 export function listInstances(query: InstanceQuery = {}): Promise<Instance[]> {
   const mockMode = isMockMode();
-  const key = JSON.stringify([mockMode, query.type ?? null, query.search?.trim() || null]);
+  // withCounts is part of the identity: a counts-free response must never satisfy a caller that
+  // renders the counts (it would show zeros), nor the other way round.
+  const key = JSON.stringify([
+    mockMode,
+    query.type ?? null,
+    query.search?.trim() || null,
+    query.withCounts ?? false,
+  ]);
   const inflight = inflightListRequests.get(key);
   if (inflight) {
     return inflight.then((items) => items.map(copyInstance));
@@ -79,6 +86,10 @@ export async function getInstanceCapabilities(instanceId: string): Promise<Insta
 
 export async function createInstance(data: CreateInstanceRequest): Promise<Instance> {
   if (isMockMode()) {
+    const requestedName = data.name?.trim();
+    if (requestedName && mockInstances.some((instance) => instance.name.trim() === requestedName)) {
+      throw new Error(`Instance name already exists: ${requestedName}`);
+    }
     const cloudManaged = data.vendor === 'ALIYUN' || data.vendor === 'TENCENT';
     const instance: Instance = {
       id: Date.now(),

@@ -19,6 +19,8 @@ package org.apache.rocketmq.studio.ops.alert;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Arrays;
 import java.util.List;
@@ -28,6 +30,28 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AlertRuleRequestDTOTest {
 
     private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+
+    @ParameterizedTest
+    @ValueSource(strings = {"1s1m", "1m1m", "1ms1s", "1h2d", "1y1y", "", "1.5m"})
+    void durationShouldRejectUnorderedOrRepeatedUnitsTest(String duration) {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("High Lag");
+        request.setDuration(duration);
+
+        assertThat(validator.validate(request))
+                .extracting(violation -> violation.getPropertyPath().toString())
+                .containsExactly("duration");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"1y2w3d4h5m6s7ms", "1h30m", "2w3d", "500ms", "0s", "1m1ms"})
+    void durationShouldAcceptDescendingUnitsTest(String duration) {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("High Lag");
+        request.setDuration(duration);
+
+        assertThat(validator.validate(request)).isEmpty();
+    }
 
     @Test
     void channelsShouldRejectNullBlankAndUnsupportedElementsTest() {

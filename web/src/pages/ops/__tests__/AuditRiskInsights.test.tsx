@@ -99,6 +99,21 @@ beforeAll(() => {
 });
 
 describe('AuditRiskInsights', () => {
+  it('does not present failures in distinct global and unscoped resources as one hotspot Test', () => {
+    renderPanel({
+      summary: { ...summary, total: 2, successful: 0, failed: 2, partial: 0 },
+      records: [
+        { ...records[0], id: 1, clusterId: null },
+        { ...records[1], id: 2, clusterId: 'global' },
+      ],
+    });
+    const targetCard = screen.getByText('重复异常对象').closest('.ant-card')!;
+    expect(
+      within(targetCard as HTMLElement).getByText('当前页没有重复失败或部分成功的对象'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/orders 在当前页出现 2 次失败或部分成功/u)).not.toBeInTheDocument();
+  });
+
   it('renders risk findings without restating the summary rates', () => {
     renderPanel();
 

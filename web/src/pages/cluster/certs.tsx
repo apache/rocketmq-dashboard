@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Table,
   Tag,
@@ -29,21 +29,21 @@ import {
   Modal,
   Form,
   Popconfirm,
+  Alert,
   message,
 } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import type { K8sCertInfo } from '../../api/cluster';
 import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../services/clusterService';
 import { describeThrownMessage } from '../../utils/apiError';
-import { formatUtcDateTime } from '../../utils/format';
+import { formatUtcDateTime, parseUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
+import { useLang } from '../../i18n/LangContext';
 
 const { Text } = Typography;
-
-const DEFAULT_REQUEST_ERROR = '请求失败，请稍后重试';
 
 interface CreateCertFormValues {
   k8sId: string;
@@ -54,8 +54,12 @@ interface CreateCertFormValues {
 }
 
 const K8sCertsPage = () => {
+  const { t } = useLang();
+  const tRef = useRef(t);
   const [certs, setCerts] = useState<K8sCertInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [certSearch, setCertSearch] = useState('');
   const [certTypeFilter, setCertTypeFilter] = useState<string>('');
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -63,14 +67,30 @@ const K8sCertsPage = () => {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [createForm] = Form.useForm<CreateCertFormValues>();
 
+  // The load effect below must run once per mount and per explicit reload, while the translation
+  // function changes identity with the display language. Holding it in a ref keeps the failure
+  // message localized without re-issuing the certificate list request on every language switch
+  // (same pattern as pages/cluster/index.tsx).
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
+
   useEffect(() => {
     let active = true;
     listK8sCerts()
       .then((data) => {
-        if (active) setCerts(data);
+        if (active) {
+          setCerts(data);
+          setLoadFailed(false);
+        }
       })
       .catch((error: unknown) => {
-        if (active) message.error(describeThrownMessage(error) || DEFAULT_REQUEST_ERROR);
+        // Keeping the previous rows and marking the failure: clearing the list made a failed read
+        // look like a cluster without certificates, and nothing offered a retry.
+        if (active) {
+          message.error(describeThrownMessage(error) || tRef.current('cert.requestFailed'));
+          setLoadFailed(true);
+        }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -78,7 +98,7 @@ const K8sCertsPage = () => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [reloadNonce]);
 
   const normalizedCertSearch = certSearch.trim().toLowerCase();
   const filteredCerts = certs.filter((cert) => {
@@ -108,11 +128,11 @@ const K8sCertsPage = () => {
         keyPem: values.keyPem?.trim() || undefined,
       });
       setCerts((previous) => [...previous, created]);
-      message.success(`证书「${created.k8sId}」已添加`);
+      message.success(t('cert.certCreated', { name: created.k8sId }));
       setCreateModalOpen(false);
       createForm.resetFields();
     } catch (error: unknown) {
-      message.error(describeThrownMessage(error) || DEFAULT_REQUEST_ERROR);
+      message.error(describeThrownMessage(error) || t('cert.requestFailed'));
     } finally {
       setCreating(false);
     }
@@ -123,9 +143,9 @@ const K8sCertsPage = () => {
     try {
       await deleteK8sCert(cert.id);
       setCerts((previous) => previous.filter((item) => item.id !== cert.id));
-      message.success(`证书「${cert.k8sId}」已删除`);
+      message.success(t('cert.deleted', { name: cert.k8sId }));
     } catch (error: unknown) {
-      message.error(describeThrownMessage(error) || DEFAULT_REQUEST_ERROR);
+      message.error(describeThrownMessage(error) || t('cert.requestFailed'));
     } finally {
       setDeletingId(null);
     }
@@ -133,7 +153,7 @@ const K8sCertsPage = () => {
 
   const certColumns: ColumnsType<K8sCertInfo> = [
     {
-      title: 'K8s 集群名称',
+      title: t('cert.clusterName'),
       dataIndex: 'cluster',
       key: 'cluster',
       width: 260,
@@ -142,17 +162,26 @@ const K8sCertsPage = () => {
       render: (name: string) => <Text strong>{name}</Text>,
     },
     {
-      title: 'k8s ID',
+      title: t('cert.k8sId'),
       dataIndex: 'k8sId',
       key: 'k8sId',
       width: 240,
       sorter: (a, b) => a.k8sId.localeCompare(b.k8sId),
+      // Cluster IDs are long opaque strings; wrapping them made rows unevenly tall, so the cell
+      // truncates with the full value in a tooltip and copyable keeps it retrievable verbatim.
+      ellipsis: { showTitle: false },
       render: (k8sId: string) => (
-        <Text style={{ fontFamily: 'monospace', fontSize: 14 }}>{k8sId}</Text>
+        <Text
+          copyable={{ text: k8sId }}
+          ellipsis={{ tooltip: k8sId }}
+          style={{ fontFamily: 'monospace', fontSize: 14, display: 'block' }}
+        >
+          {k8sId}
+        </Text>
       ),
     },
     {
-      title: '类型',
+      title: t('cert.typeLabel'),
       dataIndex: 'type',
       key: 'type',
       width: 110,
@@ -167,7 +196,7 @@ const K8sCertsPage = () => {
       },
     },
     {
-      title: '签发者',
+      title: t('cert.issuer'),
       dataIndex: 'issuer',
       key: 'issuer',
       // 唯一可伸展列：余量集中在此，其余列保持声明宽度。选签发者而非集群名，
@@ -178,19 +207,19 @@ const K8sCertsPage = () => {
       ellipsis: true,
     },
     {
-      title: '到期时间',
+      title: t('cert.expiryTime'),
       dataIndex: 'notAfter',
       key: 'notAfter',
-      width: 170,
-      sorter: (a, b) => (Date.parse(a.notAfter ?? '') || 0) - (Date.parse(b.notAfter ?? '') || 0),
+      width: 156,
+      sorter: (a, b) => (parseUtcDateTime(a.notAfter) || 0) - (parseUtcDateTime(b.notAfter) || 0),
       render: (iso: string | null) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
-          {formatUtcDateTime(iso, undefined, { zone: false })}
+          {formatUtcDateTime(iso)}
         </Text>
       ),
     },
     {
-      title: '剩余天数',
+      title: t('cert.daysRemaining'),
       dataIndex: 'daysRemaining',
       key: 'daysRemaining',
       width: 100,
@@ -207,32 +236,32 @@ const K8sCertsPage = () => {
       ),
     },
     {
-      title: '状态',
+      title: t('cert.status'),
       dataIndex: 'status',
       key: 'status',
       width: 100,
       sorter: (a, b) => (a.status ?? '').localeCompare(b.status ?? ''),
       render: (status: string | null) => {
         const map: Record<string, { color: string; label: string }> = {
-          valid: { color: 'green', label: '有效' },
-          expiring: { color: 'orange', label: '即将过期' },
-          expired: { color: 'red', label: '已过期' },
+          valid: { color: 'green', label: t('cert.statusValid') },
+          expiring: { color: 'orange', label: t('cert.statusExpiring') },
+          expired: { color: 'red', label: t('cert.statusExpired') },
         };
         const cfg = status ? (map[status] ?? { color: 'default', label: status }) : null;
         return cfg ? <Tag color={cfg.color}>{cfg.label}</Tag> : '-';
       },
     },
     {
-      title: '操作',
+      title: t('cert.action'),
       key: 'action',
       width: 90,
       fixed: 'right',
       render: (_: unknown, cert: K8sCertInfo) => (
         <Popconfirm
-          title={`确定要删除证书「${cert.k8sId}」吗？`}
+          title={t('cert.deleteConfirm', { name: cert.k8sId })}
           onConfirm={() => void handleDelete(cert)}
-          okText="删除"
-          cancelText="取消"
+          okText={t('cert.delete')}
+          cancelText={t('cert.cancel')}
           okButtonProps={{ danger: true }}
         >
           <Button
@@ -241,7 +270,7 @@ const K8sCertsPage = () => {
             style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
             loading={deletingId === cert.id}
           >
-            删除
+            {t('cert.delete')}
           </Button>
         </Popconfirm>
       ),
@@ -250,16 +279,40 @@ const K8sCertsPage = () => {
 
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader title="K8s 证书配置" subtitle={`共 ${filteredCerts.length} 个证书`} />
+      <PageHeader
+        title={t('cert.pageTitle')}
+        subtitle={
+          loadFailed
+            ? t('common.unavailable')
+            : t('cert.totalCount', { count: filteredCerts.length })
+        }
+      />
+      {loadFailed && (
+        <Alert
+          showIcon
+          type="error"
+          message={t('common.fetchDataFailed')}
+          action={
+            <Button
+              size="small"
+              icon={<ReloadOutlined />}
+              onClick={() => setReloadNonce((nonce) => nonce + 1)}
+            >
+              {t('common.retry')}
+            </Button>
+          }
+          style={{ marginBottom: 12 }}
+        />
+      )}
       <InfoBanner
         data-testid="k8s-cert-local-metadata-notice"
-        title="当前证书记录仅保存为 Studio 本地配置"
-        description="这些操作不会连接 Kubernetes 集群或修改集群中的证书资源。请在集群侧管理实际证书。"
+        title={t('cert.localMetadataTitle')}
+        description={t('cert.localMetadataDescription')}
       />
       <Flex justify="space-between" style={{ marginBottom: 16 }}>
         <Space>
           <Input.Search
-            placeholder="搜索 k8s ID 或集群"
+            placeholder={t('cert.searchPlaceholder')}
             allowClear
             onSearch={setCertSearch}
             onChange={(e) => !e.target.value && setCertSearch('')}
@@ -270,7 +323,7 @@ const K8sCertsPage = () => {
             onChange={setCertTypeFilter}
             style={{ width: 160 }}
             options={[
-              { value: '', label: '全部' },
+              { value: '', label: t('cert.all') },
               { value: 'TLS', label: 'TLS' },
               { value: 'mTLS', label: 'mTLS' },
               { value: 'ServiceAccount', label: 'ServiceAccount' },
@@ -278,7 +331,7 @@ const K8sCertsPage = () => {
           />
         </Space>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
-          新增证书
+          {t('cert.addCert')}
         </Button>
       </Flex>
       <Card styles={{ body: { padding: 0 } }}>
@@ -287,7 +340,7 @@ const K8sCertsPage = () => {
           dataSource={filteredCerts}
           rowKey="id"
           loading={loading}
-          pagination={{ pageSize: 20 }}
+          pagination={{ pageSize: 20, showTotal: (total) => `${t('common.total')} ${total}` }}
           size="small"
           tableLayout="fixed"
           scroll={{ x: tableScrollX(certColumns) }}
@@ -295,7 +348,7 @@ const K8sCertsPage = () => {
       </Card>
 
       <Modal
-        title="新增证书"
+        title={t('cert.addCert')}
         open={createModalOpen}
         onCancel={() => {
           setCreateModalOpen(false);
@@ -303,27 +356,27 @@ const K8sCertsPage = () => {
         }}
         onOk={() => void handleCreate()}
         confirmLoading={creating}
-        okText="添加"
-        cancelText="取消"
+        okText={t('cert.add')}
+        cancelText={t('cert.cancel')}
         width={640}
         destroyOnHidden
       >
         <Form form={createForm} layout="vertical" preserve={false}>
           <Form.Item
-            label="k8s ID"
+            label={t('cert.k8sId')}
             name="k8sId"
-            rules={[{ required: true, message: '请输入 k8s ID' }]}
+            rules={[{ required: true, message: t('cert.k8sIdRequired') }]}
           >
-            <Input placeholder="例如：kubernetes-daily" />
+            <Input placeholder={t('cert.k8sIdPlaceholder')} />
           </Form.Item>
           <Form.Item
-            label="K8s 集群名称"
+            label={t('cert.clusterName')}
             name="cluster"
-            rules={[{ required: true, message: '请输入集群名称' }]}
+            rules={[{ required: true, message: t('cert.clusterNameRequired') }]}
           >
-            <Input placeholder="例如：kubernetes（120.26.99.191:6443）" />
+            <Input placeholder={t('cert.clusterNamePlaceholder')} />
           </Form.Item>
-          <Form.Item label="类型" name="type" initialValue="TLS">
+          <Form.Item label={t('cert.typeLabel')} name="type" initialValue="TLS">
             <Select
               virtual={false}
               options={[
@@ -333,18 +386,14 @@ const K8sCertsPage = () => {
               ]}
             />
           </Form.Item>
-          <Form.Item
-            label="证书内容（PEM）"
-            name="certPem"
-            extra="粘贴 PEM 格式证书，签发者、有效期与 SAN 将自动解析；留空时有效期按一年占位"
-          >
+          <Form.Item label={t('cert.certPemLabel')} name="certPem" extra={t('cert.certPemHelp')}>
             <Input.TextArea
               rows={6}
               placeholder="-----BEGIN CERTIFICATE-----..."
               style={{ fontFamily: 'monospace' }}
             />
           </Form.Item>
-          <Form.Item label="私钥内容（PEM）" name="keyPem" extra="仅保存，不会在页面展示或返回">
+          <Form.Item label={t('cert.keyPemLabel')} name="keyPem" extra={t('cert.keyPemHelp')}>
             <Input.TextArea
               rows={6}
               placeholder="-----BEGIN PRIVATE KEY-----..."

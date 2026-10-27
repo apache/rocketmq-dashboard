@@ -35,6 +35,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class AlertSilenceServiceTest {
@@ -260,6 +262,30 @@ class AlertSilenceServiceTest {
         assertThatThrownBy(() -> service.create(weekly))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Weekly silence windows must not exceed 7 days");
+    }
+
+    @Test
+    void rejectsLabelKeysThatCollideAfterTrimmingBeforePersistenceTest() {
+        AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
+        CreateAlertSilenceDTO request = recurringRequest(AlertSilenceRecurrence.DAILY);
+        request.setLabels(Map.of("brokerName", "broker-a", " brokerName ", "broker-b"));
+        lenient().when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Silence label keys must be unique after trimming");
+        verifyNoInteractions(repository, operationAuditService);
+    }
+
+    @Test
+    void preservesDistinctLabelsAndNormalizesTheirWhitespaceTest() {
+        AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
+        CreateAlertSilenceDTO request = recurringRequest(AlertSilenceRecurrence.DAILY);
+        request.setLabels(Map.of(" brokerName ", " broker-a ", "__proto__", "rack=one"));
+        when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(service.create(request).getLabels())
+                .containsExactlyInAnyOrderEntriesOf(Map.of("brokerName", "broker-a", "__proto__", "rack=one"));
     }
 
     private static CreateAlertSilenceDTO recurringRequest(AlertSilenceRecurrence recurrence) {

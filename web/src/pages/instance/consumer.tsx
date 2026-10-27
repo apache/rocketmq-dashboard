@@ -44,6 +44,7 @@ import {
   Progress,
   Switch,
   message,
+  theme,
 } from 'antd';
 import {
   Plus,
@@ -66,6 +67,7 @@ import type { Dayjs } from 'dayjs';
 
 import PageHeader from '../../components/PageHeader';
 import { InstanceSelect } from '../../components/InstanceSelect';
+import ResourceRuleHelp from '../../components/ResourceRuleHelp';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, PROTOCOL_MAP } from '../../constants/theme';
 import { formatDateTime, formatDelay, formatUtcDateTime } from '../../utils/format';
@@ -102,9 +104,9 @@ import {
   validateConsumerGroupCsvImport,
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
-import { downloadCsv } from '../../utils/download';
+import { downloadCsv, localExportDateStamp } from '../../utils/download';
 import { formatLag, isLagAvailable, lagSortValue } from '../../utils/consumerLag';
-import { formatOnlineInstances, onlineInstancesSortValue } from '../../utils/consumerConnections';
+import { formatOnlineInstances, onlineInstancesCount } from '../../utils/consumerConnections';
 import { tableScrollX } from '../../utils/table';
 import {
   analyzeConsumerGroupHealth,
@@ -126,16 +128,6 @@ const lagColor = (lag: number): string => {
   if (lag >= 10_000) return '#ff4d4f';
   if (lag >= 1_000) return '#faad14';
   return '#52c41a';
-};
-
-const visibleConsumerGroups = (groups: ConsumerGroup[], modeFilter: string): ConsumerGroup[] => {
-  let data = groups;
-
-  if (modeFilter !== 'ALL') {
-    data = data.filter((group) => group.subscriptionMode === modeFilter);
-  }
-
-  return data;
 };
 
 const normalizedConsistency = (value?: string | null): string => value?.trim().toLowerCase() ?? '';
@@ -178,6 +170,18 @@ const healthStatusTagColor = (status: ConsumerGroupHealthStatus) => {
   return 'green';
 };
 
+const healthStatusColor = (status: ConsumerGroupHealthStatus) => {
+  if (status === 'critical') return '#ff4d4f';
+  if (status === 'warning') return '#faad14';
+  return '#52c41a';
+};
+
+const healthProgressStatus = (status: ConsumerGroupHealthStatus) => {
+  if (status === 'critical') return 'exception' as const;
+  if (status === 'warning') return 'active' as const;
+  return 'success' as const;
+};
+
 const issueSeverityTagColor = (severity: ConsumerGroupHealthIssue['severity']) => {
   if (severity === 'critical') return 'red';
   if (severity === 'warning') return 'orange';
@@ -190,15 +194,23 @@ const issueSeverityLabel = (severity: ConsumerGroupHealthIssue['severity']) => {
   return '提示';
 };
 
-const resetPreviewQueueMessage = (queue: ResetConsumerOffsetQueuePreview) => {
+const resetPreviewQueueMessage = (
+  queue: ResetConsumerOffsetQueuePreview,
+  t: (key: string) => string,
+) => {
   const messages: string[] = [];
   if (queue.riskLevel === 'ERROR') {
-    return queue.message || '预览失败';
+    return queue.message || t('consumer.resetPreview.previewFailed');
   }
-  if (queue.targetOffset < 0 || queue.consumerOffset < 0) {
-    return queue.message || '目标位点不可用';
+  if (queue.targetOffset < 0) {
+    return t('consumer.resetPreview.targetOffsetUnavailable');
   }
-  if (queue.offsetDelta < 0) {
+  if (queue.consumerOffset < 0) {
+    // The group is offline: the broker still reports the target, but no consumer reported a
+    // current offset, so the delta is not a measurement. Never fall back to queue.message here —
+    // it is English prose built around a delta and would read as a broken sentence in this column.
+    messages.push(t('consumer.resetPreview.currentOffsetUnavailable'));
+  } else if (queue.offsetDelta < 0) {
     messages.push(`将回放 ${Math.abs(queue.offsetDelta).toLocaleString()} 条消息`);
   } else if (queue.offsetDelta > 0) {
     messages.push(`将跳过 ${queue.offsetDelta.toLocaleString()} 条未消费消息`);
@@ -213,6 +225,14 @@ const resetPreviewQueueMessage = (queue: ResetConsumerOffsetQueuePreview) => {
   }
   return messages.join('；');
 };
+
+/**
+ * True when any previewed queue has no current offset the broker could report (an offline group),
+ * which makes the aggregate net delta a fabricated zero rather than a measurement. The per-queue
+ * 变化 column already renders such rows as '-', so the summary must not claim a number either.
+ */
+const hasUnavailableCurrentOffset = (queues: ResetConsumerOffsetQueuePreview[]) =>
+  queues.some((queue) => queue.consumerOffset < 0 || queue.targetOffset < 0);
 
 // Shared helper exported alongside the page component; fast-refresh rule waived.
 // eslint-disable-next-line react-refresh/only-export-components
@@ -234,6 +254,7 @@ const ConsumerPageContent = ({
   reloadInstances,
 }: ConsumerPageContentProps) => {
   const { t, lang } = useLang();
+  const { token } = theme.useToken();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const hasSelectedInstance = Boolean(selectedInstanceId);
@@ -252,6 +273,8 @@ const ConsumerPageContent = ({
   const [selectedGroup, setSelectedGroup] = useState<ConsumerGroup | null>(null);
   const [settingsGroup, setSettingsGroup] = useState<ConsumerGroup | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsReady, setSettingsReady] = useState(false);
+  const [settingsFailed, setSettingsFailed] = useState(false);
   const [settingsSubmitting, setSettingsSubmitting] = useState(false);
   const [settingsForm] = Form.useForm<{
     retryQueueNums: number;
@@ -338,12 +361,15 @@ const ConsumerPageContent = ({
         const result = await listConsumerGroupPage({
           instanceId: selectedInstanceId,
           search: search.trim() || undefined,
+          subscriptionMode: modeFilter !== 'ALL' ? modeFilter : undefined,
           page: pageToLoad,
           pageSize: pageSizeToLoad,
         });
         if (requestId === groupRequestIdRef.current) {
           setGroups(result.items);
           setTotalGroups(result.total);
+          // A current successful empty result confirms there are no targets in this query.
+          if (result.total === 0) setSelectedRowKeys([]);
           if (result.items.length === 0 && result.total > 0 && pageToLoad > 1) {
             setPage(Math.max(1, Math.ceil(result.total / pageSizeToLoad)));
           }
@@ -361,12 +387,23 @@ const ConsumerPageContent = ({
         if (requestId === groupRequestIdRef.current) setLoading(false);
       }
     },
-    [t, selectedInstanceId, search],
+    [t, selectedInstanceId, search, modeFilter],
   );
 
   const reloadConsumerGroupPage = useCallback(async () => {
     await loadConsumerGroupPage(page, pageSize);
   }, [loadConsumerGroupPage, page, pageSize]);
+
+  // While no instance is selected the table has nothing to fetch, so its spinner simply mirrors the
+  // instance list. Kept in its own effect: putting instancesLoading in the deps of the load below
+  // would re-run it when the list lands and fetch the same page a second time.
+  useEffect(() => {
+    if (selectedInstanceId) return undefined;
+    const spinnerTimer = window.setTimeout(() => setLoading(instancesLoading), 0);
+    return () => {
+      window.clearTimeout(spinnerTimer);
+    };
+  }, [selectedInstanceId, instancesLoading]);
 
   useEffect(() => {
     if (!selectedInstanceId) {
@@ -375,7 +412,6 @@ const ConsumerPageContent = ({
         setGroups([]);
         setTotalGroups(0);
         setSelectedRowKeys([]);
-        setLoading(instancesLoading);
       }, 0);
       return () => {
         window.clearTimeout(resetTimer);
@@ -389,7 +425,7 @@ const ConsumerPageContent = ({
     return () => {
       window.clearTimeout(timer);
     };
-  }, [selectedInstanceId, page, pageSize, instancesLoading, refreshKey, loadConsumerGroupPage]);
+  }, [selectedInstanceId, page, pageSize, refreshKey, loadConsumerGroupPage]);
 
   useEffect(() => {
     if (!autoRefresh || !selectedInstanceId) {
@@ -493,9 +529,9 @@ const ConsumerPageContent = ({
   }, [modalOpen, selectedGroupName, selectedInstanceId, loadProgress, loadSubscriptions]);
 
   /* ─── Filtered & sorted data ─── */
-  const filtered = useMemo(() => {
-    return visibleConsumerGroups(groups, modeFilter);
-  }, [groups, modeFilter]);
+  // The subscription-mode filter is applied server-side (it is part of the page query), so the
+  // loaded page is already the filtered inventory and the total matches what is displayed.
+  const filtered = useMemo(() => groups, [groups]);
 
   const handleExport = async () => {
     setExporting(true);
@@ -505,7 +541,7 @@ const ConsumerPageContent = ({
         search: search.trim() || undefined,
         subscriptionMode: modeFilter !== 'ALL' ? modeFilter : undefined,
       });
-      downloadCsv(`rocketmq-consumer-groups-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+      downloadCsv(`rocketmq-consumer-groups-${localExportDateStamp()}.csv`, csv);
       message.success('Group 导出完成');
     } catch {
       message.error('导出 Group 失败，请稍后重试');
@@ -532,6 +568,9 @@ const ConsumerPageContent = ({
     const requestId = ++settingsRequestIdRef.current;
     setSettingsGroup(group);
     setSettingsLoading(true);
+    setSettingsReady(false);
+    setSettingsFailed(false);
+    originalSettingsRef.current = null;
     try {
       const settings = await getConsumerGroupSettings(group.name, selectedInstanceId);
       if (requestId === settingsRequestIdRef.current) {
@@ -540,10 +579,12 @@ const ConsumerPageContent = ({
           consumeEnable: settings.consumeEnable,
           consumeMessageOrderly: settings.consumeMessageOrderly,
         };
+        setSettingsReady(true);
       }
     } catch {
       if (requestId === settingsRequestIdRef.current) {
-        message.error('加载消费组配置失败，请稍后重试');
+        setSettingsFailed(true);
+        message.error(t('consumer.settingsLoadFailed'));
       }
     } finally {
       if (requestId === settingsRequestIdRef.current) {
@@ -564,7 +605,7 @@ const ConsumerPageContent = ({
   };
 
   const saveSettings = async () => {
-    if (!settingsGroup || !selectedInstanceId) return;
+    if (!settingsGroup || !selectedInstanceId || !settingsReady || settingsLoading) return;
     const requestId = settingsRequestIdRef.current;
     const values = await settingsForm.validateFields();
     if (requestId !== settingsRequestIdRef.current) return;
@@ -971,6 +1012,7 @@ const ConsumerPageContent = ({
       dataIndex: 'subscriptionDataType',
       key: 'subscriptionDataType',
       width: 100,
+      align: 'center',
       sorter: (a, b) => (a.subscriptionDataType ?? '').localeCompare(b.subscriptionDataType ?? ''),
       render: (type: string) => {
         const config = TOPIC_TYPE_MAP[type] || { labelKey: type, color: 'default' };
@@ -982,6 +1024,7 @@ const ConsumerPageContent = ({
       dataIndex: 'subscriptionMode',
       key: 'subscriptionMode',
       width: 84,
+      align: 'center',
       sorter: (a, b) => (a.subscriptionMode ?? '').localeCompare(b.subscriptionMode ?? ''),
       render: (mode: string) => <Tag color={mode === 'Push' ? 'blue' : 'green'}>{mode}</Tag>,
     },
@@ -992,8 +1035,8 @@ const ConsumerPageContent = ({
       width: 100,
       align: 'center',
       sorter: (a, b) =>
-        onlineInstancesSortValue(a.onlineInstances) - onlineInstancesSortValue(b.onlineInstances),
-      render: (value: number) => formatOnlineInstances(value, UNAVAILABLE_LAG_LABEL),
+        onlineInstancesCount(a.onlineInstances) - onlineInstancesCount(b.onlineInstances),
+      render: (value: number) => onlineInstancesCount(value).toLocaleString(),
     },
     {
       title: '总堆积量',
@@ -1090,10 +1133,16 @@ const ConsumerPageContent = ({
                 okButtonProps: { danger: true },
                 cancelText: '取消',
                 onOk: async () => {
-                  await deleteConsumerGroup(record.name, selectedInstanceId || undefined);
-                  await reloadConsumerGroupPage();
-                  setSelectedRowKeys((prev) => prev.filter((key) => key !== record.name));
-                  message.success(`消费组 ${record.name} 已删除`);
+                  try {
+                    await deleteConsumerGroup(record.name, selectedInstanceId || undefined);
+                    await reloadConsumerGroupPage();
+                    setSelectedRowKeys((prev) => prev.filter((key) => key !== record.name));
+                    message.success(`消费组 ${record.name} 已删除`);
+                  } catch {
+                    // A failed delete must tell the operator: the row still exists on the
+                    // server, and a silent rejection leaves the dialog open with no outcome.
+                    message.error(t('consumer.deleteFailed'));
+                  }
                 },
               });
             }}
@@ -1205,7 +1254,13 @@ const ConsumerPageContent = ({
       dataIndex: 'protocol',
       key: 'protocol',
       width: 80,
-      render: (protocol: string) => {
+      render: (protocol?: string) => {
+        // The Apache provider cannot tell the protocol from a broker connection set,
+        // so the field is legitimately absent — render a placeholder, not an empty tag.
+        // Plain '-' matches the other optional columns of this page.
+        if (!protocol) {
+          return '-';
+        }
         const config = PROTOCOL_MAP[protocol] || { labelKey: protocol, color: 'default' };
         return <Tag color={config.color}>{t(config.labelKey)}</Tag>;
       },
@@ -1457,11 +1512,14 @@ const ConsumerPageContent = ({
       key: 'message',
       width: 240,
       ellipsis: true,
-      render: (_: unknown, record: ResetConsumerOffsetQueuePreview) => (
-        <Text style={{ fontSize: 14 }} title={resetPreviewQueueMessage(record)}>
-          {resetPreviewQueueMessage(record)}
-        </Text>
-      ),
+      render: (_: unknown, record: ResetConsumerOffsetQueuePreview) => {
+        const message = resetPreviewQueueMessage(record, t);
+        return (
+          <Text style={{ fontSize: 14 }} title={message}>
+            {message}
+          </Text>
+        );
+      },
     },
   ];
 
@@ -1678,11 +1736,13 @@ const ConsumerPageContent = ({
           setShowOnlyInconsistent(false);
           setSettingsGroup(null);
           setSettingsLoading(false);
+          setSettingsReady(false);
+          setSettingsFailed(false);
           setSettingsSubmitting(false);
           originalSettingsRef.current = null;
           settingsForm.resetFields();
         }}
-        width={detailTab === 'progress' || detailTab === 'health' ? 1080 : 800}
+        width={detailTab === 'progress' ? 1080 : 800}
         destroyOnHidden
         footer={null}
       >
@@ -1970,85 +2030,104 @@ const ConsumerPageContent = ({
                       />
                     )}
 
-                    <Row gutter={16}>
-                      <Col span={6}>
-                        <Card size="small" style={{ borderRadius: 8 }}>
-                          <Statistic
-                            title="健康分"
-                            value={selectedGroupHealth.summary.healthScore}
-                            suffix="/ 100"
-                            valueStyle={{
-                              color:
-                                selectedGroupHealth.status === 'critical'
-                                  ? '#ff4d4f'
-                                  : selectedGroupHealth.status === 'warning'
-                                    ? '#faad14'
-                                    : '#52c41a',
-                            }}
-                          />
-                          <Progress
-                            percent={selectedGroupHealth.summary.healthScore}
-                            showInfo={false}
-                            status={
-                              selectedGroupHealth.status === 'critical'
-                                ? 'exception'
-                                : selectedGroupHealth.status === 'warning'
-                                  ? 'active'
-                                  : 'success'
-                            }
-                          />
-                        </Card>
-                      </Col>
-                      <Col span={6}>
-                        <Card size="small" style={{ borderRadius: 8 }}>
-                          <Statistic
-                            title="已知堆积"
-                            value={selectedGroupHealth.summary.totalKnownLag}
-                            valueStyle={{
-                              color: lagColor(selectedGroupHealth.summary.totalKnownLag),
-                            }}
-                          />
-                          <Text type="secondary">
-                            报告堆积：
+                    <Card
+                      size="small"
+                      style={{
+                        // Theme fill instead of a fixed light grey, which left this summary
+                        // card unreadable in dark mode.
+                        background: token.colorFillQuaternary,
+                        borderRadius: 8,
+                      }}
+                      styles={{ body: { padding: '8px 16px' } }}
+                    >
+                      <Space size={24} wrap>
+                        <Space size={4}>
+                          <Tooltip title={t('consumer.health.scoreHint')}>
+                            <Text type="secondary">{t('consumer.health.scoreLabel')}</Text>
+                          </Tooltip>
+                          <Text
+                            strong
+                            style={{ color: healthStatusColor(selectedGroupHealth.status) }}
+                          >
+                            {selectedGroupHealth.summary.healthScore} / 100
+                          </Text>
+                        </Space>
+                        <Space size={4}>
+                          <Tooltip title={t('consumer.health.knownLagHint')}>
+                            <Text type="secondary">{t('consumer.health.knownLagLabel')}</Text>
+                          </Tooltip>
+                          <Text
+                            strong
+                            style={{ color: lagColor(selectedGroupHealth.summary.totalKnownLag) }}
+                          >
+                            {selectedGroupHealth.summary.totalKnownLag.toLocaleString()}
+                          </Text>
+                        </Space>
+                        <Space size={4}>
+                          <Tooltip title={t('consumer.health.reportedLagHint')}>
+                            <Text type="secondary">{t('consumer.health.reportedLagLabel')}</Text>
+                          </Tooltip>
+                          <Text strong>
                             {selectedGroupHealth.summary.reportedLag === null
                               ? UNAVAILABLE_LAG_LABEL
                               : selectedGroupHealth.summary.reportedLag.toLocaleString()}
                           </Text>
-                        </Card>
-                      </Col>
-                      <Col span={6}>
-                        <Card size="small" style={{ borderRadius: 8 }}>
-                          <Statistic
-                            title="Queue 覆盖"
-                            value={selectedGroupHealth.summary.queueCount}
-                            suffix={`/${selectedGroupHealth.summary.subscribedTopicCount} Topic`}
-                          />
-                          <Text type="secondary">
+                        </Space>
+                        {/* "覆盖" read like a completion ratio of two unrelated dimensions; the
+                            label now names both units and the tooltip states the caliber. */}
+                        <Space size={4}>
+                          <Tooltip title={t('consumer.health.queueProgressHint')}>
+                            <Text type="secondary">{t('consumer.health.queueProgressLabel')}</Text>
+                          </Tooltip>
+                          <Text strong>
+                            {t('consumer.health.queueProgressValue', {
+                              queues: selectedGroupHealth.summary.queueCount,
+                              topics: selectedGroupHealth.summary.subscribedTopicCount,
+                            })}
+                          </Text>
+                        </Space>
+                        {/* The old label said 堆积 but the value reports offset availability. */}
+                        <Space size={4}>
+                          <Tooltip title={t('consumer.health.queueOffsetHint')}>
+                            <Text type="secondary">{t('consumer.health.queueOffsetLabel')}</Text>
+                          </Tooltip>
+                          <Text strong>
                             {selectedGroupHealth.summary.unknownQueueCount > 0
-                              ? `${selectedGroupHealth.summary.unknownQueueCount} 个 Queue 堆积不可用`
-                              : 'Queue 堆积均可计算'}
+                              ? t('consumer.health.offsetsUnknown', {
+                                  count: selectedGroupHealth.summary.unknownQueueCount,
+                                })
+                              : t('consumer.health.offsetsOk')}
                           </Text>
-                        </Card>
-                      </Col>
-                      <Col span={6}>
-                        <Card size="small" style={{ borderRadius: 8 }}>
-                          <Statistic
-                            title="客户端"
-                            value={selectedGroupHealth.summary.onlineInstances}
-                            formatter={(value) =>
-                              formatOnlineInstances(Number(value), UNAVAILABLE_LAG_LABEL)
-                            }
-                          />
-                          <Text type="secondary">
+                        </Space>
+                        <Space size={4}>
+                          <Text type="secondary">客户端:</Text>
+                          <Text strong>
+                            {formatOnlineInstances(
+                              selectedGroupHealth.summary.onlineInstances,
+                              UNAVAILABLE_LAG_LABEL,
+                            )}
+                          </Text>
+                        </Space>
+                        <Space size={4}>
+                          <Tooltip title={t('consumer.health.heartbeatHint')}>
+                            <Text type="secondary">{t('consumer.health.heartbeatLabel')}</Text>
+                          </Tooltip>
+                          <Text strong>
                             {selectedGroupHealth.summary.onlineInstances < 0
-                              ? '客户端连接信息不可用'
+                              ? '连接信息不可用'
                               : selectedGroupHealth.summary.staleClientCount > 0
-                                ? `${selectedGroupHealth.summary.staleClientCount} 个心跳过期`
-                                : '心跳状态正常'}
+                                ? `${selectedGroupHealth.summary.staleClientCount} 个过期`
+                                : '正常'}
                           </Text>
-                        </Card>
-                      </Col>
-                    </Row>
+                        </Space>
+                      </Space>
+                      <Progress
+                        percent={selectedGroupHealth.summary.healthScore}
+                        showInfo={false}
+                        style={{ marginTop: 8, marginBottom: 0 }}
+                        status={healthProgressStatus(selectedGroupHealth.status)}
+                      />
+                    </Card>
 
                     {selectedGroupHealth.issues.length > 0 ? (
                       <Table
@@ -2126,7 +2205,9 @@ const ConsumerPageContent = ({
                       size="small"
                       style={{
                         marginBottom: 16,
-                        background: '#fafafa',
+                        // Theme fill instead of a fixed light grey, which left this summary
+                        // card unreadable in dark mode.
+                        background: token.colorFillQuaternary,
                         borderRadius: 8,
                       }}
                       styles={{ body: { padding: '8px 16px' } }}
@@ -2190,45 +2271,82 @@ const ConsumerPageContent = ({
                 disabled: isCloudInstance,
                 children: (
                   <Spin spinning={settingsLoading}>
-                    <Form form={settingsForm} layout="vertical" style={{ maxWidth: 480 }}>
-                      <Form.Item label="Group 名称">
-                        <Text strong>{selectedGroup.name}</Text>
-                      </Form.Item>
-                      <Form.Item
-                        label="重试队列数"
-                        name="retryQueueNums"
-                        rules={[{ required: true, message: '请输入重试队列数' }]}
-                      >
-                        <InputNumber min={1} max={128} style={{ width: '100%' }} />
-                      </Form.Item>
-                      <Form.Item
-                        label="最大重试次数"
-                        name="retryMaxTimes"
-                        rules={[{ required: true, message: '请输入最大重试次数' }]}
-                      >
-                        <InputNumber min={1} max={128} style={{ width: '100%' }} />
-                      </Form.Item>
-                      <Form.Item label="启用消费" name="consumeEnable" valuePropName="checked">
-                        <Switch />
-                      </Form.Item>
-                      <Form.Item
-                        label="顺序消费"
-                        name="consumeMessageOrderly"
-                        valuePropName="checked"
-                      >
-                        <Switch />
-                      </Form.Item>
-                      <Form.Item
-                        label="广播消费"
-                        name="consumeBroadcastEnable"
-                        valuePropName="checked"
-                      >
-                        <Switch />
-                      </Form.Item>
+                    {settingsFailed && (
+                      <Alert
+                        type="error"
+                        showIcon
+                        message={t('consumer.settingsLoadFailed')}
+                        style={{ marginBottom: 16 }}
+                        action={
+                          <Button
+                            size="small"
+                            onClick={() => void loadGroupSettings(selectedGroup)}
+                          >
+                            {t('common.retry')}
+                          </Button>
+                        }
+                      />
+                    )}
+                    <Form
+                      form={settingsForm}
+                      layout="vertical"
+                      disabled={!settingsReady || settingsLoading}
+                    >
+                      <Row gutter={16}>
+                        <Col span={8}>
+                          <Form.Item label="Group 名称">
+                            <Text strong>{selectedGroup.name}</Text>
+                          </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                          <Form.Item
+                            label="重试队列数"
+                            name="retryQueueNums"
+                            rules={[{ required: true, message: '请输入重试队列数' }]}
+                          >
+                            <InputNumber min={1} max={128} style={{ width: '100%' }} />
+                          </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                          <Form.Item
+                            label="最大重试次数"
+                            name="retryMaxTimes"
+                            rules={[{ required: true, message: '请输入最大重试次数' }]}
+                          >
+                            <InputNumber min={1} max={128} style={{ width: '100%' }} />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                      <Row gutter={16}>
+                        <Col span={8}>
+                          <Form.Item label="启用消费" name="consumeEnable" valuePropName="checked">
+                            <Switch />
+                          </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                          <Form.Item
+                            label="顺序消费"
+                            name="consumeMessageOrderly"
+                            valuePropName="checked"
+                          >
+                            <Switch />
+                          </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                          <Form.Item
+                            label="广播消费"
+                            name="consumeBroadcastEnable"
+                            valuePropName="checked"
+                          >
+                            <Switch />
+                          </Form.Item>
+                        </Col>
+                      </Row>
                       <Form.Item style={{ marginBottom: 0 }}>
                         <Button
                           type="primary"
                           loading={settingsSubmitting}
+                          disabled={!settingsReady || settingsLoading}
                           onClick={() => void saveSettings()}
                         >
                           保存
@@ -2419,7 +2537,12 @@ const ConsumerPageContent = ({
           }}
         >
           <Form.Item
-            label="Group 名称"
+            label={
+              <Space size={4}>
+                Group 名称
+                <ResourceRuleHelp />
+              </Space>
+            }
             name="name"
             rules={[
               { required: true, message: '请输入 Group 名称' },
@@ -2739,7 +2862,9 @@ const ConsumerPageContent = ({
                     {formatOffsetValue(resetPreview.projectedTotalLag)}
                   </Descriptions.Item>
                   <Descriptions.Item label="位点净变化">
-                    {formatOffsetDelta(resetPreview.totalOffsetDelta)}
+                    {hasUnavailableCurrentOffset(resetPreviewQueues)
+                      ? '-'
+                      : formatOffsetDelta(resetPreview.totalOffsetDelta)}
                   </Descriptions.Item>
                   <Descriptions.Item label="回放 Queue">
                     {resetPreview.rewindQueueCount}

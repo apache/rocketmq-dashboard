@@ -28,6 +28,8 @@ import org.apache.rocketmq.studio.provider.CloudCatalogProvider;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
 import org.apache.rocketmq.studio.provider.CloudInstanceOptionVO;
 import org.apache.rocketmq.studio.provider.CloudRegionVO;
+import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
+import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
 import org.springframework.stereotype.Component;
 import lombok.RequiredArgsConstructor;
 
@@ -65,6 +67,7 @@ public class TencentCatalogService implements CloudCatalogProvider {
             region("sa-saopaulo", "Sao Paulo"));
 
     private final TencentClientFactory clientFactory;
+    private final CloudCredentialRepository credentialRepository;
 
     @Override
     public InstanceVendor vendor() {
@@ -73,13 +76,13 @@ public class TencentCatalogService implements CloudCatalogProvider {
 
     @Override
     public List<CloudRegionVO> listRegions(Long credentialId) {
-        requireId(credentialId, "credentialId");
+        requireCredential(credentialId);
         return SUPPORTED_REGIONS;
     }
 
     @Override
     public List<CloudInstanceOptionVO> listCloudInstances(Long credentialId, String regionId, String search) {
-        requireId(credentialId, "credentialId");
+        requireCredential(credentialId);
         requireNonBlank(regionId, "regionId");
         List<CloudInstanceOptionVO> instances = new ArrayList<>();
         for (long offset = 0L; ; offset += PAGE_SIZE) {
@@ -129,7 +132,7 @@ public class TencentCatalogService implements CloudCatalogProvider {
 
     @Override
     public CloudInstanceDetailVO getCloudInstance(Long credentialId, String regionId, String cloudInstanceId) {
-        requireId(credentialId, "credentialId");
+        requireCredential(credentialId);
         requireNonBlank(regionId, "regionId");
         requireNonBlank(cloudInstanceId, "cloudInstanceId");
         DescribeInstanceRequest request = new DescribeInstanceRequest();
@@ -219,9 +222,22 @@ public class TencentCatalogService implements CloudCatalogProvider {
         return region;
     }
 
-    private static void requireId(Long value, String name) {
-        if (value == null) {
-            throw new BusinessException(400, name + " is required");
+    /**
+     * Resolves the credential the catalog request is scoped to before any cloud call. The
+     * endpoints take a credential id verbatim, so without this an id that no longer exists (a
+     * deleted credential, a stale wizard) still produced a region list, and a credential of the
+     * other vendor only surfaced as the cloud SDK's "Cloud credential is invalid" on the next
+     * call. Matches the checks {@code InstanceService.importCloudInstances} performs.
+     */
+    private void requireCredential(Long credentialId) {
+        if (credentialId == null) {
+            throw new BusinessException(400, "credentialId is required");
+        }
+        CloudCredentialVO credential = credentialRepository.findById(credentialId)
+                .orElseThrow(() -> new BusinessException(404, "Cloud credential not found: " + credentialId));
+        if (credential.getVendor() != InstanceVendor.TENCENT) {
+            throw new BusinessException(400,
+                    "Cloud credential vendor does not match " + InstanceVendor.TENCENT);
         }
     }
 

@@ -37,6 +37,7 @@ import {
   Statistic,
   Tooltip,
   message,
+  theme,
 } from 'antd';
 import {
   SearchOutlined,
@@ -52,8 +53,9 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
+import InfoBanner from '../../components/InfoBanner';
 import { InstanceSelect } from '../../components/InstanceSelect';
-import MessageQueryHistoryDrawer from '../../components/MessageQueryHistoryDrawer';
+import MessageQueryHistoryModal from '../../components/MessageQueryHistoryModal';
 import MessageProperties from '../../components/MessageProperties';
 import {
   useQueueBrowser,
@@ -70,12 +72,14 @@ import {
   queryMessagePage,
 } from '../../services/messageService';
 import { listTopics } from '../../services/topicService';
+import { getConsumerGroup, listAllConsumerGroups } from '../../services/consumerService';
+import type { ConsumerGroup, ConsumerInstance } from '../../api/metadata';
 import { getInstanceCapabilities } from '../../services/instanceService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import useAuthStore from '../../stores/authStore';
 import { downloadBlob } from '../../utils/download';
 import { describeThrownMessage } from '../../utils/apiError';
-import { formatBytes, formatTimeMs } from '../../utils/format';
+import { formatBytes, formatOptionalTimeMs, formatTimeMs } from '../../utils/format';
 import {
   readMessageTraceTopic,
   writeMessageTraceTopic,
@@ -345,6 +349,7 @@ const MessagePageContent = ({
   reloadInstances,
 }: InstanceFilterProps) => {
   const { t } = useLang();
+  const { token } = theme.useToken();
   const [topicOptions, setTopicOptions] = useState<string[]>([]);
   const [topicError, setTopicError] = useState<string | null>(null);
   const [topicLoading, setTopicLoading] = useState(false);
@@ -403,11 +408,16 @@ const MessagePageContent = ({
   const [customTraceTopic, setCustomTraceTopic] = useState(() =>
     readMessageTraceTopic(selectedInstanceId, traceTopicOwner),
   );
-  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
-  const [directConsumeOpen, setDirectConsumeOpen] = useState(false);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [directConsumeGroup, setDirectConsumeGroup] = useState('');
   const [directConsumeClientId, setDirectConsumeClientId] = useState('');
   const [directConsumeSubmitting, setDirectConsumeSubmitting] = useState(false);
+  // 直接消费的目标只能是在线的组与客户端，所以两个下拉的选项都来自后端实时数据：
+  // 组来自消费组分页（按 onlineInstances > 0 过滤），客户端来自选中组的连接明细。
+  const [onlineGroups, setOnlineGroups] = useState<ConsumerGroup[]>([]);
+  const [onlineGroupsLoading, setOnlineGroupsLoading] = useState(false);
+  const [onlineClients, setOnlineClients] = useState<ConsumerInstance[]>([]);
+  const [onlineClientsLoading, setOnlineClientsLoading] = useState(false);
   const [directConsumeCapability, setDirectConsumeCapability] = useState<{
     instanceId: string;
     status: DirectConsumeCapabilityStatus;
@@ -436,7 +446,6 @@ const MessagePageContent = ({
     void getInstanceCapabilities(instanceId)
       .then((result) => {
         if (active) {
-          setDirectConsumeOpen(false);
           setDirectConsumeCapability({
             instanceId,
             status: result.capabilities.includes('DIRECT_MESSAGE_CONSUME')
@@ -447,7 +456,6 @@ const MessagePageContent = ({
       })
       .catch(() => {
         if (active) {
-          setDirectConsumeOpen(false);
           setDirectConsumeCapability({ instanceId, status: 'unavailable' });
         }
       });
@@ -470,6 +478,66 @@ const MessagePageContent = ({
         : directConsumeCapabilityStatus === 'loading'
           ? t('message.directConsumeCapabilityLoading')
           : undefined;
+
+  const onlineGroupsRequestRef = useRef(0);
+  const onlineClientsRequestRef = useRef(0);
+
+  // 只在详情弹窗打开时拉在线消费组：这是「直接消费」的实时目标清单，不该在进页面时就打。
+  // 与本文件其他加载 effect 一致用 setTimeout(0) 起头，避免在 effect 体内同步 setState。
+  useEffect(() => {
+    if (!modalOpen || !directConsumeSupported || !selectedInstanceId) return undefined;
+    const instanceId = selectedInstanceId;
+    const requestId = ++onlineGroupsRequestRef.current;
+    const timer = window.setTimeout(() => {
+      setOnlineGroupsLoading(true);
+      listAllConsumerGroups({ instanceId })
+        .then((groups) => {
+          if (requestId !== onlineGroupsRequestRef.current) return;
+          setOnlineGroups(groups.filter((group) => (group.onlineInstances ?? 0) > 0));
+        })
+        .catch((error: unknown) => {
+          if (requestId !== onlineGroupsRequestRef.current) return;
+          setOnlineGroups([]);
+          message.error(describeThrownMessage(error) || t('messagePage.directConsumeGroupsFailed'));
+        })
+        .finally(() => {
+          if (requestId === onlineGroupsRequestRef.current) setOnlineGroupsLoading(false);
+        });
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [modalOpen, directConsumeSupported, selectedInstanceId, t]);
+
+  const handleConsumeGroupChange = (groupName: string) => {
+    setDirectConsumeGroup(groupName);
+    setDirectConsumeClientId('');
+    setOnlineClients([]);
+    if (!groupName || !selectedInstanceId) return;
+    const requestId = ++onlineClientsRequestRef.current;
+    setOnlineClientsLoading(true);
+    getConsumerGroup(groupName, selectedInstanceId)
+      .then((detail) => {
+        if (requestId === onlineClientsRequestRef.current) setOnlineClients(detail.instances ?? []);
+      })
+      .catch((error: unknown) => {
+        if (requestId !== onlineClientsRequestRef.current) return;
+        setOnlineClients([]);
+        message.error(describeThrownMessage(error) || t('messagePage.directConsumeClientsFailed'));
+      })
+      .finally(() => {
+        if (requestId === onlineClientsRequestRef.current) setOnlineClientsLoading(false);
+      });
+  };
+
+  const groupOptions = onlineGroups.map((group) => ({
+    value: group.name,
+    label: `${group.name}（${group.instances?.length ?? group.onlineInstances}）`,
+  }));
+  const clientOptions = onlineClients.map((client) => ({
+    value: client.clientId,
+    label: client.address ? `${client.clientId} · ${client.address}` : client.clientId,
+  }));
 
   useEffect(() => {
     writeMessageTraceTopic(selectedInstanceId, customTraceTopic, traceTopicOwner);
@@ -582,7 +650,7 @@ const MessagePageContent = ({
     if (mode === 'topic' && record.startTime !== undefined && record.endTime !== undefined) {
       setDateRange([dayjs(record.startTime), dayjs(record.endTime)]);
     }
-    setHistoryDrawerOpen(false);
+    setHistoryModalOpen(false);
     // Re-run the historical query through the same live path so it is normalized and committed
     // exactly like a normal search: the displayed page and any later pagination then share one
     // query. Loading the archived snapshot here instead would splice snapshot page 1 with a live
@@ -605,7 +673,7 @@ const MessagePageContent = ({
     setSelectedTopic(record.topic);
     setMsgIdInput(record.msgId);
     setCustomTraceTopic(record.traceTopic?.trim() || '');
-    setHistoryDrawerOpen(false);
+    setHistoryModalOpen(false);
     void executeQuery('msgid', { topic: record.topic, msgId: record.msgId });
   };
 
@@ -668,6 +736,10 @@ const MessagePageContent = ({
     setTraceData(null);
     setTraceLoading(false);
     setTraceError(null);
+    // 目标每次重新选：上一次选中的组或客户端可能已经下线。
+    setDirectConsumeGroup('');
+    setDirectConsumeClientId('');
+    setOnlineClients([]);
     if (rendersTracePayload(tab)) void loadMessageTrace(record);
   };
 
@@ -726,13 +798,6 @@ const MessagePageContent = ({
     setTraceError(null);
   };
 
-  const openDirectConsume = () => {
-    if (!directConsumeSupported) return;
-    setDirectConsumeGroup('');
-    setDirectConsumeClientId('');
-    setDirectConsumeOpen(true);
-  };
-
   const handleDirectConsume = async () => {
     if (
       !selectedInstanceId ||
@@ -759,7 +824,6 @@ const MessagePageContent = ({
           time: result.spentTimeMillis,
         }),
       );
-      setDirectConsumeOpen(false);
     } catch (error) {
       message.error(describeThrownMessage(error) || t('messagePage.directConsumeFailed'));
     } finally {
@@ -810,7 +874,7 @@ const MessagePageContent = ({
       title: 'Message ID',
       dataIndex: 'msgId',
       key: 'msgId',
-      minWidth: 260,
+      minWidth: 234,
       render: (id: string) => (
         <Text
           copyable={{ text: id }}
@@ -837,14 +901,20 @@ const MessagePageContent = ({
       title: t('messagePage.size'),
       dataIndex: 'size',
       key: 'size',
-      width: 80,
+      // 「12.3 MB」实测 48px + 左右 padding 16px；原来给 80 是把宽度让给了溢出的操作列。
+      width: 68,
       align: 'right',
       render: (size: number) => formatBytes(size),
     },
     {
       title: t('common.actions'),
       key: 'actions',
-      width: 260,
+      // 4 个小按钮（详情/轨迹/验证/下载）实测每个 66px + 3×6px gap = 282px，加单元格左右
+      // padding 16px = 298px。原来声明 260px，内容盒只有 244px，右对齐的按钮组整体左溢 38px，
+      // 第一个按钮压住「大小」列 30px（实测于本地 Chromium + Noto Sans CJK，1600 视口）。
+      // 多出来的 38px 从「大小」(-12) 与 Message ID 的 minWidth (-26) 收回，声明总宽不变，
+      // 因此不会新增横向滚动条。宽度由 MessagePage.test.tsx 的用例守护。
+      width: 298,
       render: (_: unknown, record: MessageRecord) => (
         <Flex gap={6} justify="flex-end">
           <Button
@@ -912,12 +982,14 @@ const MessagePageContent = ({
       title: t('messagePage.consumeTime'),
       dataIndex: 'consumeTime',
       key: 'consumeTime',
-      render: (time: string) =>
-        time === '-' ? (
+      render: (time: number | string) => {
+        const formatted = formatOptionalTimeMs(time);
+        return formatted === '-' ? (
           <span style={{ color: '#9CA3AF' }}>-</span>
         ) : (
-          <span style={{ fontFamily: 'monospace', fontSize: 14 }}>{formatTimeMs(time)}</span>
-        ),
+          <span style={{ fontFamily: 'monospace', fontSize: 14 }}>{formatted}</span>
+        );
+      },
     },
     {
       title: t('messagePage.retryCount'),
@@ -1001,7 +1073,9 @@ const MessagePageContent = ({
           <Paragraph
             copyable={{ text: selectedMsg.body }}
             style={{
-              background: '#f5f5f5',
+              // Theme fill instead of a fixed light grey: the body text inherits the active
+              // theme's color, so a hardcoded light background made it unreadable in dark mode.
+              background: token.colorFillQuaternary,
               padding: '12px 16px',
               borderRadius: 6,
               fontFamily: "'SF Mono', Monaco, 'Cascadia Code', Consolas, monospace",
@@ -1070,6 +1144,12 @@ const MessagePageContent = ({
             <Alert showIcon type="warning" message={traceError} />
           ) : traceData?.nodes?.length ? (
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
+              {traceData.queryType === 'KEY' && (
+                <InfoBanner
+                  description={t('messagePage.keyTraceLatencyUnavailable')}
+                  style={{ marginBottom: 0 }}
+                />
+              )}
               <TraceDiagnosticsPanel diagnostics={traceDiagnostics} />
               <Steps
                 direction="vertical"
@@ -1079,7 +1159,7 @@ const MessagePageContent = ({
                   description: (
                     <div style={{ fontSize: 14 }}>
                       <div style={{ color: '#9CA3AF', fontFamily: 'monospace' }}>
-                        {formatTimeMs(node.timestamp)}
+                        {formatOptionalTimeMs(node.timestamp)}
                       </div>
                       <div style={{ marginTop: 2 }}>{node.description}</div>
                       <div style={{ color: '#9CA3AF', fontSize: 14 }}>
@@ -1162,6 +1242,7 @@ const MessagePageContent = ({
                   <RangePicker
                     showTime
                     style={{ width: 400 }}
+                    allowClear={false}
                     value={dateRange}
                     onChange={(vals) => {
                       if (vals && vals[0] && vals[1]) {
@@ -1190,7 +1271,7 @@ const MessagePageContent = ({
                   />
                   <Input
                     placeholder={t('messagePage.inputKeyPlaceholder')}
-                    style={{ width: 240 }}
+                    style={{ width: 400 }}
                     value={keyInput}
                     onChange={(e) => setKeyInput(e.target.value)}
                   />
@@ -1236,7 +1317,7 @@ const MessagePageContent = ({
               <Button icon={<ReloadOutlined />} onClick={handleReset}>
                 {t('common.reset')}
               </Button>
-              <Button icon={<HistoryOutlined />} onClick={() => setHistoryDrawerOpen(true)}>
+              <Button icon={<HistoryOutlined />} onClick={() => setHistoryModalOpen(true)}>
                 {t('messagePage.serverHistory')}
               </Button>
             </Space>
@@ -1253,7 +1334,9 @@ const MessagePageContent = ({
         </Space>
       </Card>
 
-      {queryMode === 'queue' && <QueueBrowserResults state={queueBrowser} />}
+      {queryMode === 'queue' && (
+        <QueueBrowserResults state={queueBrowser} onOpenMessage={openDetail} />
+      )}
 
       {topicError && (
         <Alert
@@ -1269,10 +1352,10 @@ const MessagePageContent = ({
           style={{ marginBottom: 16 }}
         />
       )}
-      <MessageQueryHistoryDrawer
-        open={historyDrawerOpen}
+      <MessageQueryHistoryModal
+        open={historyModalOpen}
         clusterId={selectedInstanceId}
-        onClose={() => setHistoryDrawerOpen(false)}
+        onClose={() => setHistoryModalOpen(false)}
         onSelectMessage={replayHistoryRecord}
         onSelectTrace={replayTraceRecord}
       />
@@ -1324,58 +1407,67 @@ const MessagePageContent = ({
         onCancel={closeDetail}
         destroyOnHidden
         footer={
-          <Flex justify="flex-end" gap={8}>
-            <Button onClick={closeDetail}>{t('common.close')}</Button>
-            <Tooltip title={directConsumeDisabledReason}>
-              <span>
-                <Button
-                  type="primary"
-                  icon={<SendOutlined />}
-                  disabled={!directConsumeSupported || !selectedInstanceId || !selectedMsg}
-                  onClick={openDirectConsume}
-                >
-                  {t('messagePage.directConsume')}
-                </Button>
-              </span>
-            </Tooltip>
+          <Flex justify="space-between" align="center" gap={8} wrap>
+            <Flex gap={8} align="center" wrap>
+              <Select
+                aria-label={t('messagePage.consumerGroupSelect')}
+                placeholder={t('messagePage.consumerGroupSelect')}
+                style={{ width: 200 }}
+                showSearch
+                optionFilterProp="label"
+                loading={onlineGroupsLoading}
+                disabled={!directConsumeSupported}
+                value={directConsumeGroup || undefined}
+                options={groupOptions}
+                onChange={handleConsumeGroupChange}
+                notFoundContent={
+                  onlineGroupsLoading
+                    ? t('common.loading')
+                    : t('messagePage.noOnlineConsumerGroups')
+                }
+              />
+              <Select
+                aria-label={t('messagePage.clientSelect')}
+                placeholder={t('messagePage.clientSelect')}
+                style={{ width: 260 }}
+                showSearch
+                optionFilterProp="label"
+                loading={onlineClientsLoading}
+                disabled={!directConsumeSupported || !directConsumeGroup}
+                value={directConsumeClientId || undefined}
+                options={clientOptions}
+                onChange={setDirectConsumeClientId}
+                notFoundContent={
+                  onlineClientsLoading ? t('common.loading') : t('messagePage.noOnlineClients')
+                }
+              />
+            </Flex>
+            <Flex gap={8} align="center">
+              <Button onClick={closeDetail}>{t('common.close')}</Button>
+              <Tooltip title={directConsumeDisabledReason ?? t('messagePage.directConsumeHint')}>
+                <span>
+                  <Button
+                    type="primary"
+                    icon={<SendOutlined />}
+                    loading={directConsumeSubmitting}
+                    disabled={
+                      !directConsumeSupported ||
+                      !selectedInstanceId ||
+                      !selectedMsg ||
+                      !directConsumeGroup ||
+                      !directConsumeClientId
+                    }
+                    onClick={() => void handleDirectConsume()}
+                  >
+                    {t('messagePage.directConsume')}
+                  </Button>
+                </span>
+              </Tooltip>
+            </Flex>
           </Flex>
         }
       >
         <Tabs activeKey={modalTab} onChange={handleModalTabChange} items={modalTabs} />
-      </Modal>
-
-      <Modal
-        title={t('messagePage.directConsumeTitle')}
-        open={directConsumeOpen && directConsumeSupported}
-        onCancel={() => setDirectConsumeOpen(false)}
-        onOk={() => void handleDirectConsume()}
-        confirmLoading={directConsumeSubmitting}
-        okText={t('messagePage.execute')}
-        destroyOnHidden
-      >
-        <Alert
-          showIcon
-          type="warning"
-          message={t('messagePage.directConsumeHint')}
-          description={t('messagePage.directConsumeNote')}
-          style={{ marginBottom: 16 }}
-        />
-        <Space direction="vertical" size={12} style={{ width: '100%' }}>
-          <Input value={selectedMsg?.topic} disabled addonBefore="Topic" />
-          <Input value={selectedMsg?.msgId} disabled addonBefore="Message ID" />
-          <Input
-            value={directConsumeGroup}
-            onChange={(event) => setDirectConsumeGroup(event.target.value)}
-            placeholder={t('messagePage.consumerGroupPlaceholder')}
-            addonBefore="Consumer group"
-          />
-          <Input
-            value={directConsumeClientId}
-            onChange={(event) => setDirectConsumeClientId(event.target.value)}
-            placeholder={t('messagePage.clientIdPlaceholder')}
-            addonBefore="Client ID"
-          />
-        </Space>
       </Modal>
     </div>
   );

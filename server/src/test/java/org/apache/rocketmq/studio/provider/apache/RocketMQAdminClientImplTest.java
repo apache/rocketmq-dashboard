@@ -23,8 +23,21 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
+import org.apache.rocketmq.common.message.MessageAccessor;
+import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.instance.InstanceResolver;
+import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.instance.message.MessageProvider;
+import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.MessageService;
+import org.apache.rocketmq.studio.instance.topic.MetadataService;
+import org.apache.rocketmq.studio.provider.InstanceProvider;
+import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.TopicFilterType;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.MessageQueueSelector;
 import org.apache.rocketmq.client.producer.SendResult;
@@ -66,6 +79,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -77,6 +92,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Stream;
 import java.util.Set;
 
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
@@ -84,6 +101,7 @@ import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -95,6 +113,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -137,19 +156,35 @@ class RocketMQAdminClientImplTest {
             return instance;
         });
         lenient().when(ownershipGuard.topicResource(any())).thenCallRealMethod();
-        lenient().when(ownershipGuard.check(any(), any(), anyBoolean())).thenAnswer(call -> {
+        lenient().when(ownershipGuard.checkOwnerInDomain(any(), any(), anyBoolean())).thenAnswer(call -> {
             if (!call.<Boolean>getArgument(2)) {
                 return null;
             }
             var resource = call.<org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Resource>getArgument(1);
             return new org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Ownership(
                     1L, resource.name(), call.<org.apache.rocketmq.studio.instance.InstanceVO>getArgument(0).getName(),
-                    "cluster-1", null);
+                    "cluster-1", null, "ns:1");
+        });
+        lenient().when(ownershipGuard.checkSlot(any(), any(), any(), anyBoolean())).thenAnswer(call -> {
+            if (!call.<Boolean>getArgument(3)) {
+                return null;
+            }
+            var resource = call.<org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Resource>getArgument(1);
+            return new org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Ownership(
+                    1L, resource.name(), call.<org.apache.rocketmq.studio.instance.InstanceVO>getArgument(0).getName(),
+                    "cluster-1", null, "ns:1");
         });
         lenient().when(ownershipGuard.write(any(), any(), any(), anyBoolean(), any(), any())).thenAnswer(call ->
                 call.<java.util.function.Supplier<Object>>getArgument(5).get());
         lenient().when(ownershipGuard.withOwned(any(), any(), any())).thenAnswer(call ->
                 call.<java.util.function.Supplier<Object>>getArgument(2).get());
+        lenient().when(ownershipGuard.domainOf(any())).thenReturn("ns:1");
+        lenient().when(ownershipGuard.slots(any(), any())).thenAnswer(call -> {
+            var resource = call.<org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Resource>getArgument(1);
+            return java.util.List.of(new org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Ownership(
+                    1L, resource.name(), call.<org.apache.rocketmq.studio.instance.InstanceVO>getArgument(0).getName(),
+                    "cluster-1", null, "ns:1"));
+        });
         lenient().when(runtimeAdminClientResolver.execute(anyString(), any())).thenAnswer(call ->
                 call.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(adminExt));
         lenient().when(runtimeAdminClientResolver.resolveEndpoint(anyString())).thenReturn("10.0.0.1:9876");
@@ -327,6 +362,29 @@ class RocketMQAdminClientImplTest {
         assertThat(group.getDelaySeconds()).isBetween(4, 30);
     }
 
+    @ParameterizedTest
+    @CsvSource({"100,100,3600000,0", "100,99,3600000,3600", "99,100,3600000,3600", "100,100,0,0"})
+    void getConsumerGroupDoesNotTreatCaughtUpIdleQueuesAsDelayedTest(
+            long brokerOffset, long consumerOffset, long ageMillis, int minimumDelay) throws Exception {
+        ConsumeStats stats = new ConsumeStats();
+        OffsetWrapper wrapper = offsetWrapper(brokerOffset, consumerOffset);
+        wrapper.setLastTimestamp(ageMillis == 0 ? 0 : System.currentTimeMillis() - ageMillis);
+        stats.getOffsetTable().put(new MessageQueue("orders-topic", "broker-a", 0), wrapper);
+        stats.getOffsetTable().put(new MessageQueue("orders-topic", "broker-b", 1), offsetWrapper(50, 50));
+        when(adminExt.examineConsumeStats("orders")).thenReturn(stats);
+
+        ConsumerGroupVO group = adminClient.getConsumerGroup(null, "orders");
+
+        assertThat(group.isConsumeStatsAvailable()).isTrue();
+        assertThat(group.isConsumptionTimestampAvailable()).isEqualTo(ageMillis > 0);
+        assertThat(group.getTotalLag()).isEqualTo(brokerOffset - consumerOffset);
+        if (minimumDelay == 0) {
+            assertThat(group.getDelaySeconds()).isZero();
+        } else {
+            assertThat(group.getDelaySeconds()).isBetween(minimumDelay, minimumDelay + 30);
+        }
+    }
+
     @Test
     void getConsumerGroupReportsUnknownTotalLagWhenAnyQueueOffsetIsUnknownTest() throws Exception {
         org.apache.rocketmq.remoting.protocol.body.ConsumerConnection connection =
@@ -472,6 +530,116 @@ class RocketMQAdminClientImplTest {
                         org.assertj.core.groups.Tuple.tuple("broker-b", 1, 170L, 20L, 30L));
         verify(adminExt, never()).resetOffsetByTimestamp(anyString(), anyString(), anyString(),
                 anyLong(), anyBoolean());
+    }
+
+    @Test
+    void previewResetOffsetAllowsOfflineGroupFromTopicRouteTest() throws Exception {
+        // An offline group has no consume stats, but resetOffsetNew still applies offline: the
+        // preview must enumerate the topic route and allow the reset instead of blocking it.
+        long timestamp = 1784246400000L;
+        when(adminExt.examineConsumeStats("cg-orders"))
+                .thenThrow(new MQClientException(ResponseCode.CONSUMER_NOT_ONLINE,
+                        "Not found the consumer group connection"));
+        QueueData queueData = new QueueData();
+        queueData.setBrokerName("broker-1");
+        queueData.setReadQueueNums(2);
+        queueData.setPerm(6);
+        TopicRouteData routeData = new TopicRouteData();
+        routeData.setQueueDatas(List.of(queueData));
+        when(adminExt.examineTopicRouteInfo("orders")).thenReturn(routeData);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(adminExt.minOffset(any(MessageQueue.class))).thenReturn(10L);
+        when(adminExt.maxOffset(any(MessageQueue.class))).thenReturn(100L);
+        when(adminExt.searchOffset(eq("10.0.0.1:10911"), eq("orders"), anyInt(), eq(timestamp), anyLong()))
+                .thenReturn(50L);
+
+        ResetConsumerOffsetPreviewVO preview = adminClient.previewResetOffset(
+                "instance-a", "cg-orders", timestamp, "orders");
+
+        assertThat(preview.isAllowReset()).isTrue();
+        assertThat(preview.isComplete()).isTrue();
+        assertThat(preview.getQueueCount()).isEqualTo(2);
+        assertThat(preview.getCurrentTotalLag()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+        assertThat(preview.getProjectedTotalLag()).isEqualTo(100L);
+        assertThat(preview.getWarnings()).anyMatch(w -> w.contains("not online"));
+        assertThat(preview.getQueues())
+                .extracting(ResetConsumerOffsetQueuePreviewVO::getQueueId,
+                        ResetConsumerOffsetQueuePreviewVO::getTargetOffset,
+                        ResetConsumerOffsetQueuePreviewVO::getCurrentLag)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(0, 50L, ConsumerLagResolver.UNKNOWN),
+                        org.assertj.core.groups.Tuple.tuple(1, 50L, ConsumerLagResolver.UNKNOWN));
+    }
+
+    @Test
+    void previewResetOffsetReportsUnavailableCurrentOffsetForOfflineGroupTest() throws Exception {
+        // The offline preview must not splice the delta-based online message into its own: with no
+        // current offset there is no delta, and borrowing that clause read as the broken
+        // "the reset moves the offset to Offset unchanged".
+        long timestamp = 1784246400000L;
+        when(adminExt.examineConsumeStats("cg-orders"))
+                .thenThrow(new MQClientException(ResponseCode.CONSUMER_NOT_ONLINE,
+                        "Not found the consumer group connection"));
+        QueueData queueData = new QueueData();
+        queueData.setBrokerName("broker-1");
+        queueData.setReadQueueNums(1);
+        queueData.setPerm(6);
+        TopicRouteData routeData = new TopicRouteData();
+        routeData.setQueueDatas(List.of(queueData));
+        when(adminExt.examineTopicRouteInfo("orders")).thenReturn(routeData);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(adminExt.minOffset(any(MessageQueue.class))).thenReturn(10L);
+        when(adminExt.maxOffset(any(MessageQueue.class))).thenReturn(50L);
+        when(adminExt.searchOffset(eq("10.0.0.1:10911"), eq("orders"), anyInt(), eq(timestamp), anyLong()))
+                .thenReturn(900L);
+
+        ResetConsumerOffsetPreviewVO preview = adminClient.previewResetOffset(
+                "instance-a", "cg-orders", timestamp, "orders");
+
+        // searchOffset answered 900, beyond the retained range, so the target is clamped to the
+        // broker maximum and the message names which end of the range it landed on.
+        assertThat(preview.getQueues()).singleElement().satisfies(row -> {
+            assertThat(row.getTargetOffset()).isEqualTo(50L);
+            assertThat(row.getConsumerOffset()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+            assertThat(row.getCurrentLag()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+            assertThat(row.getProjectedLag()).isZero();
+            assertThat(row.getMessage()).isEqualTo(
+                    "Current offset unavailable (group offline); target offset 50; "
+                            + "target is the latest offset");
+            assertThat(row.getMessage()).doesNotContain("Offset unchanged");
+        });
+        assertThat(preview.getWarnings()).anySatisfy(warning -> {
+            assertThat(warning).contains("not online");
+            assertThat(warning).contains("current offsets are unavailable");
+            assertThat(warning).doesNotContain("-1");
+        });
+    }
+
+    @Test
+    void previewResetOffsetSkipsUnreadableQueuesForOfflineGroupTest() throws Exception {
+        // resetOffsetByTimestampOld walks the read queues of the route; a write-only queue is never
+        // consumed from, so the preview must not invent a target the reset will not commit.
+        long timestamp = 1784246400000L;
+        when(adminExt.examineConsumeStats("cg-orders"))
+                .thenThrow(new MQClientException(ResponseCode.CONSUMER_NOT_ONLINE,
+                        "Not found the consumer group connection"));
+        QueueData writeOnly = new QueueData();
+        writeOnly.setBrokerName("broker-1");
+        writeOnly.setReadQueueNums(2);
+        writeOnly.setPerm(2);
+        TopicRouteData routeData = new TopicRouteData();
+        routeData.setQueueDatas(List.of(writeOnly));
+        when(adminExt.examineTopicRouteInfo("orders")).thenReturn(routeData);
+
+        ResetConsumerOffsetPreviewVO preview = adminClient.previewResetOffset(
+                "instance-a", "cg-orders", timestamp, "orders");
+
+        assertThat(preview.isAllowReset()).isFalse();
+        assertThat(preview.getQueueCount()).isZero();
+        assertThat(preview.getWarnings())
+                .containsExactly("Consumer group is not online and no consume offset data is available"
+                        + "; no readable queues found for topic orders");
+        verify(adminExt, never()).searchOffset(anyString(), anyString(), anyInt(), anyLong(), anyLong());
     }
 
     @Test
@@ -708,7 +876,8 @@ class RocketMQAdminClientImplTest {
                 ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(topicMapper, times(2)).selectOne(captor.capture());
         for (LambdaQueryWrapper<RmqTopic> wrapper : captor.getAllValues()) {
-            assertThat(wrapper.getSqlSegment()).contains("name").doesNotContain("cluster_id", "instance_id");
+            assertThat(wrapper.getSqlSegment()).contains("name", "domain", "cluster_id")
+                    .doesNotContain("instance_id");
         }
     }
 
@@ -817,8 +986,9 @@ class RocketMQAdminClientImplTest {
         ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> queries = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(topicMapper, times(create ? 2 : 1)).selectOne(queries.capture());
         for (LambdaQueryWrapper<RmqTopic> query : queries.getAllValues()) {
-            assertThat(query.getSqlSegment()).contains("name").doesNotContain("instance_id", "cluster_id");
-            assertThat(query.getParamNameValuePairs().values()).containsExactly("orders");
+            assertThat(query.getSqlSegment()).contains("name", "domain", "cluster_id")
+                    .doesNotContain("instance_id");
+            assertThat(query.getParamNameValuePairs().values()).contains("orders", "ns:1");
         }
         if (create) {
             ArgumentCaptor<RmqTopic> saved = ArgumentCaptor.forClass(RmqTopic.class);
@@ -978,6 +1148,110 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void updateTopicShouldKeepLiteTopicExpirationOutOfTheWriteDeltaTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        RmqTopic existing = new RmqTopic();
+        existing.setTopicType(TopicType.LITE.name());
+        existing.setWriteQueueNums(8);
+        existing.setReadQueueNums(8);
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        // A LITE parent that already carries its TTL attribute: the generic update path re-asserts
+        // message.type only, so the stored lite.topic.expiration must stay out of the write delta.
+        TopicConfig stored = new TopicConfig("orders");
+        stored.setAttributes(Map.of("lite.topic.expiration", "1440"));
+        when(adminExt.examineTopicConfig(anyString(), eq("orders"))).thenReturn(stored);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("orders");
+        topic.setType(TopicType.LITE);
+        topic.setWriteQueues(16);
+
+        adminClient.updateTopic(topic);
+
+        ArgumentCaptor<TopicConfig> captor = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt).createAndUpdateTopicConfig(anyString(), captor.capture());
+        assertThat(captor.getValue().getAttributes())
+                .containsEntry("+message.type", TopicType.LITE.name())
+                .containsOnlyKeys("+message.type");
+    }
+
+    @Test
+    void createTopicShouldWriteLiteTtlAttributeWithMessageTypeTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(null);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("chat");
+        topic.setType(TopicType.LITE);
+        topic.setLiteTtlMinutes(1440);
+
+        adminClient.createTopic(topic);
+
+        ArgumentCaptor<TopicConfig> captor = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt).createAndUpdateTopicConfig(anyString(), captor.capture());
+        assertThat(captor.getValue().getAttributes())
+                .containsEntry("+message.type", TopicType.LITE.name())
+                .containsEntry("+lite.topic.expiration", "1440");
+    }
+
+    @Test
+    void createTopicShouldIgnoreTtlMinutesForNonLiteTypesTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(null);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("orders");
+        topic.setType(TopicType.NORMAL);
+        topic.setLiteTtlMinutes(1440);
+
+        adminClient.createTopic(topic);
+
+        ArgumentCaptor<TopicConfig> captor = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt).createAndUpdateTopicConfig(anyString(), captor.capture());
+        assertThat(captor.getValue().getAttributes())
+                .containsEntry("+message.type", TopicType.NORMAL.name())
+                .doesNotContainKey("+lite.topic.expiration");
+    }
+
+    @Test
+    void updateTopicShouldIgnoreLiteTtlMinutesTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        RmqTopic existing = new RmqTopic();
+        existing.setTopicType(TopicType.LITE.name());
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        TopicConfig stored = new TopicConfig("orders");
+        stored.setAttributes(Map.of("lite.topic.expiration", "1440"));
+        when(adminExt.examineTopicConfig(anyString(), eq("orders"))).thenReturn(stored);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        // A stale or malicious update payload carries a TTL: the generic update path must not
+        // write it — TTL is create-only and lives on the LiteTopic extension endpoint.
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("orders");
+        topic.setType(TopicType.LITE);
+        topic.setLiteTtlMinutes(60);
+
+        adminClient.updateTopic(topic);
+
+        ArgumentCaptor<TopicConfig> captor = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt).createAndUpdateTopicConfig(anyString(), captor.capture());
+        assertThat(captor.getValue().getAttributes())
+                .containsOnlyKeys("+message.type")
+                .containsEntry("+message.type", TopicType.LITE.name());
+    }
+
+    @Test
     void updateTopicWithoutTypePreservesExistingType() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         RmqTopic existing = new RmqTopic();
@@ -1055,6 +1329,198 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void updateTopicPreservesEachBrokersUneditedConfigurationTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        RmqTopic existing = new RmqTopic();
+        existing.setId(7L);
+        existing.setName("orders");
+        existing.setWriteQueueNums(8);
+        existing.setReadQueueNums(8);
+        existing.setPerm(6);
+        existing.setTopicType(TopicType.NORMAL.name());
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+        Map<String, TopicConfig> physicalConfigs = new HashMap<>();
+        for (int i = 1; i <= 2; i++) {
+            String address = "10.0.0." + i + ":10911";
+            TopicConfig config = new TopicConfig("orders", 8, 8, 6);
+            config.setTopicSysFlag(i);
+            config.setOrder(i == 1);
+            config.setTopicFilterType(i == 1 ? TopicFilterType.MULTI_TAG : TopicFilterType.SINGLE_TAG);
+            config.setAttributes(Map.of("message.type", "NORMAL"));
+            physicalConfigs.put(address, config);
+            lenient().when(adminExt.examineTopicConfig(address, "orders")).thenReturn(config);
+        }
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("orders");
+        topic.setWriteQueues(16);
+        topic.setReadQueues(12);
+        topic.setRemark("updated remark");
+
+        TopicVO updated = adminClient.updateTopic(topic);
+
+        ArgumentCaptor<String> addresses = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<TopicConfig> configs = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt, times(2)).createAndUpdateTopicConfig(addresses.capture(), configs.capture());
+        assertThat(addresses.getAllValues()).containsExactlyInAnyOrderElementsOf(physicalConfigs.keySet());
+        for (int i = 0; i < addresses.getAllValues().size(); i++) {
+            TopicConfig original = physicalConfigs.get(addresses.getAllValues().get(i));
+            TopicConfig sent = configs.getAllValues().get(i);
+            assertThat(sent.getTopicSysFlag()).isEqualTo(original.getTopicSysFlag());
+            assertThat(sent.isOrder()).isEqualTo(original.isOrder());
+            assertThat(sent.getTopicFilterType()).isEqualTo(original.getTopicFilterType());
+            assertThat(sent.getWriteQueueNums()).isEqualTo(16);
+            assertThat(sent.getReadQueueNums()).isEqualTo(12);
+            assertThat(sent.getPerm()).isEqualTo(6);
+            assertThat(sent.getAttributes()).doesNotContainKey("message.type");
+            assertThat(original.getWriteQueueNums()).isEqualTo(8);
+        }
+        assertThat(updated.getRemark()).isEqualTo("updated remark");
+        assertThat(existing.getWriteQueueNums()).isEqualTo(16);
+        assertThat(existing.getReadQueueNums()).isEqualTo(12);
+        verify(topicMapper).updateById(existing);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"0, 4", "2, 5", "3, 7"})
+    void updateTopicWithoutPermissionPreservesEachBrokersPermissionTest(int firstPerm, int secondPerm) throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        RmqTopic existing = new RmqTopic();
+        existing.setName("orders");
+        existing.setWriteQueueNums(8);
+        existing.setReadQueueNums(8);
+        existing.setPerm(6);
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+        Map<String, Integer> permissions = Map.of("10.0.0.1:10911", firstPerm, "10.0.0.2:10911", secondPerm);
+        for (var entry : permissions.entrySet()) {
+            when(adminExt.examineTopicConfig(entry.getKey(), "orders"))
+                    .thenReturn(new TopicConfig("orders", 8, 8, entry.getValue()));
+        }
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("orders");
+        topic.setWriteQueues(16);
+        topic.setReadQueues(12);
+        topic.setRemark("updated remark");
+
+        adminClient.updateTopic(topic);
+
+        ArgumentCaptor<String> addresses = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<TopicConfig> configs = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt, times(2)).createAndUpdateTopicConfig(addresses.capture(), configs.capture());
+        for (int i = 0; i < addresses.getAllValues().size(); i++) {
+            TopicConfig sent = configs.getAllValues().get(i);
+            assertThat(sent.getPerm()).isEqualTo(permissions.get(addresses.getAllValues().get(i)));
+            assertThat(sent.getWriteQueueNums()).isEqualTo(16);
+            assertThat(sent.getReadQueueNums()).isEqualTo(12);
+        }
+        assertThat(existing.getPerm()).isEqualTo(6);
+        assertThat(existing.getRemark()).isEqualTo("updated remark");
+        verify(topicMapper).updateById(existing);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"RO, 4", "WO, 2", "RW, 6"})
+    void updateTopicWithPermissionOverridesEachBrokersPermissionTest(TopicPerm requested, int expected) throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        RmqTopic existing = new RmqTopic();
+        existing.setName("orders");
+        existing.setWriteQueueNums(8);
+        existing.setReadQueueNums(8);
+        existing.setPerm(6);
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+        when(adminExt.examineTopicConfig("10.0.0.1:10911", "orders"))
+                .thenReturn(new TopicConfig("orders", 8, 8, 0));
+        when(adminExt.examineTopicConfig("10.0.0.2:10911", "orders"))
+                .thenReturn(new TopicConfig("orders", 8, 8, 5));
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("orders");
+        topic.setWriteQueues(8);
+        topic.setReadQueues(8);
+        topic.setPerm(requested);
+
+        adminClient.updateTopic(topic);
+
+        ArgumentCaptor<TopicConfig> configs = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt, times(2)).createAndUpdateTopicConfig(anyString(), configs.capture());
+        assertThat(configs.getAllValues()).allSatisfy(config -> assertThat(config.getPerm()).isEqualTo(expected));
+        assertThat(existing.getPerm()).isEqualTo(expected);
+        verify(topicMapper).updateById(existing);
+    }
+
+    @Test
+    void updateTopicReadsAllConfigurationsBeforeWritingTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        RmqTopic existing = new RmqTopic();
+        existing.setId(7L);
+        existing.setName("orders");
+        existing.setWriteQueueNums(8);
+        existing.setReadQueueNums(8);
+        existing.setPerm(6);
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+        TopicConfig config = new TopicConfig("orders", 8, 8, 6);
+        config.setTopicSysFlag(1);
+        lenient().when(adminExt.examineTopicConfig(anyString(), eq("orders")))
+                .thenReturn(config).thenThrow(new IllegalStateException("broker unavailable"));
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("orders");
+        topic.setWriteQueues(16);
+
+        assertThatThrownBy(() -> adminClient.updateTopic(topic)).isInstanceOf(BusinessException.class);
+
+        verify(adminExt, never()).createAndUpdateTopicConfig(anyString(), any());
+        verify(topicMapper, never()).updateById(any(RmqTopic.class));
+        assertThat(existing.getWriteQueueNums()).isEqualTo(8);
+        verify(auditService, never()).record(anyString(), anyString(), anyString(), any(), anyString(), eq("SUCCESS"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void updateTopicStillCreatesConfigurationOnMissingMastersTest(boolean absentException) throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        RmqTopic existing = new RmqTopic();
+        existing.setId(7L);
+        existing.setName("orders");
+        existing.setWriteQueueNums(8);
+        existing.setReadQueueNums(8);
+        existing.setPerm(4);
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+        var reads = lenient().when(adminExt.examineTopicConfig(anyString(), eq("orders")));
+        if (absentException) {
+            reads.thenThrow(new MQBrokerException(ResponseCode.TOPIC_NOT_EXIST, "topic absent"));
+        } else {
+            reads.thenReturn(null);
+        }
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("orders");
+        topic.setWriteQueues(16);
+        topic.setReadQueues(12);
+
+        adminClient.updateTopic(topic);
+
+        ArgumentCaptor<TopicConfig> configs = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt, times(2)).createAndUpdateTopicConfig(anyString(), configs.capture());
+        assertThat(configs.getAllValues()).allSatisfy(config -> {
+            assertThat(config.getTopicName()).isEqualTo("orders");
+            assertThat(config.getPerm()).isEqualTo(4);
+            assertThat(config.getReadQueueNums()).isEqualTo(12);
+            assertThat(config.getWriteQueueNums()).isEqualTo(16);
+            assertThat(config.getTopicSysFlag()).isZero();
+            assertThat(config.getTopicFilterType()).isEqualTo(TopicFilterType.SINGLE_TAG);
+            assertThat(config.isOrder()).isFalse();
+        });
+        verify(topicMapper).updateById(existing);
+    }
+
+    @Test
     void topicDeleteUsesSelectedInstanceAndScopesMetadataToClusterAndInstance() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
@@ -1070,7 +1536,8 @@ class RocketMQAdminClientImplTest {
 
         ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(topicMapper).delete(captor.capture());
-        assertThat(captor.getValue().getSqlSegment()).contains("name").doesNotContain("cluster_id", "instance_id");
+        assertThat(captor.getValue().getSqlSegment()).contains("name", "domain")
+                .doesNotContain("instance_id", "cluster_id");
         verify(selectedAdmin).deleteTopicInBroker(Set.of("10.0.0.1:10911"), "orders");
         verify(selectedAdmin).deleteTopicInNameServer(Set.of("10.0.0.2:9876"), "cluster-1", "orders");
     }
@@ -1125,7 +1592,8 @@ class RocketMQAdminClientImplTest {
         verify(adminExt, never()).createAndUpdateSubscriptionGroupConfig(anyString(), any());
         ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(groupMapper).selectOne(captor.capture());
-        assertThat(captor.getValue().getSqlSegment()).contains("name").doesNotContain("cluster_id", "instance_id");
+        assertThat(captor.getValue().getSqlSegment()).contains("name", "domain", "cluster_id")
+                .doesNotContain("instance_id");
     }
 
     @ParameterizedTest
@@ -1500,7 +1968,8 @@ class RocketMQAdminClientImplTest {
         verify(adminExt, never()).deleteSubscriptionGroup(anyString(), anyString(), org.mockito.ArgumentMatchers.anyBoolean());
         ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(groupMapper).delete(captor.capture());
-        assertThat(captor.getValue().getSqlSegment()).contains("name").doesNotContain("cluster_id", "instance_id");
+        assertThat(captor.getValue().getSqlSegment()).contains("name", "domain", "cluster_id")
+                .doesNotContain("instance_id");
     }
 
     @Test
@@ -1816,6 +2285,158 @@ class RocketMQAdminClientImplTest {
         assertThat(decoded).containsAllEntriesOf(userProperties)
                 .containsEntry(MessageConst.PROPERTY_TAGS, "tagA")
                 .containsEntry(MessageConst.PROPERTY_KEYS, "keyA");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "orders,,stale-topic,orders",
+        "orders,%RETRY%group-a,stale-topic,orders",
+        "orders,%RETRY%group-b,stale-topic,orders",
+        "orders,orders-copy,stale-topic,orders-copy",
+        "%RETRY%group-a,,orders,orders",
+        "%DLQ%group-a,,orders,orders"
+    })
+    void redeliveryPreservesBusinessTopicForSdkRetryConsumptionTest(
+            String sourceTopic, String targetTopic, String previousRetryTopic, String consumerTopic) throws Exception {
+        MetadataService service = redeliveryService();
+        MessageRecordVO original = MessageRecordVO.builder().msgId("original-id").topic(sourceTopic)
+                .body("payload").tag("paid").key("order-1")
+                .properties(Map.of("tenant", "alpha", MessageConst.PROPERTY_RETRY_TOPIC, previousRetryTopic,
+                        MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX, "original-id"))
+                .build();
+        SendResult result = new SendResult();
+        result.setSendStatus(SendStatus.SEND_OK);
+        result.setMsgId("new-id");
+        when(sendProducer.send(any(Message.class))).thenReturn(result);
+
+        service.redeliverMessage("instance-a", "group-a", original, targetTopic);
+
+        ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
+        verify(sendProducer).send(captor.capture());
+        Message sent = captor.getValue();
+        String destination = targetTopic == null ? "%RETRY%group-a" : targetTopic;
+        assertThat(sent.getTopic()).isEqualTo(destination);
+        var destinationResource = ownershipGuard.topicResource(destination);
+        verify(ownershipGuard, org.mockito.Mockito.atLeastOnce()).checkOwnerInDomain(any(), eq(destinationResource), eq(true));
+        MessageExt delivered = new MessageExt();
+        delivered.setTopic(sent.getTopic());
+        delivered.setBody(sent.getBody());
+        MessageAccessor.setProperties(delivered, MessageDecoder.string2messageProperties(
+                MessageDecoder.messageProperties2String(sent.getProperties())));
+        String consumerGroup = destination.startsWith("%RETRY%")
+                ? destination.substring("%RETRY%".length()) : "group-a";
+        DefaultMQPushConsumer consumer = new DefaultMQPushConsumer(consumerGroup);
+        consumer.getDefaultMQPushConsumerImpl().resetRetryAndNamespace(List.of(delivered), consumerGroup);
+
+        assertThat(delivered.getTopic()).isEqualTo(consumerTopic);
+        assertThat(delivered.getBody()).isEqualTo("payload".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertThat(delivered.getTags()).isEqualTo("paid");
+        assertThat(delivered.getKeys()).isEqualTo("order-1");
+        assertThat(delivered.getUserProperty("tenant")).isEqualTo("alpha");
+        assertThat(sent.getProperties()).doesNotContainKey(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX);
+        if (!destination.startsWith("%RETRY%")) {
+            assertThat(sent.getProperties()).doesNotContainKey(MessageConst.PROPERTY_RETRY_TOPIC).hasSize(4);
+        } else {
+            assertThat(sent.getProperties()).containsEntry(MessageConst.PROPERTY_RETRY_TOPIC, consumerTopic).hasSize(5);
+        }
+        assertThat(original.getProperties()).containsEntry(MessageConst.PROPERTY_RETRY_TOPIC, previousRetryTopic);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "%RETRY%group-a,", "%DLQ%group-a,",
+        "%RETRY%group-a,%RETRY%group-b", "%DLQ%group-a,%DLQ%group-b"
+    })
+    void retryRedeliveryRejectsMissingBusinessTopicBeforeSendingTest(String sourceTopic, String retryTopic) {
+        Map<String, String> sourceProperties = new HashMap<>();
+        sourceProperties.put("tenant", "alpha");
+        if (retryTopic != null) {
+            sourceProperties.put(MessageConst.PROPERTY_RETRY_TOPIC, retryTopic);
+        }
+        MessageRecordVO original = MessageRecordVO.builder().topic(sourceTopic).msgId("original-id")
+                .body("payload").properties(sourceProperties).build();
+
+        assertThatThrownBy(() -> redeliveryService().redeliverMessage("instance-a", "group-a", original, null))
+                .isInstanceOf(org.apache.rocketmq.studio.common.exception.BusinessException.class)
+                .hasMessageContaining("no original business topic");
+        verifyNoInteractions(sendProducer);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"%RETRY%group-a", "%DLQ%group-a"})
+    void explicitBusinessRedeliveryDoesNotRequireRetryMetadataTest(String sourceTopic) throws Exception {
+        MessageRecordVO original = MessageRecordVO.builder().topic(sourceTopic).msgId("original-id")
+                .body("payload").properties(Map.of("tenant", "alpha")).build();
+        SendResult result = new SendResult();
+        result.setSendStatus(SendStatus.SEND_OK);
+        result.setMsgId("new-id");
+        when(sendProducer.send(any(Message.class))).thenReturn(result);
+
+        redeliveryService().redeliverMessage("instance-a", "group-a", original, "orders-copy");
+
+        ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
+        verify(sendProducer).send(captor.capture());
+        assertThat(captor.getValue().getTopic()).isEqualTo("orders-copy");
+        assertThat(captor.getValue().getProperties()).containsOnlyKeys("tenant", MessageConst.PROPERTY_WAIT_STORE_MSG_OK);
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidRetrySourceTopics")
+    void retryRedeliveryRejectsInvalidOrAbbreviatedOriginalTopicTest(String retryTopic) {
+        MessageRecordVO original = MessageRecordVO.builder().topic("%DLQ%group-a").msgId("original-id")
+                .body("payload").properties(Map.of(MessageConst.PROPERTY_RETRY_TOPIC, retryTopic))
+                .propertiesTruncated(true).build();
+
+        assertThatThrownBy(() -> redeliveryService().redeliverMessage("instance-a", "group-a", original, null))
+                .isInstanceOf(org.apache.rocketmq.studio.common.exception.BusinessException.class)
+                .hasMessageContaining("invalid original business topic");
+        verifyNoInteractions(sendProducer);
+    }
+
+    private static Stream<String> invalidRetrySourceTopics() {
+        return Stream.of("orders bad", "orders" + MessageDecoder.PROPERTY_SEPARATOR + "other", "SCHEDULE_TOPIC_XXXX",
+                "x".repeat(org.apache.rocketmq.studio.common.util.MessagePropertyDisplay.MAX_PROPERTY_VALUE_CODE_POINTS)
+                        + org.apache.rocketmq.studio.common.util.MessagePropertyDisplay.ABBREVIATION_SUFFIX);
+    }
+
+    @Test
+    void retryRedeliveryChecksRecoveredBusinessTopicBeforeSendingTest() {
+        var source = MessageRecordVO.builder().topic("%DLQ%group-a").msgId("original-id")
+                .body("payload").properties(Map.of(MessageConst.PROPERTY_RETRY_TOPIC, "orders")).build();
+        var logicalTopic = new org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Resource(
+                org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Kind.TOPIC, "orders");
+        when(ownershipGuard.checkOwnerInDomain(any(), eq(logicalTopic), eq(true)))
+                .thenThrow(new org.apache.rocketmq.studio.common.exception.BusinessException(409, "Topic scope mismatch"));
+
+        assertThatThrownBy(() -> redeliveryService().redeliverMessage("instance-a", "group-a", source, null))
+                .hasMessage("Topic scope mismatch");
+        verifyNoInteractions(sendProducer);
+    }
+
+    @Test
+    void defaultRedeliveryContractsDelegateToExistingSendTest() {
+        SendMessageDTO request = SendMessageDTO.builder().instanceId("instance-a").topic("orders").body("payload").build();
+        SendMessageVO result = SendMessageVO.builder().msgId("new-id").build();
+        InstanceProvider fallbackProvider = mock(InstanceProvider.class, org.mockito.Mockito.CALLS_REAL_METHODS);
+        AdminClient fallbackAdmin = mock(AdminClient.class, org.mockito.Mockito.CALLS_REAL_METHODS);
+        org.mockito.Mockito.doReturn(result).when(fallbackProvider).sendMessage(request);
+        when(fallbackAdmin.sendMessage(request)).thenReturn(result);
+
+        assertThat(fallbackProvider.redeliverMessage(request, "source-topic")).isSameAs(result);
+        assertThat(fallbackAdmin.redeliverMessage(request, "source-topic")).isSameAs(result);
+        verify(fallbackProvider).sendMessage(request);
+        verify(fallbackAdmin).sendMessage(request);
+    }
+
+    private MetadataService redeliveryService() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        InstanceProvider provider = new ApacheInstanceProvider(mock(MetadataProvider.class), adminClient,
+                mock(MessageProvider.class), mock(InstanceRepository.class));
+        lenient().when(registry.byInstanceId("instance-a")).thenReturn(Optional.of(provider));
+        return new MetadataService(mock(MetadataProvider.class), adminClient, registry,
+                mock(InstanceResolver.class), mock(OperationAuditService.class), mock(MessageService.class),
+                runtimeAdminClientResolver, ownershipGuard,
+                mock(org.apache.rocketmq.studio.provider.LiteTopicProvider.class));
     }
 
     @Test

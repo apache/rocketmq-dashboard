@@ -18,7 +18,6 @@ package org.apache.rocketmq.studio.ops.ai.tool.handler.acl;
 
 import org.apache.rocketmq.studio.instance.acl.AclRuleVO;
 import org.apache.rocketmq.studio.instance.acl.AclService;
-import org.apache.rocketmq.studio.ops.ai.tool.core.ToolError;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.handler.MutationToolHandler;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.acl.AclMutationInput;
@@ -51,8 +50,9 @@ public class AclUpdateToolHandler extends MutationToolHandler<AclMutationInput, 
     @Override
     public ToolPlan preview(AclMutationInput input, ToolExecutionContext context) {
         String instanceId = context.instanceId();
-        AclMutationInput before = AclMutationInput.from(aclService.getRule(input.id(), instanceId));
-        AclMutationInput after = AclMutationInput.from(input.toRule(parseId(input.id())));
+        AclRuleVO existing = aclService.getRule(input.id(), instanceId);
+        AclMutationInput before = AclMutationInput.from(existing);
+        AclMutationInput after = AclMutationInput.from(input.toRule(existing.getId()));
         return PLAN_DESCRIPTION.builder(input.id(), context.instanceId())
                 .before(before)
                 .after(after)
@@ -63,17 +63,8 @@ public class AclUpdateToolHandler extends MutationToolHandler<AclMutationInput, 
 
     @Override
     public AclRuleVO execute(AclMutationInput input, ToolExecutionContext context) {
-        return aclService.updateRule(input.toRule(parseId(input.id())), context.instanceId());
-    }
-
-    private static Long parseId(String id) {
-        if (id == null || id.isBlank()) {
-            throw ToolError.ACL_ID_INVALID.exception(id);
-        }
-        try {
-            return Long.parseLong(id);
-        } catch (NumberFormatException e) {
-            throw ToolError.ACL_ID_INVALID.exception(id);
-        }
+        String instanceId = context.instanceId();
+        AclRuleVO existing = aclService.getRule(input.id(), instanceId);
+        return aclService.updateRule(input.toRule(existing.getId()), instanceId);
     }
 }

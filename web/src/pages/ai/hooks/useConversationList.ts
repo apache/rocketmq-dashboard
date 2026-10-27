@@ -27,7 +27,7 @@ import { describeThrownMessage } from '../../../utils/apiError';
  * searching and the archived filter are all server-side now, and the hook owns nothing but the
  * query state plus the stale-response guard.
  *
- * Conventions kept from `components/MessageQueryHistoryDrawer.tsx`:
+ * Conventions kept from `components/MessageQueryHistoryModal.tsx`:
  * - a monotonic `requestId` ref, re-read after every await, so a slow response for an older query
  *   can never overwrite a newer one;
  * - `loading` cleared only by the request that is still current;

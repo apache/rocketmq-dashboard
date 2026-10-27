@@ -28,8 +28,39 @@
  * every assistant text block, live or replayed.
  */
 export function normalizeAiMarkdown(content: string): string {
+  let fence: { marker: string; length: number } | null = null;
+  // Split on the newline itself rather than a lookbehind (`/(?<=\n)/`): esbuild cannot downlevel
+  // lookbehind assertions, and the Vite default build target still covers Safari versions that
+  // throw a SyntaxError while merely parsing such a literal.
   return content
-    .replace(/^(#{1,6})(?=\S)/gm, '$1 ')
-    .replace(/^([-+*])(?=\S)/gm, '$1 ')
-    .replace(/^```(bash|sh|shell|json|ya?ml|sql|text)(?=\S)/gim, '```$1\n');
+    .split('\n')
+    .map((line) => {
+      const marker = /^ {0,3}(`{3,}|~{3,})([^\r\n]*)/.exec(line);
+      if (fence) {
+        if (
+          marker &&
+          marker[1][0] === fence.marker &&
+          marker[1].length >= fence.length &&
+          !marker[2].trim()
+        ) {
+          fence = null;
+        }
+        return line;
+      }
+      // A backtick fence cannot contain backticks in its info string. Tilde fences can.
+      if (marker && (marker[1][0] === '~' || !marker[2].includes('`'))) {
+        fence = { marker: marker[1][0], length: marker[1].length };
+        return line.replace(/^```(bash|sh|shell|json|ya?ml|sql|text)(?=\S)/i, '```$1\n');
+      }
+      // The marker run must be maximal: with a plain (?=\S) lookahead the engine backtracks
+      // `#{1,6}` and a WELL-FORMED `## heading` matches as a single `#` followed by `#`,
+      // rewriting it to `# # heading`. Requiring the next character to be neither whitespace
+      // nor `#` keeps the repair to genuinely malformed markers like `##结论`.
+      //
+      // A bullet repair must not fire on a run of the same marker: `---`/`+++`/`***` are thematic
+      // breaks (and `---` under a title line is a setext heading), and inserting the space would
+      // rewrite them into a bullet with stray markers.
+      return line.replace(/^(#{1,6})(?=[^\s#])/, '$1 ').replace(/^([-+*])(?!\1\1)(?=\S)/, '$1 ');
+    })
+    .join('\n');
 }

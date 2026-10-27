@@ -109,6 +109,9 @@ class InstanceServiceTest {
     @Mock
     private ResourceOwnershipGuard ownershipGuard;
 
+    @Mock
+    private org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryService nameserverRegistry;
+
     @InjectMocks
     private InstanceService instanceService;
 
@@ -133,7 +136,7 @@ class InstanceServiceTest {
     @Test
     void updateOwnedInstanceStopsBeforeSaveTest() {
         InstanceVO existing = InstanceVO.builder().name("instance-a")
-                .endpoint("old:9876").vendor(InstanceVendor.APACHE).build();
+                .endpoint("old:9876").vendor(InstanceVendor.APACHE).nameserverId(1L).build();
         existing.setId(1L);
         InstanceVO request = InstanceVO.builder().endpoint("new:9876").build();
         request.setId(1L);
@@ -155,7 +158,7 @@ class InstanceServiceTest {
         when(instanceRepository.findAll()).thenReturn(instances);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
-        List<InstanceVO> result = instanceService.listInstances(null, null);
+        List<InstanceVO> result = instanceService.listInstances(null, null, true);
 
         assertThat(result).hasSize(2);
         verify(instanceRepository).findAll();
@@ -173,7 +176,7 @@ class InstanceServiceTest {
         when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(instanceProvider);
         when(regionNames.resolve("cn-hangzhou")).thenReturn("Hangzhou (CN)");
 
-        List<InstanceVO> result = instanceService.listInstances(null, null);
+        List<InstanceVO> result = instanceService.listInstances(null, null, true);
 
         assertThat(result.get(0).getRegionName()).isEqualTo("Hangzhou (CN)");
     }
@@ -191,7 +194,7 @@ class InstanceServiceTest {
         when(instanceRepository.findAll()).thenReturn(instances);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
-        List<InstanceVO> result = instanceService.listInstances(null, null);
+        List<InstanceVO> result = instanceService.listInstances(null, null, true);
 
         assertThat(result).extracting(InstanceVO::getName)
                 .containsExactly("a-apache", "b-apache",
@@ -207,7 +210,7 @@ class InstanceServiceTest {
         when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(provider);
         when(provider.countTopics("aliyun-fail")).thenThrow(new IllegalStateException("access denied"));
 
-        InstanceVO result = instanceService.listInstances(null, null).get(0);
+        InstanceVO result = instanceService.listInstances(null, null, true).get(0);
 
         assertThat(result.isResourceCountsAvailable()).isFalse();
     }
@@ -222,11 +225,27 @@ class InstanceServiceTest {
         when(provider.countTopics("aliyun-empty")).thenReturn(0);
         when(provider.countGroups("aliyun-empty")).thenReturn(0);
 
-        InstanceVO result = instanceService.listInstances(null, null).get(0);
+        InstanceVO result = instanceService.listInstances(null, null, true).get(0);
 
         assertThat(result.isResourceCountsAvailable()).isTrue();
         assertThat(result.getTopicCount()).isZero();
         assertThat(result.getConsumerGroupCount()).isZero();
+    }
+
+    @Test
+    void listInstancesWithoutCountsSkipsProviderLookupsTest() {
+        InstanceVO instance = InstanceVO.builder().name("aliyun-1").vendor(InstanceVendor.ALIYUN).build();
+        instance.setId(3L);
+        instance.setTopicCount(7);
+        instance.setConsumerGroupCount(9);
+        when(instanceRepository.findAll()).thenReturn(List.of(instance));
+
+        InstanceVO result = instanceService.listInstances(null, null, false).get(0);
+
+        assertThat(result.isResourceCountsAvailable()).isFalse();
+        assertThat(result.getTopicCount()).isZero();
+        assertThat(result.getConsumerGroupCount()).isZero();
+        verifyNoInteractions(providerRegistry);
     }
 
     @Test
@@ -237,7 +256,7 @@ class InstanceServiceTest {
         when(instanceRepository.findByType(InstanceType.CLOUD)).thenReturn(instances);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
-        List<InstanceVO> result = instanceService.listInstances(InstanceType.CLOUD, null);
+        List<InstanceVO> result = instanceService.listInstances(InstanceType.CLOUD, null, true);
 
         assertThat(result).hasSize(1);
         verify(instanceRepository).findByType(InstanceType.CLOUD);
@@ -251,7 +270,7 @@ class InstanceServiceTest {
         when(instanceRepository.search("prod")).thenReturn(instances);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
-        List<InstanceVO> result = instanceService.listInstances(null, "prod");
+        List<InstanceVO> result = instanceService.listInstances(null, "prod", true);
 
         assertThat(result).hasSize(1);
         verify(instanceRepository).search("prod");
@@ -265,7 +284,7 @@ class InstanceServiceTest {
         when(instanceRepository.search("prod")).thenReturn(instances);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
-        List<InstanceVO> result = instanceService.listInstances(null, " prod ");
+        List<InstanceVO> result = instanceService.listInstances(null, " prod ", true);
 
         assertThat(result).hasSize(1);
         verify(instanceRepository).search("prod");
@@ -279,7 +298,7 @@ class InstanceServiceTest {
         when(instanceRepository.findByTypeAndSearch(InstanceType.CLOUD, "prod")).thenReturn(instances);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
-        List<InstanceVO> result = instanceService.listInstances(InstanceType.CLOUD, "prod");
+        List<InstanceVO> result = instanceService.listInstances(InstanceType.CLOUD, "prod", true);
 
         assertThat(result).hasSize(1);
         verify(instanceRepository).findByTypeAndSearch(InstanceType.CLOUD, "prod");
@@ -293,7 +312,7 @@ class InstanceServiceTest {
         when(instanceRepository.findByTypeAndSearch(InstanceType.CLOUD, "prod")).thenReturn(instances);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
-        List<InstanceVO> result = instanceService.listInstances(InstanceType.CLOUD, " prod ");
+        List<InstanceVO> result = instanceService.listInstances(InstanceType.CLOUD, " prod ", true);
 
         assertThat(result).hasSize(1);
         verify(instanceRepository).findByTypeAndSearch(InstanceType.CLOUD, "prod");
@@ -305,7 +324,7 @@ class InstanceServiceTest {
         when(instanceRepository.findAll()).thenReturn(instances);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
-        List<InstanceVO> result = instanceService.listInstances(null, "   ");
+        List<InstanceVO> result = instanceService.listInstances(null, "   ", true);
 
         assertThat(result).hasSize(1);
         verify(instanceRepository).findAll();
@@ -326,7 +345,7 @@ class InstanceServiceTest {
         when(aliyunProvider.countTopics("aliyun")).thenReturn(5);
         when(aliyunProvider.countGroups("aliyun")).thenReturn(4);
 
-        List<InstanceVO> result = instanceService.listInstances(null, null);
+        List<InstanceVO> result = instanceService.listInstances(null, null, true);
 
         assertThat(result.get(0).getTopicCount()).isEqualTo(3);
         assertThat(result.get(0).getConsumerGroupCount()).isEqualTo(2);
@@ -343,7 +362,7 @@ class InstanceServiceTest {
         when(instanceProvider.countTopics("broken"))
                 .thenThrow(new IllegalStateException("admin unavailable"));
 
-        List<InstanceVO> result = instanceService.listInstances(null, null);
+        List<InstanceVO> result = instanceService.listInstances(null, null, true);
 
         assertThat(result.get(0).getTopicCount()).isZero();
         assertThat(result.get(0).getConsumerGroupCount()).isZero();
@@ -361,7 +380,7 @@ class InstanceServiceTest {
         when(instanceProvider.countTopics("stale-counts"))
                 .thenThrow(new IllegalStateException("provider unavailable"));
 
-        InstanceVO result = instanceService.listInstances(null, null).get(0);
+        InstanceVO result = instanceService.listInstances(null, null, true).get(0);
 
         assertThat(result.isResourceCountsAvailable()).isFalse();
         assertThat(result.getTopicCount()).isZero();
@@ -386,7 +405,7 @@ class InstanceServiceTest {
         });
 
         long start = System.nanoTime();
-        List<InstanceVO> result = instanceService.listInstances(null, null);
+        List<InstanceVO> result = instanceService.listInstances(null, null, true);
         long elapsedMillis = (System.nanoTime() - start) / 1_000_000;
 
         assertThat(elapsedMillis)
@@ -421,15 +440,14 @@ class InstanceServiceTest {
             if (interrupted) {
                 Thread.currentThread().interrupt();
             }
-            return 7;
-        });
-        when(instanceProvider.countGroups("slow")).thenAnswer(invocation -> {
+            // Signal the finished lookup here: this test is about the returned response, and it must
+            // not require the cancelled batch to reach the consumer-group lookup.
             providerFinished.countDown();
-            return 5;
+            return 7;
         });
 
         try {
-            List<InstanceVO> result = instanceService.listInstances(null, null);
+            List<InstanceVO> result = instanceService.listInstances(null, null, true);
 
             assertThat(topicCountStarted.await(1, TimeUnit.SECONDS)).isTrue();
             assertThat(result).singleElement().satisfies(instance -> {
@@ -452,6 +470,62 @@ class InstanceServiceTest {
     }
 
     @Test
+    void cancelledCountBatchShouldNotStartTheGroupLookupTest() throws Exception {
+        InstanceVO slow = InstanceVO.builder().name("slow").build();
+        slow.setId(25L);
+        when(instanceRepository.findAll()).thenReturn(List.of(slow));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+
+        CountDownLatch topicCountStarted = new CountDownLatch(1);
+        CountDownLatch releaseProvider = new CountDownLatch(1);
+        CountDownLatch groupCountStarted = new CountDownLatch(1);
+        when(instanceProvider.countTopics("slow")).thenAnswer(invocation -> {
+            topicCountStarted.countDown();
+            boolean interrupted = false;
+            while (true) {
+                try {
+                    releaseProvider.await();
+                    break;
+                } catch (InterruptedException exception) {
+                    // A provider that outlives Future.cancel(true): it keeps waiting and restores
+                    // the interrupt instead of aborting the in-flight lookup.
+                    interrupted = true;
+                }
+            }
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            return 7;
+        });
+        // Lenient because the fixed path never reaches this lookup; on the buggy path it is invoked.
+        org.mockito.Mockito.lenient().when(instanceProvider.countGroups("slow")).thenAnswer(invocation -> {
+            groupCountStarted.countDown();
+            return 5;
+        });
+
+        try {
+            List<InstanceVO> result = instanceService.listInstances(null, null, true);
+
+            // The batch deadline passed while the first lookup was still running, so the caller
+            // keeps its existing unavailable response.
+            assertThat(topicCountStarted.await(1, TimeUnit.SECONDS)).isTrue();
+            assertThat(result).singleElement().satisfies(instance -> {
+                assertThat(instance.isResourceCountsAvailable()).isFalse();
+                assertThat(instance.getConsumerGroupCount()).isZero();
+            });
+
+            releaseProvider.countDown();
+            // The worker finishes the first lookup with the interruption still pending. Wait for that
+            // detached worker within a bound (the unwanted lookup must never complete, so the wait
+            // cannot be latched on it) and then require that it never started.
+            groupCountStarted.await(2, TimeUnit.SECONDS);
+            verify(instanceProvider, never()).countGroups("slow");
+        } finally {
+            releaseProvider.countDown();
+        }
+    }
+
+    @Test
     void createInstanceShouldThrowWhenRequestIsNull() {
         assertThatThrownBy(() -> instanceService.createInstance(null))
                 .isInstanceOf(BusinessException.class)
@@ -467,7 +541,7 @@ class InstanceServiceTest {
                 .name("new-instance")
                 .endpoint("10.0.1.1:8080")
                 .type(InstanceType.PROXY_CLUSTER)
-                .build();
+                .nameserverId(1L).build();
 
         when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> {
             InstanceVO saved = invocation.getArgument(0);
@@ -553,7 +627,7 @@ class InstanceServiceTest {
         when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
         String atLimit = "n".repeat(512);
         InstanceVO accepted = InstanceVO.builder().name("inst-a").type(InstanceType.PROXY_CLUSTER)
-                .endpoint(atLimit).build();
+                .endpoint(atLimit).nameserverId(1L).build();
 
         assertThat(instanceService.createInstance(accepted).getEndpoint()).isEqualTo(atLimit);
 
@@ -591,7 +665,7 @@ class InstanceServiceTest {
         // value fits the column and counting chars would reject it as a 500 from the write instead.
         String atLimit = EMOJI.repeat(InstanceService.MAX_INSTANCE_ENDPOINT_LENGTH);
         InstanceVO accepted = InstanceVO.builder().name("inst-a").type(InstanceType.PROXY_CLUSTER)
-                .endpoint(atLimit).build();
+                .endpoint(atLimit).nameserverId(1L).build();
 
         assertThat(instanceService.createInstance(accepted).getEndpoint()).isEqualTo(atLimit);
 
@@ -609,12 +683,12 @@ class InstanceServiceTest {
         when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
         String atLimit = "r".repeat(255);
         InstanceVO accepted = InstanceVO.builder().name("inst-a").type(InstanceType.PROXY_CLUSTER)
-                .endpoint("namesrv:9876").remark(atLimit).build();
+                .endpoint("namesrv:9876").remark(atLimit).nameserverId(1L).build();
 
         assertThat(instanceService.createInstance(accepted).getRemark()).isEqualTo(atLimit);
 
         InstanceVO rejected = InstanceVO.builder().name("inst-b").type(InstanceType.PROXY_CLUSTER)
-                .endpoint("namesrv:9876").remark(atLimit + "r").build();
+                .endpoint("namesrv:9876").remark(atLimit + "r").nameserverId(1L).build();
         assertThatThrownBy(() -> instanceService.createInstance(rejected))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("InstanceVO remark must not exceed 255 characters");
@@ -645,7 +719,7 @@ class InstanceServiceTest {
         when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
         String atLimit = "c".repeat(128);
         InstanceVO accepted = InstanceVO.builder().name("inst-a").type(InstanceType.PROXY_CLUSTER)
-                .endpoint("namesrv:9876").adminCredentialRef(atLimit).build();
+                .endpoint("namesrv:9876").adminCredentialRef(atLimit).nameserverId(1L).build();
 
         assertThat(instanceService.createInstance(accepted).getAdminCredentialRef()).isEqualTo(atLimit);
 
@@ -677,7 +751,7 @@ class InstanceServiceTest {
     @Test
     void createInstanceShouldTrimEndpointBeforeSaving() {
         InstanceVO input = InstanceVO.builder().name("valid-name").type(InstanceType.PROXY_CLUSTER)
-                .endpoint("  namesrv:9876  ").build();
+                .endpoint("  namesrv:9876  ").nameserverId(1L).build();
         when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         assertThat(instanceService.createInstance(input).getEndpoint()).isEqualTo("namesrv:9876");
@@ -686,7 +760,7 @@ class InstanceServiceTest {
     @Test
     void createInstanceShouldTrimNameBeforeSaving() {
         InstanceVO input = InstanceVO.builder().name("  production  ").type(InstanceType.PROXY_CLUSTER)
-                .endpoint("namesrv:9876").build();
+                .endpoint("namesrv:9876").nameserverId(1L).build();
         when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         assertThat(instanceService.createInstance(input).getName()).isEqualTo("production");
@@ -695,7 +769,7 @@ class InstanceServiceTest {
     @Test
     void createApacheInstanceShouldTrimAndPersistOnlyAdminCredentialReference() {
         InstanceVO input = InstanceVO.builder().name("production").type(InstanceType.PROXY_CLUSTER)
-                .endpoint("namesrv:9876").adminCredentialRef(" production-admin ").build();
+                .endpoint("namesrv:9876").adminCredentialRef(" production-admin ").nameserverId(1L).build();
         when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         InstanceVO saved = instanceService.createInstance(input);
@@ -821,69 +895,49 @@ class InstanceServiceTest {
     }
 
     @Test
-    void updateInstanceShouldReleaseUnusedPreviousEndpoint() {
+    void updateInstanceShouldRejectEndpointOutsideTheBoundNameserverTest() {
         InstanceVO existing = InstanceVO.builder()
                 .name("instance")
+                .type(InstanceType.DIRECT)
                 .endpoint("old-namesrv:9876")
+                .nameserverId(1L)
                 .build();
         existing.setId(1L);
         InstanceVO update = InstanceVO.builder().endpoint("new-namesrv:9876").build();
         update.setId(1L);
 
         when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
-        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(instanceRepository.findAll()).thenReturn(List.of());
+        when(nameserverRegistry.addressOf(1L))
+                .thenReturn(org.apache.rocketmq.studio.cluster.nameserver.NamesrvAddrParser.normalize("old-namesrv:9876"));
 
-        instanceService.updateInstance(update);
-
-        verify(adminFactory).release("old-namesrv:9876");
+        assertThatThrownBy(() -> instanceService.updateInstance(update))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(400));
+        verify(adminFactory, org.mockito.Mockito.never()).release(anyString());
+        verify(instanceRepository, org.mockito.Mockito.never()).save(any(InstanceVO.class));
     }
 
     @Test
-    void updateInstanceShouldKeepEndpointClientWhenAnotherInstanceReferencesIt() {
+    void updateInstanceShouldAcceptAnEquivalentRewriteOfTheBoundAddressListTest() {
         InstanceVO existing = InstanceVO.builder()
                 .name("instance")
-                .endpoint("shared-namesrv:9876")
+                .type(InstanceType.DIRECT)
+                .endpoint("namesrv-a:9876;namesrv-b:9876")
+                .nameserverId(1L)
                 .build();
         existing.setId(1L);
-        InstanceVO shared = InstanceVO.builder()
-                .name("shared-instance")
-                .endpoint(" shared-namesrv:9876 ")
-                .build();
-        shared.setId(2L);
-        InstanceVO update = InstanceVO.builder().endpoint("new-namesrv:9876").build();
+        InstanceVO update = InstanceVO.builder().endpoint(" namesrv-a:9876, namesrv-b:9876 ").build();
         update.setId(1L);
 
         when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
         when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(instanceRepository.findAll()).thenReturn(List.of(shared));
+        when(nameserverRegistry.addressOf(1L)).thenReturn(org.apache.rocketmq.studio.cluster.nameserver
+                .NamesrvAddrParser.normalize(" namesrv-a:9876, namesrv-b:9876 "));
 
-        instanceService.updateInstance(update);
+        InstanceVO saved = instanceService.updateInstance(update);
 
-        verify(adminFactory, never()).release("shared-namesrv:9876");
-    }
-
-    @Test
-    void updateInstanceShouldKeepEndpointClientWhenAnotherInstanceUsesEquivalentAddressList() {
-        InstanceVO existing = InstanceVO.builder()
-                .name("instance")
-                .endpoint("namesrv-b:9876;namesrv-a:9876")
-                .build();
-        existing.setId(1L);
-        InstanceVO shared = InstanceVO.builder()
-                .name("shared-instance")
-                .endpoint(" namesrv-a:9876, namesrv-b:9876 ")
-                .build();
-        shared.setId(2L);
-        InstanceVO update = InstanceVO.builder().endpoint("new-namesrv:9876").build();
-        update.setId(1L);
-
-        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
-        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(instanceRepository.findAll()).thenReturn(List.of(shared));
-
-        instanceService.updateInstance(update);
-
+        assertThat(saved.getEndpoint())
+                .isEqualTo(org.apache.rocketmq.studio.cluster.nameserver.NamesrvAddrParser
+                        .normalize(" namesrv-a:9876, namesrv-b:9876 "));
         verifyNoInteractions(adminFactory);
     }
 
@@ -1196,7 +1250,7 @@ class InstanceServiceTest {
         when(instanceProvider.countTopics("42")).thenReturn(3);
         when(instanceProvider.countGroups("42")).thenReturn(2);
 
-        List<InstanceVO> result = instanceService.listInstances(null, null);
+        List<InstanceVO> result = instanceService.listInstances(null, null, true);
 
         assertThat(result.get(0).getTopicCount()).isEqualTo(3);
         assertThat(result.get(0).getConsumerGroupCount()).isEqualTo(2);
@@ -1346,7 +1400,7 @@ class InstanceServiceTest {
                 .name("inst")
                 .endpoint("10.0.0.1:8080")
                 .type(InstanceType.PROXY_CLUSTER)
-                .build();
+                .nameserverId(1L).build();
         when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         InstanceVO created = instanceService.createInstance(instance);
@@ -1362,7 +1416,7 @@ class InstanceServiceTest {
                 .name("local-proxy")
                 .endpoint("broker-proxy:8080")
                 .type(InstanceType.PROXY_LOCAL)
-                .build();
+                .nameserverId(1L).build();
         when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         InstanceVO created = instanceService.createInstance(instance);

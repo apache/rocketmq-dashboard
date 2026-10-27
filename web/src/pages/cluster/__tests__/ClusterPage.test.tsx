@@ -24,6 +24,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type {
   BrokerConfigDiffResult,
   ClusterConfigPreviewResult,
+  ClusterConfigUpdateResult,
   ClusterInfo,
   ClusterProbeResult,
   NameServerConfigDiffResult,
@@ -386,6 +387,37 @@ describe('Cluster page', () => {
     expect(within(dialog).getByText('8080')).toBeInTheDocument();
   });
 
+  it('reports a failed proxy restart instead of staying silent', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ClusterPage />);
+
+    await user.click(screen.getByRole('tab', { name: /Proxy 管理/ }));
+    const proxyRow = await screen.findByRole('row', { name: /10\.101\.2\.21:8081/ });
+    clusterServiceMocks.restartProxy.mockRejectedValueOnce(new Error('proxy unreachable'));
+    await user.click(within(proxyRow).getByRole('button', { name: /重\s*启/ }));
+
+    await user.click(await screen.findByRole('button', { name: /确\s*认/ }));
+    // A rejected onOk is dropped by antd's confirm wrapper: without a catch the operator gets
+    // no outcome at all — no toast, and the dialog never signals what happened.
+    expect(await screen.findByText(/重启 Proxy "10\.101\.2\.21:8081" 失败/)).toBeInTheDocument();
+    expect(screen.queryByText(/Proxy 重启已提交/)).not.toBeInTheDocument();
+    expect(clusterServiceMocks.restartProxy).toHaveBeenCalledTimes(1);
+  });
+
+  it('centers the broker status column', async () => {
+    renderWithProviders(<ClusterPage />);
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+
+    // 用户约定 2026-10-16：Broker 管理的「状态」列居中（自 2026-08-18 起即是），别改回左对齐。
+    const headers = Array.from(brokerRow.closest('table')!.querySelectorAll('thead th')).map((th) =>
+      th.textContent?.trim(),
+    );
+    const cells = within(brokerRow).getAllByRole('cell');
+    const index = headers.indexOf('状态');
+    expect(index).toBeGreaterThan(-1);
+    expect(cells[index].style.textAlign).toBe('center');
+  });
+
   it('previews broker config changes before submitting the update', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ClusterPage />);
@@ -413,6 +445,78 @@ describe('Cluster page', () => {
     expect(within(dialog).getByText('10.101.2.11:10911')).toBeInTheDocument();
     expect(within(dialog).getByText('defaultTopicQueueNums=16')).toBeInTheDocument();
     expect(within(dialog).getByRole('row', { name: /写队列数/ })).toHaveTextContent('16');
+  });
+
+  it('submits a broker config update once per confirmation', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const pendingUpdate = deferred<ClusterConfigUpdateResult>();
+    clusterServiceMocks.updateClusterConfig.mockReset().mockReturnValue(pendingUpdate.promise);
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    const retentionInput = within(dialog).getByLabelText('文件保留时长 (小时)');
+    await user.clear(retentionInput);
+    await user.type(retentionInput, '96');
+
+    const confirmButton = within(dialog).getByRole('button', { name: /^OK$/ });
+    fireEvent.click(confirmButton);
+    // The dialog must lock with the first click: `configSubmitting` alone flips only after
+    // validateFields resolves and React re-renders, so a second confirmation in that window
+    // would put the same broker-config write on the wire twice.
+    expect(confirmButton).toHaveClass('ant-btn-loading');
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => expect(clusterServiceMocks.updateClusterConfig).toHaveBeenCalledTimes(1));
+    expect(clusterServiceMocks.updateClusterConfig).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pendingUpdate.resolve({
+        cluster: buildCluster(),
+        status: 'SUCCESS',
+        successfulBrokers: buildCluster().brokers.map((broker) => broker.addr),
+        failedBrokers: [],
+      });
+      await pendingUpdate.promise;
+    });
+  });
+
+  it('keeps the config preview button inert while an update is in flight', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const pendingUpdate = deferred<ClusterConfigUpdateResult>();
+    clusterServiceMocks.updateClusterConfig.mockReset().mockReturnValue(pendingUpdate.promise);
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    const retentionInput = within(dialog).getByLabelText('文件保留时长 (小时)');
+    await user.clear(retentionInput);
+    await user.type(retentionInput, '96');
+    const previewButton = within(dialog).getByRole('button', { name: /预\s*览/ });
+
+    // Positive control: the preview runs while no write is in flight.
+    await user.click(previewButton);
+    await waitFor(() => expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalledTimes(1));
+
+    // A write in flight means a preview response would describe the cluster mid-write, so the
+    // preview button must not start another read while the update is on the wire.
+    fireEvent.click(within(dialog).getByRole('button', { name: /^OK$/ }));
+    await waitFor(() => expect(clusterServiceMocks.updateClusterConfig).toHaveBeenCalledTimes(1));
+    fireEvent.click(previewButton);
+    await act(async () => {});
+    expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pendingUpdate.resolve({
+        cluster: buildCluster(),
+        status: 'SUCCESS',
+        successfulBrokers: buildCluster().brokers.map((broker) => broker.addr),
+        failedBrokers: [],
+      });
+      await pendingUpdate.promise;
+    });
   });
 
   it('preservesUntouchedMessageSizeBytesInPreviewAndSaveTest', async () => {
@@ -669,6 +773,22 @@ describe('Cluster page', () => {
     await user.click(screen.getByRole('tab', { name: /Proxy 管理/ }));
     await submitSearch('搜索 Proxy 地址', 'not-found');
     expect(screen.getByPlaceholderText('搜索 Proxy 地址')).toHaveValue('not-found');
+  });
+
+  it('renders a fractional broker disk usage as a short progress label', async () => {
+    // A broker reporting commitLogDiskRatio=0.29 becomes 28.999999999999996 once scaled to
+    // percentage points. Progress reserves room for its label inside the bar, so the unrounded
+    // float printed all 17 digits and left the bar itself zero pixels wide.
+    const cluster = buildCluster();
+    cluster.brokers = [{ ...cluster.brokers[0], diskUsage: 28.999999999999996 }];
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([cluster]);
+
+    renderWithProviders(<ClusterPage />);
+
+    const row = (await screen.findByText('rocketmq-prod-0')).closest('tr');
+    if (!row) throw new Error('broker row not found');
+    expect(within(row).getByText('29%')).toBeInTheDocument();
+    expect(row.querySelector('.ant-progress-bg')).not.toBeNull();
   });
 
   it('creates and deletes nameserver registry entries', async () => {
@@ -1643,5 +1763,31 @@ describe('Cluster page', () => {
     expect(clusterServiceMocks.createNameserverRegistry).toHaveBeenLastCalledWith(
       expect.objectContaining({ name: 'rocketmq9', namesrvAddr: 'rocketmq9-nameserver:9876' }),
     );
+  });
+
+  it('warnsThatAFlushDiskChangeOnlyAppliesAfterABrokerRestartTest', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+
+    // The fixture Broker runs SYNC_FLUSH, so the warning must stay hidden until the mode changes.
+    expect(within(dialog).queryByText(/需要重启 Broker/)).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('radio', { name: '异步刷盘' }));
+    expect(within(dialog).getByText(/需要重启 Broker/)).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: /OK|确\s*定/ }));
+    // The write is gated behind a second confirmation that names the change.
+    expect(clusterServiceMocks.updateClusterConfig).not.toHaveBeenCalled();
+    const confirm = await waitFor(() => {
+      const nodes = Array.from(document.querySelectorAll('.ant-modal-confirm')) as HTMLElement[];
+      if (nodes.length === 0) throw new Error('restart confirmation not rendered');
+      return nodes[nodes.length - 1];
+    });
+    expect(within(confirm).getByText(/SYNC_FLUSH → ASYNC_FLUSH/)).toBeInTheDocument();
+    await user.click(within(confirm).getByRole('button', { name: /OK|确\s*定/ }));
+    await waitFor(() => expect(clusterServiceMocks.updateClusterConfig).toHaveBeenCalledTimes(1));
   });
 });

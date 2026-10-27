@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.instance.topic;
 
+import org.apache.rocketmq.client.Validators;
+import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageQueue;
@@ -39,9 +41,11 @@ import org.apache.rocketmq.studio.provider.apache.MetadataProvider;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
+import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CsvUtil;
 import org.apache.rocketmq.studio.common.util.MessagePropertyDisplay;
+import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.studio.instance.group.CreateConsumerGroupDTO;
 import org.apache.rocketmq.studio.instance.group.ImportConsumerGroupsResultVO;
@@ -56,6 +60,7 @@ import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.MessageService;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
+import org.apache.rocketmq.studio.provider.LiteTopicProvider;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -88,6 +93,7 @@ public class MetadataService {
     private final MessageService messageService;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final ResourceOwnershipGuard ownershipGuard;
+    private final LiteTopicProvider liteTopicProvider;
 
     /**
      * Canonicalizes registered instance names and legacy numeric IDs, while preserving physical
@@ -167,6 +173,7 @@ public class MetadataService {
         }
         String target = requireWriteInstance(instanceId, new Resource(Kind.TOPIC, topic.getName()), false);
         topic.setInstanceId(target);
+        guardLiteCreate(target, topic);
         InstanceProvider provider = resolve(target);
         return executeWithAudit(provider, Operation.CREATE_TOPIC, ResourceType.TOPIC, topic.getName(),
                 target, topicDetail(topic), () -> importing
@@ -179,6 +186,10 @@ public class MetadataService {
 
     public TopicVO updateTopic(String instanceId, TopicVO topic) {
         requireTopic(topic);
+        if (topic.getLiteTtlMinutes() != null) {
+            throw new BusinessException(400,
+                    "liteTtlMinutes is create-only; use the LiteTopic TTL extension to change it");
+        }
         String target = requireWriteInstance(instanceId, new Resource(Kind.TOPIC, topic.getName()), false);
         topic.setInstanceId(target);
         guardImmutableType(target, topic);
@@ -197,6 +208,47 @@ public class MetadataService {
                 throw new BusinessException(400, "topic message type is immutable");
             }
         });
+    }
+
+    /**
+     * A Lite parent topic is created through the generic topic dialog. Its TTL is the create-time
+     * {@code lite.topic.expiration} attribute in minutes, the {@code '$'} name separator is
+     * reserved for the implicit {@code %LMQ%$parent$liteTopic} children, and the write needs an
+     * Apache-vendor instance on a lite-capable cluster.
+     *
+     * <p>The instance gate mirrors {@link LiteTopicService#extendTTL}. A cloud OpenAPI has no
+     * {@code lite.topic.expiration} equivalent, so a LITE parent created there would keep the
+     * broker's own {@code -1} (never expire) default and stay outside that vendor's control plane.
+     *
+     * <p>{@code instanceId} is the canonical name resolved by {@code requireWriteInstance}, so the
+     * guard sees the same instance the write is about to target.
+     */
+    private void guardLiteCreate(String instanceId, TopicVO topic) {
+        if (topic.getLiteTtlMinutes() != null && topic.getType() != TopicType.LITE) {
+            throw new BusinessException(400, "liteTtlMinutes is only accepted when type is LITE");
+        }
+        if (topic.getLiteTtlMinutes() != null
+                && (topic.getLiteTtlMinutes() < 1
+                        || topic.getLiteTtlMinutes() > LiteTopicProvider.MAX_LITE_TTL_MINUTES)) {
+            throw new BusinessException(400, "liteTtlMinutes must be between 1 and 43200");
+        }
+        if (topic.getType() != TopicType.LITE) {
+            return;
+        }
+        if (topic.getName().contains("$")) {
+            throw new BusinessException(400,
+                    "Lite parent topic name must not contain '$': '$' separates the parent topic from its lite topics");
+        }
+        InstanceVO instance = ownershipGuard.requireInstance(instanceId);
+        ownershipGuard.requireSupportedProvider(instance);
+        if (!liteTopicProvider.isSupported()) {
+            throw new BusinessException(LiteTopicProvider.NOT_IMPLEMENTED, LiteTopicProvider.UNSUPPORTED);
+        }
+        if (topic.getLiteTtlMinutes() == null) {
+            // The broker treats a missing or non-positive lite.topic.expiration as "never expire",
+            // so an omitted TTL is filled with the console default rather than forwarded as-is.
+            topic.setLiteTtlMinutes(LiteTopicProvider.DEFAULT_LITE_TTL_MINUTES);
+        }
     }
 
     public void deleteTopic(String name) {
@@ -292,11 +344,16 @@ public class MetadataService {
 
 
     public SendMessageVO sendMessage(SendMessageDTO request) {
+        return sendMessage(request, null);
+    }
+
+    private SendMessageVO sendMessage(SendMessageDTO request, String sourceTopic) {
         requireSendMessageRequest(request);
         request.setTopic(requireName(request.getTopic(), "topicName"));
         request.setInstanceId(requireWriteInstance(request.getInstanceId(),
                 ownershipGuard.topicResource(request.getTopic()), true));
-        return resolve(request.getInstanceId()).sendMessage(request);
+        InstanceProvider provider = resolve(request.getInstanceId());
+        return sourceTopic == null ? provider.sendMessage(request) : provider.redeliverMessage(request, sourceTopic);
     }
 
     /**
@@ -304,7 +361,8 @@ public class MetadataService {
      * {@code %RETRY%<groupName>} so only that group re-consumes it; an explicit targetTopic
      * overrides the destination (visible to all its subscribers) while groupName still scopes
      * audit and trace. System-reserved properties are never copied — tag/key travel as
-     * first-class DTO fields instead.
+     * first-class DTO fields instead. Native retry delivery separately restores the checked
+     * original business topic through an internal parameter, not a caller-supplied property.
      */
     public SendMessageVO redeliverMessage(String instanceId, String groupName, String sourceTopic,
                                           String msgId, String targetTopic) {
@@ -337,10 +395,39 @@ public class MetadataService {
                 .properties(redeliveryProperties(original.getProperties()))
                 .build();
         InstanceVO instance = ownershipGuard.requireInstance(target);
-        List<Resource> resources = List.of(new Resource(Kind.GROUP, group),
-                ownershipGuard.topicResource(original.getTopic()), ownershipGuard.topicResource(destination));
-        resources.forEach(resource -> ownershipGuard.check(instance, resource, true));
-        return ownershipGuard.withOwned(instance, resources, () -> sendMessage(request));
+        boolean nativeRetry = (instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE)
+                && destination.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX);
+        String retrySourceTopic = nativeRetry ? retrySourceTopic(original) : null;
+        List<Resource> resources = new ArrayList<>(List.of(new Resource(Kind.GROUP, group),
+                ownershipGuard.topicResource(original.getTopic()), ownershipGuard.topicResource(destination)));
+        if (retrySourceTopic != null && !retrySourceTopic.equals(original.getTopic())) {
+            resources.add(ownershipGuard.topicResource(retrySourceTopic));
+        }
+        resources.forEach(resource -> ownershipGuard.checkOwnerInDomain(instance, resource, true));
+        return ownershipGuard.withOwned(instance, resources, () -> sendMessage(request, retrySourceTopic));
+    }
+
+    private static String retrySourceTopic(MessageRecordVO original) {
+        String sourceTopic = original.getTopic();
+        if (sourceTopic != null && (sourceTopic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)
+                || sourceTopic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX))) {
+            sourceTopic = original.getProperties() == null ? null
+                    : original.getProperties().get(MessageConst.PROPERTY_RETRY_TOPIC);
+        }
+        if (!StringUtils.hasText(sourceTopic) || sourceTopic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)
+                || sourceTopic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)) {
+            throw new BusinessException(409,
+                    "Source message has no original business topic for retry redelivery");
+        }
+        try {
+            // Display-abbreviated values also fail the SDK topic length/character contract.
+            Validators.checkTopic(sourceTopic);
+            Validators.isSystemTopic(sourceTopic);
+        } catch (MQClientException e) {
+            throw new BusinessException(409,
+                    "Source message has an invalid original business topic for retry redelivery");
+        }
+        return sourceTopic;
     }
 
     /**
@@ -467,14 +554,51 @@ public class MetadataService {
 
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId, String search,
                                                               int page, int pageSize) {
+        return listConsumerGroupsPage(instanceId, clusterId, search, null, page, pageSize);
+    }
+
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId, String search,
+                                                              String subscriptionMode, int page, int pageSize) {
         validatePagination(page, pageSize);
         instanceId = normalizeInstanceId(instanceId);
+        String normalizedMode = normalizeSubscriptionMode(subscriptionMode);
         if (!StringUtils.hasText(instanceId) && StringUtils.hasText(clusterId)) {
+            // Legacy cluster-scoped read without an instance: filter the mode over the full
+            // inventory so the total describes the filtered result set, not one filtered page.
+            if (normalizedMode != null) {
+                List<ConsumerGroupVO> groups = metadataProvider.listConsumerGroups(
+                        normalizeFilter(clusterId), normalizeFilter(search)).stream()
+                        .filter(group -> group.getSubscriptionMode() != null
+                                && normalizedMode.equals(group.getSubscriptionMode().name()))
+                        .toList();
+                long offset = Pagination.pageOffset(page, pageSize);
+                int from = (int) Math.min(offset, groups.size());
+                int to = from + (int) Math.min(pageSize, groups.size() - from);
+                return PageResult.of(groups.subList(from, to), groups.size(), page, pageSize);
+            }
             return metadataProvider.listConsumerGroupsPage(normalizeFilter(clusterId),
                     normalizeFilter(search), page, pageSize);
         }
         return resolve(instanceId).listConsumerGroupsPage(instanceId, normalizeFilter(clusterId),
-                normalizeFilter(search), page, pageSize);
+                normalizeFilter(search), normalizedMode, page, pageSize);
+    }
+
+    /**
+     * Canonicalises the requested mode so the in-memory path over a full inventory and the SQL
+     * path over the page agree on the same spelling; an unknown value is passed through and simply
+     * matches nothing on both.
+     */
+    private static String normalizeSubscriptionMode(String subscriptionMode) {
+        if (!StringUtils.hasText(subscriptionMode) || "ALL".equals(subscriptionMode.trim())) {
+            return null;
+        }
+        String trimmed = subscriptionMode.trim();
+        for (SubscriptionMode mode : SubscriptionMode.values()) {
+            if (mode.name().equalsIgnoreCase(trimmed)) {
+                return mode.name();
+            }
+        }
+        return trimmed;
     }
 
 
@@ -717,7 +841,9 @@ public class MetadataService {
         InstanceVO instance = ownershipGuard.requireInstance(instanceId);
         // Ownership guard applies to open-source Apache instances only; cloud calls are isolated by their own instance id.
         if (instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE) {
-            ownershipGuard.check(instance, resource, required);
+            if (required) {
+                ownershipGuard.checkOwnerInDomain(instance, resource, true);
+            }
             ownershipGuard.requireSupportedProvider(instance);
         }
         return instance.getName();

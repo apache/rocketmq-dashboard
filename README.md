@@ -110,6 +110,12 @@ the cluster at `nameserver:9876` over the shared network (the backend default).
 | **AI Assistant** | Hosted-agent chat over SSE with server-side conversation history, visible chain of thought, and RocketMQ tool calls through the `rmqctl` MCP bridge; query / diagnose / manage / general modes |
 | **Settings** | General preferences, LLM config, datasource management |
 
+Topic and consumer-group CSV imports accept at most 100 nonblank data records.
+The parser stops when the first excess record completes, before reading the
+remaining CSV; blank rows and newlines inside quoted cells do not count as
+additional records. This record limit does not impose a file-byte or cell-size
+limit: the browser still reads the selected file before parsing it.
+
 ## AI Assistant
 
 Studio **hosts** a general-purpose agent CLI — Claude Code or Qoder, plus a plain OpenAI-compatible
@@ -119,6 +125,11 @@ calls back into Studio's own MCP endpoint. The same signed, instance-scoped, ris
 therefore serves the hosted agent, a developer typing `rmqctl topic list`, and any external agent
 pointed at the output of `rmqctl mcp config`. See
 [docs/ai-agent-architecture.md](docs/ai-agent-architecture.md) for the design and its trade-offs.
+
+Standalone CLI commands support `--output table`, `json`, and `yaml`. Table cells
+show ASCII control characters as visible escapes (`\t`, `\n`, `\r`, or `\xNN`)
+so a context name, header, or returned value cannot split a row or send terminal
+control sequences. Stored values and JSON/YAML output keep the original content.
 
 - **Conversations persist server-side** and are browsable from the history drawer. Reloading or
   reconnecting replays exactly what the live stream rendered, because both paths reduce to the same

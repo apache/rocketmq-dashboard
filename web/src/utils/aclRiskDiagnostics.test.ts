@@ -61,6 +61,37 @@ describe('ACL risk diagnostics', () => {
     ]);
   });
 
+  it.each([undefined, null, '', ' \t '])(
+    'reports an unrestricted account source for %jTest',
+    (whiteRemoteAddress) => {
+      const diagnostics = analyzeAclRisk(config({ accounts: [account({ whiteRemoteAddress })] }));
+
+      expect(diagnostics.status).toBe('critical');
+      expect(diagnostics.summary.broadWhitelistCount).toBe(1);
+      expect(diagnostics.issues).toEqual([
+        expect.objectContaining({
+          code: 'BROAD_ACCOUNT_WHITELIST',
+          severity: 'critical',
+          evidence: ['<empty>'],
+        }),
+      ]);
+    },
+  );
+
+  it('reports an unrestricted administrator despite deny-by-default permissionsTest', () => {
+    const diagnostics = analyzeAclRisk(
+      config({ accounts: [account({ admin: true, whiteRemoteAddress: '' })] }),
+    );
+
+    expect(diagnostics.status).toBe('critical');
+    expect(diagnostics.score).toBeLessThan(100);
+    expect(diagnostics.summary.broadWhitelistCount).toBe(1);
+    expect(diagnostics.issues.map((item) => item.code)).toEqual(
+      expect.arrayContaining(['BROAD_ACCOUNT_WHITELIST', 'ADMIN_WITH_BROAD_ACCESS']),
+    );
+    expect(diagnostics.issues.some((item) => item.code === 'BROAD_GLOBAL_WHITELIST')).toBe(false);
+  });
+
   it('flags disabled ACL and missing accounts as critical risks', () => {
     const diagnostics = analyzeAclRisk(
       config({
@@ -168,6 +199,21 @@ describe('ACL risk diagnostics', () => {
         '按 resource=PUB、resource=SUB、resource=ALL 或 resource=DENY 的格式修正条目。',
       ]),
     );
+  });
+
+  it('reports malformed wildcard entries without counting them as grants', () => {
+    const diagnostics = analyzeAclRisk(
+      config({
+        accounts: [account({ topicPerms: ['*=INVALID'], groupPerms: ['*'] })],
+      }),
+    );
+
+    expect(diagnostics.summary.wildcardPermissionAccountCount).toBe(0);
+    expect(
+      diagnostics.issues.filter((item) => item.code === 'INVALID_PERMISSION_ENTRY'),
+    ).toHaveLength(2);
+    expect(diagnostics.issues.map((item) => item.code)).not.toContain('WILDCARD_TOPIC_PERMISSION');
+    expect(diagnostics.issues.map((item) => item.code)).not.toContain('WILDCARD_GROUP_PERMISSION');
   });
 
   it('reads the comma-joined action list the server writes for a multi-action rule', () => {

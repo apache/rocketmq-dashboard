@@ -55,6 +55,42 @@ class MqAdminExtFactoryTest {
     }
 
     @Test
+    void interruptedAdminActionShouldRestoreInterruptAndReleaseLeaseTest() {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RecordingFactory factory = new RecordingFactory(admin);
+        try {
+            assertThatThrownBy(() -> factory.execute("namesrv:9876", null, ignored -> {
+                Thread.currentThread().interrupt();
+                Thread.sleep(1);
+                return null;
+            })).isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("RocketMQ admin call failed");
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally {
+            Thread.interrupted();
+            factory.shutdown();
+        }
+        verify(admin).shutdown();
+    }
+
+    @Test
+    void ordinaryAdminFailureShouldNotSetInterruptTest() {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RecordingFactory factory = new RecordingFactory(admin);
+        try {
+            assertThatThrownBy(() -> factory.execute("namesrv:9876", null, ignored -> {
+                throw new IllegalStateException("admin failure");
+            })).isInstanceOf(BusinessException.class)
+                    .hasMessage("RocketMQ admin call failed: admin failure");
+            assertThat(Thread.currentThread().isInterrupted()).isFalse();
+        } finally {
+            Thread.interrupted();
+            factory.shutdown();
+        }
+        verify(admin).shutdown();
+    }
+
+    @Test
     void executeShouldRejectBlankNamesrvAddr() {
         MqAdminExtFactory factory = new MqAdminExtFactory();
 

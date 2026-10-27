@@ -164,6 +164,13 @@ const connectionIdentity = (connection: ClientConnection): string =>
 const resourceKey = (connection: ClientConnection): string =>
   `${normalizeText(connection.type)}:${normalizeText(connection.groupOrTopic)}`;
 
+const connectionHost = (address: string | null | undefined): string => {
+  const normalized = normalizeText(address).replace(/^\//, '');
+  // Broker connections use different TCP source ports for the same client process.
+  const socket = /^(?:\[([^\]]+)\]|([^:]+)):\d+$/.exec(normalized);
+  return socket ? (socket[1] ?? socket[2]) : normalized;
+};
+
 const groupConnections = (connections: ClientConnection[]): ConnectionGroup[] => {
   const groups = new Map<string, ConnectionGroup>();
 
@@ -245,7 +252,10 @@ const addClientIdIssues = (connections: ClientConnection[], issues: ClientConnec
 
   connectionsByClient.forEach((clientConnections, clientId) => {
     const addresses = uniqueSorted(clientConnections.map((connection) => connection.address));
-    if (addresses.length > 1) {
+    const hosts = uniqueSorted(
+      clientConnections.map((connection) => connectionHost(connection.address)),
+    );
+    if (hosts.length > 1) {
       issues.push(
         issue(
           'CLIENT_ID_COLLISION',
@@ -294,7 +304,12 @@ const addUnknownFieldIssues = (
     const language = normalizeText(connection.language);
     const version = normalizeText(connection.version);
 
-    if (!KNOWN_PROTOCOLS.has(protocol)) {
+    // A proxy-derived row carries no protocol and no version by design (the Proxy response
+    // has neither — the clients page renders those rows with a dedicated unknown-protocol
+    // filter sentinel). An absent field is that expected shape, not an anomaly: warning on
+    // it scored every gRPC consumer behind a proxy 18 points, and three such rows flipped
+    // the panel to "high risk". Only a present-but-unrecognized value is worth a warning.
+    if (connection.protocol && !KNOWN_PROTOCOLS.has(protocol)) {
       issues.push(
         issue(
           'UNKNOWN_PROTOCOL',
@@ -330,7 +345,7 @@ const addUnknownFieldIssues = (
       );
     }
 
-    if (version === 'unknown' || version === '-') {
+    if (connection.version != null && (version === 'unknown' || version === '-')) {
       issues.push(
         issue(
           'UNKNOWN_VERSION',
@@ -571,15 +586,16 @@ const buildRecommendations = (issues: ClientConnectionIssue[]): string[] => {
 export const analyzeClientConnections = (
   connections: ClientConnection[],
 ): ClientConnectionDiagnostics => {
+  // Only the identity fields are normalized up front. protocol/language/version stay raw so
+  // the unknown-field checks can tell "the Proxy response carries no protocol/version" (an
+  // expected shape, rendered with a dedicated unknown sentinel on the clients page) apart
+  // from a present-but-unrecognized value; every other consumer normalizes at point of use.
   const normalizedConnections = connections.map((connection) => ({
     ...connection,
     clientId: normalizeText(connection.clientId),
     type: normalizeText(connection.type),
     groupOrTopic: normalizeText(connection.groupOrTopic),
-    protocol: normalizeText(connection.protocol),
     address: normalizeText(connection.address),
-    language: normalizeText(connection.language),
-    version: normalizeText(connection.version),
   }));
   const groups = groupConnections(normalizedConnections);
   const issues: ClientConnectionIssue[] = [];

@@ -20,7 +20,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -62,8 +61,12 @@ final class AlertSilenceSchedule {
             if (!runsOn(recurrence, silence.getRecurrenceDays(), candidateDate)) {
                 continue;
             }
-            ZonedDateTime candidateStart = resolve(zone, candidateDate, seedStart.toLocalTime(), preferredStartOffset);
-            ZonedDateTime candidateEnd = resolveEnd(zone, candidateStart, wallDuration, preferredEndOffset);
+            LocalDateTime scheduledStart = LocalDateTime.of(candidateDate, seedStart.toLocalTime());
+            ZonedDateTime candidateStart = ZonedDateTime.ofLocal(scheduledStart, zone, preferredStartOffset);
+            // Resolve each wall-clock boundary independently: adjusting a start inside a DST gap
+            // must not shift an otherwise valid end by the gap a second time.
+            ZonedDateTime candidateEnd = ZonedDateTime.ofLocal(scheduledStart.plus(wallDuration),
+                    zone, preferredEndOffset);
             Instant start = candidateStart.toInstant();
             Instant end = candidateEnd.toInstant();
             Instant scheduleStart = silence.getStartsAt().toInstant(ZoneOffset.UTC);
@@ -85,15 +88,6 @@ final class AlertSilenceSchedule {
             LocalDate candidateDate) {
         return recurrence == AlertSilenceRecurrence.DAILY
                 || recurrenceDays != null && recurrenceDays.contains(candidateDate.getDayOfWeek().getValue());
-    }
-
-    private static ZonedDateTime resolve(ZoneId zone, LocalDate date, LocalTime time, ZoneOffset preferredOffset) {
-        return ZonedDateTime.ofLocal(LocalDateTime.of(date, time), zone, preferredOffset);
-    }
-
-    private static ZonedDateTime resolveEnd(ZoneId zone, ZonedDateTime start, Duration wallDuration,
-            ZoneOffset preferredOffset) {
-        return ZonedDateTime.ofLocal(start.toLocalDateTime().plus(wallDuration), zone, preferredOffset);
     }
 
     private static boolean isInside(LocalDateTime now, LocalDateTime start, LocalDateTime end) {

@@ -20,6 +20,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.studio.common.util.LikePatterns;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.persistence.entity.RmqAiConversation;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAiConversationMapper;
@@ -67,7 +68,7 @@ public class MybatisPlusAiConversationRepository implements AiConversationReposi
         QueryWrapper<RmqAiConversation> query = new QueryWrapper<RmqAiConversation>()
                 .eq("owner", owner)
                 .eq(archived != null, "archived", archived)
-                .like(StringUtils.hasText(search), "title", escapeLike(search))
+                .like(StringUtils.hasText(search), "title", LikePatterns.escape(search))
                 // gmt_modified, not the project-wide gmt_create: a conversation resumed today
                 // must float to the top. idx_ai_conversation_owner is built for this ordering.
                 .orderByDesc("gmt_modified", "id");
@@ -81,14 +82,18 @@ public class MybatisPlusAiConversationRepository implements AiConversationReposi
     }
 
     @Override
-    public void clearRuntimeSessionId(Long id) {
+    public void clearRuntimeSessionId(Long id, LocalDateTime now) {
         if (id == null) {
             return;
         }
         // updateById skips null fields, so "forget this value" has to name the column itself.
+        // gmt_modified is named too: it is ON UPDATE CURRENT_TIMESTAMP, so a SET clause without it
+        // lets the database stamp it in the session's timezone — the wrong clock for the
+        // gmt_modified ordering findPage promises. The caller owns the clock, as with the alert mappers.
         conversationMapper.update(null, new UpdateWrapper<RmqAiConversation>()
                 .eq("id", id)
-                .set("runtime_session_id", null));
+                .set("runtime_session_id", null)
+                .set("gmt_modified", now));
     }
 
     @Override
@@ -119,14 +124,4 @@ public class MybatisPlusAiConversationRepository implements AiConversationReposi
         return conversationMapper.deleteByIds(ids);
     }
 
-    /**
-     * Escapes LIKE wildcards so user-supplied search terms match literally. Mirrors
-     * QueryHistoryService.escapeLike; a shared util is tracked separately upstream.
-     */
-    private static String escapeLike(String search) {
-        if (!StringUtils.hasText(search)) {
-            return search;
-        }
-        return search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
-    }
 }

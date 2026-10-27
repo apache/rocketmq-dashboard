@@ -5,7 +5,7 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Drawer, Flex, Input, Statistic, Table, Tabs, Tag } from 'antd';
+import { Alert, Button, Flex, Input, Modal, Statistic, Table, Tabs, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   getQueryHistorySummary,
@@ -31,7 +31,7 @@ const PAGE_SIZE = 20;
 // formatUtcDateTime appends Z so the viewer's timezone is applied correctly.
 const formatTime = (value?: string) => formatUtcDateTime(value);
 
-const MessageQueryHistoryDrawer = ({
+const MessageQueryHistoryModal = ({
   open,
   clusterId,
   onClose,
@@ -48,6 +48,7 @@ const MessageQueryHistoryDrawer = ({
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [summaryError, setSummaryError] = useState('');
   const [summary, setSummary] = useState<QueryHistorySummary>();
   const [messageRows, setMessageRows] = useState<MessageQueryHistory[]>([]);
   const [traceRows, setTraceRows] = useState<TraceQueryHistory[]>([]);
@@ -59,30 +60,46 @@ const MessageQueryHistoryDrawer = ({
     const id = ++requestId.current;
     setLoading(true);
     setError('');
+    setSummaryError('');
     setSummary(undefined);
     setMessageRows([]);
     setTraceRows([]);
     setTotal(0);
+    // Summary and rows are independent reads: show either result as soon as it arrives.
+    void (async () => {
+      try {
+        const nextSummary = await getQueryHistorySummary(clusterId);
+        if (id === requestId.current) setSummary(nextSummary);
+      } catch (loadError) {
+        if (id === requestId.current) {
+          setSummaryError(
+            loadError instanceof Error ? loadError.message : t('messageHistory.summaryLoadFailed'),
+          );
+        }
+      }
+    })();
     try {
-      const [nextSummary, result] = await Promise.all([
-        getQueryHistorySummary(clusterId),
+      const result =
         tab === 'messages'
-          ? listMessageQueryHistory({
+          ? await listMessageQueryHistory({
               clusterId,
               search: search || undefined,
               page,
               pageSize: PAGE_SIZE,
             })
-          : listTraceQueryHistory({
+          : await listTraceQueryHistory({
               clusterId,
               search: search || undefined,
               page,
               pageSize: PAGE_SIZE,
-            }),
-      ]);
+            });
       if (id !== requestId.current) return;
-      setSummary(nextSummary);
       setTotal(result.total);
+      const lastPage = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
+      if (page > lastPage) {
+        setPage(lastPage);
+        return;
+      }
       if (tab === 'messages') setMessageRows(result.items as MessageQueryHistory[]);
       else setTraceRows(result.items as TraceQueryHistory[]);
     } catch (loadError) {
@@ -153,19 +170,25 @@ const MessageQueryHistoryDrawer = ({
   ];
 
   return (
-    <Drawer
+    <Modal
       title={t('messageHistory.title')}
       width={900}
       open={open}
-      onClose={onClose}
+      onCancel={onClose}
+      footer={null}
       destroyOnHidden
+      styles={{
+        // Two statistics rows, a search field and a paginated table: cap the body so a long
+        // history scrolls inside the modal instead of growing it past the viewport.
+        body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden' },
+      }}
     >
       <Flex gap={32} style={{ marginBottom: 16 }}>
         <Statistic
           title={t('messageHistory.messageQueries')}
-          value={summary?.messageQueries ?? 0}
+          value={summary?.messageQueries ?? '-'}
         />
-        <Statistic title={t('messageHistory.traceQueries')} value={summary?.traceQueries ?? 0} />
+        <Statistic title={t('messageHistory.traceQueries')} value={summary?.traceQueries ?? '-'} />
         <Statistic
           title={t('messageHistory.latestQuery')}
           value={formatTime(summary?.latestQueryAt)}
@@ -197,6 +220,20 @@ const MessageQueryHistoryDrawer = ({
           style={{ marginBottom: 12 }}
         />
       )}
+      {summaryError && (
+        <Alert
+          type="error"
+          showIcon
+          message={t('messageHistory.summaryLoadFailed')}
+          description={summaryError}
+          action={
+            <Button size="small" onClick={() => void load()}>
+              {t('common.retry')}
+            </Button>
+          }
+          style={{ marginBottom: 12 }}
+        />
+      )}
       <Tabs
         activeKey={tab}
         onChange={(key) => {
@@ -210,10 +247,17 @@ const MessageQueryHistoryDrawer = ({
             children: (
               <Table
                 rowKey="id"
+                size="small"
                 loading={loading}
                 columns={messageColumns}
                 dataSource={messageRows}
-                pagination={{ current: page, pageSize: PAGE_SIZE, total, onChange: setPage }}
+                pagination={{
+                  current: page,
+                  pageSize: PAGE_SIZE,
+                  total,
+                  onChange: setPage,
+                  showSizeChanger: false,
+                }}
                 onRow={
                   onSelectMessage
                     ? (record) => ({
@@ -231,10 +275,17 @@ const MessageQueryHistoryDrawer = ({
             children: (
               <Table
                 rowKey="id"
+                size="small"
                 loading={loading}
                 columns={traceColumns}
                 dataSource={traceRows}
-                pagination={{ current: page, pageSize: PAGE_SIZE, total, onChange: setPage }}
+                pagination={{
+                  current: page,
+                  pageSize: PAGE_SIZE,
+                  total,
+                  onChange: setPage,
+                  showSizeChanger: false,
+                }}
                 onRow={
                   onSelectTrace
                     ? (record) => ({
@@ -248,8 +299,8 @@ const MessageQueryHistoryDrawer = ({
           },
         ]}
       />
-    </Drawer>
+    </Modal>
   );
 };
 
-export default MessageQueryHistoryDrawer;
+export default MessageQueryHistoryModal;

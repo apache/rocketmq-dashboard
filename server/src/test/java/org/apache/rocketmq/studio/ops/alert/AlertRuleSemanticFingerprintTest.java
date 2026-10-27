@@ -14,6 +14,28 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AlertRuleSemanticFingerprintTest {
 
     @Test
+    void runtimeDurationEquivalenceKeepsPersistedIdentityFormatTest() {
+        AlertRuleVO seconds = AlertRuleVO.builder().duration("60s").build();
+        AlertRuleVO minutes = AlertRuleVO.builder().duration("1m").build();
+
+        assertThat(AlertRuleSemanticFingerprint.evaluationIdentity(seconds))
+                .isEqualTo(AlertRuleSemanticFingerprint.evaluationIdentity(minutes));
+        assertThat(AlertRuleSemanticFingerprint.of(seconds))
+                .isNotEqualTo(AlertRuleSemanticFingerprint.of(minutes));
+    }
+
+    @Test
+    void runtimeIdentityRetainsMalformedLegacyDurationsTest() {
+        AlertRuleVO first = AlertRuleVO.builder().duration(" invalid ").build();
+        AlertRuleVO same = AlertRuleVO.builder().duration("INVALID").build();
+        AlertRuleVO different = AlertRuleVO.builder().duration("other-invalid").build();
+
+        assertThat(AlertRuleSemanticFingerprint.evaluationIdentity(first))
+                .isEqualTo(AlertRuleSemanticFingerprint.evaluationIdentity(same))
+                .isNotEqualTo(AlertRuleSemanticFingerprint.evaluationIdentity(different));
+    }
+
+    @Test
     void ignoresPresentationAndDeliverySettingsTest() {
         AlertRuleVO first = AlertRuleVO.builder()
                 .domain(AlertDomain.CLUSTER).name("Disk warning").instanceId("local")

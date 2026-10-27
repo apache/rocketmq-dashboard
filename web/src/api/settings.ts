@@ -24,6 +24,8 @@ export interface GeneralSettings {
   desktopNotify: boolean;
   notifySound: boolean;
   sessionTimeout: number;
+  /** Minutes a session token may stay unused before it is treated as expired; 0 disables the idle deadline. */
+  sessionIdleTimeout?: number;
   requireLogin: boolean;
   llmProvider: string;
   apiKeyConfigured: boolean;
@@ -132,8 +134,11 @@ export async function listAllDataSources(params: { search?: string; type?: strin
     });
     allDataSources.push(...result.items);
     const total = result.total ?? allDataSources.length;
-    if (result.items.length === 0 || allDataSources.length >= total) {
+    if (allDataSources.length >= total) {
       return allDataSources;
+    }
+    if (result.items.length === 0) {
+      throw new Error(`Incomplete data source list: received ${allDataSources.length} of ${total}`);
     }
     page += 1;
   }

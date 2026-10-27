@@ -49,6 +49,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -68,7 +70,29 @@ class AlertServiceTest {
     @org.junit.jupiter.api.BeforeEach
     void setUpTest() {
         alertService = new AlertService(alertRepository, alertStateRepository, new AlertRuleAssetService(),
-                operationAuditService, new MetricProfileService(new PrometheusProperties()));
+                operationAuditService, new MetricProfileService(new PrometheusProperties()),
+                org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class));
+    }
+
+    @Test
+    void createNativeRuleShouldRejectMissingOperatorBeforePersistenceTest() {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("Orders lag");
+        request.setMetric("consumer.lag.total");
+        request.setInstanceId("local");
+        request.setConsumerGroup("orders");
+        request.setThreshold(100);
+        request.setEnabled(true);
+        lenient().when(alertRepository.insertRule(any(AlertRuleVO.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThatThrownBy(() -> alertService.createRule(AlertDomain.BUSINESS, request.toAlertRuleVO()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("operator")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verify(alertRepository, never()).insertRule(any(AlertRuleVO.class));
+        verifyNoInteractions(operationAuditService);
     }
 
     @Test
@@ -242,6 +266,26 @@ class AlertServiceTest {
                 .contains("severity: critical");
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(doubles = {
+        1e20, -1e20, 0x1.0p63, -0x1.0000000000001p63, Double.MAX_VALUE,
+        -Double.MAX_VALUE, 0x1.fffffffffffffp62, -0x1.0p63, 5000, 0.25})
+    void exportedThresholdRetainsItsFiniteNumericValueTest(double threshold) throws Exception {
+        AlertRuleVO rule = AlertRuleVO.builder().name("Large threshold")
+                .metric("rocketmq_consumer_lag_messages").operator(">").threshold(threshold)
+                .duration("3m").enabled(true).build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        JsonNode yaml = new ObjectMapper(new YAMLFactory()).readTree(alertService.exportPrometheusRulesYaml());
+        String expression = yaml.path("groups").get(0).path("rules").get(0).path("expr").asText();
+        String literal = expression.substring(expression.lastIndexOf(' ') + 1);
+
+        assertThat(Double.parseDouble(literal)).isEqualTo(threshold);
+        if (threshold == 0x1.0p63) {
+            assertThat(literal).isNotEqualTo(Long.toString(Long.MAX_VALUE));
+        }
+    }
+
     @Test
     void exportPrometheusRulesYamlShouldConvertConfiguredRulesTest() {
         AlertRuleVO rule = AlertRuleVO.builder()
@@ -281,6 +325,26 @@ class AlertServiceTest {
         String result = alertService.exportPrometheusRulesYaml();
 
         assertThat(result).contains("for: 1h30m").doesNotContain("for: 5m");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldReplaceUnorderedLegacyDurationsTest() {
+        for (String duration : List.of("1s1m", "1m1m", "1ms1s", "1h2d")) {
+            AlertRuleVO rule = AlertRuleVO.builder()
+                    .name("High Lag")
+                    .metric("rocketmq_consumer_lag_messages")
+                    .operator(">")
+                    .threshold(5000)
+                    .duration(duration)
+                    .enabled(true)
+                    .build();
+            when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+            assertThat(alertService.exportPrometheusRulesYaml())
+                    .as("legacy duration %s", duration)
+                    .contains("for: 5m")
+                    .doesNotContain("for: " + duration);
+        }
     }
 
     @Test
@@ -503,7 +567,8 @@ class AlertServiceTest {
         PrometheusProperties properties = new PrometheusProperties();
         properties.setProfile(profileId);
         return new AlertService(alertRepository, alertStateRepository, new AlertRuleAssetService(),
-                operationAuditService, new MetricProfileService(properties));
+                operationAuditService, new MetricProfileService(properties),
+                org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class));
     }
 
     private MetricProfileVO.MetricMappingVO activeLagMapping(String profileId) {
@@ -1038,6 +1103,37 @@ class AlertServiceTest {
         verify(alertRepository).insertRule(distinct);
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"60s,1m", "1h30m,90m", "1000ms,1s", "0s,''"})
+    void equivalentDurationEditKeepsEvaluationStateTest(String original, String replacement) {
+        AlertRuleVO existing = durationRule(1L, original);
+        AlertRuleVO update = durationRule(1L, replacement);
+        when(alertRepository.findRuleById(1L)).thenReturn(java.util.Optional.of(existing));
+        when(alertRepository.replaceRule(update)).thenReturn(true);
+
+        alertService.updateRule(update);
+
+        verify(alertStateRepository, never()).deleteByRuleId(1L);
+    }
+
+    @Test
+    void changedDurationStillResetsEvaluationStateTest() {
+        AlertRuleVO existing = durationRule(1L, "60s");
+        AlertRuleVO update = durationRule(1L, "2m");
+        when(alertRepository.findRuleById(1L)).thenReturn(java.util.Optional.of(existing));
+        when(alertRepository.replaceRule(update)).thenReturn(true);
+
+        alertService.updateRule(update);
+
+        verify(alertStateRepository).deleteByRuleId(1L);
+    }
+
+    private static AlertRuleVO durationRule(Long id, String duration) {
+        return AlertRuleVO.builder().id(id).name("Disk usage").domain(AlertDomain.CLUSTER)
+                .instanceId("local").metric("broker.disk.usage_ratio").operator(">=").threshold(0.85)
+                .duration(duration).enabled(true).build();
+    }
+
     @Test
     void updateRuleShouldRejectAnotherRulesEvaluationConditionsTest() {
         AlertRuleVO existing = AlertRuleVO.builder()
@@ -1085,6 +1181,25 @@ class AlertServiceTest {
         verify(alertRepository).replaceRule(update);
         verify(operationAuditService).record(eq("UPDATE_ALERT_RULE"), eq("ALERT_RULE"), eq("1"),
                 eq(null), eq("name=CPU Alert"), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void updateRuleShouldReturnTheStoredRuleInsteadOfTheRequestTest() {
+        AlertRuleVO existing = AlertRuleVO.builder().id(1L).name("CPU Alert").metric("cpu_usage")
+                .operator(">=").threshold(80.0).instanceId("local").enabled(true)
+                .lastTriggered("2026-09-30T08:00:00").build();
+        AlertRuleVO update = AlertRuleVO.builder().id(1L).name("CPU Alert").metric("cpu_usage")
+                .operator(">=").threshold(90.0).instanceId("local").enabled(true).build();
+        AlertRuleVO stored = AlertRuleVO.builder().id(1L).name("CPU Alert").metric("cpu_usage")
+                .operator(">=").threshold(90.0).instanceId("local").enabled(true)
+                .lastTriggered("2026-10-01T10:00:00").build();
+        when(alertRepository.findRuleById(1L)).thenReturn(Optional.of(existing), Optional.of(stored));
+        when(alertRepository.replaceRule(update)).thenReturn(true);
+
+        AlertRuleVO result = alertService.updateRule(update);
+
+        assertThat(result.getLastTriggered()).isEqualTo("2026-10-01T10:00:00");
+        assertThat(result.getThreshold()).isEqualTo(90.0);
     }
 
     @Test
@@ -1283,32 +1398,49 @@ class AlertServiceTest {
     }
 
     @Test
-    void listAlertsShouldReturnAlertsForLevelTest() {
+    void listAlertsShouldDelegateToTheBoundedPageQueryTest() {
         SystemAlertVO alert1 = SystemAlertVO.builder().id(1L).level(AlertLevel.error)
                 .title("Broker Down").acknowledged(false).build();
         SystemAlertVO alert2 = SystemAlertVO.builder().id(2L).level(AlertLevel.error)
                 .title("High Latency").acknowledged(false).build();
-        when(alertRepository.findAlerts("error")).thenReturn(Arrays.asList(alert1, alert2));
+        when(alertRepository.findAlertsPage(any())).thenReturn(PageResult.of(
+                Arrays.asList(alert1, alert2), 2, 1, 100));
 
-        List<SystemAlertVO> result = alertService.listAlerts("error");
+        List<SystemAlertVO> result = alertService.listAlerts(
+                "error", AlertDomain.CLUSTER, "local", "FIRING");
 
-        assertThat(result).hasSize(2);
-        assertThat(result.get(0).getLevel()).isEqualTo(AlertLevel.error);
-        assertThat(result.get(0).getTitle()).isEqualTo("Broker Down");
-        verify(alertRepository).findAlerts("error");
+        assertThat(result).containsExactly(alert1, alert2);
+        org.mockito.ArgumentCaptor<SystemAlertQuery> query =
+                org.mockito.ArgumentCaptor.forClass(SystemAlertQuery.class);
+        verify(alertRepository).findAlertsPage(query.capture());
+        assertThat(query.getValue().level()).isEqualTo("error");
+        assertThat(query.getValue().domain()).isEqualTo(AlertDomain.CLUSTER);
+        assertThat(query.getValue().instanceId()).isEqualTo("local");
+        assertThat(query.getValue().transition()).isEqualTo("FIRING");
+        // The listing is bounded by the same ceiling the paginated endpoint enforces.
+        assertThat(query.getValue().page()).isEqualTo(1);
+        assertThat(query.getValue().pageSize()).isEqualTo(100);
     }
 
     @Test
     void listAlertsShouldReturnAllAlertsWhenLevelIsNullTest() {
         SystemAlertVO alert = SystemAlertVO.builder().id(1L).level(AlertLevel.warning)
                 .title("Slow Consumer").build();
-        when(alertRepository.findAlerts(null)).thenReturn(List.of(alert));
+        when(alertRepository.findAlertsPage(any())).thenReturn(PageResult.of(
+                List.of(alert), 1, 1, 100));
 
-        List<SystemAlertVO> result = alertService.listAlerts(null);
+        List<SystemAlertVO> result = alertService.listAlerts(null, null, null, null);
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getLevel()).isEqualTo(AlertLevel.warning);
-        verify(alertRepository).findAlerts(null);
+        org.mockito.ArgumentCaptor<SystemAlertQuery> query =
+                org.mockito.ArgumentCaptor.forClass(SystemAlertQuery.class);
+        verify(alertRepository).findAlertsPage(query.capture());
+        assertThat(query.getValue().level()).isNull();
+        assertThat(query.getValue().domain()).isNull();
+        assertThat(query.getValue().instanceId()).isNull();
+        assertThat(query.getValue().transition()).isNull();
+        assertThat(query.getValue().pageSize()).isEqualTo(100);
     }
 
     @Test

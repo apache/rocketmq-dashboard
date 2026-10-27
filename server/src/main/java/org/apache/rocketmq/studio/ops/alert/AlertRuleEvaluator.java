@@ -55,8 +55,8 @@ public class AlertRuleEvaluator {
             case ">=" -> value >= threshold;
             case "<" -> value < threshold;
             case "<=" -> value <= threshold;
-            case "==" -> Double.compare(value, threshold) == 0;
-            case "!=" -> Double.compare(value, threshold) != 0;
+            case "==" -> value == threshold;
+            case "!=" -> value != threshold;
             default -> false;
         };
     }

@@ -8,7 +8,9 @@ build arguments.
 
 The versions, download mirrors, and existing licensing separation are unchanged:
 these third-party binaries are obtained by the image builder, not bundled in the
-ASF source release. The Node archive remains Linux x64 only.
+ASF source release. The existing Docker `TARGETARCH` dispatch is preserved: `amd64`
+uses Linux x64 and `arm64` uses Linux arm64. Each archive has its own committed
+checksum; other or missing target architectures fail before downloading anything.
 
 ## Checksum provenance
 
@@ -21,6 +23,13 @@ independently computing its digest, then comparing with the published checksum:
   - [Upstream archive](https://nodejs.org/dist/v20.19.2/node-v20.19.2-linux-x64.tar.gz)
   - The Dockerfile downloads from npmmirror but trusts the committed **upstream**
     checksum, not a checksum supplied by that mirror at build time.
+- Node.js `node-v20.19.2-linux-arm64.tar.gz`, SHA-256:
+  `24c3090d4e8c3667cd57482263291ca4f562c2e0773d5e618a0c6ba32d21b39f`
+  - [Upstream checksums](https://nodejs.org/dist/v20.19.2/SHASUMS256.txt)
+  - [Upstream archive](https://nodejs.org/dist/v20.19.2/node-v20.19.2-linux-arm64.tar.gz)
+  - Added on 2026-10-27; the official archive was downloaded and independently
+    SHA-256 hashed against the official checksum list. No downloaded binary was
+    executed. As with x64, the mirror supplies bytes, not the trusted digest.
 - Apache Maven `apache-maven-3.9.9-bin.tar.gz`, SHA-512:
   `a555254d6b53d267965a3404ecb14e53c3827c09c3b94b5678835887ab404556bfaf78dcfe03ba76fa2508649dca8531c74bca4d5846513522404d48e8c4ac8b`
   - [Upstream checksum](https://archive.apache.org/dist/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.tar.gz.sha512)
@@ -53,7 +62,11 @@ execute this suite; CI wiring is maintained by the project committers.
    The offline suite executes the actual Dockerfile shell commands with fake
    downloads and real checksum tools; extraction and CLI execution are mocked.
    It covers valid, changed, empty, download-failure, checksum-tool-failure, and
-   changed-expected-digest cases. Build both server image targets separately when
+   changed-expected-digest cases for both Node architectures, Maven and MySQL.
+   Node cases also verify selected URLs/symlinks, reject swapped architecture bytes,
+   reject unsupported targets before download, and ignore an inherited checksum
+   environment variable. Build both server image targets for both supported
+   architectures separately when
    validating a dependency update in the supported deployment environment.
 
 ## Remaining build inputs

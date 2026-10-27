@@ -70,6 +70,7 @@ describe('Audit page', () => {
 
   beforeEach(() => {
     vi.mocked(opsService.getAuditFilterOptions).mockResolvedValue({
+      operators: ['admin', 'operator-a'],
       operationTypes: ['ADD_PROXY_ADDRESS', 'CREATE_TOPIC', 'RESET_OFFSET'],
       resourceTypes: ['CONSUMER_GROUP', 'PROXY', 'TOPIC'],
       clusterIds: ['prod-cn', 'prod-sh'],
@@ -141,6 +142,7 @@ describe('Audit page', () => {
     await waitFor(() =>
       expect(opsService.exportAuditLogs).toHaveBeenCalledWith({
         search: 'topic-a',
+        operator: undefined,
         operationType: undefined,
         resourceType: undefined,
         clusterId: undefined,
@@ -154,6 +156,25 @@ describe('Audit page', () => {
     await expect(blob.text()).resolves.toContain('"2026-08-01 10:00:00","admin"');
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:audit');
+  });
+
+  it('surfaces the export cap instead of telling the user to retry', async () => {
+    vi.mocked(opsService.exportAuditLogs).mockRejectedValueOnce({
+      response: {
+        data: {
+          code: 400,
+          message: 'Audit log export exceeds the maximum of 10000 records; narrow the filters',
+        },
+      },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findAllByText('topic-a')).not.toHaveLength(0);
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+
+    expect(await screen.findByText(/narrow the filters/)).toBeInTheDocument();
+    expect(screen.queryByText('导出审计日志失败，请稍后重试')).not.toBeInTheDocument();
   });
 
   it('renders control-plane audit labels and parsed detail values', async () => {
@@ -184,6 +205,40 @@ describe('Audit page', () => {
     expect(screen.getAllByText('成功')).not.toHaveLength(0);
     expect(screen.getByText('topic: orders')).toBeInTheDocument();
     expect(screen.getByText('timestamp: 1784246400000')).toBeInTheDocument();
+  });
+
+  it('renders the audit timestamp in the viewer timezone from the offset-less UTC wire format', async () => {
+    // The backend serializes audit timestamps as UTC wall clocks without an offset (the stored
+    // base stays server-local). Parsing them as browser-local would shift every audit time by
+    // the server-viewer offset while the CSV export of the same rows stays correct.
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    try {
+      vi.mocked(opsService.listAuditRecords).mockResolvedValueOnce({
+        items: [
+          {
+            id: 3,
+            timestamp: '2026-08-01T02:00:00',
+            operator: 'ops-chen',
+            operationType: 'RELOAD_PROXY_CONFIG',
+            resourceType: 'PROXY',
+            target: '10.0.30.10:8081',
+            clusterId: 'prod-cn',
+            detail: '',
+            result: 'SUCCESS',
+            errorMessage: '',
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      });
+
+      renderWithProviders(<AuditPage />);
+
+      expect(await screen.findByText('2026-08-01 10:00:00')).toBeInTheDocument();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('opens a resource timeline from a non-empty audit target', async () => {
@@ -293,6 +348,7 @@ describe('Audit page', () => {
         page: 1,
         pageSize: 20,
         search: undefined,
+        operator: undefined,
         operationType: 'CREATE_TOPIC',
         resourceType: 'CONSUMER_GROUP',
         clusterId: 'prod-sh',
@@ -300,6 +356,34 @@ describe('Audit page', () => {
         endDate: undefined,
         result: undefined,
       }),
+    );
+  });
+
+  it('applies the selected operator as an exact backend filter', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: '操作人' }));
+    await user.click(
+      await screen.findByText('operator-a', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() =>
+      expect(opsService.listAuditRecords).toHaveBeenLastCalledWith(
+        expect.objectContaining({ operator: 'operator-a' }),
+      ),
+    );
+    await waitFor(() =>
+      expect(opsService.getAuditSummary).toHaveBeenLastCalledWith(
+        expect.objectContaining({ operator: 'operator-a' }),
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+    await waitFor(() =>
+      expect(opsService.exportAuditLogs).toHaveBeenLastCalledWith(
+        expect.objectContaining({ operator: 'operator-a' }),
+      ),
     );
   });
 
@@ -338,6 +422,71 @@ describe('Audit page', () => {
     expect(container.querySelector('.ant-spin-spinning')).not.toBeNull();
   });
 
+  it('renders the cleanup window and the error toasts in the display language', async () => {
+    window.localStorage.setItem('rocketmq-studio-language', 'en');
+    const user = userEvent.setup();
+    vi.mocked(opsService.listAuditRecords).mockRejectedValueOnce(new Error('boom'));
+    vi.mocked(opsService.getAuditSummary).mockRejectedValueOnce(new Error('boom'));
+
+    renderWithProviders(<AuditPage />);
+
+    // The load failure toast and the cleanup-window suffix were hardcoded Chinese.
+    expect(
+      await screen.findByText('Failed to load audit logs, please retry later'),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText('Failed to load the audit summary, please retry later'),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Cleanup/ }));
+    expect(await screen.findByText('days and older')).toBeInTheDocument();
+    expect(screen.queryByText('天之前的日志')).not.toBeInTheDocument();
+  });
+
+  it('renders the cleanup and export failure toasts in the display language', async () => {
+    window.localStorage.setItem('rocketmq-studio-language', 'en');
+    const user = userEvent.setup();
+    vi.mocked(opsService.cleanupAuditLogs).mockRejectedValueOnce(new Error('boom'));
+    vi.mocked(opsService.exportAuditLogs).mockRejectedValueOnce(new Error('boom'));
+
+    renderWithProviders(<AuditPage />);
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /export/i }));
+    expect(
+      await screen.findByText('Failed to export audit logs, please retry later'),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /cleanup/i }));
+    await user.click(await screen.findByRole('button', { name: /confirm cleanup/i }));
+    expect(
+      await screen.findByText('Failed to clean audit logs, please retry later'),
+    ).toBeInTheDocument();
+  });
+
+  it('drops records and summary from a previous filter when both refreshed reads fail', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AuditPage />);
+
+    expect(
+      await screen.findByRole('button', { name: '查看 topic-a 操作时间线' }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText('80')).toBeInTheDocument();
+    vi.mocked(opsService.listAuditRecords).mockRejectedValueOnce(new Error('records offline'));
+    vi.mocked(opsService.getAuditSummary).mockRejectedValueOnce(new Error('summary offline'));
+
+    await user.type(screen.getByPlaceholderText('搜索操作人或操作对象'), 'unavailable');
+
+    await waitFor(() => expect(opsService.listAuditRecords).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(opsService.getAuditSummary).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: '查看 topic-a 操作时间线' }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByText('80')).not.toBeInTheDocument();
+    expect(screen.getByText('获取数据失败')).toBeInTheDocument();
+  });
+
   it('ignores stale filter-option responses after cleanup refreshes', async () => {
     const user = userEvent.setup();
     const staleOptions = deferred<Awaited<ReturnType<typeof opsService.getAuditFilterOptions>>>();
@@ -356,6 +505,7 @@ describe('Audit page', () => {
 
     await act(async () => {
       staleOptions.resolve({
+        operators: ['STALE_OPERATOR'],
         operationTypes: ['STALE_OPERATION'],
         resourceTypes: [],
         clusterIds: [],

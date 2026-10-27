@@ -28,11 +28,15 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ApacheAclReadServiceTest {
@@ -109,6 +113,62 @@ class ApacheAclReadServiceTest {
                 });
     }
 
+    @Test
+    void readsRemoteRulesOnlyFromTheConfiguredClusterTest() throws Exception {
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        MQAdminExt admin = mock(MQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(sharedTopology());
+        when(admin.listAcl("10.0.0.11:10911", null, null)).thenReturn(List.of());
+        when(resolver.configuredClusterName("selected")).thenReturn("DefaultCluster");
+        executeWith(resolver, admin, "selected");
+
+        RemoteAclReadResult result = new ApacheAclReadService(resolver).listRules("selected", null, null);
+
+        assertThat(result.getPoliciesByBroker()).containsOnlyKeys("10.0.0.11:10911");
+        verify(admin, never()).listAcl(eq("10.0.0.12:10911"), any(), any());
+    }
+
+    @Test
+    void readsRemoteRulesFromEveryBrokerWhenTheInstanceNamesNoClusterTest() throws Exception {
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        MQAdminExt admin = mock(MQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(sharedTopology());
+        when(admin.listAcl(any(), any(), any())).thenReturn(List.of());
+        when(resolver.configuredClusterName("selected")).thenReturn(null);
+        executeWith(resolver, admin, "selected");
+
+        RemoteAclReadResult result = new ApacheAclReadService(resolver).listRules("selected", null, null);
+
+        assertThat(result.getPoliciesByBroker()).containsOnlyKeys("10.0.0.11:10911", "10.0.0.12:10911");
+    }
+
+    @Test
+    void reportsUnavailableClusterMembershipInsteadOfEveryBrokerTest() throws Exception {
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        MQAdminExt admin = mock(MQAdminExt.class);
+        ClusterInfo withoutClusterTable = sharedTopology();
+        withoutClusterTable.setClusterAddrTable(null);
+        when(admin.examineBrokerClusterInfo()).thenReturn(withoutClusterTable);
+        when(resolver.configuredClusterName("selected")).thenReturn("DefaultCluster");
+        executeWith(resolver, admin, "selected");
+
+        assertThatThrownBy(() -> new ApacheAclReadService(resolver).listRules("selected", null, null))
+                .isInstanceOf(org.apache.rocketmq.studio.common.exception.BusinessException.class)
+                .hasMessageContaining("Broker cluster membership is unavailable");
+    }
+
+    private ClusterInfo sharedTopology() {
+        BrokerData first = new BrokerData("DefaultCluster", "broker-a",
+                new HashMap<>(Map.of(0L, "10.0.0.11:10911")));
+        BrokerData second = new BrokerData("OtherCluster", "broker-b",
+                new HashMap<>(Map.of(0L, "10.0.0.12:10911")));
+        ClusterInfo clusterInfo = new ClusterInfo();
+        clusterInfo.setClusterAddrTable(new HashMap<>(Map.of(
+                "DefaultCluster", Set.of("broker-a"), "OtherCluster", Set.of("broker-b"))));
+        clusterInfo.setBrokerAddrTable(new HashMap<>(Map.of("broker-a", first, "broker-b", second)));
+        return clusterInfo;
+    }
+
     private ClusterInfo clusterInfo(String address) {
         BrokerData broker = new BrokerData();
         broker.setBrokerAddrs(new HashMap<>(Map.of(0L, address)));
@@ -118,7 +178,12 @@ class ApacheAclReadServiceTest {
     }
 
     private void executeWith(RuntimeAdminClientResolver resolver, MQAdminExt admin) throws Exception {
-        when(resolver.execute(eq("instance-1"), any())).thenAnswer(invocation -> {
+        executeWith(resolver, admin, "instance-1");
+    }
+
+    private void executeWith(RuntimeAdminClientResolver resolver, MQAdminExt admin, String instanceId)
+            throws Exception {
+        when(resolver.execute(eq(instanceId), any())).thenAnswer(invocation -> {
             MqAdminExtFactory.AdminAction<?> action = invocation.getArgument(1);
             return action.apply(admin);
         });

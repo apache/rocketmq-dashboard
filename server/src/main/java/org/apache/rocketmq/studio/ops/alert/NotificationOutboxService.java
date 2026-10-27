@@ -8,6 +8,7 @@ package org.apache.rocketmq.studio.ops.alert;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
@@ -320,8 +321,9 @@ public class NotificationOutboxService {
             // each claim so a row cannot be born with an already-expired lease.
             LocalDateTime claimStartedAt = utcNow();
             LocalDateTime claimStaleBefore = claimStartedAt.minus(claimTimeout);
+            int attemptCount = row.getAttemptCount() == null ? 0 : row.getAttemptCount();
             if (mapper.claimForDispatch(row.getId(), claimStartedAt, claimStaleBefore, claimStartedAt,
-                    claimToken) != 1) {
+                    claimToken, attemptCount) != 1) {
                 continue;
             }
             send(row, claimToken);
@@ -458,8 +460,10 @@ public class NotificationOutboxService {
 
     private static void validateDingTalkResponse(String response) {
         try {
-            JsonNode body = JSON.readTree(response);
-            if (body != null && body.path("errcode").canConvertToInt() && body.path("errcode").asInt() == 0) {
+            // Keep nonzero fractions intact: integer conversion truncates them, and
+            // double parsing can underflow a small nonzero error code to zero.
+            JsonNode body = JSON.reader().with(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS).readTree(response);
+            if (body != null && body.path("errcode").isNumber() && body.path("errcode").decimalValue().signum() == 0) {
                 return;
             }
             String error = body == null ? null : body.path("errmsg").asText(null);
@@ -497,18 +501,55 @@ public class NotificationOutboxService {
 
     private static String[] parseRecipients(String raw) throws AddressException {
         List<String> recipients = new ArrayList<>();
-        for (String value : raw.split("[,;]")) {
-            String recipient = value.trim();
-            if (!recipient.isEmpty()) {
-                InternetAddress address = new InternetAddress(recipient, true);
-                address.validate();
-                recipients.add(address.getAddress());
+        // Commas and legacy semicolons separate recipients only outside quoted
+        // strings and comments. Comments may nest and contain quoted pairs;
+        // keep each address intact for InternetAddress's strict validation.
+        StringBuilder current = new StringBuilder();
+        boolean quoted = false;
+        int commentDepth = 0;
+        boolean escaped = false;
+        for (int i = 0; i < raw.length(); i++) {
+            char c = raw.charAt(i);
+            if (escaped) {
+                current.append(c);
+                escaped = false;
+            } else if ((quoted || commentDepth > 0) && c == '\\') {
+                current.append(c);
+                escaped = true;
+            } else if (commentDepth > 0) {
+                current.append(c);
+                if (c == '(') {
+                    commentDepth++;
+                } else if (c == ')') {
+                    commentDepth--;
+                }
+            } else if (!quoted && c == '(') {
+                current.append(c);
+                commentDepth = 1;
+            } else if (c == '"') {
+                current.append(c);
+                quoted = !quoted;
+            } else if (!quoted && (c == ',' || c == ';')) {
+                addRecipient(current, recipients);
+                current.setLength(0);
+            } else {
+                current.append(c);
             }
         }
+        addRecipient(current, recipients);
         if (recipients.isEmpty()) {
             throw new AddressException("No valid email recipients");
         }
         return recipients.toArray(String[]::new);
+    }
+
+    private static void addRecipient(CharSequence token, List<String> recipients) throws AddressException {
+        String recipient = token.toString().trim();
+        if (!recipient.isEmpty()) {
+            InternetAddress address = new InternetAddress(recipient, true);
+            address.validate();
+            recipients.add(address.getAddress());
+        }
     }
 
     private Map<String, Object> payload(SystemAlertVO alert, String channel, String content) {
@@ -543,10 +584,12 @@ public class NotificationOutboxService {
                 .set("last_error", abbreviate(error)).set("claim_token", null))) {
             return;
         }
-        // "FAILURE" is outside the shared audit result vocabulary (SUCCESS/FAILED/PARTIAL), so
-        // exhausted deliveries never landed in the audit summary's failed bucket.
+        // The audit result vocabulary is SUCCESS/FAILED/PARTIAL (docs/api-spec.md), and the summary
+        // buckets only those three: "RETRYING" rows were counted in its total but in no bucket.
+        // Both branches audit a failed attempt, and the operation name already tells a scheduled
+        // retry (RETRY_ALERT_NOTIFICATION) from an exhausted one (FAIL_ALERT_NOTIFICATION).
         recordDeliverySafely(row, exhausted ? "FAIL_ALERT_NOTIFICATION" : "RETRY_ALERT_NOTIFICATION",
-                exhausted ? "FAILED" : "RETRYING", abbreviate(error));
+                "FAILED", abbreviate(error));
         log.warn("Alert notification {} for event {}: {}", exhausted ? "failed" : "will retry", row.getAlertId(), error);
     }
 

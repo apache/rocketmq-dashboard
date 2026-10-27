@@ -219,6 +219,36 @@ class MessageServiceTest {
     }
 
     @Test
+    void auditsACloudAcceptedDirectConsumeAsPartialTest() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        OperationAuditService audit = mock(OperationAuditService.class);
+        DirectConsumeMessageDTO request = new DirectConsumeMessageDTO();
+        request.setInstanceId("tencent-instance");
+        request.setTopic("orders");
+        request.setMsgId("msg-1");
+        request.setConsumerGroup("billing");
+        request.setClientId("client-a");
+        when(registry.byInstanceId("tencent-instance")).thenReturn(Optional.of(provider));
+        when(provider.capabilities()).thenReturn(Set.of(InstanceCapability.DIRECT_MESSAGE_CONSUME));
+        // The Tencent OpenAPI answers REQUEST_ACCEPTED: the cloud accepted the verification
+        // request and never reports the consumption outcome, so the audit grades it PARTIAL
+        // rather than claiming a SUCCESS it cannot observe.
+        when(provider.consumeMessageDirectly(request)).thenReturn(DirectConsumeMessageResultVO.builder()
+                .consumeResult("REQUEST_ACCEPTED").build());
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class), audit, ownershipGuard());
+
+        service.consumeMessageDirectly(request);
+
+        verify(audit).record(org.mockito.ArgumentMatchers.eq("DIRECT_CONSUME_MESSAGE"),
+                org.mockito.ArgumentMatchers.eq("MESSAGE"), org.mockito.ArgumentMatchers.eq("msg-1"),
+                org.mockito.ArgumentMatchers.eq("tencent-instance"),
+                org.mockito.ArgumentMatchers.contains("REQUEST_ACCEPTED"),
+                org.mockito.ArgumentMatchers.eq("PARTIAL"), org.mockito.ArgumentMatchers.isNull());
+    }
+
+    @Test
     void auditsDirectConsumeFailureWhenProviderThrowsTest() {
         MessageProvider fallback = mock(MessageProvider.class);
         InstanceProvider provider = mock(InstanceProvider.class);
@@ -696,5 +726,42 @@ class MessageServiceTest {
                 .isSameAs(record);
 
         verifyNoInteractions(fallback);
+    }
+
+    @Test
+    void pullMessageAtOffsetKeepsTheRegisteredProviderNullResultTest() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class), ownershipGuard());
+        when(registry.byInstanceId("cloud-instance")).thenReturn(Optional.of(provider));
+        when(provider.pullMessageAtOffset("cloud-instance", "TopicA", "broker-a", 0, 7L))
+                .thenReturn(null);
+
+        // A registered provider's null is the documented "no message at this
+        // offset" answer: it must not trigger the fallback (a second,
+        // identical pull whose failure would surface as an error here).
+        assertThat(service.pullMessageAtOffset("cloud-instance", "TopicA", "broker-a", 0, 7L))
+                .isNull();
+
+        verify(provider, org.mockito.Mockito.times(1))
+                .pullMessageAtOffset("cloud-instance", "TopicA", "broker-a", 0, 7L);
+        verifyNoInteractions(fallback);
+    }
+
+    @Test
+    void pullMessageAtOffsetStillFallsBackWithoutAProviderTest() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        MessageRecordVO record = MessageRecordVO.builder().msgId("msg-1").build();
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class), ownershipGuard());
+        when(registry.byInstanceId("apache-instance")).thenReturn(Optional.empty());
+        when(fallback.pullMessageAtOffset("apache-instance", "TopicA", "broker-a", 0, 7L))
+                .thenReturn(record);
+
+        assertThat(service.pullMessageAtOffset("apache-instance", "TopicA", "broker-a", 0, 7L))
+                .isSameAs(record);
     }
 }

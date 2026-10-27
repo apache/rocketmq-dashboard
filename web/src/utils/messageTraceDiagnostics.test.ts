@@ -53,6 +53,67 @@ const issueCodes = (trace: TraceRecord) =>
   analyzeMessageTrace(trace).issues.map((issue) => issue.code);
 
 describe('message trace diagnostics', () => {
+  it.each(['chronological', 'interleaved'])(
+    'does not join separate message lifecycles in %s key results',
+    (order) => {
+      const nodes = [
+        node('Produce A', '2026-07-01T10:00:00.000Z', 1),
+        node('Consume A', '2026-07-01T10:00:00.010Z', 9),
+        node('Produce B', '2026-07-01T10:01:00.000Z', 1),
+        node('Consume B', '2026-07-01T10:01:00.010Z', 9),
+      ];
+      const diagnostics = analyzeMessageTrace(
+        baseTrace({
+          queryType: 'KEY',
+          nodes: order === 'interleaved' ? [nodes[0], nodes[2], nodes[1], nodes[3]] : nodes,
+          consumerStatus: [delivery('cg-orders', 'success', '2026-07-01T10:01:00.010Z')],
+        }),
+      );
+
+      expect(diagnostics.status).toBe('healthy');
+      expect(diagnostics.issues).toEqual([]);
+      expect(diagnostics.summary).toMatchObject({
+        endToEndLatencyMs: null,
+        slowestGap: null,
+        totalNodeCostMs: 20,
+        successfulConsumerRate: 100,
+      });
+      expect(
+        diagnostics.phases.every(
+          (phase) => phase.latencyFromPreviousMs === null && phase.latencyFromStartMs === null,
+        ),
+      ).toBe(true);
+      expect(diagnostics.deliveries[0].latencyFromTraceStartMs).toBeNull();
+    },
+  );
+
+  it('keeps actual node cost and delivery failures in key diagnostics', () => {
+    const diagnostics = analyzeMessageTrace(
+      baseTrace({
+        queryType: 'KEY',
+        nodes: [
+          node('Produce A', '2026-07-01T10:00:00.000Z', 1),
+          node('Consume B', '2026-07-01T10:01:00.010Z', 9000, 'error'),
+        ],
+        consumerStatus: [delivery('cg-orders', 'failed', '2026-07-01T10:01:00.010Z', 2)],
+      }),
+    );
+
+    expect(diagnostics.status).toBe('critical');
+    expect(diagnostics.summary.endToEndLatencyMs).toBeNull();
+    expect(diagnostics.summary.slowestNode?.valueMs).toBe(9000);
+    expect(diagnostics.issues.map((issue) => issue.code)).toEqual(
+      expect.arrayContaining([
+        'FAILED_TRACE_NODE',
+        'SLOW_TRACE_NODE',
+        'FAILED_CONSUMER_DELIVERY',
+        'RETRIED_CONSUMER_DELIVERY',
+      ]),
+    );
+    expect(diagnostics.issues.map((issue) => issue.code)).not.toContain('SLOW_END_TO_END_TRACE');
+    expect(diagnostics.issues.map((issue) => issue.code)).not.toContain('SLOW_TRACE_GAP');
+  });
+
   it('summarizes a complete trace as healthy', () => {
     const diagnostics = analyzeMessageTrace(baseTrace());
 

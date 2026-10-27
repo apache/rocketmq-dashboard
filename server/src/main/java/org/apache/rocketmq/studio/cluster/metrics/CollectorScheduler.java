@@ -174,15 +174,21 @@ public class CollectorScheduler {
             }
             InstanceVO instance = pending.removeFirst();
             try {
+                // Per-job cancellation state: Future.cancel(true) only sets the
+                // interrupt bit, which a collector can absorb and keep going,
+                // and the pass-level heartbeat stays held while sibling jobs
+                // run. Without this flag a cancelled job's late results could
+                // still pass the lease check and reach the repository.
+                java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean(false);
                 Future<InstanceVO> future = completionService.submit(() -> {
-                    if (heartbeat.isHeld()) {
-                        collectClusterMetrics(instance, heartbeat);
-                        collectBusinessMetrics(instance, heartbeat);
+                    if (heartbeat.isHeld() && !cancelled.get()) {
+                        collectClusterMetrics(instance, heartbeat, cancelled);
+                        collectBusinessMetrics(instance, heartbeat, cancelled);
                     }
                     return instance;
                 });
                 leaseJobs.add(future);
-                running.add(new CollectionJob(instance, future, now.plus(timeout)));
+                running.add(new CollectionJob(instance, future, now.plus(timeout), cancelled));
             } catch (RejectedExecutionException error) {
                 pending.addFirst(instance);
                 throw error;
@@ -231,12 +237,12 @@ public class CollectorScheduler {
         while (iterator.hasNext()) {
             CollectionJob job = iterator.next();
             if (!passDeadline.isAfter(now)) {
-                job.future().cancel(true);
+                job.cancel();
                 iterator.remove();
                 log.warn("Native metric collection pass exceeded {}; cancelling instance {}", passTimeout,
                         job.instance().getName());
             } else if (!job.deadline().isAfter(now)) {
-                job.future().cancel(true);
+                job.cancel();
                 iterator.remove();
                 log.warn("Native metric collection exceeded {} for instance {} and was cancelled", timeout,
                         job.instance().getName());
@@ -246,7 +252,7 @@ public class CollectorScheduler {
 
     private void cancelRunningJobs(List<CollectionJob> running) {
         for (CollectionJob job : running) {
-            job.future().cancel(true);
+            job.cancel();
         }
         running.clear();
     }
@@ -279,15 +285,16 @@ public class CollectorScheduler {
         snapshotRepository.deleteBefore(Instant.now().minus(retention));
     }
 
-    private void collectClusterMetrics(InstanceVO instance, LeaseHeartbeat heartbeat) {
+    private void collectClusterMetrics(InstanceVO instance, LeaseHeartbeat heartbeat,
+            java.util.concurrent.atomic.AtomicBoolean cancelled) {
         for (ClusterMetricsCollector collector : clusterCollectors) {
-            if (!heartbeat.isHeld()) {
+            if (!heartbeat.isHeld() || cancelled.get()) {
                 return;
             }
             try {
                 if (collector.supports(instance)) {
                     List<MetricSample> samples = collector.collect(instance);
-                    persist(AlertDomain.CLUSTER, instance, collector.metricKeys(), samples, heartbeat);
+                    persist(AlertDomain.CLUSTER, instance, collector.metricKeys(), samples, heartbeat, cancelled);
                 }
             } catch (RuntimeException error) {
                 log.warn("Native metric collector failed for instance {}: {}", instance.getName(), error.getMessage());
@@ -295,15 +302,16 @@ public class CollectorScheduler {
         }
     }
 
-    private void collectBusinessMetrics(InstanceVO instance, LeaseHeartbeat heartbeat) {
+    private void collectBusinessMetrics(InstanceVO instance, LeaseHeartbeat heartbeat,
+            java.util.concurrent.atomic.AtomicBoolean cancelled) {
         for (BusinessMetricsCollector collector : businessCollectors) {
-            if (!heartbeat.isHeld()) {
+            if (!heartbeat.isHeld() || cancelled.get()) {
                 return;
             }
             try {
                 if (collector.supports(instance)) {
                     List<MetricSample> samples = collector.collect(instance);
-                    persist(AlertDomain.BUSINESS, instance, collector.metricKeys(), samples, heartbeat);
+                    persist(AlertDomain.BUSINESS, instance, collector.metricKeys(), samples, heartbeat, cancelled);
                 }
             } catch (RuntimeException error) {
                 log.warn("Native metric collector failed for instance {}: {}", instance.getName(), error.getMessage());
@@ -312,7 +320,17 @@ public class CollectorScheduler {
     }
 
     private void persist(AlertDomain domain, InstanceVO instance, Set<String> declaredMetricKeys,
-            List<MetricSample> samples, LeaseHeartbeat heartbeat) {
+            List<MetricSample> samples, LeaseHeartbeat heartbeat,
+            java.util.concurrent.atomic.AtomicBoolean cancelled) {
+        // A job that was cancelled or expired must not start persisting: its
+        // samples predate the cancellation decision and feeding them (and the
+        // alert processor) after the scheduler gave up on the instance
+        // contradicts that decision. The interrupt bit alone cannot enforce
+        // this — collectors may absorb it.
+        if (cancelled.get()) {
+            log.debug("Discarding native metric samples from a cancelled collection job");
+            return;
+        }
         List<MetricSample> collected = samples == null ? List.of() : samples;
         Set<String> scopeMetricKeys = metricKeys(declaredMetricKeys, collected);
         if (scopeMetricKeys.isEmpty()) {
@@ -442,7 +460,14 @@ public class CollectorScheduler {
         }
     }
 
-    private record CollectionJob(InstanceVO instance, Future<InstanceVO> future, Instant deadline) {
+    private record CollectionJob(InstanceVO instance, Future<InstanceVO> future, Instant deadline,
+            java.util.concurrent.atomic.AtomicBoolean cancelled) {
+
+        /** Marks the job cancelled for its collection/persist guards, then interrupts the worker. */
+        void cancel() {
+            cancelled.set(true);
+            future.cancel(true);
+        }
     }
 
     private static Duration parsePositiveDuration(String value, Duration fallback) {

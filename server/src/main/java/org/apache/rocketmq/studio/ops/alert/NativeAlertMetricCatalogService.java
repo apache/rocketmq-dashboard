@@ -38,9 +38,11 @@ public class NativeAlertMetricCatalogService {
             new NativeAlertMetricInfo("consumer.delay.seconds", "Consumer delay", "seconds", true),
             new NativeAlertMetricInfo("topic.backlog.total", "Topic backlog (per consumer group)", "messages", true),
             new NativeAlertMetricInfo("dlq.message.count", "DLQ message count", "messages", true));
+    // No cloud queue maximum: the Aliyun and Tencent progress rows are per-topic aggregates without
+    // queue offsets, so CloudRocketMqBusinessMetricsCollector publishes consumer.lag.max_queue as
+    // UNSUPPORTED only (#6184) - a rule the operator could pick here would never fire.
     private static final List<NativeAlertMetricInfo> BUSINESS_CLOUD = List.of(
             new NativeAlertMetricInfo("consumer.lag.total", "Consumer lag total", "messages", true),
-            new NativeAlertMetricInfo("consumer.lag.max_queue", "Consumer lag max queue", "messages", true),
             new NativeAlertMetricInfo("topic.backlog.total", "Topic backlog (per consumer group)", "messages", true));
     private static final List<NativeAlertMetricInfo> CLUSTER_CLOUD = List.of(
             new NativeAlertMetricInfo("cloud.instance.availability", "Cloud instance availability", "", false));

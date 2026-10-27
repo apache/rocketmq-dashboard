@@ -85,6 +85,26 @@ describe('AiAssistantTab', () => {
     expect(screen.getByDisplayValue('qwen3.8-max')).toBeInTheDocument();
   });
 
+  it('reports a failed configuration load with its reason and can retry it', async () => {
+    llmApiMocks.getLlmConfig.mockRejectedValueOnce(new Error('Admin permission required'));
+    const user = userEvent.setup();
+    renderPage();
+
+    // A configuration the tab could not read must not be presented as an empty one: the request
+    // answered 403 (the endpoint is admin-only) and the form would otherwise claim nothing is set.
+    expect(await screen.findByText('Admin permission required')).toBeInTheDocument();
+    expect(llmApiMocks.getLlmConfig).toHaveBeenCalledTimes(1);
+
+    // antd inserts a space between the two characters of a CJK button label.
+    await user.click(screen.getByRole('button', { name: /重\s*试/ }));
+    await waitFor(() => expect(llmApiMocks.getLlmConfig).toHaveBeenCalledTimes(2));
+    // The retry resolves, so the loaded configuration replaces the failure notice.
+    expect(await screen.findByText('密钥已配置')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText('Admin permission required')).not.toBeInTheDocument(),
+    );
+  });
+
   it('renders assistant configuration labels in English when English is selected', async () => {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
     renderPage();

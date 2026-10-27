@@ -26,6 +26,37 @@ import {
 import { buildCsv } from './download';
 
 describe('resourceCsvImport', () => {
+  it('rejectsRecord101BeforeParsingTheRemainingFileTest', () => {
+    const content = [
+      'Name,Remark',
+      ...Array.from({ length: RESOURCE_IMPORT_ROW_LIMIT + 1 }, (_, i) => `topic-${i},remark`),
+      '"unterminated tail',
+    ].join('\n');
+    expect(() => parseCsvTable(content)).toThrow(`一次最多导入 ${RESOURCE_IMPORT_ROW_LIMIT} 行`);
+  });
+
+  it.each([99, 100])('countsRecordsInsteadOfPhysicalLinesTest (%i)', (count) => {
+    const content =
+      '\uFEFFName,Remark\r\n\r\n' +
+      Array.from({ length: count }, (_, i) => `topic-${i},"line1\r\nline2"`).join('\r\n\r\n');
+    const records = parseCsvTable(content);
+    expect(records).toHaveLength(count);
+    expect(records[0]).toEqual({
+      lineNumber: 3,
+      values: { Name: 'topic-0', Remark: 'line1\r\nline2' },
+    });
+    expect(records[count - 1].values.Name).toBe(`topic-${count - 1}`);
+  });
+
+  it('doesNotRetainParserStateAfterLimitFailureTest', () => {
+    const tooMany = ['Name', ...Array.from({ length: 101 }, (_, i) => `topic-${i}`)].join('\n');
+    expect(() => parseCsvTable(tooMany)).toThrow('一次最多导入 100 行');
+    expect(parseCsvTable('Name,Remark\norders,"a,b"')).toEqual([
+      { lineNumber: 2, values: { Name: 'orders', Remark: 'a,b' } },
+    ]);
+    expect(() => parseCsvTable('Name\n"unterminated')).toThrow('CSV 引号未闭合');
+  });
+
   it('parses RFC4180 CSV with BOM, CRLF, quoted commas, newlines, and escaped quotes', () => {
     const records = parseCsvTable(
       '\uFEFF"Name","Remark"\r\n"topic-a","line1\r\nline2, ""quoted"""\r\n\r\n',
@@ -40,6 +71,21 @@ describe('resourceCsvImport', () => {
         },
       },
     ]);
+  });
+
+  it('preserves quoted topic remarks across CSV export and import', () => {
+    const remark = '  on-call note, line 1\nline 2  ';
+    const csv = buildCsv(
+      [
+        { header: 'Name', value: (row: { name: string; remark: string }) => row.name },
+        { header: 'Remark', value: (row: { name: string; remark: string }) => row.remark },
+      ],
+      [{ name: 'orders', remark }],
+    );
+    const records = parseCsvTable(csv);
+
+    expect(records[0].values.Remark).toBe(remark);
+    expect(validateTopicCsvImport(records).rows[0].payload.remark).toBe(remark);
   });
 
   it('rejects malformed headers, unclosed quotes, and row caps', () => {

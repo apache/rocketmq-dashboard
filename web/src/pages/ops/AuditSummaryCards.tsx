@@ -56,17 +56,11 @@ const AuditSummaryCards = ({ summary, loading }: Props) => {
   // Show the placeholder while any fetch is in flight so a filter change does
   // not keep painting a stale summary until the refreshed aggregate arrives.
   if (loading) return <Skeleton active paragraph={{ rows: 4 }} />;
-  const data = summary || {
-    total: 0,
-    successful: 0,
-    failed: 0,
-    partial: 0,
-    uniqueOperators: 0,
-    latestAt: null,
-    byOperation: [],
-    byResourceType: [],
-  };
+  if (!summary) return <Empty description={t('common.fetchDataFailed')} />;
+  const data = summary;
   const successRate = data.total ? Math.round((data.successful / data.total) * 100) : 0;
+  // 成功率配色按阈值走，不再写死绿色（用户约定 2026-10-16）：47% 曾照样显示绿色，读起来像健康。
+  const successColor = successRate >= 95 ? '#52c41a' : successRate >= 80 ? '#faad14' : '#cf1322';
   return (
     <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
       <Col xs={12} lg={6}>
@@ -80,8 +74,16 @@ const AuditSummaryCards = ({ summary, loading }: Props) => {
             title={t('audit.summarySuccessRate')}
             value={successRate}
             suffix="%"
-            valueStyle={{ color: '#52c41a' }}
+            valueStyle={{ color: successColor }}
           />
+          {/* 分母是匹配记录总数、含未记录结果的操作（只读查询等），单看百分比会和「失败率」
+              对不上（47% 成功 + 15% 失败 ≠ 100%），把分子分母摆出来让口径自解释。 */}
+          <Text type="secondary" style={{ fontSize: 14 }}>
+            {t('audit.summarySuccessDetail', {
+              successful: data.successful,
+              total: data.total,
+            })}
+          </Text>
         </Card>
       </Col>
       <Col xs={12} lg={6}>

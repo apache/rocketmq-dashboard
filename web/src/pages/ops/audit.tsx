@@ -29,7 +29,6 @@ import {
   InputNumber,
   Typography,
   message,
-  Space,
   Tooltip,
 } from 'antd';
 import { Trash } from '@phosphor-icons/react';
@@ -38,6 +37,7 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
+import TagList from '../../components/TagList';
 import { useLang } from '../../i18n/LangContext';
 import type { AuditFilter, AuditFilterOptions, AuditSummary } from '../../api/audit';
 import type { AuditRecord } from '../../api/ops';
@@ -49,7 +49,8 @@ import {
   listAuditRecords,
 } from '../../services/opsService';
 import { downloadBlob } from '../../utils/download';
-import { formatDateTime } from '../../utils/format';
+import { describeApiError } from '../../utils/apiError';
+import { formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import {
   describeAuditRecord,
@@ -60,11 +61,12 @@ import {
 } from './auditPresentation';
 import AuditSummaryCards from './AuditSummaryCards';
 import AuditRiskInsights from './AuditRiskInsights';
-import ResourceOperationTimelineDrawer, {
+import ResourceOperationTimelineModal, {
   type AuditTimelineResource,
-} from './ResourceOperationTimelineDrawer';
+} from './ResourceOperationTimelineModal';
 
 const emptyFilterOptions: AuditFilterOptions = {
+  operators: [],
   operationTypes: [],
   resourceTypes: [],
   clusterIds: [],
@@ -73,6 +75,7 @@ const emptyFilterOptions: AuditFilterOptions = {
 
 const buildAuditFilter = (
   searchText: string,
+  selectedOperator: string | undefined,
   selectedType: string | undefined,
   selectedResourceType: string | undefined,
   selectedClusterId: string | undefined,
@@ -80,6 +83,7 @@ const buildAuditFilter = (
   resultFilter: string,
 ): AuditFilter => ({
   search: searchText || undefined,
+  operator: selectedOperator,
   operationType: selectedType,
   resourceType: selectedResourceType,
   clusterId: selectedClusterId,
@@ -98,6 +102,7 @@ const AuditPage: React.FC = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [searchText, setSearchText] = useState('');
   const [debouncedSearchText, setDebouncedSearchText] = useState('');
+  const [selectedOperator, setSelectedOperator] = useState<string | undefined>(undefined);
   const [selectedType, setSelectedType] = useState<string | undefined>(undefined);
   const [selectedResourceType, setSelectedResourceType] = useState<string | undefined>(undefined);
   const [selectedClusterId, setSelectedClusterId] = useState<string | undefined>(undefined);
@@ -147,6 +152,7 @@ const AuditPage: React.FC = () => {
       pageSize,
       ...buildAuditFilter(
         debouncedSearchText,
+        selectedOperator,
         selectedType,
         selectedResourceType,
         selectedClusterId,
@@ -165,7 +171,9 @@ const AuditPage: React.FC = () => {
       })
       .catch(() => {
         if (recordsRequestRef.current === requestId) {
-          message.error('审计日志加载失败，请稍后重试');
+          setRecords([]);
+          setTotal(0);
+          message.error(t('audit.loadFailed'));
         }
       })
       .finally(() => {
@@ -175,12 +183,14 @@ const AuditPage: React.FC = () => {
     page,
     pageSize,
     debouncedSearchText,
+    selectedOperator,
     selectedType,
     selectedResourceType,
     selectedClusterId,
     dateRange,
     resultFilter,
     refreshKey,
+    t,
   ]);
 
   useEffect(
@@ -195,6 +205,7 @@ const AuditPage: React.FC = () => {
     () =>
       buildAuditFilter(
         debouncedSearchText,
+        selectedOperator,
         selectedType,
         selectedResourceType,
         selectedClusterId,
@@ -203,6 +214,7 @@ const AuditPage: React.FC = () => {
       ),
     [
       debouncedSearchText,
+      selectedOperator,
       selectedType,
       selectedResourceType,
       selectedClusterId,
@@ -224,7 +236,10 @@ const AuditPage: React.FC = () => {
         if (!cancelled) setSummary(value);
       })
       .catch(() => {
-        if (!cancelled) message.error('审计概览加载失败，请稍后重试');
+        if (!cancelled) {
+          setSummary(null);
+          message.error(t('audit.summaryLoadFailed'));
+        }
       })
       .finally(() => {
         if (!cancelled) setSummaryLoading(false);
@@ -232,7 +247,7 @@ const AuditPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeFilter, refreshKey]);
+  }, [activeFilter, refreshKey, t]);
 
   const { Text } = Typography;
 
@@ -280,13 +295,14 @@ const AuditPage: React.FC = () => {
       );
     }
     return (
-      <Space size={[4, 4]} wrap>
-        {tokens.map((token) => (
-          <Tag key={`${token.label}:${token.value}`} style={{ marginInlineEnd: 0 }}>
-            {token.label}: {token.value}
-          </Tag>
-        ))}
-      </Space>
+      <TagList
+        items={tokens.map((token) => ({
+          key: `${token.label}:${token.value}`,
+          label: `${token.label}: ${token.value}`,
+        }))}
+        max={3}
+        tagMaxWidth={190}
+      />
     );
   };
 
@@ -301,7 +317,7 @@ const AuditPage: React.FC = () => {
       message.success(t('audit.cleanupSuccess', { n: cleanupDays }));
       setCleanupModalOpen(false);
     } catch {
-      message.error('清理审计日志失败，请稍后重试');
+      message.error(t('audit.cleanupFailed'));
     } finally {
       cleanupInFlightRef.current = false;
       setCleaning(false);
@@ -314,8 +330,10 @@ const AuditPage: React.FC = () => {
       const csv = await exportAuditLogs(activeFilter);
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       downloadBlob(blob, `rocketmq-audit-logs-${dayjs().format('YYYY-MM-DD')}.csv`);
-    } catch {
-      message.error('导出审计日志失败，请稍后重试');
+    } catch (error) {
+      // The server refuses an export above AuditService.MAX_EXPORT_RECORDS with a 400 that names
+      // the cap and says to narrow the filters; retrying the same request can never succeed.
+      message.error(describeApiError(error, t('audit.exportFailed')));
     } finally {
       setExporting(false);
     }
@@ -326,9 +344,10 @@ const AuditPage: React.FC = () => {
       title: t('audit.time'),
       dataIndex: 'timestamp',
       width: 180,
-      sorter: (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+      // The wire carries a UTC wall clock; parsing it as browser-local would shift the render
+      // by the server-viewer offset. The sorter is left to #6687's removal direction.
       defaultSortOrder: 'descend',
-      render: (timestamp: string) => formatDateTime(timestamp),
+      render: (timestamp: string) => formatUtcDateTime(timestamp),
     },
     {
       title: t('audit.operator'),
@@ -401,6 +420,14 @@ const AuditPage: React.FC = () => {
     {
       title: t('audit.detail'),
       dataIndex: 'detail',
+      // 三个 token 的自然宽实测 209 + 123 + 104（量 scrollWidth，不能量 getBoundingClientRect：
+      // 后者在已被 flex-shrink 压窄的单元格里量到的是收缩后的值，拿它算列宽会循环论证）。
+      // 必须用 `width` 不能用 `minWidth`：antd 只把 `width` 落成 <col>，`minWidth` 仅参与
+      // tableScrollX 求和；table-layout:fixed 下没有 width 的列只会和「失败原因」平分余量
+      // （实测各 290），配合 TagList 的 nowrap 会把标签压窄到逐个带省略号。
+      // 450 = 190(tagMaxWidth 上限) + 123 + 104 + gap 8 + 单元格内边距 16，留 9px 余量；
+      // 全表合计 1640，1920 视口下容器 1650，不会引出横向滚动条。
+      width: 450,
       ellipsis: true,
       render: renderDetail,
     },
@@ -436,6 +463,18 @@ const AuditPage: React.FC = () => {
             }}
             style={{ width: 240 }}
             allowClear
+          />
+          <Select
+            aria-label={t('audit.operator')}
+            placeholder={t('audit.operator')}
+            allowClear
+            style={{ width: 150 }}
+            value={selectedOperator}
+            onChange={(value) => {
+              setPage(1);
+              setSelectedOperator(value);
+            }}
+            options={filterOptions.operators.map((value) => ({ label: value, value }))}
           />
           <Select
             aria-label={t('audit.opType')}
@@ -558,7 +597,7 @@ const AuditPage: React.FC = () => {
       </Card>
 
       {timelineResource && (
-        <ResourceOperationTimelineDrawer
+        <ResourceOperationTimelineModal
           open
           resource={timelineResource}
           onClose={() => setTimelineResource(null)}
@@ -592,7 +631,7 @@ const AuditPage: React.FC = () => {
               value={cleanupDays}
               onChange={(v) => setCleanupDays(v ?? 30)}
             />
-            <span>天之前的日志</span>
+            <span>{t('audit.cleanupDaysSuffix')}</span>
           </Flex>
         </Flex>
       </Modal>

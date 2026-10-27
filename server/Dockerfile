@@ -74,18 +74,24 @@ COPY server/LICENSE server/NOTICE /usr/share/licenses/rocketmq-studio/
 # distributed as part of the ASF release artifact (only this Dockerfile is).
 # Verify downloaded bytes against reviewed, committed upstream checksums before
 # extraction/use. See docker-downloads.md for provenance and update instructions.
-RUN curl -fsSL -o /tmp/node.tar.gz \
-      https://npmmirror.com/mirrors/node/v20.19.2/node-v20.19.2-linux-x64.tar.gz \
-    && echo "eec2c7b9c6ac72e42885a42edfc0503c0e4ee455f855c4a17a6cbcf026656dd5  /tmp/node.tar.gz" | sha256sum -c - \
+ARG TARGETARCH
+RUN case "${TARGETARCH}" in \
+      amd64) NODE_ARCH=x64; NODE_SHA256=eec2c7b9c6ac72e42885a42edfc0503c0e4ee455f855c4a17a6cbcf026656dd5 ;; \
+      arm64) NODE_ARCH=arm64; NODE_SHA256=24c3090d4e8c3667cd57482263291ca4f562c2e0773d5e618a0c6ba32d21b39f ;; \
+      *) echo "Unsupported Node.js architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL -o /tmp/node.tar.gz \
+      "https://npmmirror.com/mirrors/node/v20.19.2/node-v20.19.2-linux-${NODE_ARCH}.tar.gz" \
+    && echo "${NODE_SHA256}  /tmp/node.tar.gz" | sha256sum -c - \
     && tar xzf /tmp/node.tar.gz -C /opt \
     && rm /tmp/node.tar.gz \
-    && ln -s /opt/node-v20.19.2-linux-x64/bin/node  /usr/local/bin/node \
-    && ln -s /opt/node-v20.19.2-linux-x64/bin/npm   /usr/local/bin/npm \
-    && ln -s /opt/node-v20.19.2-linux-x64/bin/npx   /usr/local/bin/npx \
+    && ln -s "/opt/node-v20.19.2-linux-${NODE_ARCH}/bin/node"  /usr/local/bin/node \
+    && ln -s "/opt/node-v20.19.2-linux-${NODE_ARCH}/bin/npm"   /usr/local/bin/npm \
+    && ln -s "/opt/node-v20.19.2-linux-${NODE_ARCH}/bin/npx"   /usr/local/bin/npx \
     && npm config set registry https://registry.npmmirror.com \
     && npm install -g @anthropic-ai/claude-code @qoder-ai/qodercli \
-    && ln -s /opt/node-v20.19.2-linux-x64/bin/claude   /usr/local/bin/claude \
-    && ln -s /opt/node-v20.19.2-linux-x64/bin/qodercli /usr/local/bin/qodercli
+    && ln -s "/opt/node-v20.19.2-linux-${NODE_ARCH}/bin/claude"   /usr/local/bin/claude \
+    && ln -s "/opt/node-v20.19.2-linux-${NODE_ARCH}/bin/qodercli" /usr/local/bin/qodercli
 
 # rmqctl binary + legal materials from stage 1.
 COPY --from=rmqctl-build /out/rmqctl /usr/local/bin/rmqctl
@@ -162,6 +168,8 @@ RUN mvn dependency:go-offline
 COPY server/src ./src
 COPY server/style ./style
 COPY server/scripts/legal.py ./scripts/legal.py
+COPY server/scripts/legal-determinations.json ./scripts/legal-determinations.json
+COPY server/legal/licenses ./legal/licenses
 COPY server/LICENSE server/NOTICE ./
 
 RUN mvn package -DskipTests

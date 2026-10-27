@@ -198,6 +198,9 @@ public class AlertSilenceService {
                     || normalizedValue.length() > 512) {
                 throw new BusinessException(400, "Silence labels must have non-empty bounded keys and values");
             }
+            if (normalized.containsKey(normalizedKey)) {
+                throw new BusinessException(400, "Silence label keys must be unique after trimming");
+            }
             normalized.put(normalizedKey, normalizedValue);
         });
         return Map.copyOf(normalized);

@@ -25,7 +25,6 @@ import {
   Space,
   Flex,
   Modal,
-  Drawer,
   DatePicker,
   Tooltip,
   Typography,
@@ -124,6 +123,7 @@ const DLQPage = () => {
   const [detailResending, setDetailResending] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const detailRequestIdRef = useRef(0);
+  const detailPaginationRef = useRef({ page: 1, pageSize: 20 });
   const detailResendRequestIdRef = useRef(0);
   const retryRequestIdRef = useRef(0);
   const groupRequestIdRef = useRef(0);
@@ -168,6 +168,18 @@ const DLQPage = () => {
     setRetryError(null);
     setLoadError(null);
     setLoading(true);
+  }
+
+  // The search term filters the group list of one instance only, so switching
+  // instances has to drop it — otherwise the first request for the new instance
+  // is filtered by a term that can never match there. Kept separate from the
+  // `scopeKey` block above on purpose: that key also moves when a completed
+  // retry bumps `refreshKey`, and a reload of the same instance must keep the
+  // term the user is still working with.
+  const [prevInstanceId, setPrevInstanceId] = useState(selectedInstanceId);
+  if (prevInstanceId !== selectedInstanceId) {
+    setPrevInstanceId(selectedInstanceId);
+    setSearch('');
   }
 
   useEffect(() => {
@@ -370,8 +382,8 @@ const DLQPage = () => {
     exportDLQGroups(selectedGroups, 'dlq-groups.csv');
   };
 
-  /* ─── DLQ Message Details Drawer ─── */
-  const openDetailDrawer = (group: DLQGroup) => {
+  /* ─── DLQ Message Details Modal ─── */
+  const openDetailModal = (group: DLQGroup) => {
     detailRequestIdRef.current += 1;
     detailResendRequestIdRef.current += 1;
     detailResendInFlightRef.current = false;
@@ -392,6 +404,7 @@ const DLQPage = () => {
     if (!selectedInstanceId) return;
     const requestId = detailRequestIdRef.current + 1;
     detailRequestIdRef.current = requestId;
+    detailPaginationRef.current = { page, pageSize };
     setDetailLoading(true);
     setDetailError(null);
     try {
@@ -426,8 +439,6 @@ const DLQPage = () => {
     detailResendRequestIdRef.current = requestId;
     const instanceId = selectedInstanceId;
     const group = detailGroup;
-    const pageToReload = detailPage;
-    const pageSizeToReload = detailPageSize;
     setDetailResending(true);
     setDetailError(null);
     try {
@@ -437,13 +448,43 @@ const DLQPage = () => {
         msgIds,
       });
       if (detailResendRequestIdRef.current !== requestId) return;
+      // The server reports `matched` separately from `resent`: a selected message that can no
+      // longer be resolved (purged, broker gone) is dropped with failed=0, and a queue that could
+      // not be scanned is reported separately too. Mirror the time-range resend handler: never show
+      // the success toast unless every selected message was matched and resent.
+      const unmatched = msgIds.length - result.matched;
       if (result.failed > 0) {
         showResendFailures(result);
+        // `showResendFailures` only reports resent + failed, so the partial-match information
+        // would be dropped on this path. Emit the same supplementary warning as the branches
+        // below, mirroring the time-range resend handler which also warns on top of the failure
+        // summary when its scan was incomplete.
+        if (unmatched > 0 || result.scanIncomplete) {
+          message.warning(
+            t(unmatched > 0 ? 'dlq.resendUnmatchedSummary' : 'dlq.resendScanIncompleteSummary', {
+              resent: result.resent,
+              unmatched,
+              queues: result.failedQueueCount ?? 0,
+            }),
+          );
+        }
+      } else if (unmatched > 0) {
+        message.warning(t('dlq.resendUnmatchedSummary', { resent: result.resent, unmatched }));
+      } else if (result.scanIncomplete) {
+        message.warning(
+          t('dlq.resendScanIncompleteSummary', {
+            resent: result.resent,
+            queues: result.failedQueueCount ?? 0,
+          }),
+        );
       } else {
         message.success(`重发完成：成功 ${result.resent} 条`);
       }
-      setDetailSelectedMsgIds([]);
-      await loadDetailMessages(group, pageToReload, pageSizeToReload);
+      // A resend may finish after the operator has paged elsewhere in this drawer.
+      // Refresh the current query and retain selections made since the submitted batch.
+      setDetailSelectedMsgIds((selected) => selected.filter((id) => !msgIds.includes(id)));
+      const currentPagination = detailPaginationRef.current;
+      await loadDetailMessages(group, currentPagination.page, currentPagination.pageSize);
     } catch (error) {
       if (detailResendRequestIdRef.current === requestId) {
         setDetailError(describeThrownMessage(error) || '重发死信消息失败，请稍后重试');
@@ -541,7 +582,7 @@ const DLQPage = () => {
       title: '最近入队时间',
       dataIndex: 'lastEnqueueTime',
       key: 'lastEnqueueTime',
-      width: 180,
+      width: 156,
       sorter: (a, b) => (a.lastEnqueueTime || '').localeCompare(b.lastEnqueueTime || ''),
       render: (time?: string | null) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
@@ -559,7 +600,7 @@ const DLQPage = () => {
             size="small"
             icon={<Eye size={14} />}
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
-            onClick={() => openDetailDrawer(record)}
+            onClick={() => openDetailModal(record)}
           >
             消息明细
           </Button>
@@ -586,13 +627,16 @@ const DLQPage = () => {
     },
   ];
 
-  /* ─── Detail Drawer Columns ─── */
+  /* ─── Detail Modal Columns ─── */
   const detailColumns: ColumnsType<DLQMessage> = [
     {
       title: 'Message ID',
       dataIndex: 'msgId',
       key: 'msgId',
+      // monospace 32 字符 + 复制图标实测 min-content ~306，不加 ellipsis 会把整表撑出弹窗
+      // （实测表 1210 > 弹窗 body 1132，用户约定 2026-10-16 弹窗巡检）
       width: 240,
+      ellipsis: { showTitle: true },
       render: (msgId: string) => (
         <Text copyable style={{ fontFamily: 'monospace', fontSize: 14 }}>
           {msgId}
@@ -627,7 +671,8 @@ const DLQPage = () => {
       title: '入队时间',
       dataIndex: 'storeTime',
       key: 'storeTime',
-      width: 160,
+      // monospace 时间戳 19 字符实测 ~160 + padding，160 会截断
+      width: 176,
       render: (storeTime: number) => (
         <Text style={{ fontFamily: 'monospace', fontSize: 14 }}>{formatDateTime(storeTime)}</Text>
       ),
@@ -709,6 +754,7 @@ const DLQPage = () => {
             <RangePicker
               showTime
               format="YYYY-MM-DD HH:mm:ss"
+              allowClear={false}
               value={exportRange}
               onChange={(vals) => {
                 if (vals && vals[0] && vals[1]) {
@@ -840,6 +886,7 @@ const DLQPage = () => {
               <RangePicker
                 showTime
                 style={{ width: '100%' }}
+                allowClear={false}
                 value={retryRange}
                 onChange={(vals) => {
                   if (vals && vals[0] && vals[1]) {
@@ -865,13 +912,15 @@ const DLQPage = () => {
       </Modal>
 
       {/* ═══════════════════════════════════════════
-         Message Detail Drawer
+         Message Detail Modal
          ═══════════════════════════════════════════ */}
-      <Drawer
+      <Modal
         title={detailGroup ? `DLQ 消息明细 · ${detailGroup.groupName}` : 'DLQ 消息明细'}
-        width={1180}
+        // 8 列 monospace 数据实测需 ~1146（含 Message ID ellipsis 后），1180 弹窗的 body 只有
+        // 1132 装不下；加宽到 1280（1600 视口仍留 32px 边距）
+        width="min(1280px, calc(100vw - 32px))"
         open={detailOpen}
-        onClose={() => {
+        onCancel={() => {
           detailRequestIdRef.current += 1;
           detailResendRequestIdRef.current += 1;
           detailResendInFlightRef.current = false;
@@ -882,7 +931,11 @@ const DLQPage = () => {
           setDetailSelectedMsgIds([]);
           setDetailError(null);
         }}
+        footer={null}
         destroyOnHidden
+        styles={{
+          body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden' },
+        }}
       >
         {detailGroup && (
           <>
@@ -1038,7 +1091,7 @@ const DLQPage = () => {
             )}
           </>
         )}
-      </Drawer>
+      </Modal>
     </div>
   );
 };

@@ -18,6 +18,11 @@ package org.apache.rocketmq.studio.instance.acl;
 
 import org.springframework.util.StringUtils;
 
+import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.remoting.protocol.body.AclInfo;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.body.UserInfo;
+import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.Pagination;
@@ -27,6 +32,7 @@ import org.apache.rocketmq.studio.common.util.EntityIds;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.cluster.broker.BrokerVO;
 import org.apache.rocketmq.studio.cluster.broker.ClusterProvider;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.model.Acl2PolicyContext;
 import org.apache.rocketmq.studio.instance.InstanceResolver;
 import org.apache.rocketmq.studio.instance.InstanceVO;
@@ -37,10 +43,15 @@ import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
+import java.util.Properties;
 
 @Slf4j
 @Service
@@ -50,6 +61,13 @@ public class AclService {
     private static final SecureRandom CREDENTIAL_RANDOM = new SecureRandom();
     private static final int DEFAULT_RULE_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
+    /** Broker ACL 2.0 subjects are prefixed with {@code User:}; the store uses {@code user:}. */
+    private static final String SUBJECT_PREFIX = "User:";
+    private static final String USER_TYPE_SUPER = "Super";
+    private static final String USER_TYPE_NORMAL = "Normal";
+    private static final String USER_STATUS_NORMAL = "Normal";
+    private static final String POLICY_TYPE_CUSTOM = "Custom";
+    private static final int MAX_RULES_PER_ACCOUNT = 200;
 
     /**
      * Minimum broker version that supports ACL 2.0 (the RocketMQ {@code auth} module with
@@ -63,6 +81,7 @@ public class AclService {
     private final InstanceResolver instanceResolver;
     private final TencentAclService tencentAclService;
     private final ClusterProvider clusterProvider;
+    private final RuntimeAdminClientResolver runtimeAdminClientResolver;
 
     public AclCapabilitiesVO capabilities(String instanceId) {
         if (!StringUtils.hasText(instanceId)) {
@@ -91,12 +110,12 @@ public class AclService {
                     .filter(rule -> equalsIgnoreCase(rule.getScope(), scope))
                     .filter(rule -> equalsIgnoreCase(rule.getDecision(), decision))
                     .toList();
-            return paginateRules(filtered, normalizedPage, normalizedPageSize);
+            return toUtcWire(paginateRules(filtered, normalizedPage, normalizedPageSize));
         }
         log.info("Listing ACL rules for principal={}, resource={}, scope={}, decision={}, page={}, pageSize={}",
                 principal, resource, scope, decision, normalizedPage, normalizedPageSize);
-        return aclRepository.findRulePage(principal, resource, scope, decision, null,
-                normalizedPage, normalizedPageSize);
+        return toUtcWire(aclRepository.findRulePage(principal, resource, scope, decision, null,
+                normalizedPage, normalizedPageSize));
     }
 
 
@@ -115,6 +134,8 @@ public class AclService {
         rule.setGmtCreate(LocalDateTime.now());
         AclRuleVO saved = aclRepository.saveRule(rule);
         auditRule("CREATE_ACL_RULE", saved);
+        // Write paths echo the stored row (the stored server-local base) for form prefill; the
+        // read paths are what the pages render, so only they convert to the UTC wire.
         return saved;
     }
 
@@ -123,14 +144,14 @@ public class AclService {
             throw new BusinessException(400, "ACL rule id is required");
         }
         if (isTencentInstance(instanceId)) {
-            return tencentAclService.listRules(instanceId, null).stream()
+            return toUtcWire(tencentAclService.listRules(instanceId, null).stream()
                     .filter(rule -> id.equals(rule.getPrincipal())
                             || rule.getId() != null && id.equals(rule.getId().toString()))
                     .findFirst()
-                    .orElseThrow(() -> new BusinessException(404, "ACL rule not found: " + id));
+                    .orElseThrow(() -> new BusinessException(404, "ACL rule not found: " + id)));
         }
-        return aclRepository.findRuleById(EntityIds.parseId(id))
-                .orElseThrow(() -> new BusinessException(404, "ACL rule not found: " + id));
+        return toUtcWire(aclRepository.findRuleById(EntityIds.parseId(id))
+                .orElseThrow(() -> new BusinessException(404, "ACL rule not found: " + id)));
     }
 
     public AclUserVO getUser(String id, String instanceId) {
@@ -176,12 +197,12 @@ public class AclService {
     public List<AclUserVO> listUsers(String instanceId) {
         if (isTencentInstance(instanceId)) {
             return tencentAclService.listUsers(instanceId).stream()
-                    .map(this::maskCredentials)
+                    .map(this::forWire)
                     .toList();
         }
         log.info("Listing ACL users");
         return aclRepository.findUsers().stream()
-                .map(this::maskCredentials)
+                .map(this::forWire)
                 .toList();
     }
 
@@ -201,12 +222,12 @@ public class AclService {
             int from = (int) Math.min(Pagination.pageOffset(page, pageSize), users.size());
             int to = Math.min(from + pageSize, users.size());
             return PageResult.of(
-                    users.subList(from, to).stream().map(this::maskCredentials).toList(),
+                    users.subList(from, to).stream().map(this::forWire).toList(),
                     users.size(), page, pageSize);
         }
         PageResult<AclUserVO> result = aclRepository.findUserPage(
                 StringUtils.hasText(keyword) ? keyword.trim() : null, page, pageSize);
-        return PageResult.of(result.getItems().stream().map(this::maskCredentials).toList(),
+        return PageResult.of(result.getItems().stream().map(this::forWire).toList(),
                 result.getTotal(), result.getPage(), result.getSize());
     }
 
@@ -225,6 +246,8 @@ public class AclService {
         user.setGmtCreate(LocalDateTime.now());
         AclUserVO saved = aclRepository.saveUser(user);
         auditUser("CREATE_ACL_USER", saved);
+        // Write paths echo the stored row (the stored server-local base); only the read paths
+        // that the pages render convert to the UTC wire.
         return saved;
     }
 
@@ -310,12 +333,256 @@ public class AclService {
         }
         log.info("Creating/updating plain access config accessKey={}", config.getAccessKey());
         PlainAccessConfigVO saved = aclRepository.createAndUpdatePlainAccessConfig(config);
-        String auditDetail = "admin=" + saved.isAdmin()
+        String auditDetail = "admin=" + Boolean.TRUE.equals(saved.getAdmin())
                 + ", whiteRemoteAddressConfigured="
                 + StringUtils.hasText(saved.getWhiteRemoteAddress());
         recordAudit("UPSERT_PLAIN_ACCESS_CONFIG", "ACL_USER", saved.getAccessKey(), null,
                 auditDetail);
         return saved;
+    }
+
+    /**
+     * Pushes every stored ACL account to the master brokers of an Apache instance through the
+     * broker's ACL 2.0 admin API (account credentials via createUser/updateUser, policies via
+     * updateAcl). The push is additive: each account is upserted under its {@code User:<username>}
+     * subject and accounts the dashboard does not know about stay on the broker. Rules the broker
+     * model cannot express (non-literal resource patterns, actions outside PUB/SUB/GET) are
+     * reported per account instead of failing the whole push, and every account/broker pair keeps
+     * its own outcome so one unreachable broker cannot hide the successes.
+     */
+    public PushAclToBrokerResultVO pushAclToBroker(String instanceId) {
+        if (!StringUtils.hasText(instanceId)) {
+            throw new BusinessException(400, "instanceId is required");
+        }
+        requireAcl2Supported(instanceId);
+        if (isTencentInstance(instanceId)) {
+            throw new BusinessException(400, "Broker push is only supported for Apache instances");
+        }
+        List<PushPlan> plans = new ArrayList<>();
+        for (AclUserVO user : aclRepository.findUsers()) {
+            AclUserVO credentials = getUserCredentials(String.valueOf(user.getId()), instanceId);
+            List<AclRuleVO> rules = aclRepository.findRulePage(
+                    principalOf(user.getUsername()), null, null, null, null, 1,
+                    MAX_RULES_PER_ACCOUNT).getItems();
+            plans.add(buildPushPlan(user, credentials, rules));
+        }
+        log.info("Pushing {} ACL account(s) of instance {} to the brokers", plans.size(), instanceId);
+        return runtimeAdminClientResolver.execute(instanceId, admin -> {
+            DefaultMQAdminExt adminExt = (DefaultMQAdminExt) admin;
+            List<String> masters = masterAddresses(adminExt, instanceId);
+            if (!masters.isEmpty() && !acl2Enabled(adminExt, masters.get(0))) {
+                throw new BusinessException(409, "Broker ACL 2.0 is not enabled on "
+                        + masters.get(0) + "; set authenticationEnabled=true and "
+                        + "authorizationEnabled=true in the broker configuration before pushing");
+            }
+            List<PushAclToBrokerResultVO.AccountOutcome> outcomes = new ArrayList<>();
+            int pushed = 0;
+            int failed = 0;
+            for (PushPlan plan : plans) {
+                List<PushAclToBrokerResultVO.BrokerOutcome> brokerOutcomes = new ArrayList<>();
+                boolean anySuccess = false;
+                for (String broker : masters) {
+                    try {
+                        upsertAccount(adminExt, broker, plan);
+                        brokerOutcomes.add(PushAclToBrokerResultVO.BrokerOutcome.builder()
+                                .broker(broker).success(true).build());
+                        anySuccess = true;
+                    } catch (Exception ex) {
+                        brokerOutcomes.add(PushAclToBrokerResultVO.BrokerOutcome.builder()
+                                .broker(broker).success(false).error(rootMessage(ex)).build());
+                    }
+                }
+                if (anySuccess) {
+                    pushed++;
+                } else {
+                    failed++;
+                }
+                recordAudit("PUSH_ACL_TO_BROKER", "ACL_USER", plan.username(), null,
+                        "brokers=" + masters.size() + ", policies=" + plan.entries().size()
+                                + ", success=" + anySuccess);
+                outcomes.add(PushAclToBrokerResultVO.AccountOutcome.builder()
+                        .username(plan.username())
+                        .subject(plan.subject())
+                        .policyCount(plan.entries().size())
+                        .skipped(plan.skipped())
+                        .brokers(brokerOutcomes)
+                        .build());
+            }
+            return PushAclToBrokerResultVO.builder()
+                    .instanceId(instanceId)
+                    .brokers(masters)
+                    .pushed(pushed)
+                    .failed(failed)
+                    .accounts(outcomes)
+                    .build();
+        });
+    }
+
+    private record PushPlan(String username, String subject, UserInfo userInfo,
+                            List<AclInfo.PolicyEntryInfo> entries, List<String> skipped) {
+    }
+
+    private PushPlan buildPushPlan(AclUserVO user, AclUserVO credentials, List<AclRuleVO> rules) {
+        List<AclInfo.PolicyEntryInfo> entries = new ArrayList<>();
+        List<String> skipped = new ArrayList<>();
+        for (AclRuleVO rule : rules) {
+            String pattern = rule.getResourcePattern() == null ? "" : rule.getResourcePattern();
+            if (!"LITERAL".equalsIgnoreCase(pattern)) {
+                skipped.add(rule.getResource() + ": " + pattern + " pattern has no broker ACL equivalent");
+                continue;
+            }
+            List<String> actions = mapAclActions(rule.getActions());
+            if (actions.isEmpty()) {
+                skipped.add(rule.getResource() + ": none of its actions map to broker PUB/SUB/GET");
+                continue;
+            }
+            String resource = brokerResource(rule);
+            if (resource == null) {
+                // A rule without a resource type does not say whether its resource names a topic
+                // or a group. Pushing it as the ANY resource would widen a named grant to the
+                // whole cluster, so it is skipped with a reason like every other rule the broker
+                // model cannot express.
+                skipped.add(rule.getResource() + ": resource type "
+                        + (rule.getResourceType() == null ? "" : rule.getResourceType())
+                        + " has no broker ACL equivalent");
+                continue;
+            }
+            entries.add(AclInfo.PolicyEntryInfo.of(resource, actions,
+                    splitWhiteList(user.getWhiteRemoteAddress()),
+                    (rule.getDecision() == null ? "" : rule.getDecision()).toUpperCase(Locale.ROOT)));
+        }
+        UserInfo userInfo = UserInfo.of(user.getUsername(), credentials.getSecretKey(),
+                user.isAdmin() ? USER_TYPE_SUPER : USER_TYPE_NORMAL, USER_STATUS_NORMAL);
+        return new PushPlan(user.getUsername(), SUBJECT_PREFIX + user.getUsername(), userInfo,
+                entries, skipped);
+    }
+
+    private void upsertAccount(DefaultMQAdminExt adminExt, String broker, PushPlan plan)
+            throws Exception {
+        UserInfo existing = null;
+        try {
+            existing = adminExt.getUser(broker, plan.userInfo().getUsername());
+        } catch (Exception notPresent) {
+            // A broker without the account answers with an error rather than an empty result.
+            log.debug("No existing broker account {} on {}: {}", plan.username(), broker,
+                    rootMessage(notPresent));
+        }
+        if (existing == null) {
+            adminExt.createUser(broker, plan.userInfo());
+        } else {
+            adminExt.updateUser(broker, plan.userInfo());
+        }
+        if (plan.entries().isEmpty()) {
+            return;
+        }
+        AclInfo acl = new AclInfo();
+        acl.setSubject(plan.subject());
+        AclInfo.PolicyInfo policy = new AclInfo.PolicyInfo();
+        policy.setPolicyType(POLICY_TYPE_CUSTOM);
+        policy.setEntries(plan.entries());
+        acl.setPolicies(List.of(policy));
+        adminExt.updateAcl(broker, acl);
+    }
+
+    /**
+     * ACL 2.0 writes fail on the broker with an opaque "system error" when the auth module is off,
+     * so read the two switches first and answer with an actionable message instead. When the config
+     * cannot be read the check stays out of the way and lets the write report its own error.
+     */
+    private boolean acl2Enabled(DefaultMQAdminExt adminExt, String broker) {
+        try {
+            Properties config = adminExt.getBrokerConfig(broker);
+            return Boolean.parseBoolean(config.getProperty("authenticationEnabled"))
+                    && Boolean.parseBoolean(config.getProperty("authorizationEnabled"));
+        } catch (Exception unreadable) {
+            log.debug("Could not read ACL switches from broker {}: {}", broker,
+                    rootMessage(unreadable));
+            return true;
+        }
+    }
+
+    /**
+     * The master brokers this push may write to. The instance's configured cluster decides the set,
+     * through the same scope the ACL read uses ({@link AclBrokerScope}): a NameServer shared by
+     * several clusters must not receive this instance's accounts and policies on the clusters it is
+     * not bound to. An instance that names no cluster keeps every master of the endpoint.
+     */
+    private List<String> masterAddresses(DefaultMQAdminExt adminExt, String instanceId) throws Exception {
+        ClusterInfo clusterInfo = adminExt.examineBrokerClusterInfo();
+        if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null) {
+            return List.of();
+        }
+        String configuredCluster = StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
+        return AclBrokerScope.scopedBrokerNames(clusterInfo, configuredCluster).stream()
+                .map(clusterInfo.getBrokerAddrTable()::get)
+                .filter(broker -> broker != null && broker.getBrokerAddrs() != null)
+                .map(broker -> broker.getBrokerAddrs().get(MixAll.MASTER_ID))
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+    }
+
+    /**
+     * Broker ACL 2.0 resources are typed strings ("Topic:orders", "Group:cg"); a bare name parses
+     * to a null resource and the broker rejects the entry with CODE 16. Cluster-scoped rules map to
+     * the ANY resource, which the broker stores as "*". A rule with no resource type (or one the
+     * broker model has no equivalent for) returns {@code null}: its resource name cannot be typed,
+     * and pushing it as ANY would widen a named grant to the whole cluster.
+     */
+    private String brokerResource(AclRuleVO rule) {
+        String type = rule.getResourceType() == null ? "" : rule.getResourceType();
+        if ("Topic".equalsIgnoreCase(type)) {
+            return "Topic:" + rule.getResource();
+        }
+        if ("Group".equalsIgnoreCase(type)) {
+            return "Group:" + rule.getResource();
+        }
+        if ("Cluster".equalsIgnoreCase(type)) {
+            return "*";
+        }
+        return null;
+    }
+
+    /** ALL expands to both message directions; anything else the broker cannot act on is dropped. */
+    private List<String> mapAclActions(List<String> actions) {
+        List<String> mapped = new ArrayList<>();
+        for (String action : actions == null ? List.<String>of() : actions) {
+            String normalized = action == null ? "" : action.trim().toUpperCase(Locale.ROOT);
+            List<String> expanded = switch (normalized) {
+                case "ALL" -> List.of("PUB", "SUB");
+                case "PUB", "SUB", "GET" -> List.of(normalized);
+                default -> List.of();
+            };
+            for (String value : expanded) {
+                if (!mapped.contains(value)) {
+                    mapped.add(value);
+                }
+            }
+        }
+        return mapped;
+    }
+
+    private List<String> splitWhiteList(String whiteRemoteAddress) {
+        if (!StringUtils.hasText(whiteRemoteAddress)) {
+            return List.of();
+        }
+        return Arrays.stream(whiteRemoteAddress.split(","))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .toList();
+    }
+
+    private String principalOf(String username) {
+        return "user:" + username;
+    }
+
+    private static String rootMessage(Throwable failure) {
+        Throwable cause = failure;
+        while (cause.getCause() != null && cause.getCause() != cause) {
+            cause = cause.getCause();
+        }
+        return cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
     }
 
     /**
@@ -337,7 +604,7 @@ public class AclService {
         // Both vendor paths reveal a secret, so both are audited; the detail never carries it.
         recordAudit("REVEAL_ACL_USER_CREDENTIALS", "ACL_USER", String.valueOf(id), null,
                 "instanceId=" + instanceId);
-        return user;
+        return withUtcWire(user);
     }
 
     /**
@@ -501,6 +768,7 @@ public class AclService {
         };
     }
 
+    /** Write paths echo the stored row, so masking must not also shift its creation stamp. */
     private AclUserVO maskCredentials(AclUserVO user) {
         return AclUserVO.builder()
                 .id(user.getId())
@@ -514,6 +782,73 @@ public class AclService {
                 .whiteRemoteAddress(user.getWhiteRemoteAddress())
                 .gmtCreate(user.getGmtCreate())
                 .build();
+    }
+
+    /**
+     * The read-path wire shape: a masked copy whose creation stamp is UTC. maskCredentials already
+     * builds a fresh row, so the shift lands on the copy and the stored base stays server-local.
+     */
+    private AclUserVO forWire(AclUserVO user) {
+        AclUserVO masked = maskCredentials(user);
+        masked.setGmtCreate(toUtcWire(masked.getGmtCreate()));
+        return masked;
+    }
+
+    /**
+     * ACL timestamps are stored as zone-less server-local values (every source produces that
+     * shape: the local repositories write {@code LocalDateTime.now()}, the Tencent adapter
+     * converts cloud epochs with the server zone). The pages render them in the viewer's zone,
+     * so the JSON wire carries a UTC wall clock — the alert / K8s-cert convention — instead of a
+     * zone-less value the browser would parse as its own zone. The stored base is not converted,
+     * and these mappers return copies so repository- or adapter-owned rows stay untouched.
+     */
+    private static LocalDateTime toUtcWire(LocalDateTime serverLocal) {
+        return serverLocal == null ? null : serverLocal.atZone(ZoneId.systemDefault())
+                .withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
+    }
+
+    private static AclRuleVO toUtcWire(AclRuleVO rule) {
+        if (rule == null) {
+            return null;
+        }
+        return AclRuleVO.builder()
+                .id(rule.getId())
+                .principal(rule.getPrincipal())
+                .resource(rule.getResource())
+                .resourceType(rule.getResourceType())
+                .resourcePattern(rule.getResourcePattern())
+                .actions(rule.getActions() == null ? null : List.copyOf(rule.getActions()))
+                .decision(rule.getDecision())
+                .scope(rule.getScope())
+                .aclVersion(rule.getAclVersion())
+                .gmtCreate(toUtcWire(rule.getGmtCreate()))
+                .build();
+    }
+
+    private static AclUserVO withUtcWire(AclUserVO user) {
+        if (user == null) {
+            return null;
+        }
+        return AclUserVO.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .accessKey(user.getAccessKey())
+                .secretKey(user.getSecretKey())
+                .admin(user.isAdmin())
+                .permRead(user.getPermRead())
+                .permWrite(user.getPermWrite())
+                .clusters(user.getClusters() == null ? null : List.copyOf(user.getClusters()))
+                .whiteRemoteAddress(user.getWhiteRemoteAddress())
+                .gmtCreate(toUtcWire(user.getGmtCreate()))
+                .build();
+    }
+
+    private static PageResult<AclRuleVO> toUtcWire(PageResult<AclRuleVO> page) {
+        if (page == null) {
+            return null;
+        }
+        return PageResult.of(page.getItems().stream().map(AclService::toUtcWire).toList(),
+                page.getTotal(), page.getPage(), page.getSize());
     }
 
     private static int normalizePage(Integer page) {

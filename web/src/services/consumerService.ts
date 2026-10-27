@@ -18,9 +18,25 @@ import type {
 } from '../api/metadata';
 import { mockConsumerGroups, mockQueueProgress, mockSubscriptions } from '../mock/consumers';
 import { formatOnlineInstances } from '../utils/consumerConnections';
+import { isLagAvailable } from '../utils/consumerLag';
 import { buildCsv, type CsvColumn } from '../utils/download';
 
-const consumerGroupsState = mockConsumerGroups as unknown as ConsumerGroup[];
+const consumerGroupsState = mockConsumerGroups as unknown as (ConsumerGroup & {
+  retryQueueNums?: number;
+  consumeEnable?: boolean;
+  consumeMessageOrderly?: boolean;
+  consumeBroadcastEnable?: boolean;
+})[];
+const fixtureGroupsByName = new Map(mockConsumerGroups.map((group) => [group.name, group]));
+
+function hasActiveFixtureGroup(name: string, instanceId?: string): boolean {
+  const fixture = fixtureGroupsByName.get(name);
+  return (
+    fixture !== undefined &&
+    mockConsumerGroups.includes(fixture) &&
+    (!instanceId || fixture.instanceId === instanceId)
+  );
+}
 const EXPORT_PAGE_SIZE = 100;
 const MAX_EXPORT_PAGES = 100;
 const GROUP_EXPORT_COLUMNS: CsvColumn<ConsumerGroup>[] = [
@@ -33,7 +49,10 @@ const GROUP_EXPORT_COLUMNS: CsvColumn<ConsumerGroup>[] = [
     header: 'Online Instances',
     value: (group) => formatOnlineInstances(group.onlineInstances, 'unknown'),
   },
-  { header: 'Total Lag', value: (group) => group.totalLag },
+  {
+    header: 'Total Lag',
+    value: (group) => (isLagAvailable(group.totalLag) ? group.totalLag : 'unknown'),
+  },
   { header: 'Delay Seconds', value: (group) => group.delaySeconds },
   { header: 'Subscription Data Type', value: (group) => group.subscriptionDataType },
   { header: 'Delivery Order Type', value: (group) => group.deliveryOrderType },
@@ -48,8 +67,8 @@ function copyConsumerInstance(
 ): ConsumerGroup['instances'][number] {
   return {
     ...instance,
-    subscribedTopics: [...instance.subscribedTopics],
-    topicLag: { ...instance.topicLag },
+    ...(instance.subscribedTopics ? { subscribedTopics: [...instance.subscribedTopics] } : {}),
+    ...(instance.topicLag ? { topicLag: { ...instance.topicLag } } : {}),
   };
 }
 
@@ -93,6 +112,9 @@ function filterConsumerGroups(params?: ConsumerGroupQuery): ConsumerGroup[] {
     const kw = params.search.trim().toLowerCase();
     if (kw) result = result.filter((group) => group.name.toLowerCase().includes(kw));
   }
+  if (params?.subscriptionMode && params.subscriptionMode !== 'ALL') {
+    result = result.filter((group) => group.subscriptionMode === params.subscriptionMode);
+  }
   return result;
 }
 
@@ -101,9 +123,6 @@ function visibleConsumerGroups(groups: ConsumerGroup[], params?: ConsumerGroupEx
   if (params?.names?.length) {
     const selectedNames = new Set(params.names);
     result = result.filter((group) => selectedNames.has(group.name));
-  }
-  if (params?.subscriptionMode && params.subscriptionMode !== 'ALL') {
-    result = result.filter((group) => group.subscriptionMode === params.subscriptionMode);
   }
   return [...result].sort((left, right) => left.name.localeCompare(right.name));
 }
@@ -156,8 +175,11 @@ export async function listAllConsumerGroups(
     });
     groups.push(...result.items);
     const total = result.total ?? groups.length;
-    if (result.items.length === 0 || groups.length >= total) {
+    if (groups.length >= total) {
       return groups.map(normalizeConsumerGroup);
+    }
+    if (result.items.length === 0) {
+      throw new Error(`Incomplete consumer group list: received ${groups.length} of ${total}`);
     }
     page += 1;
   }
@@ -170,6 +192,7 @@ export async function getConsumerProgress(
   instanceId?: string,
 ): Promise<QueueProgress[]> {
   if (isMockMode()) {
+    if (!hasActiveFixtureGroup(name, instanceId)) return [];
     return ((mockQueueProgress[name] as unknown as QueueProgress[]) ?? []).map(copyQueueProgress);
   }
   return metadataApi.getConsumerProgress(name, instanceId);
@@ -193,19 +216,46 @@ export async function getConsumerGroupSettings(
   name: string,
   instanceId: string,
 ): Promise<ConsumerGroupSettings> {
-  if (isMockMode()) return { groupName: name, retryQueueNums: 1, retryMaxTimes: 16 };
+  if (isMockMode()) {
+    const group = consumerGroupsState.find(
+      (item) => item.name === name && item.instanceId === instanceId,
+    );
+    if (!group) throw new Error(`Consumer group not found: ${name}`);
+    return {
+      groupName: name,
+      retryQueueNums: group.retryQueueNums ?? 1,
+      retryMaxTimes: group.retryMaxTimes ?? 16,
+      consumeEnable: group.consumeEnable,
+      consumeMessageOrderly: group.consumeMessageOrderly,
+      consumeBroadcastEnable: group.consumeBroadcastEnable,
+    };
+  }
   return metadataApi.getConsumerGroupSettings(name, instanceId);
 }
 
 export async function updateConsumerGroupSettings(
   data: Omit<ConsumerGroupSettings, 'groupName'> & { instanceId: string; name: string },
 ) {
-  if (isMockMode())
+  if (isMockMode()) {
+    const group = consumerGroupsState.find(
+      (item) => item.name === data.name && item.instanceId === data.instanceId,
+    );
+    if (!group) throw new Error(`Consumer group not found: ${data.name}`);
+    group.retryQueueNums = data.retryQueueNums;
+    group.retryMaxTimes = data.retryMaxTimes;
+    group.consumeEnable = data.consumeEnable;
+    group.consumeMessageOrderly = data.consumeMessageOrderly;
+    group.consumeBroadcastEnable = data.consumeBroadcastEnable;
+    group.gmtModified = new Date().toISOString();
     return {
       groupName: data.name,
       retryQueueNums: data.retryQueueNums,
       retryMaxTimes: data.retryMaxTimes,
+      consumeEnable: data.consumeEnable,
+      consumeMessageOrderly: data.consumeMessageOrderly,
+      consumeBroadcastEnable: data.consumeBroadcastEnable,
     };
+  }
   return metadataApi.updateConsumerGroupSettings(data);
 }
 
@@ -228,6 +278,7 @@ export async function getConsumerSubscriptions(
   instanceId?: string,
 ): Promise<SubscriptionEntry[]> {
   if (isMockMode()) {
+    if (!hasActiveFixtureGroup(name, instanceId)) return [];
     return ((mockSubscriptions[name] as unknown as SubscriptionEntry[]) ?? []).map(
       copySubscription,
     );
@@ -343,9 +394,11 @@ export async function previewConsumerOffsetReset(
 }
 
 function buildMockResetOffsetPreview(data: ResetConsumerOffsetRequest): ResetConsumerOffsetPreview {
-  const progressRows = ((mockQueueProgress[data.name] as unknown as QueueProgress[]) ?? []).filter(
-    (progress) => !progress.topic || progress.topic === data.topic,
-  );
+  const progressRows = hasActiveFixtureGroup(data.name, data.instanceId)
+    ? ((mockQueueProgress[data.name] as unknown as QueueProgress[]) ?? []).filter(
+        (progress) => !progress.topic || progress.topic === data.topic,
+      )
+    : [];
   const queues = progressRows.map((progress) =>
     buildMockResetOffsetQueuePreview(data.topic, progress),
   );

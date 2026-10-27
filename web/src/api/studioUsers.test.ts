@@ -96,6 +96,27 @@ describe('studio users API', () => {
     ]);
   });
 
+  it('rejects a missing user page while the response still reports unseen rows', async () => {
+    mock.onGet('/studio-users').reply((config) => [
+      200,
+      {
+        code: 200,
+        data: {
+          items:
+            config.params.page === 1
+              ? [{ id: 7, username: 'operator', admin: false, enabled: true }]
+              : [],
+          total: 2,
+          page: config.params.page,
+          size: 100,
+        },
+      },
+    ]);
+
+    await expect(loadStudioUsersForExport(exportQuery)).rejects.toThrow('Incomplete user list');
+    expect(mock.history.get).toHaveLength(2);
+  });
+
   it('loads the global Studio session overview', async () => {
     mock.onGet('/studio-users/sessions/overview').reply(200, {
       code: 200,

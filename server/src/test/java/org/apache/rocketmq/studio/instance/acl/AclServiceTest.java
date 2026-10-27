@@ -25,6 +25,13 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.cluster.broker.BrokerVO;
 import org.apache.rocketmq.studio.cluster.broker.ClusterProvider;
+import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.client.exception.MQBrokerException;
+import org.apache.rocketmq.remoting.protocol.body.AclInfo;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.studio.instance.InstanceResolver;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.provider.tencent.TencentAclService;
@@ -41,9 +48,15 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Properties;
+import java.util.TimeZone;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -52,7 +65,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
@@ -75,6 +90,9 @@ class AclServiceTest {
 
     @Mock
     private ClusterProvider clusterProvider;
+
+    @Mock
+    private RuntimeAdminClientResolver runtimeAdminClientResolver;
 
     @InjectMocks
     private AclService aclService;
@@ -408,6 +426,220 @@ class AclServiceTest {
         assertThat(users.get(0).getAccessKey()).isEqualTo("access-key-123456");
         assertThat(users.get(0).getSecretKey()).isEqualTo("secret-key-987654");
         verify(aclRepository).findUsers();
+    }
+
+    @Test
+    void listUsersShouldSerializeGmtCreateAsUtcWallTimeTest() {
+        // gmtCreate is stored as a zone-less server-local wall clock and the page renders it in
+        // the viewer's zone, so the wire carries UTC — the same convention the audit page uses.
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            AclUserVO stored = AclUserVO.builder()
+                    .username("orders")
+                    .accessKey("access-key-123456")
+                    .secretKey("secret-key-987654")
+                    .gmtCreate(LocalDateTime.of(2026, 7, 23, 10, 0, 0))
+                    .build();
+            when(aclRepository.findUsers()).thenReturn(List.of(stored));
+
+            List<AclUserVO> result = aclService.listUsers(null);
+
+            assertThat(result.get(0).getGmtCreate())
+                    .isEqualTo(LocalDateTime.of(2026, 7, 23, 2, 0, 0));
+            // The stored row itself keeps the server-local base.
+            assertThat(stored.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 10, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void listRulesShouldSerializeGmtCreateAsUtcWallTimeTest() {
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            AclRuleVO stored = AclRuleVO.builder()
+                    .principal("user1")
+                    .resource("topic-1")
+                    .decision("ALLOW")
+                    .gmtCreate(LocalDateTime.of(2026, 7, 23, 10, 0, 0))
+                    .build();
+            when(aclRepository.findRulePage(null, null, null, null, null, 1, 20))
+                    .thenReturn(PageResult.of(List.of(stored), 1, 1, 20));
+
+            PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null, null,
+                    null, null);
+
+            assertThat(result.getItems().get(0).getGmtCreate())
+                    .isEqualTo(LocalDateTime.of(2026, 7, 23, 2, 0, 0));
+            assertThat(stored.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 10, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void listRulesShouldSerializeTencentGmtCreateAsUtcWallTimeTest() {
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            InstanceVO instance = InstanceVO.builder()
+                    .name("tencent-instance")
+                    .vendor(InstanceVendor.TENCENT)
+                    .type(InstanceType.CLOUD)
+                    .build();
+            when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(instance));
+            AclRuleVO stored = AclRuleVO.builder()
+                    .principal("role-a")
+                    .resource("topic-a")
+                    .gmtCreate(LocalDateTime.of(2026, 7, 23, 10, 0, 0))
+                    .build();
+            when(tencentAclService.listRules("tencent-instance", null)).thenReturn(List.of(stored));
+
+            PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null,
+                    "tencent-instance", 1, 20);
+
+            assertThat(result.getItems().get(0).getGmtCreate())
+                    .isEqualTo(LocalDateTime.of(2026, 7, 23, 2, 0, 0));
+            assertThat(stored.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 10, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void getRuleShouldSerializeTheStoredCreationStampAsUtcWallTimeTest() {
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            AclRuleVO stored = AclRuleVO.builder()
+                    .principal("user1")
+                    .resource("topic-1")
+                    .decision("ALLOW")
+                    .gmtCreate(LocalDateTime.of(2026, 7, 23, 10, 0, 0))
+                    .build();
+            stored.setId(7L);
+            when(aclRepository.findRuleById(7L)).thenReturn(Optional.of(stored));
+
+            AclRuleVO result = aclService.getRule("7", null);
+
+            assertThat(result.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 2, 0, 0));
+            assertThat(stored.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 10, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void pageUsersShouldMaskAndSerializeGmtCreateAsUtcWallTimeTest() {
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            AclUserVO stored = AclUserVO.builder()
+                    .id(11L)
+                    .username("orders")
+                    .accessKey("access-key-123456")
+                    .secretKey("secret-key-987654")
+                    .gmtCreate(LocalDateTime.of(2026, 7, 23, 10, 0, 0))
+                    .build();
+            when(aclRepository.findUserPage(isNull(), eq(1), eq(20)))
+                    .thenReturn(PageResult.of(List.of(stored), 1, 1, 20));
+
+            PageResult<AclUserVO> result = aclService.pageUsers(null, 1, 20, null);
+
+            assertThat(result.getItems().get(0).getGmtCreate())
+                    .isEqualTo(LocalDateTime.of(2026, 7, 23, 2, 0, 0));
+            assertThat(result.getItems().get(0).getAccessKey()).isEqualTo("acce****3456");
+            assertThat(stored.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 10, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void listUsersShouldSerializeTencentGmtCreateAsUtcWallTimeTest() {
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            InstanceVO instance = InstanceVO.builder()
+                    .name("tencent-instance")
+                    .vendor(InstanceVendor.TENCENT)
+                    .type(InstanceType.CLOUD)
+                    .build();
+            when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(instance));
+            AclUserVO stored = AclUserVO.builder()
+                    .username("role-user")
+                    .accessKey("access-key-123456")
+                    .secretKey("secret-key-987654")
+                    .gmtCreate(LocalDateTime.of(2026, 7, 23, 10, 0, 0))
+                    .build();
+            when(tencentAclService.listUsers("tencent-instance")).thenReturn(List.of(stored));
+
+            List<AclUserVO> result = aclService.listUsers("tencent-instance");
+
+            assertThat(result.get(0).getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 2, 0, 0));
+            assertThat(stored.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 10, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void getUserCredentialsShouldKeepTheSecretRawAndShiftTheCreationStampTest() {
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            AclUserVO stored = AclUserVO.builder()
+                    .id(1L)
+                    .username("orders")
+                    .accessKey("access-key-123456")
+                    .secretKey("secret-key-987654")
+                    .gmtCreate(LocalDateTime.of(2026, 7, 23, 10, 0, 0))
+                    .build();
+            when(aclRepository.findUserById(1L)).thenReturn(Optional.of(stored));
+
+            AclUserVO result = aclService.getUserCredentials("1", null);
+
+            // The reveal dialog shows the raw credentials exactly once; only the creation stamp
+            // moves to the UTC wire, and the stored row keeps its server-local base.
+            assertThat(result.getAccessKey()).isEqualTo("access-key-123456");
+            assertThat(result.getSecretKey()).isEqualTo("secret-key-987654");
+            assertThat(result.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 2, 0, 0));
+            assertThat(stored.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 10, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void updateUserShouldEchoTheStoredCreationStampUnshiftedTest() {
+        // The write paths echo the stored row (masked) so create and update agree: an update
+        // response must not carry a UTC stamp next to a create response's server-local one.
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            AclUserVO saved = AclUserVO.builder()
+                    .id(1L)
+                    .username("orders")
+                    .accessKey("access-key-123456")
+                    .secretKey("secret-key-987654")
+                    .gmtCreate(LocalDateTime.of(2026, 7, 23, 10, 0, 0))
+                    .build();
+            when(aclRepository.findUserById(1L)).thenReturn(Optional.of(saved));
+            when(aclRepository.replaceUser(any(AclUserVO.class)))
+                    .thenAnswer(invocation -> Optional.of(invocation.getArgument(0)));
+
+            UpdateAclUserDTO command = new UpdateAclUserDTO();
+            command.setId("1");
+            command.setUsername("orders");
+            AclUserVO result = aclService.updateUser(command, null);
+
+            assertThat(result.getAccessKey()).isEqualTo("acce****3456");
+            assertThat(result.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 10, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
     }
 
     @ParameterizedTest
@@ -792,7 +1024,9 @@ class AclServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"999.999.999.999", "10.0.0.0/8", "192.168.100-1.*", "192.168.1.{}"})
+    @ValueSource(strings = {"999.999.999.999", "10.0.0.0/8", "192.168.100-1.*", "192.168.1.{}",
+        "192.168.1.0-0", "192.168.0-0.*", "192.168.1.000-000", "192.168.000-000.*",
+        "2001:db8::0-0", "2001:db8::0-0:*", "2001:db8::0000-0000", "2001:db8::0000-0000:*"})
     void createAndUpdatePlainAccessConfigShouldRejectInvalidWhiteRemoteAddress(String whiteRemoteAddress) {
         PlainAccessConfigVO config = PlainAccessConfigVO.builder()
                 .accessKey("ak-1")
@@ -809,7 +1043,9 @@ class AclServiceTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"*", "192.168.*.*", "192.168.1-100.*", "192.168.1.{1,2,3}",
-        "192.168.1.10,192.168.1.11", "2001:db8::1"})
+        "192.168.1.10,192.168.1.11", "2001:db8::1",
+        "192.168.0.*", "192.168.0-1.*", "192.168.1-1.*", "192.168.1.0",
+        "2001:db8::0:*", "2001:db8::0-1:*", "2001:db8::1-1:*", "2001:db8::0"})
     void createAndUpdatePlainAccessConfigShouldAcceptValidWhiteRemoteAddress(String whiteRemoteAddress) {
         PlainAccessConfigVO config = PlainAccessConfigVO.builder()
                 .accessKey("ak-1")
@@ -1138,5 +1374,229 @@ class AclServiceTest {
                 Arguments.of(null, null),
                 Arguments.of("", null),
                 Arguments.of("unknown", null));
+    }
+
+    @Test
+    void pushAclToBrokerUpsertsAccountsAndPoliciesOnEveryMasterTest() throws Exception {
+        AclUserVO stored = AclUserVO.builder()
+                .id(7L)
+                .username("orders")
+                .secretKey("secret-1")
+                .admin(false)
+                .whiteRemoteAddress("10.0.0.0/8, 192.168.1.5")
+                .build();
+        when(aclRepository.findUsers()).thenReturn(List.of(stored));
+        when(aclRepository.findUserById(7L)).thenReturn(Optional.of(stored));
+        when(aclRepository.findRulePage("user:orders", null, null, null, null, 1, 200))
+                .thenReturn(PageResult.of(List.of(
+                        AclRuleVO.builder().principal("user:orders").resource("topic-a")
+                                .resourceType("Topic").resourcePattern("LITERAL")
+                                .actions(List.of("PUB")).decision("ALLOW").build(),
+                        AclRuleVO.builder().principal("user:orders").resource("topic-")
+                                .resourceType("Topic").resourcePattern("PREFIXED")
+                                .actions(List.of("SUB")).decision("ALLOW").build()),
+                        2, 1, 200));
+        when(clusterProvider.discoverBrokers("instance-a", null)).thenReturn(List.of());
+
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster("10.0.0.1:10911"));
+        when(admin.getUser("10.0.0.1:10911", "orders"))
+                .thenThrow(new MQBrokerException(207, "no such user"));
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(call -> call.getArgument(1, MqAdminExtFactory.AdminAction.class).apply(admin));
+
+        PushAclToBrokerResultVO result = aclService.pushAclToBroker("instance-a");
+
+        assertThat(result.getPushed()).isEqualTo(1);
+        assertThat(result.getFailed()).isZero();
+        assertThat(result.getBrokers()).containsExactly("10.0.0.1:10911");
+        PushAclToBrokerResultVO.AccountOutcome account = result.getAccounts().get(0);
+        assertThat(account.getSubject()).isEqualTo("User:orders");
+        assertThat(account.getPolicyCount()).isEqualTo(1);
+        assertThat(account.getSkipped()).hasSize(1);
+        assertThat(account.getBrokers())
+                .allSatisfy(broker -> assertThat(broker.isSuccess()).isTrue());
+        verify(admin).createUser(eq("10.0.0.1:10911"), argThat(info ->
+                "orders".equals(info.getUsername())
+                        && "secret-1".equals(info.getPassword())
+                        && "Normal".equals(info.getUserType())));
+        ArgumentCaptor<AclInfo> aclCaptor = ArgumentCaptor.forClass(AclInfo.class);
+        verify(admin).updateAcl(eq("10.0.0.1:10911"), aclCaptor.capture());
+        AclInfo pushed = aclCaptor.getValue();
+        assertThat(pushed.getSubject()).isEqualTo("User:orders");
+        assertThat(pushed.getPolicies()).hasSize(1);
+        AclInfo.PolicyEntryInfo entry = pushed.getPolicies().get(0).getEntries().get(0);
+        assertThat(entry.getResource()).isEqualTo("Topic:topic-a");
+        assertThat(entry.getActions()).containsExactly("PUB");
+        assertThat(entry.getDecision()).isEqualTo("ALLOW");
+        assertThat(entry.getSourceIps()).containsExactly("10.0.0.0/8", "192.168.1.5");
+    }
+
+    @Test
+    void pushAclToBrokerSkipsRulesWithoutAResourceTypeInsteadOfWideningThemTest() throws Exception {
+        // A rule whose resourceType is absent does not say whether its resource names a topic or a
+        // group. The push used to map every such rule to the ANY resource ("*"), widening a named
+        // grant (e.g. "Allow SUB on topic-a") to the whole cluster on the broker, while rules with
+        // an unrepresentable pattern were already skipped with a reason.
+        AclUserVO stored = AclUserVO.builder()
+                .id(11L)
+                .username("orders")
+                .secretKey("secret-4")
+                .build();
+        when(aclRepository.findUsers()).thenReturn(List.of(stored));
+        when(aclRepository.findUserById(11L)).thenReturn(Optional.of(stored));
+        when(aclRepository.findRulePage("user:orders", null, null, null, null, 1, 200))
+                .thenReturn(PageResult.of(List.of(
+                        AclRuleVO.builder().principal("user:orders").resource("topic-a")
+                                .resourceType("Topic").resourcePattern("LITERAL")
+                                .actions(List.of("PUB")).decision("ALLOW").build(),
+                        AclRuleVO.builder().principal("user:orders").resource("topic-a")
+                                .resourcePattern("LITERAL")
+                                .actions(List.of("SUB")).decision("ALLOW").build(),
+                        AclRuleVO.builder().principal("user:orders").resource("*")
+                                .resourceType("Cluster").resourcePattern("LITERAL")
+                                .actions(List.of("GET")).decision("ALLOW").build()),
+                        3, 1, 200));
+        when(clusterProvider.discoverBrokers("instance-a", null)).thenReturn(List.of());
+
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster("10.0.0.1:10911"));
+        when(admin.getUser("10.0.0.1:10911", "orders"))
+                .thenThrow(new MQBrokerException(207, "no such user"));
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(call -> call.getArgument(1, MqAdminExtFactory.AdminAction.class).apply(admin));
+
+        PushAclToBrokerResultVO result = aclService.pushAclToBroker("instance-a");
+
+        PushAclToBrokerResultVO.AccountOutcome account = result.getAccounts().get(0);
+        assertThat(account.getPolicyCount()).isEqualTo(2);
+        assertThat(account.getSkipped()).singleElement()
+                .asString().contains("topic-a").contains("no broker ACL equivalent");
+        ArgumentCaptor<AclInfo> aclCaptor = ArgumentCaptor.forClass(AclInfo.class);
+        verify(admin).updateAcl(eq("10.0.0.1:10911"), aclCaptor.capture());
+        assertThat(aclCaptor.getValue().getPolicies().get(0).getEntries())
+                .extracting(AclInfo.PolicyEntryInfo::getResource)
+                .containsExactly("Topic:topic-a", "*");
+    }
+
+    @Test
+    void pushAclToBrokerReportsBrokerFailuresWithoutHidingOtherAccountsTest() throws Exception {
+        AclUserVO stored = AclUserVO.builder().id(8L).username("reader").secretKey("secret-2").build();
+        when(aclRepository.findUsers()).thenReturn(List.of(stored));
+        when(aclRepository.findUserById(8L)).thenReturn(Optional.of(stored));
+        when(aclRepository.findRulePage("user:reader", null, null, null, null, 1, 200))
+                .thenReturn(PageResult.of(List.of(), 0, 1, 200));
+        when(clusterProvider.discoverBrokers("instance-a", null)).thenReturn(List.of());
+
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster("10.0.0.1:10911"));
+        doThrow(new MQBrokerException(207, "acl disabled")).when(admin)
+                .createUser(eq("10.0.0.1:10911"), any());
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(call -> call.getArgument(1, MqAdminExtFactory.AdminAction.class).apply(admin));
+
+        PushAclToBrokerResultVO result = aclService.pushAclToBroker("instance-a");
+
+        assertThat(result.getPushed()).isZero();
+        assertThat(result.getFailed()).isEqualTo(1);
+        PushAclToBrokerResultVO.BrokerOutcome broker =
+                result.getAccounts().get(0).getBrokers().get(0);
+        assertThat(broker.isSuccess()).isFalse();
+        assertThat(broker.getError()).contains("acl disabled");
+        verify(admin, never()).updateAcl(any(), any(AclInfo.class));
+    }
+
+    @Test
+    void pushAclToBrokerTouchesOnlyTheConfiguredClusterOfASharedNameServerTest() throws Exception {
+        AclUserVO stored = AclUserVO.builder().id(11L).username("orders").secretKey("secret-4").build();
+        when(aclRepository.findUsers()).thenReturn(List.of(stored));
+        when(aclRepository.findUserById(11L)).thenReturn(Optional.of(stored));
+        when(aclRepository.findRulePage("user:orders", null, null, null, null, 1, 200))
+                .thenReturn(PageResult.of(List.of(), 0, 1, 200));
+        when(clusterProvider.discoverBrokers("instance-a", null)).thenReturn(List.of());
+
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(sharedNameServerTopology());
+        when(runtimeAdminClientResolver.configuredClusterName("instance-a")).thenReturn("cluster-a");
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(call -> call.getArgument(1, MqAdminExtFactory.AdminAction.class).apply(admin));
+
+        PushAclToBrokerResultVO result = aclService.pushAclToBroker("instance-a");
+
+        // The instance is bound to cluster-a; the other cluster behind the same NameServer must not
+        // receive this instance's accounts, policies or pre-flight config reads.
+        assertThat(result.getBrokers()).containsExactly("10.0.0.1:10911");
+        assertThat(result.getAccounts().get(0).getBrokers())
+                .allSatisfy(broker -> assertThat(broker.getBroker()).isEqualTo("10.0.0.1:10911"));
+        verify(admin).createUser(eq("10.0.0.1:10911"), any());
+        verify(admin, never()).createUser(eq("10.0.0.2:10911"), any());
+        verify(admin, never()).updateUser(eq("10.0.0.2:10911"), any());
+        verify(admin, never()).updateAcl(eq("10.0.0.2:10911"), any(AclInfo.class));
+        verify(admin, never()).getBrokerConfig("10.0.0.2:10911");
+    }
+
+    @Test
+    void pushAclToBrokerKeepsEveryMasterWhenTheInstanceNamesNoClusterTest() throws Exception {
+        AclUserVO stored = AclUserVO.builder().id(12L).username("reader").secretKey("secret-5").build();
+        when(aclRepository.findUsers()).thenReturn(List.of(stored));
+        when(aclRepository.findUserById(12L)).thenReturn(Optional.of(stored));
+        when(aclRepository.findRulePage("user:reader", null, null, null, null, 1, 200))
+                .thenReturn(PageResult.of(List.of(), 0, 1, 200));
+        when(clusterProvider.discoverBrokers("instance-a", null)).thenReturn(List.of());
+
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(sharedNameServerTopology());
+        when(runtimeAdminClientResolver.configuredClusterName("instance-a")).thenReturn(null);
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(call -> call.getArgument(1, MqAdminExtFactory.AdminAction.class).apply(admin));
+
+        PushAclToBrokerResultVO result = aclService.pushAclToBroker("instance-a");
+
+        assertThat(result.getBrokers()).containsExactlyInAnyOrder("10.0.0.1:10911", "10.0.0.2:10911");
+    }
+
+    private ClusterInfo sharedNameServerTopology() {
+        BrokerData first = new BrokerData("cluster-a", "broker-a", new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        BrokerData second = new BrokerData("cluster-b", "broker-b", new HashMap<>(Map.of(0L, "10.0.0.2:10911")));
+        ClusterInfo clusterInfo = new ClusterInfo();
+        clusterInfo.setBrokerAddrTable(new HashMap<>(Map.of("broker-a", first, "broker-b", second)));
+        clusterInfo.setClusterAddrTable(new HashMap<>(Map.of(
+                "cluster-a", new TreeSet<>(Set.of("broker-a")),
+                "cluster-b", new TreeSet<>(Set.of("broker-b")))));
+        return clusterInfo;
+    }
+
+    private ClusterInfo clusterInfoWithMaster(String address) {
+        ClusterInfo clusterInfo = new ClusterInfo();
+        BrokerData broker = new BrokerData("cluster-a", "broker-a", new HashMap<>(Map.of(0L, address)));
+        clusterInfo.setBrokerAddrTable(new HashMap<>(Map.of("broker-a", broker)));
+        return clusterInfo;
+    }
+
+    @Test
+    void pushAclToBrokerAnswersWithAnActionableErrorWhenTheBrokerAuthModuleIsOffTest() throws Exception {
+        AclUserVO stored = AclUserVO.builder().id(9L).username("silent").secretKey("secret-3").build();
+        when(aclRepository.findUsers()).thenReturn(List.of(stored));
+        when(aclRepository.findUserById(9L)).thenReturn(Optional.of(stored));
+        when(aclRepository.findRulePage("user:silent", null, null, null, null, 1, 200))
+                .thenReturn(PageResult.of(List.of(), 0, 1, 200));
+        when(clusterProvider.discoverBrokers("instance-a", null)).thenReturn(List.of());
+
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster("10.0.0.1:10911"));
+        Properties config = new Properties();
+        config.setProperty("authenticationEnabled", "false");
+        config.setProperty("authorizationEnabled", "false");
+        when(admin.getBrokerConfig("10.0.0.1:10911")).thenReturn(config);
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(call -> call.getArgument(1, MqAdminExtFactory.AdminAction.class).apply(admin));
+
+        assertThatThrownBy(() -> aclService.pushAclToBroker("instance-a"))
+                .isInstanceOfSatisfying(BusinessException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(409);
+                    assertThat(error.getMessage()).contains("authenticationEnabled");
+                });
+        verify(admin, never()).createUser(any(), any());
+        verify(admin, never()).updateAcl(any(), any(AclInfo.class));
     }
 }

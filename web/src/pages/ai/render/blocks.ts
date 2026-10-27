@@ -121,6 +121,8 @@ const RMQ_NAMESPACE_PREFIX = 'rmq.';
  * `Bash` -> `Bash`.
  */
 export function toolDisplayName(tool: string): string {
+  // Orphaned results can carry a null/omitted name even though named calls are the usual wire shape.
+  if (typeof tool !== 'string') return '';
   const withoutMcp = tool.startsWith(MCP_TOOL_PREFIX) ? tool.slice(MCP_TOOL_PREFIX.length) : tool;
   return withoutMcp.startsWith(RMQ_NAMESPACE_PREFIX)
     ? withoutMcp.slice(RMQ_NAMESPACE_PREFIX.length)

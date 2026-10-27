@@ -24,14 +24,19 @@ import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicAttributes;
+import org.apache.rocketmq.common.constant.PermName;
 import org.apache.rocketmq.common.message.Message;
+import org.apache.rocketmq.common.message.MessageAccessor;
 import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.route.QueueData;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
@@ -70,6 +75,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -89,6 +95,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     private static final int MAX_MESSAGE_SIZE = 4 * 1024 * 1024; // 4 MB default broker limit
     private static final long RESET_OFFSET_PREVIEW_TIMEOUT_MILLIS = 3_000L;
+    /**
+     * Warning every offset-reset preview path carries when the broker reported no consume offset:
+     * the group is not connected. The paths differ in what they can still compute from it.
+     */
+    private static final String OFFLINE_GROUP_PREVIEW_WARNING =
+            "Consumer group is not online and no consume offset data is available";
     private static final String RISK_INFO = "INFO";
     private static final String RISK_WARNING = "WARNING";
     private static final String RISK_ERROR = "ERROR";
@@ -206,7 +218,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
             }
             vo.setTotalLag(lagUnknown ? ConsumerLagResolver.UNKNOWN : totalLag);
             if (newestConsumedTimestamp > 0) {
-                long delaySeconds = (System.currentTimeMillis() - newestConsumedTimestamp) / 1000;
+                // An old last-message timestamp measures inactivity once every queue is caught up.
+                long delaySeconds = !lagUnknown && totalLag == 0 ? 0
+                        : (System.currentTimeMillis() - newestConsumedTimestamp) / 1000;
                 vo.setDelaySeconds((int) Math.max(delaySeconds, 0));
                 vo.setConsumptionTimestampAvailable(true);
             }
@@ -276,7 +290,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     private TopicVO createTopic(String instanceId, TopicVO topic, boolean importing) {
-        String target = ownershipGuard.requireInstance(instanceId).getName();
+        InstanceVO instance = ownershipGuard.requireInstance(instanceId);
+        String target = instance.getName();
+        String domain = ownershipGuard.domainOf(instance);
         if (topic == null) {
             throw new BusinessException(400, "Topic request is required");
         }
@@ -286,9 +302,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
         int writeQueues = topic.getWriteQueues() > 0 ? topic.getWriteQueues() : 8;
         int readQueues = topic.getReadQueues() > 0 ? topic.getReadQueues() : 8;
 
-        return executeResourceWrite(target, Kind.TOPIC, topicName, true, topic.getType(), (admin, clusterName) -> {
+        var write = new WriteRequest(true, topic.getType(), topic.getClusterId());
+        return executeResourceWrite(target, Kind.TOPIC, topicName, write, (admin, clusterName) -> {
             try {
                 RmqTopic existing = topicMapper.selectOne(new LambdaQueryWrapper<RmqTopic>()
+                        .eq(RmqTopic::getDomain, domain)
+                        .eq(RmqTopic::getClusterId, clusterName)
                         .eq(RmqTopic::getName, topicName));
                 TopicPerm effectivePerm = topic.getPerm() != null
                         ? topic.getPerm()
@@ -303,7 +322,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 topicConfig.setWriteQueueNums(writeQueues);
                 topicConfig.setReadQueueNums(readQueues);
                 topicConfig.setPerm(toRocketMQPerm(effectivePerm));
-                applyTopicType(topicConfig, topic.getType());
+                applyTopicType(topicConfig, topic.getType(), topic.getLiteTtlMinutes());
 
                 boolean physicalExists = importing && verifyTopicImport(admin, brokerAddrs, topicConfig);
                 if (!physicalExists) {
@@ -314,12 +333,15 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
                 // The global reservation was already committed independently before the RPC; here we only update the unique record.
                 RmqTopic entity = topicMapper.selectOne(new LambdaQueryWrapper<RmqTopic>()
+                        .eq(RmqTopic::getDomain, domain)
+                        .eq(RmqTopic::getClusterId, clusterName)
                         .eq(RmqTopic::getName, topicName));
                 boolean isNew = entity == null;
                 if (isNew) {
                     entity = new RmqTopic();
                     entity.setName(topicName);
                     entity.setClusterId(clusterName);
+                    entity.setDomain(domain);
                     entity.setInstanceId(target);
                     entity.setGmtCreate(LocalDateTime.now());
                 }
@@ -361,14 +383,19 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     @Override
     public TopicVO updateTopic(String instanceId, TopicVO topic) {
-        String target = ownershipGuard.requireInstance(instanceId).getName();
+        InstanceVO instance = ownershipGuard.requireInstance(instanceId);
+        String target = instance.getName();
+        String domain = ownershipGuard.domainOf(instance);
         topic.setInstanceId(target);
         topic.setName(ResourceOwnershipGuard.requireText(topic.getName(), "topicName"));
         String topicName = topic.getName();
 
-        return executeResourceWrite(target, Kind.TOPIC, topicName, false, topic.getType(), (admin, clusterName) -> {
+        var write = new WriteRequest(false, topic.getType(), topic.getClusterId());
+        return executeResourceWrite(target, Kind.TOPIC, topicName, write, (admin, clusterName) -> {
             try {
                 RmqTopic existing = topicMapper.selectOne(new LambdaQueryWrapper<RmqTopic>()
+                        .eq(RmqTopic::getDomain, domain)
+                        .eq(RmqTopic::getClusterId, clusterName)
                         .eq(RmqTopic::getName, topicName));
                 if (existing == null) {
                     throw new BusinessException(404, "Topic not found: " + topicName);
@@ -392,22 +419,37 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     throw new BusinessException(500, "No broker available to update topic");
                 }
 
-                TopicConfig topicConfig = new TopicConfig();
-                topicConfig.setTopicName(topicName);
-                topicConfig.setWriteQueueNums(writeQueues);
-                topicConfig.setReadQueueNums(readQueues);
-                topicConfig.setPerm(toRocketMQPerm(effectivePerm));
-                applyTopicType(topicConfig, topic.getType());
-
-                for (String addr : brokerAddrs) {
-                    admin.createAndUpdateTopicConfig(addr, topicConfig);
+                int perm = toRocketMQPerm(effectivePerm);
+                Map<String, TopicConfig> pending = new LinkedHashMap<>();
+                // Preflight every broker before any write so a failed read cannot erase its
+                // configuration or leave earlier brokers updated. Each broker keeps its flags.
+                for (String addr : brokerAddrs.stream().sorted().toList()) {
+                    TopicConfig topicConfig = topicConfigForUpdate(admin, addr, topicName, perm);
+                    topicConfig.setWriteQueueNums(writeQueues);
+                    topicConfig.setReadQueueNums(readQueues);
+                    // A broker may have been made read-only outside Studio. An omitted permission
+                    // must keep its live mask, including non-editable bits, rather than replay stale metadata.
+                    if (topic.getPerm() != null) {
+                        topicConfig.setPerm(perm);
+                    }
+                    // Broker attributes are merged separately and writes require delta keys.
+                    topicConfig.setAttributes(Map.of());
+                    // TTL is create-only: the update path passes none so a stored
+                    // lite.topic.expiration stays untouched (see the pin test).
+                    applyTopicType(topicConfig, topic.getType(), null);
+                    pending.put(addr, topicConfig);
+                }
+                for (Map.Entry<String, TopicConfig> entry : pending.entrySet()) {
+                    admin.createAndUpdateTopicConfig(entry.getKey(), entry.getValue());
                 }
 
                 // Update DB record
                 if (existing != null) {
                     existing.setWriteQueueNums(writeQueues);
                     existing.setReadQueueNums(readQueues);
-                    existing.setPerm(topicConfig.getPerm());
+                    if (topic.getPerm() != null) {
+                        existing.setPerm(perm);
+                    }
                     if (topic.getType() != null) {
                         existing.setTopicType(topic.getType().name());
                     }
@@ -450,13 +492,45 @@ public class RocketMQAdminClientImpl implements AdminClient {
         });
     }
 
-    private void applyTopicType(TopicConfig topicConfig, TopicType topicType) {
-        if (topicType == null) {
+    private TopicConfig topicConfigForUpdate(MQAdminExt admin, String brokerAddr, String topicName, int fallbackPerm)
+            throws Exception {
+        TopicConfig current;
+        try {
+            current = admin.examineTopicConfig(brokerAddr, topicName);
+        } catch (Exception failure) {
+            if (!MqResponseCodes.hasResponseCode(failure, ResponseCode.TOPIC_NOT_EXIST)) {
+                throw failure;
+            }
+            current = null;
+        }
+        // A newly added master may not hold the topic yet. Preserve update's provisioning behavior.
+        if (current == null) {
+            TopicConfig created = new TopicConfig(topicName);
+            created.setPerm(fallbackPerm);
+            return created;
+        }
+        return new TopicConfig(current);
+    }
+
+    /**
+     * Writes the create-time topic attributes as one change set. The update protocol only accepts
+     * attribute change entries ({@code +key=value}) which the broker merges into the stored
+     * attributes, so the message type and a Lite parent topic's TTL are sent together and only on
+     * create — updates pass no TTL and never touch {@code lite.topic.expiration}.
+     */
+    private void applyTopicType(TopicConfig topicConfig, TopicType topicType, Integer liteTtlMinutes) {
+        if (topicType == null && liteTtlMinutes == null) {
             return;
         }
-        topicConfig.setAttributes(Map.of(
-                "+" + TopicAttributes.TOPIC_MESSAGE_TYPE_ATTRIBUTE.getName(),
-                topicType.name()));
+        Map<String, String> attributes = new HashMap<>();
+        if (topicType != null) {
+            attributes.put("+" + TopicAttributes.TOPIC_MESSAGE_TYPE_ATTRIBUTE.getName(), topicType.name());
+        }
+        if (topicType == TopicType.LITE && liteTtlMinutes != null) {
+            attributes.put("+" + TopicAttributes.LITE_EXPIRATION_ATTRIBUTE.getName(),
+                    String.valueOf(liteTtlMinutes));
+        }
+        topicConfig.setAttributes(attributes);
     }
 
     @Override
@@ -466,21 +540,26 @@ public class RocketMQAdminClientImpl implements AdminClient {
         Resource resource = ownershipGuard.topicResource(name);
         if (resource.kind() != Kind.TOPIC) {
             ownershipGuard.withOwned(instance, List.of(resource), () -> executeForInstance(instance.getName(), admin -> {
-                var owner = ownershipGuard.check(instance, resource, true);
+                var owner = ownershipGuard.checkOwnerInDomain(instance, resource, true);
                 var target = ApacheWriteTargetResolver.resolve(admin, instance, owner.clusterId());
                 deletePhysicalTopic(admin, instance.getName(), name, target.cluster(), target.masters());
                 return null;
             }));
             return;
         }
-        executeResourceWrite(instance.getName(), Kind.TOPIC, name, false, null, (admin, clusterName) -> {
+        ownershipGuard.checkOwnerInDomain(instance, resource, true);
+        ownershipGuard.withOwned(instance, List.of(resource), () -> executeForInstance(instance.getName(), admin -> {
+            List<ResourceOwnershipGuard.Ownership> slots = ownershipGuard.slots(instance, resource);
             try {
-                Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, clusterName);
+                for (ResourceOwnershipGuard.Ownership slot : slots) {
+                    deletePhysicalTopic(admin, instance.getName(), name, slot.clusterId(),
+                            getMasterBrokerAddrsForCluster(admin, slot.clusterId()));
+                }
+                topicMapper.delete(new LambdaQueryWrapper<RmqTopic>()
+                        .eq(RmqTopic::getDomain, ownershipGuard.domainOf(instance))
+                        .eq(RmqTopic::getName, name));
 
-                deletePhysicalTopic(admin, instance.getName(), name, clusterName, brokerAddrs);
-                topicMapper.delete(new LambdaQueryWrapper<RmqTopic>().eq(RmqTopic::getName, name));
-
-                recordAudit("DELETE_TOPIC", name, "", "SUCCESS");
+                recordAudit("DELETE_TOPIC", name, "slots=" + slots.size(), "SUCCESS");
                 return null;
             } catch (BusinessException e) {
                 recordAudit("DELETE_TOPIC", name, e.getMessage(), "FAILED");
@@ -489,11 +568,20 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 recordAudit("DELETE_TOPIC", name, e.getMessage(), "FAILED");
                 throw classifyBrokerFailure(e, "delete topic");
             }
-        });
+        }));
     }
 
     @Override
     public SendMessageVO sendMessage(SendMessageDTO request) {
+        return sendMessage(request, null);
+    }
+
+    @Override
+    public SendMessageVO redeliverMessage(SendMessageDTO request, String sourceTopic) {
+        return sendMessage(request, sourceTopic);
+    }
+
+    private SendMessageVO sendMessage(SendMessageDTO request, String sourceTopic) {
         if (request == null) {
             throw new BusinessException(400, "Send message request is required");
         }
@@ -504,19 +592,19 @@ public class RocketMQAdminClientImpl implements AdminClient {
         request.setInstanceId(instance.getName());
         request.setTopic(ResourceOwnershipGuard.requireText(request.getTopic(), "topicName"));
         Resource resource = ownershipGuard.topicResource(request.getTopic());
-        ownershipGuard.check(instance, resource, true);
+        ownershipGuard.checkOwnerInDomain(instance, resource, true);
         return ownershipGuard.withOwned(instance, List.of(resource), () -> {
             executeForInstance(instance.getName(), admin -> {
-                var owner = ownershipGuard.check(instance, resource, true);
+                var owner = ownershipGuard.checkOwnerInDomain(instance, resource, true);
                 var target = ApacheWriteTargetResolver.resolve(admin, instance, owner.clusterId());
                 ApacheWriteTargetResolver.requireTopicRoute(admin, target, request.getTopic());
                 return null;
             });
-            return sendOwnedMessage(request);
+            return sendOwnedMessage(request, sourceTopic);
         });
     }
 
-    private SendMessageVO sendOwnedMessage(SendMessageDTO request) {
+    private SendMessageVO sendOwnedMessage(SendMessageDTO request, String sourceTopic) {
         String topic = request.getTopic();
         String tag = request.getTag() != null ? request.getTag() : "";
         String key = request.getKey() != null ? request.getKey() : "";
@@ -543,6 +631,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     }
                     msg.putUserProperty(entry.getKey(), entry.getValue());
                 }
+            }
+
+            // Push consumers restore the business topic from this broker property before invoking
+            // the listener. Only the internal redelivery path supplies a checked source topic.
+            if (StringUtils.hasText(sourceTopic) && topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
+                MessageAccessor.putProperty(msg, MessageConst.PROPERTY_RETRY_TOPIC, sourceTopic);
             }
 
             // Timer delivery is a system property; it must be set through the typed API,
@@ -634,19 +728,25 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     private ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group, boolean importing) {
-        String instanceId = ownershipGuard.requireInstance(group == null ? null : group.getInstanceId()).getName();
+        InstanceVO instance = ownershipGuard.requireInstance(group == null ? null : group.getInstanceId());
+        String instanceId = instance.getName();
+        String domain = ownershipGuard.domainOf(instance);
         group.setInstanceId(instanceId);
         group.setName(ResourceOwnershipGuard.requireText(group.getName(), "groupName"));
-        return executeResourceWrite(instanceId, Kind.GROUP, group.getName(), true, null,
-                (admin, cluster) -> createConsumerGroup(admin, group, cluster, importing));
+        var write = new WriteRequest(true, null, group.getClusterId());
+        return executeResourceWrite(instanceId, Kind.GROUP, group.getName(), write,
+                (admin, cluster) -> createConsumerGroup(admin, group, cluster, domain, importing));
     }
 
     @Override
     public ConsumerGroupVO updateConsumerGroup(ConsumerGroupVO group) {
-        String instanceId = ownershipGuard.requireInstance(group == null ? null : group.getInstanceId()).getName();
+        InstanceVO instance = ownershipGuard.requireInstance(group == null ? null : group.getInstanceId());
+        String instanceId = instance.getName();
+        String domain = ownershipGuard.domainOf(instance);
         group.setInstanceId(instanceId);
         group.setName(ResourceOwnershipGuard.requireText(group.getName(), "groupName"));
-        return executeResourceWrite(instanceId, Kind.GROUP, group.getName(), false, null, (admin, clusterName) -> {
+        var write = new WriteRequest(false, null, group.getClusterId());
+        return executeResourceWrite(instanceId, Kind.GROUP, group.getName(), write, (admin, clusterName) -> {
             String groupName = group.getName();
             int totalBrokers = 0;
             int updatedBrokers = 0;
@@ -674,7 +774,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     updatedBrokers++;
                 }
 
-                persistConsumerGroup(group, clusterName, group.getRetryMaxTimes());
+                persistConsumerGroup(group, clusterName, domain, group.getRetryMaxTimes());
                 recordAudit("UPDATE_GROUP", groupName, "retryMaxTimes=" + group.getRetryMaxTimes()
                         + ", brokersUpdated=" + updatedBrokers + "/" + totalBrokers, "SUCCESS");
                 return group;
@@ -695,7 +795,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
         return executeForInstance(instanceId, admin -> {
             try {
                 InstanceVO instance = ownershipGuard.requireInstance(instanceId);
-                var owner = ownershipGuard.check(instance, new Resource(Kind.GROUP, name), true);
+                var owner = ownershipGuard.checkSlot(instance, new Resource(Kind.GROUP, name), null, true);
                 Set<String> brokerAddrs = ApacheWriteTargetResolver.resolve(admin, instance, owner.clusterId()).masters();
                 if (brokerAddrs.isEmpty()) {
                     throw new BusinessException(502, "No broker available to get consumer group settings");
@@ -720,7 +820,8 @@ public class RocketMQAdminClientImpl implements AdminClient {
     public ConsumerGroupSettingsVO updateConsumerGroupSettings(String instanceId, String rawName,
                                                                  ConsumerGroupSettingsCommand command) {
         String name = ResourceOwnershipGuard.requireText(rawName, "groupName");
-        return executeResourceWrite(instanceId, Kind.GROUP, name, false, null, (admin, clusterName) -> {
+        var write = new WriteRequest(false, null, null);
+        return executeResourceWrite(instanceId, Kind.GROUP, name, write, (admin, clusterName) -> {
             int totalBrokers = 0;
             int updatedBrokers = 0;
             try {
@@ -795,7 +896,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     private ConsumerGroupVO createConsumerGroup(MQAdminExt admin, ConsumerGroupVO group, String groupClusterName,
-                                                boolean importing) {
+                                                String domain, boolean importing) {
         String groupName = group.getName();
 
         try {
@@ -824,7 +925,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 }
             }
 
-            persistConsumerGroup(group, groupClusterName, config.getRetryMaxTimes());
+            persistConsumerGroup(group, groupClusterName, domain, config.getRetryMaxTimes());
             recordAudit("CREATE_GROUP", groupName,
                     "retryMaxTimes=" + config.getRetryMaxTimes()
                             + ", consumeMessageOrderly=" + consumeMessageOrderly, "SUCCESS");
@@ -852,15 +953,18 @@ public class RocketMQAdminClientImpl implements AdminClient {
         return normalized.contains("FIFO") || normalized.contains("ORDER");
     }
 
-    private void persistConsumerGroup(ConsumerGroupVO group, String clusterName, int retryMaxTimes) {
-        // Ownership is determined by the global reservation guard; a three-column filter must not mask cross-instance conflicts.
+    private void persistConsumerGroup(ConsumerGroupVO group, String clusterName, String domain, int retryMaxTimes) {
+        // Ownership is determined by the slot reservation guard; the slot key must not mask cross-instance conflicts.
         RmqGroup entity = groupMapper.selectOne(new LambdaQueryWrapper<RmqGroup>()
+                .eq(RmqGroup::getDomain, domain)
+                .eq(RmqGroup::getClusterId, clusterName)
                 .eq(RmqGroup::getName, group.getName()));
         boolean isNewGroup = entity == null;
         if (isNewGroup) {
             entity = new RmqGroup();
             entity.setName(group.getName());
             entity.setClusterId(clusterName);
+            entity.setDomain(domain);
             entity.setInstanceId(group.getInstanceId());
             entity.setGmtCreate(LocalDateTime.now());
         }
@@ -879,15 +983,21 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     @Override
     public void deleteConsumerGroup(String instanceId, String rawName) {
-        String target = ownershipGuard.requireInstance(instanceId).getName();
+        InstanceVO instance = ownershipGuard.requireInstance(instanceId);
+        String target = instance.getName();
         String name = ResourceOwnershipGuard.requireText(rawName, "groupName");
-        executeResourceWrite(target, Kind.GROUP, name, false, null, (admin, clusterName) -> {
-            doDeleteConsumerGroup(target, admin, name, clusterName);
+        Resource resource = new Resource(Kind.GROUP, name);
+        ownershipGuard.checkOwnerInDomain(instance, resource, true);
+        ownershipGuard.withOwned(instance, List.of(resource), () -> executeForInstance(target, admin -> {
+            for (ResourceOwnershipGuard.Ownership slot : ownershipGuard.slots(instance, resource)) {
+                doDeleteConsumerGroup(target, admin, name, slot.clusterId(), slot.domain());
+            }
             return null;
-        });
+        }));
     }
 
-    private void doDeleteConsumerGroup(String instanceId, MQAdminExt admin, String name, String clusterName) {
+    private void doDeleteConsumerGroup(String instanceId, MQAdminExt admin, String name, String clusterName,
+                                       String domain) {
         try {
             Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, clusterName);
 
@@ -899,7 +1009,10 @@ public class RocketMQAdminClientImpl implements AdminClient {
             // Delete derived resources while holding group ownership; on failure keep the reservation so the original instance can retry.
             deletePhysicalTopic(admin, instanceId, "%DLQ%" + name, clusterName, brokerAddrs);
             deletePhysicalTopic(admin, instanceId, "%RETRY%" + name, clusterName, brokerAddrs);
-            groupMapper.delete(new LambdaQueryWrapper<RmqGroup>().eq(RmqGroup::getName, name));
+            groupMapper.delete(new LambdaQueryWrapper<RmqGroup>()
+                    .eq(RmqGroup::getDomain, domain)
+                    .eq(RmqGroup::getClusterId, clusterName)
+                    .eq(RmqGroup::getName, name));
 
             recordAudit("DELETE_GROUP", name, "", "SUCCESS");
         } catch (BusinessException e) {
@@ -981,11 +1094,170 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     .queues(queues)
                     .build();
         } catch (Exception e) {
-            if (isConsumerNotOnline(e)) {
+            if (isBroadcastOrNeverConsumedGroup(e)) {
+                // Broadcast groups keep offsets per consumer and a group with no %RETRY% route
+                // has never consumed: there is nothing meaningful to preview, so keep blocking.
                 return emptyResetOffsetPreview(instanceId, name, timestamp, topic,
-                        "Consumer group is not online and no consume offset data is available");
+                        OFFLINE_GROUP_PREVIEW_WARNING);
+            }
+            if (isConsumerNotOnline(e)) {
+                // CONSUMER_NOT_ONLINE only means the broker-side offset table came back empty for
+                // a group that is not connected; resetOffsetNew still applies to it, so preview
+                // from the topic route instead of permanently blocking the reset.
+                return offlineResetOffsetPreview(instanceId, admin, name, timestamp, topic);
             }
             throw new BusinessException(500, "Failed to preview reset offset: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Grades the two "no data at all" exceptions {@code examineConsumeStats} raises as still
+     * blocking, so they do not reach {@link #offlineResetOffsetPreview}.
+     *
+     * <p>{@code BROADCAST_CONSUMPTION} marks a broadcast group: its offsets live in each client,
+     * so a broker-side write would not reset anything the group reads. {@code TOPIC_NOT_EXIST} on
+     * {@code %RETRY%<group>} means rocketmq-tools never resolved the group, i.e. it has never
+     * consumed, and creating broker-side offsets for it is not a preview.
+     */
+    private static boolean isBroadcastOrNeverConsumedGroup(Exception exception) {
+        if (MqResponseCodes.hasResponseCode(exception, ResponseCode.BROADCAST_CONSUMPTION)) {
+            return true;
+        }
+        String message = exception.getMessage();
+        return MqResponseCodes.hasResponseCode(exception, ResponseCode.TOPIC_NOT_EXIST)
+                && message != null && message.contains("%RETRY%");
+    }
+
+    /**
+     * Preview for a group that is not connected, mirroring what {@code resetOffsetNew} will do to
+     * it. {@code MQAdminExt.resetOffsetNew(group, topic, timestamp)} (rocketmq-tools 5.5.0) calls
+     * {@code resetOffsetByTimestamp} with {@code force = true} and, on
+     * {@code MQClientException(CONSUMER_NOT_ONLINE)}, falls back to
+     * {@code resetOffsetByTimestampOld(group, topic, timestamp, true)}. That fallback reads the
+     * broker offset store rather than the live consumers and, when it finds no consume stats for
+     * the topic, enumerates {@code queueData.getReadQueueNums()} queues of the topic route and
+     * writes {@code searchOffset(brokerAddr, queue, timestamp)} to each one unconditionally
+     * ({@code force}). This preview therefore walks the same route and the same per-queue search,
+     * so an offline group sees the targets the reset will actually commit.
+     *
+     * <p>Current consumer offsets are genuinely unavailable offline, so the lag and delta fields
+     * carry the {@link ConsumerLagResolver#UNKNOWN} / neutral sentinels the online path already
+     * uses and the preview adds an explicit offline warning; presentation layers render those
+     * sentinels as "unavailable" instead of as numbers. Falls back to the empty preview when the
+     * topic route is unavailable too.
+     */
+    private ResetConsumerOffsetPreviewVO offlineResetOffsetPreview(String instanceId, MQAdminExt admin,
+                                                                   String name, long timestamp,
+                                                                   String topic) {
+        List<ResetConsumerOffsetQueuePreviewVO> queues = new ArrayList<>();
+        try {
+            TopicRouteData route = admin.examineTopicRouteInfo(topic);
+            if (route != null && route.getQueueDatas() != null) {
+                for (QueueData queueData : route.getQueueDatas()) {
+                    // resetOffsetByTimestampOld enumerates the read queues of every routed broker;
+                    // a queue the route does not expose for reading is never consumed from, so the
+                    // reset cannot move it and the preview must not claim a target for it.
+                    if (queueData == null || !PermName.isReadable(queueData.getPerm())) {
+                        continue;
+                    }
+                    for (int queueId = 0; queueId < queueData.getReadQueueNums(); queueId++) {
+                        queues.add(offlineResetOffsetQueue(admin,
+                                new MessageQueue(topic, queueData.getBrokerName(), queueId), timestamp));
+                    }
+                }
+            }
+        } catch (Exception routeFailure) {
+            return emptyResetOffsetPreview(instanceId, name, timestamp, topic,
+                    OFFLINE_GROUP_PREVIEW_WARNING
+                            + "; the topic route is also unavailable: " + routeFailure.getMessage());
+        }
+        if (queues.isEmpty()) {
+            return emptyResetOffsetPreview(instanceId, name, timestamp, topic,
+                    OFFLINE_GROUP_PREVIEW_WARNING + "; no readable queues found for topic " + topic);
+        }
+        queues.sort(Comparator
+                .comparing((ResetConsumerOffsetQueuePreviewVO queue) ->
+                                queue.getBroker() == null ? "" : queue.getBroker(),
+                        String.CASE_INSENSITIVE_ORDER)
+                .thenComparingInt(ResetConsumerOffsetQueuePreviewVO::getQueueId));
+        long currentTotalLag = ConsumerLagResolver.UNKNOWN;
+        long projectedTotalLag = aggregateResetPreviewLag(queues, true);
+        // Delta is unavailable offline (no current offset), so no queue is classified as a rewind
+        // or a fast-forward; the warnings only carry the unavailable-offset and reset-extent notes.
+        List<String> warnings = new ArrayList<>(buildResetOffsetPreviewWarnings(queues, 0, 0));
+        warnings.add(OFFLINE_GROUP_PREVIEW_WARNING
+                + "; current offsets are unavailable, so offset deltas cannot be computed");
+        boolean complete = queues.stream().noneMatch(queue -> RISK_ERROR.equals(queue.getRiskLevel()));
+        return ResetConsumerOffsetPreviewVO.builder()
+                .instanceId(instanceId)
+                .groupName(name)
+                .topic(topic)
+                .timestamp(timestamp)
+                .complete(complete)
+                .allowReset(complete)
+                .queueCount(queues.size())
+                .warningCount(warnings.size())
+                .rewindQueueCount(0)
+                .fastForwardQueueCount(0)
+                .currentTotalLag(currentTotalLag)
+                .projectedTotalLag(projectedTotalLag)
+                .totalOffsetDelta(0L)
+                .warnings(warnings)
+                .queues(queues)
+                .build();
+    }
+
+    /**
+     * Computes the target {@code resetOffsetNew} commits for one routed queue of an offline group:
+     * {@code searchOffset(brokerAddr, queue, timestamp)}, clamped to the retained range the same way
+     * {@link #previewResetOffsetQueue} clamps it. The broker maximum is the broker offset (nothing
+     * is being consumed), so the projected lag is real; the current offset and lag stay
+     * {@link ConsumerLagResolver#UNKNOWN} because no consumer reported them.
+     */
+    private ResetConsumerOffsetQueuePreviewVO offlineResetOffsetQueue(MQAdminExt admin, MessageQueue queue,
+                                                                      long timestamp) {
+        try {
+            long minOffset = admin.minOffset(queue);
+            long maxOffset = admin.maxOffset(queue);
+            String brokerAddr = resolveBrokerAddress(admin, queue.getBrokerName());
+            long targetOffset = admin.searchOffset(brokerAddr, queue.getTopic(), queue.getQueueId(),
+                    timestamp, RESET_OFFSET_PREVIEW_TIMEOUT_MILLIS);
+            targetOffset = clampOffset(targetOffset, minOffset, maxOffset);
+            return ResetConsumerOffsetQueuePreviewVO.builder()
+                    .topic(queue.getTopic())
+                    .broker(queue.getBrokerName())
+                    .queueId(queue.getQueueId())
+                    .minOffset(minOffset)
+                    .maxOffset(maxOffset)
+                    .brokerOffset(maxOffset)
+                    .consumerOffset(ConsumerLagResolver.UNKNOWN)
+                    .targetOffset(targetOffset)
+                    .currentLag(ConsumerLagResolver.UNKNOWN)
+                    .projectedLag(resolveLag(maxOffset, targetOffset))
+                    .offsetDelta(0L)
+                    .riskLevel(resetOffsetRiskLevel(0, targetOffset, minOffset, maxOffset))
+                    // Never splice resetOffsetPreviewMessage in here: its first clause states an
+                    // offset delta, and the delta is unavailable offline, which read as
+                    // "moves the offset to Offset unchanged".
+                    .message("Current offset unavailable (group offline); target offset " + targetOffset
+                            + resetOffsetExtentNote(targetOffset, minOffset, maxOffset))
+                    .build();
+        } catch (Exception e) {
+            return ResetConsumerOffsetQueuePreviewVO.builder()
+                    .topic(queue.getTopic())
+                    .broker(queue.getBrokerName())
+                    .queueId(queue.getQueueId())
+                    .minOffset(-1L)
+                    .maxOffset(-1L)
+                    .brokerOffset(-1L)
+                    .consumerOffset(ConsumerLagResolver.UNKNOWN)
+                    .targetOffset(-1L)
+                    .currentLag(ConsumerLagResolver.UNKNOWN)
+                    .projectedLag(ConsumerLagResolver.UNKNOWN)
+                    .offsetDelta(0L)
+                    .riskLevel(RISK_ERROR)
+                    .message("Failed to preview queue offset: " + e.getMessage())
+                    .build();
         }
     }
 
@@ -1143,13 +1415,30 @@ public class RocketMQAdminClientImpl implements AdminClient {
         } else {
             messages.add("Offset unchanged");
         }
+        messages.addAll(resetOffsetExtentNotes(targetOffset, minOffset, maxOffset));
+        return String.join("; ", messages);
+    }
+
+    /**
+     * Notes stating that the target sits on an end of the retained range. Shared by the online
+     * message, whose first clause is the offset delta, and the offline message, which has no delta
+     * to state and therefore must not borrow one.
+     */
+    private List<String> resetOffsetExtentNotes(long targetOffset, long minOffset, long maxOffset) {
+        List<String> notes = new ArrayList<>();
         if (targetOffset == minOffset) {
-            messages.add("target is the minimum retained offset");
+            notes.add("target is the minimum retained offset");
         }
         if (targetOffset == maxOffset) {
-            messages.add("target is the latest offset");
+            notes.add("target is the latest offset");
         }
-        return String.join("; ", messages);
+        return notes;
+    }
+
+    /** The extent notes as a message suffix; empty when the target is inside the retained range. */
+    private String resetOffsetExtentNote(long targetOffset, long minOffset, long maxOffset) {
+        List<String> notes = resetOffsetExtentNotes(targetOffset, minOffset, maxOffset);
+        return notes.isEmpty() ? "" : "; " + String.join("; ", notes);
     }
 
     @Override
@@ -1168,12 +1457,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
             InstanceVO instance = ownershipGuard.requireInstance(instanceId);
             Resource group = new Resource(Kind.GROUP, ResourceOwnershipGuard.requireText(name, "groupName"));
             Resource topicResource = ownershipGuard.topicResource(topic);
-            ownershipGuard.check(instance, group, true);
-            ownershipGuard.check(instance, topicResource, true);
+            ownershipGuard.checkOwnerInDomain(instance, group, true);
+            ownershipGuard.checkOwnerInDomain(instance, topicResource, true);
             ownershipGuard.withOwned(instance, List.of(group, topicResource), () ->
                     executeForInstance(instance.getName(), admin -> {
-                        var groupOwner = ownershipGuard.check(instance, group, true);
-                        var topicOwner = ownershipGuard.check(instance, topicResource, true);
+                        var groupOwner = ownershipGuard.checkOwnerInDomain(instance, group, true);
+                        var topicOwner = ownershipGuard.checkOwnerInDomain(instance, topicResource, true);
                         if (!groupOwner.clusterId().equals(topicOwner.clusterId())) {
                             throw new BusinessException(409, "Group and topic are not in the same target cluster");
                         }
@@ -1251,21 +1540,28 @@ public class RocketMQAdminClientImpl implements AdminClient {
         return runtimeAdminClientResolver.execute(ResourceOwnershipGuard.requireText(instanceId, "instanceId"), action);
     }
 
-    private <T> T executeResourceWrite(String instanceId, Kind kind, String name, boolean create, TopicType type,
+    private <T> T executeResourceWrite(String instanceId, Kind kind, String name, WriteRequest request,
                                        java.util.function.BiFunction<MQAdminExt, String, T> action) {
         InstanceVO instance = ownershipGuard.requireInstance(instanceId);
         Resource resource = new Resource(kind, ResourceOwnershipGuard.requireText(name, "resourceName"));
-        if (create && kind == Kind.TOPIC && ownershipGuard.topicResource(name).kind() != Kind.TOPIC) {
+        if (request.create() && kind == Kind.TOPIC && ownershipGuard.topicResource(name).kind() != Kind.TOPIC) {
             throw new BusinessException(400, "Derived resources cannot be registered as a regular topic");
         }
-        var owner = ownershipGuard.check(instance, resource, !create);
+        var owner = request.create()
+                ? ownershipGuard.createTarget(instance, resource)
+                : ownershipGuard.checkSlot(instance, resource, null, true);
         ownershipGuard.requireSupportedProvider(instance);
         return executeForInstance(instance.getName(), admin -> {
-            var target = ApacheWriteTargetResolver.resolve(admin, instance, owner == null ? null : owner.clusterId());
-            return ownershipGuard.write(instance, resource, target.cluster(), create,
-                    type == null ? null : type.name(), () -> action.apply(admin, target.cluster()));
+            var target = ApacheWriteTargetResolver.resolve(admin, instance,
+                    owner == null ? request.cluster() : owner.clusterId());
+            return ownershipGuard.write(instance, resource, target.cluster(), request.create(),
+                    request.type() == null ? null : request.type().name(),
+                    () -> action.apply(admin, target.cluster()));
         });
     }
+
+    /** What a registration write intends: create or update, the message type, and an explicit physical cluster. */
+    private record WriteRequest(boolean create, TopicType type, String cluster) { }
 
     /** Import reads all target masters within the ownership row lock; existing config is only registered, never overwritten. */
     private boolean verifyTopicImport(MQAdminExt admin, Set<String> masters, TopicConfig requested) throws Exception {

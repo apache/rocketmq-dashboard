@@ -25,6 +25,7 @@ import { listInstances } from '../../../services/instanceService';
 import type { ClusterInfo } from '../../../api/cluster';
 import type { Instance } from '../../../api/instance';
 import BrokerCluster from '../BrokerCluster';
+import { downloadCsv } from '../../../utils/download';
 
 vi.mock('../../../services/clusterService', () => ({
   listClusters: vi.fn(),
@@ -33,6 +34,12 @@ vi.mock('../../../services/clusterService', () => ({
 vi.mock('../../../services/instanceService', () => ({
   listInstances: vi.fn(),
 }));
+
+vi.mock('../../../utils/download', async () => {
+  const actual =
+    await vi.importActual<typeof import('../../../utils/download')>('../../../utils/download');
+  return { ...actual, downloadCsv: vi.fn() };
+});
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -138,6 +145,144 @@ describe('BrokerCluster instance scope', () => {
     );
   });
 
+  it.each([
+    { tab: /Broker 管理/, oldNode: 'broker-from-instance-1', newNode: 'broker-from-instance-2' },
+    { tab: /NameServer 管理/, oldNode: 'nameserver-one:9876', newNode: 'nameserver-two:9876' },
+    { tab: /Proxy 管理/, oldNode: 'proxy-one:8080', newNode: 'proxy-two:8080' },
+  ])(
+    'hides $oldNode and blocks export while the next instance loads',
+    async ({ tab, oldNode, newNode }) => {
+      let resolveNext!: (value: ClusterInfo[]) => void;
+      const next = new Promise<ClusterInfo[]>((resolve) => {
+        resolveNext = resolve;
+      });
+      const firstCluster = {
+        ...buildCluster('cluster-1', 'broker-from-instance-1'),
+        nameServers: [{ addr: 'nameserver-one:9876', status: 'healthy' }],
+        proxies: [
+          {
+            addr: 'proxy-one:8080',
+            grpcPort: 8081,
+            remotingPort: 8080,
+            connections: 1,
+            status: 'healthy',
+          },
+        ],
+      };
+      const nextCluster = {
+        ...buildCluster('cluster-2', 'broker-from-instance-2'),
+        nameServers: [{ addr: 'nameserver-two:9876', status: 'healthy' }],
+        proxies: [
+          {
+            addr: 'proxy-two:8080',
+            grpcPort: 8081,
+            remotingPort: 8080,
+            connections: 2,
+            status: 'healthy',
+          },
+        ],
+      };
+      vi.mocked(listClusters).mockImplementation((instanceId) =>
+        instanceId === 'instance-2' ? next : Promise.resolve([firstCluster]),
+      );
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByText('broker-from-instance-1');
+      await user.click(screen.getByRole('tab', { name: tab }));
+      expect(await screen.findAllByText(oldNode)).not.toHaveLength(0);
+      expect(screen.getByRole('button', { name: '导出' })).toBeEnabled();
+
+      await user.click(screen.getByRole('combobox', { name: '选择实例' }));
+      await user.click(
+        await screen.findByText('instance-2', { selector: '.ant-select-item-option-content' }),
+      );
+      await waitFor(() => expect(listClusters).toHaveBeenLastCalledWith('instance-2'));
+      expect.soft(screen.queryAllByText(oldNode)).toHaveLength(0);
+      expect.soft(screen.getByRole('button', { name: '导出' })).toBeDisabled();
+      await user.click(screen.getByRole('button', { name: '导出' }));
+      expect.soft(downloadCsv).not.toHaveBeenCalled();
+      vi.mocked(downloadCsv).mockClear();
+
+      await act(async () => resolveNext([nextCluster]));
+      expect(await screen.findAllByText(newNode)).not.toHaveLength(0);
+      expect(screen.queryAllByText(oldNode)).toHaveLength(0);
+      expect(screen.getByRole('button', { name: '导出' })).toBeEnabled();
+      await user.click(screen.getByRole('button', { name: '导出' }));
+      expect(downloadCsv).toHaveBeenCalledTimes(1);
+      const csv = vi.mocked(downloadCsv).mock.calls[0][1];
+      expect(csv).toContain(newNode);
+      expect(csv).not.toContain(oldNode);
+    },
+    20_000,
+  );
+
+  it('retains completed topology during a refresh within the same instance', async () => {
+    let resolveRefresh!: (value: ClusterInfo[]) => void;
+    const refresh = new Promise<ClusterInfo[]>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('broker-from-instance-1');
+    vi.mocked(listClusters).mockReturnValueOnce(refresh);
+    await user.click(screen.getByRole('button', { name: '重置' }));
+    expect(screen.getByText('broker-from-instance-1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '导出' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: '导出' }));
+    expect(vi.mocked(downloadCsv).mock.calls[0][1]).toContain('broker-from-instance-1');
+    await act(async () => resolveRefresh([buildCluster('cluster-1', 'refreshed-broker')]));
+    expect(await screen.findByText('refreshed-broker')).toBeInTheDocument();
+  }, 20_000);
+
+  it('does not restore old topology when the selected instance request fails', async () => {
+    let rejectNext!: (reason: Error) => void;
+    const next = new Promise<ClusterInfo[]>((_, reject) => {
+      rejectNext = reject;
+    });
+    vi.mocked(listClusters).mockImplementation((instanceId) =>
+      instanceId === 'instance-2'
+        ? next
+        : Promise.resolve([buildCluster('cluster-1', 'broker-from-instance-1')]),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('broker-from-instance-1');
+    await user.click(screen.getByRole('combobox', { name: '选择实例' }));
+    await user.click(
+      await screen.findByText('instance-2', { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() => expect(listClusters).toHaveBeenLastCalledWith('instance-2'));
+    await act(async () => rejectNext(new Error('instance-2 unavailable')));
+    expect(screen.queryByText('broker-from-instance-1')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '导出' })).toBeDisabled();
+    expect(downloadCsv).not.toHaveBeenCalled();
+  }, 20_000);
+
+  it('ignores an initial previous-instance response after the new scope completes', async () => {
+    let resolveOld!: (value: ClusterInfo[]) => void;
+    const old = new Promise<ClusterInfo[]>((resolve) => {
+      resolveOld = resolve;
+    });
+    vi.mocked(listClusters).mockImplementation((instanceId) =>
+      instanceId === 'instance-1'
+        ? old
+        : Promise.resolve([buildCluster('cluster-2', 'broker-from-instance-2')]),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(listClusters).toHaveBeenCalledWith('instance-1'));
+    await user.click(screen.getByRole('combobox', { name: '选择实例' }));
+    await user.click(
+      await screen.findByText('instance-2', { selector: '.ant-select-item-option-content' }),
+    );
+    await screen.findByText('broker-from-instance-2');
+    await act(async () => resolveOld([buildCluster('cluster-1', 'broker-from-instance-1')]));
+    expect(screen.queryByText('broker-from-instance-1')).not.toBeInTheDocument();
+    expect(screen.getByText('broker-from-instance-2')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '导出' }));
+    expect(vi.mocked(downloadCsv).mock.calls[0][1]).toContain('broker-from-instance-2');
+  }, 20_000);
+
   it('keeps the instance the user selected when the display language changes', async () => {
     const user = userEvent.setup();
     renderPage();
@@ -161,6 +306,57 @@ describe('BrokerCluster instance scope', () => {
     await waitFor(() => expect(listClusters).toHaveBeenLastCalledWith('instance-2'));
     expect(screen.queryByText('broker-from-instance-1')).not.toBeInTheDocument();
     expect(await screen.findByText('broker-from-instance-2')).toBeInTheDocument();
+  }, 20_000);
+
+  it('clears completed topology while a discovery fallback loads', async () => {
+    let resolveFallback!: (value: ClusterInfo[]) => void;
+    const fallback = new Promise<ClusterInfo[]>((resolve) => {
+      resolveFallback = resolve;
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('broker-from-instance-1');
+    await user.click(screen.getByRole('combobox', { name: '选择实例' }));
+    await user.click(
+      await screen.findByText('instance-2', { selector: '.ant-select-item-option-content' }),
+    );
+    await screen.findByText('broker-from-instance-2');
+    vi.mocked(listInstances).mockResolvedValue([instanceFixture(1, 'instance-1')]);
+    vi.mocked(listClusters).mockImplementation((instanceId) =>
+      instanceId === 'instance-1'
+        ? fallback
+        : Promise.resolve([buildCluster('cluster-2', 'broker-from-instance-2')]),
+    );
+
+    await user.click(screen.getByRole('button', { name: 'switch-language' }));
+    await waitFor(() => expect(listClusters).toHaveBeenLastCalledWith('instance-1'));
+    expect.soft(screen.queryByText('broker-from-instance-2')).not.toBeInTheDocument();
+    expect.soft(screen.getByRole('button', { name: 'Export' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Export' }));
+    expect.soft(downloadCsv).not.toHaveBeenCalled();
+    vi.mocked(downloadCsv).mockClear();
+
+    await act(async () => resolveFallback([buildCluster('cluster-1', 'broker-from-instance-1')]));
+    await screen.findByText('broker-from-instance-1');
+    await user.click(screen.getByRole('button', { name: 'Export' }));
+    const csv = vi.mocked(downloadCsv).mock.calls[0][1];
+    expect(csv).toContain('broker-from-instance-1');
+    expect(csv).not.toContain('broker-from-instance-2');
+  }, 20_000);
+
+  it('clears topology and disables export when discovery removes every instance', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('broker-from-instance-1');
+    vi.mocked(listInstances).mockResolvedValue([]);
+
+    await user.click(screen.getByRole('button', { name: 'switch-language' }));
+    await waitFor(() =>
+      expect(screen.queryByText('broker-from-instance-1')).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole('button', { name: 'Export' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Export' }));
+    expect(downloadCsv).not.toHaveBeenCalled();
   }, 20_000);
 
   it('falls back to the first instance when the selected one is gone', async () => {

@@ -139,7 +139,7 @@ record MetricSample(
 | Cluster | `proxy.availability` | Proxy | TCP probe of the gRPC listener discovered for the selected instance |
 | Cluster | `cloud.instance.availability` | Managed cloud instance | Aliyun/Tencent control-plane instance status |
 | Business | `consumer.lag.total` | Consumer Group / Topic | Consumer progress (Apache, Aliyun, Tencent) |
-| Business | `consumer.lag.max_queue` | Consumer Group / Queue | Consumer progress (Apache, Aliyun, Tencent) |
+| Business | `consumer.lag.max_queue` | Consumer Group / Queue | Apache consumer progress only: the Aliyun and Tencent progress rows are per-topic aggregates without queue offsets, so the cloud collector publishes this metric as unsupported |
 | Business | `consumer.delay.seconds` | Consumer Group | Apache broker consume stats; emitted only when a consumption timestamp is available |
 | Business | `topic.backlog.total` | Topic / Consumer Group | Topic and consumer offsets; each sample is scoped to one Topic and consumer group to avoid cross-group double counting |
 | Business | `dlq.message.count` | Consumer Group / DLQ | DLQ provider |
@@ -256,7 +256,7 @@ Only the active lease holder collects and evaluates. Notification outbox rows us
 
 ## Notifications and Silences
 
-The supported notification channels are DingTalk, the SMS webhook configured in General Settings, and Email. A real event creates outbox rows for enabled supported channels. Independent notification-channel and notification-policy CRUD are future work.
+The supported notification channels are DingTalk, the SMS webhook configured in General Settings, and Email. DingTalk delivery requires an HTTP success response with a numeric zero `errcode`; nonzero values, including fractions, are rejected. A real event creates outbox rows for enabled supported channels. Independent notification-channel and notification-policy CRUD are future work.
 
 The dispatcher claims a row for one minute by default and renews the claim every 20 seconds while the external
 delivery is running. Deployments with slower receivers can tune `studio.alerting.notification-claim-timeout` and
@@ -266,7 +266,8 @@ delivery is running. Deployments with slower receivers can tune `studio.alerting
 Email delivery uses Spring's standard SMTP configuration. Configure `STUDIO_ALERTING_SMTP_HOST`,
 `STUDIO_ALERTING_SMTP_PORT`, `STUDIO_ALERTING_SMTP_USERNAME`, `STUDIO_ALERTING_SMTP_PASSWORD`,
 `STUDIO_ALERTING_SMTP_AUTH`, and `STUDIO_ALERTING_SMTP_STARTTLS`; recipient addresses are configured in
-General Settings. Missing SMTP configuration leaves the outbox row retryable and records the delivery failure.
+General Settings. Commas and legacy semicolons separate addresses outside quoted display names and
+parenthesized comments; separators inside these parts belong to the address. Missing SMTP configuration leaves the outbox row retryable and records the delivery failure.
 
 Socket timeouts are bounded by default and tunable through `STUDIO_ALERTING_SMTP_CONNECTION_TIMEOUT` (5000 ms),
 `STUDIO_ALERTING_SMTP_READ_TIMEOUT` (10000 ms) and `STUDIO_ALERTING_SMTP_WRITE_TIMEOUT` (10000 ms). They matter
@@ -324,6 +325,13 @@ Business Alerts and Cluster Alerts use separate forms and metric catalogs. The A
 An event row displays its domain badge, current value, threshold, resource identity, state transition timeline, acknowledgement, silence state, and notification delivery results.
 
 ## Migration
+
+The rule editor displays native disk, heap, and send-queue usage thresholds in percentage
+points. Legacy rules with no `thresholdUnit` store a fraction (for example `0.29` for 29%).
+Editing or duplicating such a rule converts the value and unit together when the editor opens,
+before metric-capability discovery. A failed or delayed discovery request cannot change the
+threshold used for saving or testing, or overwrite a value the operator has edited. Rules
+already carrying a unit retain their existing value.
 
 1. Add new nullable fields and backfill existing rule records to `BUSINESS` or `CLUSTER` where the metric is unambiguous.
 2. Retain rules that cannot be structurally mapped as export-only Prometheus compatibility rules.

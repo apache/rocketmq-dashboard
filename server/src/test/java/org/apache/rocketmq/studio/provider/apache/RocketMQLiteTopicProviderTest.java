@@ -61,6 +61,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -93,8 +94,9 @@ class RocketMQLiteTopicProviderTest {
         when(guard.requireInstance(any())).thenAnswer(call -> InstanceVO.builder()
                 .name(ResourceOwnershipGuard.requireText(call.getArgument(0), "instanceId")).build());
         when(guard.topicResource(anyString())).thenCallRealMethod();
-        when(guard.check(any(), any(), eq(true))).thenReturn(new ResourceOwnershipGuard.Ownership(
-                1L, PARENT, "cluster-a", "cluster-a", "LITE"));
+        when(guard.checkSlot(any(), any(), org.mockito.ArgumentMatchers.isNull(), eq(true)))
+                .thenReturn(new ResourceOwnershipGuard.Ownership(
+                        1L, PARENT, "cluster-a", "cluster-a", "LITE", "ns:1"));
         when(guard.withOwned(any(), any(), any())).thenAnswer(call ->
                 ((java.util.function.Supplier<?>) call.getArgument(2)).get());
         doAnswer(call -> ((MqAdminExtFactory.AdminAction<?>) call.getArgument(1)).apply(admin))
@@ -377,7 +379,7 @@ class RocketMQLiteTopicProviderTest {
                 .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(400));
         assertThatThrownBy(() -> provider.extendTTL(" ", PARENT, 60_000L))
                 .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(400));
-        when(guard.check(any(), any(), eq(true))).thenThrow(new BusinessException(409, "Ownership conflict"));
+        when(guard.checkSlot(any(), any(), org.mockito.ArgumentMatchers.isNull(), eq(true))).thenThrow(new BusinessException(409, "Ownership conflict"));
         assertThatThrownBy(() -> provider.extendTTL("cluster-a", PARENT, 60_000L))
                 .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(409));
         org.mockito.Mockito.verifyNoInteractions(runtime, admin);
@@ -460,6 +462,48 @@ class RocketMQLiteTopicProviderTest {
         provider.extendTTL("cluster-a", PARENT, TimeUnit.MINUTES.toMillis(120));
 
         verify(admin).createAndUpdateTopicConfig(eq(BROKER_A), any(TopicConfig.class));
+        verify(admin, never()).createAndUpdateTopicConfig(eq(peerMaster), any());
+    }
+
+    @Test
+    void extendTtlReportsAPartialWriteInsteadOfABareFailureWhenALaterMasterFails() throws Exception {
+        String peerMaster = "broker-b:10911";
+        String untouchedMaster = "broker-c:10911";
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A, peerMaster, untouchedMaster));
+        when(admin.examineTopicConfig(BROKER_A, PARENT)).thenReturn(liteTopicConfig(PARENT, 30));
+        when(admin.examineTopicConfig(peerMaster, PARENT)).thenReturn(liteTopicConfig(PARENT, 30));
+        when(admin.examineTopicConfig(untouchedMaster, PARENT)).thenReturn(liteTopicConfig(PARENT, 30));
+        doThrow(new RemotingTimeoutException("broker-b write timed out"))
+                .when(admin).createAndUpdateTopicConfig(eq(peerMaster), any());
+
+        // broker-a already stores the new expiration while broker-b keeps the old one, so the
+        // caller has to see that split and the way out of it, not just the raw write error.
+        assertThatThrownBy(() -> provider.extendTTL("cluster-a", PARENT, TimeUnit.MINUTES.toMillis(120)))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> {
+                    assertThat(ex.getCode()).isEqualTo(502);
+                    assertThat(ex.getMessage())
+                            .contains("120 minute(s) reached " + BROKER_A)
+                            .contains("before " + peerMaster + " failed (broker-b write timed out)")
+                            .contains("not updated yet: " + untouchedMaster)
+                            .contains("Re-run the same TTL extension for " + PARENT);
+                });
+        verify(admin).createAndUpdateTopicConfig(eq(BROKER_A), any(TopicConfig.class));
+        verify(admin, never()).createAndUpdateTopicConfig(eq(untouchedMaster), any());
+    }
+
+    @Test
+    void extendTtlKeepsTheBareWriteFailureWhenNoMasterWasUpdatedYet() throws Exception {
+        String peerMaster = "broker-b:10911";
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A, peerMaster));
+        when(admin.examineTopicConfig(BROKER_A, PARENT)).thenReturn(liteTopicConfig(PARENT, 30));
+        when(admin.examineTopicConfig(peerMaster, PARENT)).thenReturn(liteTopicConfig(PARENT, 30));
+        doThrow(new RemotingTimeoutException("broker-a write timed out"))
+                .when(admin).createAndUpdateTopicConfig(eq(BROKER_A), any());
+
+        // The first write failed, so the cluster is still on the previous expiration: the caller
+        // keeps the plain write error and the remaining masters are not attempted.
+        assertThatThrownBy(() -> provider.extendTTL("cluster-a", PARENT, TimeUnit.MINUTES.toMillis(120)))
+                .isInstanceOf(RemotingTimeoutException.class);
         verify(admin, never()).createAndUpdateTopicConfig(eq(peerMaster), any());
     }
 

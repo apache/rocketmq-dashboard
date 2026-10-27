@@ -71,7 +71,7 @@ public class LiteTopicService {
         var resource = ownershipGuard.topicResource(topicPattern);
         // Ownership guard applies to open-source Apache instances only; cloud calls are isolated by their own instance id.
         if (instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE) {
-            ownershipGuard.check(instance, resource, true);
+            ownershipGuard.checkSlot(instance, resource, null, true);
             ownershipGuard.requireSupportedProvider(instance);
         }
         if (resource.kind() != ResourceOwnershipGuard.Kind.TOPIC) {

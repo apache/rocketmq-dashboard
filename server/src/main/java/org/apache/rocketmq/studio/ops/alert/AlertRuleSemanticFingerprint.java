@@ -6,6 +6,8 @@
  */
 package org.apache.rocketmq.studio.ops.alert;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
+
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -23,13 +25,28 @@ final class AlertRuleSemanticFingerprint {
     }
 
     static String of(AlertRuleVO rule) {
+        return of(rule, normalizeLower(rule.getDuration()));
+    }
+
+    /** Runtime equivalence only; keep the persisted unique fingerprint's existing format. */
+    static String evaluationIdentity(AlertRuleVO rule) {
+        String duration = normalizeLower(rule.getDuration());
+        try {
+            duration = AlertRuleDuration.parse(duration).toString();
+        } catch (BusinessException invalidLegacyDuration) {
+            // Legacy external rules may contain invalid text; comparing identities must still work.
+        }
+        return of(rule, duration);
+    }
+
+    private static String of(AlertRuleVO rule, String duration) {
         StringBuilder value = new StringBuilder();
         append(value, rule.getDomain() == null ? AlertDomain.BUSINESS.name() : rule.getDomain().name());
         append(value, normalize(rule.getInstanceId()));
         append(value, normalize(rule.getMetric()));
         append(value, normalizeUpper(rule.getOperator()));
         append(value, normalizeThreshold(rule));
-        append(value, normalizeLower(rule.getDuration()));
+        append(value, duration);
         append(value, normalizeUpper(defaultIfBlank(rule.getAggregation(), "LAST")));
         append(value, Integer.toString(Math.max(0, rule.getWindowSeconds())));
         append(value, normalize(rule.getBrokerName()));

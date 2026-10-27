@@ -111,6 +111,9 @@ class MetadataServiceTest {
     @Mock
     private ResourceOwnershipGuard ownershipGuard;
 
+    @Mock
+    private org.apache.rocketmq.studio.provider.LiteTopicProvider liteTopicProvider;
+
     @InjectMocks
     private MetadataService metadataService;
 
@@ -161,6 +164,22 @@ class MetadataServiceTest {
         ArgumentCaptor<SendMessageDTO> request = ArgumentCaptor.forClass(SendMessageDTO.class);
         verify(apacheProvider).sendMessage(request.capture());
         assertThat(request.getValue().getTopic()).isEqualTo("%RETRY%group-a");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"orders", "%DLQ%group-a"})
+    void redeliveryPreservesCloudSendContractTest(String sourceTopic) {
+        MessageRecordVO source = MessageRecordVO.builder().topic(sourceTopic).body("payload")
+                .properties(Map.of("tenant", "alpha")).build();
+        when(cloudProvider.sendMessage(any())).thenReturn(SendMessageVO.builder().msgId("cloud-msg").build());
+
+        SendMessageVO result = metadataService.redeliverMessage("cloud-instance", "group-a", source, null);
+
+        assertThat(result.getMsgId()).isEqualTo("cloud-msg");
+        ArgumentCaptor<SendMessageDTO> request = ArgumentCaptor.forClass(SendMessageDTO.class);
+        verify(cloudProvider).sendMessage(request.capture());
+        assertThat(request.getValue().getTopic()).isEqualTo("%RETRY%group-a");
+        assertThat(request.getValue().getProperties()).containsOnlyKeys("tenant");
     }
 
     @Test
@@ -429,7 +448,9 @@ class MetadataServiceTest {
                 call.<java.util.function.Supplier<Object>>getArgument(2).get());
         lenient().when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(apacheProvider);
         lenient().when(apacheProvider.vendor()).thenReturn(InstanceVendor.APACHE);
+        lenient().when(apacheProvider.redeliverMessage(any(), anyString())).thenCallRealMethod();
         lenient().when(cloudProvider.vendor()).thenReturn(InstanceVendor.TENCENT);
+        lenient().when(cloudProvider.redeliverMessage(any(), anyString())).thenCallRealMethod();
         lenient().when(providerRegistry.byInstanceId("instance-a")).thenReturn(java.util.Optional.of(apacheProvider));
         lenient().when(providerRegistry.byInstanceId("cloud-instance")).thenReturn(java.util.Optional.of(cloudProvider));
         lenient().when(instanceResolver.findByIdentifier(org.mockito.ArgumentMatchers.anyString()))
@@ -604,6 +625,146 @@ class MetadataServiceTest {
     }
 
     @Test
+    void createTopicShouldPassLiteTtlMinutesToProviderTest() {
+        lenient().when(liteTopicProvider.isSupported()).thenReturn(true);
+        TopicVO input = new TopicVO();
+        input.setName("chat");
+        input.setInstanceId("instance-a");
+        input.setType(TopicType.LITE);
+        input.setLiteTtlMinutes(1440);
+        when(apacheProvider.createTopic(any(), any(TopicVO.class))).thenReturn(input);
+
+        TopicVO result = metadataService.createTopic(input);
+
+        assertThat(result.getLiteTtlMinutes()).isEqualTo(1440);
+        verify(apacheProvider).createTopic("instance-a", input);
+    }
+
+    @Test
+    void createTopicRejectsLiteTtlMinutesForNonLiteTypesTest() {
+        TopicVO input = new TopicVO();
+        input.setName("orders");
+        input.setInstanceId("instance-a");
+        input.setType(TopicType.NORMAL);
+        input.setLiteTtlMinutes(1440);
+
+        assertThatThrownBy(() -> metadataService.createTopic(input))
+                .isInstanceOfSatisfying(BusinessException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(400);
+                    assertThat(error.getMessage()).contains("liteTtlMinutes is only accepted when type is LITE");
+                });
+
+        verifyNoInteractions(apacheProvider);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, -1, 43201})
+    void createTopicRejectsLiteTtlMinutesOutsideBoundsTest(int ttlMinutes) {
+        TopicVO input = new TopicVO();
+        input.setName("chat");
+        input.setInstanceId("instance-a");
+        input.setType(TopicType.LITE);
+        input.setLiteTtlMinutes(ttlMinutes);
+
+        assertThatThrownBy(() -> metadataService.createTopic(input))
+                .isInstanceOfSatisfying(BusinessException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(400);
+                    assertThat(error.getMessage()).contains("liteTtlMinutes must be between 1 and 43200");
+                });
+
+        verifyNoInteractions(apacheProvider);
+    }
+
+    @Test
+    void createTopicRejectsDollarInLiteParentNameTest() {
+        TopicVO input = new TopicVO();
+        input.setName("chat$room");
+        input.setInstanceId("instance-a");
+        input.setType(TopicType.LITE);
+        input.setLiteTtlMinutes(1440);
+
+        assertThatThrownBy(() -> metadataService.createTopic(input))
+                .isInstanceOfSatisfying(BusinessException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(400);
+                    assertThat(error.getMessage()).contains("must not contain '$'");
+                });
+
+        verifyNoInteractions(apacheProvider);
+    }
+
+    @Test
+    void createTopicRejectsLiteWhenLiteTopicIsUnsupportedTest() {
+        when(liteTopicProvider.isSupported()).thenReturn(false);
+        TopicVO input = new TopicVO();
+        input.setName("chat");
+        input.setInstanceId("instance-a");
+        input.setType(TopicType.LITE);
+        input.setLiteTtlMinutes(1440);
+
+        assertThatThrownBy(() -> metadataService.createTopic(input))
+                .isInstanceOfSatisfying(BusinessException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(501);
+                    assertThat(error.getMessage()).isEqualTo("LiteTopic is not supported by this provider");
+                });
+
+        verifyNoInteractions(apacheProvider);
+    }
+
+    @Test
+    void updateTopicRejectsLiteTtlMinutesTest() {
+        TopicVO input = new TopicVO();
+        input.setName("chat");
+        input.setInstanceId("instance-a");
+        input.setType(TopicType.LITE);
+        input.setLiteTtlMinutes(60);
+
+        assertThatThrownBy(() -> metadataService.updateTopic(input))
+                .isInstanceOfSatisfying(BusinessException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(400);
+                    assertThat(error.getMessage()).contains("create-only");
+                });
+
+        verifyNoInteractions(apacheProvider);
+    }
+
+    @Test
+    void createTopicRejectsLiteParentOnCloudVendorInstanceTest() {
+        // A cloud OpenAPI has no lite.topic.expiration equivalent, so a LITE parent created there
+        // would keep the broker's -1 (never expire) default and stay outside the vendor's control
+        // plane. The gate is the same requireSupportedProvider the LiteTopic TTL write uses.
+        TopicVO input = new TopicVO();
+        input.setName("chat");
+        input.setInstanceId("cloud-instance");
+        input.setType(TopicType.LITE);
+        input.setLiteTtlMinutes(1440);
+
+        assertThatThrownBy(() -> metadataService.createTopic(input))
+                .isInstanceOfSatisfying(BusinessException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(501);
+                    assertThat(error.getMessage()).contains("Cloud resources are not registered");
+                });
+
+        verifyNoInteractions(apacheProvider, cloudProvider, operationAuditService);
+    }
+
+    @Test
+    void createTopicDefaultsLiteTtlMinutesWhenOmittedTest() {
+        lenient().when(liteTopicProvider.isSupported()).thenReturn(true);
+        TopicVO input = new TopicVO();
+        input.setName("chat");
+        input.setInstanceId("instance-a");
+        input.setType(TopicType.LITE);
+        when(apacheProvider.createTopic(any(), any(TopicVO.class))).thenReturn(input);
+
+        metadataService.createTopic(input);
+
+        // Pinned to the literal so raising or lowering the default fails here: forwarding a LITE
+        // create with no TTL would store the broker's -1, i.e. a parent that never expires.
+        assertThat(input.getLiteTtlMinutes()).isEqualTo(1440);
+        verify(apacheProvider).createTopic("instance-a", input);
+    }
+
+    @Test
     void apacheTopicWriteOperationsShouldNotDuplicateProviderAudit() {
         TopicVO topic = new TopicVO();
         topic.setName("orders");
@@ -695,39 +856,21 @@ class MetadataServiceTest {
     }
 
     @Test
-    void crossInstanceWritesStopBeforeProviderTest() {
-        when(ownershipGuard.check(any(), any(), org.mockito.ArgumentMatchers.anyBoolean()))
+    void crossInstanceDeletesAndMessageOpsStopBeforeProviderTest() {
+        when(ownershipGuard.checkOwnerInDomain(any(), any(), org.mockito.ArgumentMatchers.anyBoolean()))
                 .thenThrow(new BusinessException(409, "Resource belongs to another instance"));
-        TopicVO topic = topic("orders", null, TopicType.NORMAL);
-        topic.setInstanceId("instance-a");
         ConsumerGroupVO group = new ConsumerGroupVO();
         group.setName("buyers");
         group.setInstanceId("instance-a");
-        assertCode(() -> metadataService.createTopic(topic), 409);
-        assertCode(() -> metadataService.updateTopic(topic), 409);
+        // Registration writes resolve ownership inside the provider slot reservation instead,
+        // so only the delete and message paths pre-check here.
         assertCode(() -> metadataService.deleteTopic("instance-a", "orders"), 409);
-        assertCode(() -> metadataService.createConsumerGroup(group), 409);
-        assertCode(() -> metadataService.updateConsumerGroup(group), 409);
         assertCode(() -> metadataService.deleteConsumerGroup("instance-a", "buyers"), 409);
         assertCode(() -> metadataService.resetOffset("instance-a", "buyers", 1L, "orders"), 409);
         assertCode(() -> metadataService.skipAccumulated("instance-a", "buyers", "orders"), 409);
         assertCode(() -> metadataService.redeliverMessage("instance-a", "buyers", "orders", "msg", null), 409);
         assertCode(() -> metadataService.sendMessage(SendMessageDTO.builder()
                 .instanceId("instance-a").topic("orders").body("x").build()), 409);
-        var topics = metadataService.importTopics("instance-a", List.of(topicImportRequest("orders", null)));
-        assertThat(topics.getFailed()).isEqualTo(1);
-        assertThat(topics.getFailures()).singleElement().satisfies(failure -> {
-            assertThat(failure.getName()).isEqualTo("orders");
-            assertThat(failure.getIndex()).isZero();
-            assertThat(failure.getMessage()).isEqualTo("Resource belongs to another instance");
-        });
-        var groups = metadataService.importConsumerGroups("instance-a", List.of(importRequest("buyers", null)));
-        assertThat(groups.getFailed()).isEqualTo(1);
-        assertThat(groups.getFailures()).singleElement().satisfies(failure -> {
-            assertThat(failure.getName()).isEqualTo("buyers");
-            assertThat(failure.getIndex()).isZero();
-            assertThat(failure.getMessage()).isEqualTo("Resource belongs to another instance");
-        });
         verifyNoInteractions(apacheProvider, cloudProvider, adminClient, runtimeAdminClientResolver, messageService);
     }
 
@@ -967,7 +1110,7 @@ class MetadataServiceTest {
     void listConsumerGroupsPageShouldPaginateFromOneBasedIndexes() {
         ConsumerGroupVO third = new ConsumerGroupVO();
         third.setName("cg-c");
-        when(apacheProvider.listConsumerGroupsPage("instance-a", null, "order", 2, 2))
+        when(apacheProvider.listConsumerGroupsPage("instance-a", null, "order", null, 2, 2))
                 .thenReturn(PageResult.of(List.of(third), 3, 2, 2));
 
         PageResult<ConsumerGroupVO> result =
@@ -977,7 +1120,7 @@ class MetadataServiceTest {
         assertThat(result.getTotal()).isEqualTo(3);
         assertThat(result.getPage()).isEqualTo(2);
         assertThat(result.getSize()).isEqualTo(2);
-        verify(apacheProvider).listConsumerGroupsPage("instance-a", null, "order", 2, 2);
+        verify(apacheProvider).listConsumerGroupsPage("instance-a", null, "order", null, 2, 2);
         verify(apacheProvider, org.mockito.Mockito.never()).listConsumerGroups("instance-a", "order");
     }
 
@@ -986,7 +1129,7 @@ class MetadataServiceTest {
         ConsumerGroupVO clusterAGroup = new ConsumerGroupVO();
         clusterAGroup.setName("group-a");
         clusterAGroup.setClusterId("cluster-a");
-        when(apacheProvider.listConsumerGroupsPage("instance-a", "cluster-a", null, 1, 20))
+        when(apacheProvider.listConsumerGroupsPage("instance-a", "cluster-a", null, null, 1, 20))
                 .thenReturn(PageResult.of(List.of(clusterAGroup), 1, 1, 20));
 
         PageResult<ConsumerGroupVO> result = metadataService.listConsumerGroupsPage(
@@ -994,7 +1137,54 @@ class MetadataServiceTest {
 
         assertThat(result.getItems()).containsExactly(clusterAGroup);
         assertThat(result.getTotal()).isEqualTo(1);
-        verify(apacheProvider).listConsumerGroupsPage("instance-a", "cluster-a", null, 1, 20);
+        verify(apacheProvider).listConsumerGroupsPage("instance-a", "cluster-a", null, null, 1, 20);
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldPassSubscriptionModeToTheProviderTest() {
+        ConsumerGroupVO pushGroup = new ConsumerGroupVO();
+        pushGroup.setName("group-push");
+        when(apacheProvider.listConsumerGroupsPage("instance-a", null, null, "Push", 1, 20))
+                .thenReturn(PageResult.of(List.of(pushGroup), 1, 1, 20));
+
+        PageResult<ConsumerGroupVO> result = metadataService.listConsumerGroupsPage(
+                "instance-a", null, null, " Push ", 1, 20);
+
+        assertThat(result.getItems()).containsExactly(pushGroup);
+        verify(apacheProvider).listConsumerGroupsPage("instance-a", null, null, "Push", 1, 20);
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldTreatAllAsNoSubscriptionModeTest() {
+        when(apacheProvider.listConsumerGroupsPage("instance-a", null, null, null, 1, 20))
+                .thenReturn(PageResult.empty(1, 20));
+
+        metadataService.listConsumerGroupsPage("instance-a", null, null, "ALL", 1, 20);
+
+        verify(apacheProvider).listConsumerGroupsPage("instance-a", null, null, null, 1, 20);
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldFilterModeOverTheFullLegacyInventoryTest() {
+        ConsumerGroupVO pushGroup = new ConsumerGroupVO();
+        pushGroup.setName("group-push");
+        pushGroup.setSubscriptionMode(SubscriptionMode.Push);
+        ConsumerGroupVO popGroup = new ConsumerGroupVO();
+        popGroup.setName("group-pop");
+        popGroup.setSubscriptionMode(SubscriptionMode.Pop);
+        when(metadataProvider.listConsumerGroups("cluster-1", "order"))
+                .thenReturn(List.of(pushGroup, popGroup));
+
+        PageResult<ConsumerGroupVO> result = metadataService.listConsumerGroupsPage(
+                null, "cluster-1", "order", "Push", 2, 1);
+
+        // Only one Push row exists, so page 2 with size 1 is past the filtered total.
+        assertThat(result.getItems()).isEmpty();
+        assertThat(result.getTotal()).isEqualTo(1);
+        org.mockito.Mockito.verify(metadataProvider, org.mockito.Mockito.never())
+                .listConsumerGroupsPage(org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                        org.mockito.ArgumentMatchers.anyInt());
     }
 
     @Test
@@ -1193,7 +1383,7 @@ class MetadataServiceTest {
     @Test
     void previewResetOffsetShouldRejectForeignGroupBeforeProviderAccess() {
         doThrow(new BusinessException(409, "Resource belongs to another instance"))
-                .when(ownershipGuard).check(any(), eq(new ResourceOwnershipGuard.Resource(
+                .when(ownershipGuard).checkOwnerInDomain(any(), eq(new ResourceOwnershipGuard.Resource(
                         ResourceOwnershipGuard.Kind.GROUP, "cg-orders")), eq(true));
 
         assertThatThrownBy(() -> metadataService.previewResetOffset(
@@ -1206,10 +1396,10 @@ class MetadataServiceTest {
 
     @Test
     void previewResetOffsetShouldRejectForeignTopicBeforeProviderAccess() {
-        when(ownershipGuard.check(any(), eq(new ResourceOwnershipGuard.Resource(
+        when(ownershipGuard.checkOwnerInDomain(any(), eq(new ResourceOwnershipGuard.Resource(
                 ResourceOwnershipGuard.Kind.GROUP, "cg-orders")), eq(true))).thenReturn(null);
         doThrow(new BusinessException(409, "Resource belongs to another instance"))
-                .when(ownershipGuard).check(any(), eq(new ResourceOwnershipGuard.Resource(
+                .when(ownershipGuard).checkOwnerInDomain(any(), eq(new ResourceOwnershipGuard.Resource(
                         ResourceOwnershipGuard.Kind.TOPIC, "orders")), eq(true));
 
         assertThatThrownBy(() -> metadataService.previewResetOffset(

@@ -543,6 +543,21 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void updateTopicShouldRejectAPermissionTheVendorCannotApplyTest() {
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setType(TopicType.NORMAL);
+        topic.setPerm(TopicPerm.RO);
+
+        assertThatThrownBy(() -> provider.updateTopic(STUDIO_INSTANCE_ID, topic))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(400);
+                    assertThat(exception.getMessage()).contains("read-write");
+                });
+        verifyNoInteractions(client);
+    }
+
+    @Test
     void getTopicConsumersShouldMapSubscriptionsTest() throws Exception {
         SubscriptionData subscription = new SubscriptionData();
         subscription.setConsumerGroup("GID_orders");
@@ -558,6 +573,26 @@ class TencentInstanceProviderTest {
         assertThat(consumers).hasSize(1);
         assertThat(consumers.get(0).getGroup()).isEqualTo("GID_orders");
         assertThat(consumers.get(0).getDiffTotal()).isEqualTo(42L);
+    }
+
+    @Test
+    void getTopicConsumersShouldDeriveTheSubscriptionModelFromTheMessageModelTest() throws Exception {
+        SubscriptionData subscription = new SubscriptionData();
+        subscription.setConsumerGroup("GID_orders");
+        // The vendor reports the consumption mechanism in ConsumeType (PUSH/PULL/POP); the
+        // subscription model the contract carries lives in MessageModel.
+        subscription.setConsumeType("PUSH");
+        subscription.setMessageModel("CLUSTERING");
+        subscription.setConsumerLag(42L);
+        DescribeTopicResponse response = new DescribeTopicResponse();
+        response.setSubscriptionData(new SubscriptionData[]{subscription});
+        when(client.DescribeTopic(any())).thenReturn(response);
+
+        List<TopicConsumerVO> consumers = provider.getTopicConsumers(STUDIO_INSTANCE_ID, "orders");
+
+        assertThat(consumers).hasSize(1);
+        assertThat(consumers.get(0).getConsumeType()).isEqualTo(ConsumeType.CLUSTERING);
+        assertThat(consumers.get(0).getMessageModel()).isEqualTo("CLUSTERING");
     }
 
     @Test
@@ -710,6 +745,39 @@ class TencentInstanceProviderTest {
         assertThat(captor.getValue().getMaxRetryTimes()).isEqualTo(20L);
         assertThat(created.getInstanceId()).isEqualTo(STUDIO_INSTANCE_PK);
         assertThat(created.getRetryMaxTimes()).isEqualTo(20);
+    }
+
+    @Test
+    void createConsumerGroupShouldRejectABroadcastingModelTheOpenApiCannotApplyTest() throws Exception {
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("GID_broadcast");
+        // what the AI tool's group-create input and any API caller can send
+        group.setConsumeType(ConsumeType.BROADCASTING);
+
+        assertThatThrownBy(() -> provider.createConsumerGroup(STUDIO_INSTANCE_ID, group))
+                .isInstanceOfSatisfying(BusinessException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(400);
+                    assertThat(error.getMessage()).contains("clustering");
+                });
+        // CreateConsumerGroupRequest has no consume-model field, so nothing may be sent.
+        verifyNoInteractions(client);
+    }
+
+    @Test
+    void createConsumerGroupShouldStillApplyTheOrderedAndRetrySettingsTest() throws Exception {
+        when(client.CreateConsumerGroup(any())).thenReturn(null);
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("GID_ordered");
+        group.setDeliveryOrderType("MESSAGES_ORDER");
+        group.setRetryMaxTimes(20);
+
+        provider.createConsumerGroup(STUDIO_INSTANCE_ID, group);
+
+        ArgumentCaptor<CreateConsumerGroupRequest> captor = ArgumentCaptor.forClass(CreateConsumerGroupRequest.class);
+        verify(client).CreateConsumerGroup(captor.capture());
+        assertThat(captor.getValue().getConsumeMessageOrderly()).isTrue();
+        assertThat(captor.getValue().getMaxRetryTimes()).isEqualTo(20L);
+        assertThat(captor.getValue().getConsumeEnable()).isTrue();
     }
 
     @Test
@@ -1107,6 +1175,34 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void queryMessagesShouldFlagIncompleteProviderPageTest() throws Exception {
+        DescribeMessageListResponse response = new DescribeMessageListResponse();
+        response.setTotalCount(1L);
+        response.setData(null);
+        when(client.DescribeMessageList(any())).thenReturn(response);
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "orders", null, null, null, 1600000000000L, 1600001000000L);
+        assertThat(result.messages()).isEmpty();
+        assertThat(result.mayBeTruncated()).isTrue();
+        verify(client).DescribeMessageList(any());
+    }
+
+    @Test
+    void queryMessagesShouldKeepConfirmedEmptyProviderPageCompleteTest() throws Exception {
+        DescribeMessageListResponse response = new DescribeMessageListResponse();
+        response.setTotalCount(0L);
+        response.setData(null);
+        when(client.DescribeMessageList(any())).thenReturn(response);
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "orders", null, null, null,
+                1600000000000L, 1600001000000L);
+
+        assertThat(result.messages()).isEmpty();
+        assertThat(result.mayBeTruncated()).isFalse();
+    }
+
+    @Test
     void queryMessagesShouldReportTheProviderResultBudget() throws Exception {
         // A full first page and a large TotalCount mean the provider stopped because it reached
         // its result budget, not because Tencent returned the final page.
@@ -1132,6 +1228,42 @@ class TencentInstanceProviderTest {
                         TencentInstanceProvider.MESSAGE_QUERY_HARD_LIMIT
                                 / TencentInstanceProvider.MESSAGE_LIMIT))
                 .DescribeMessageList(any());
+    }
+
+    @Test
+    void queryMessagesShouldAdvanceByConsumedRowsWhenAPageSkipsAnAbsentEntryTest() throws Exception {
+        // The SDK maps a JSON null array element to a null element and the provider skips it, but
+        // the next page must still start after every row the API already returned.
+        when(client.DescribeMessageList(any())).thenAnswer(invocation -> {
+            DescribeMessageListRequest request = invocation.getArgument(0);
+            int start = request.getOffset().intValue();
+            int size = Math.min(request.getLimit().intValue(), Math.max(150 - start, 0));
+            MessageItem[] items = new MessageItem[size];
+            for (int i = 0; i < size; i++) {
+                MessageItem item = new MessageItem();
+                item.setMsgId("MSG-" + (start + i + 1));
+                item.setProduceTime("2024-09-12 14:06:55,591");
+                items[i] = item;
+            }
+            if (start == 0) {
+                items[50] = null;
+            }
+            DescribeMessageListResponse response = new DescribeMessageListResponse();
+            response.setData(items);
+            response.setTotalCount(150L);
+            return response;
+        });
+
+        List<MessageRecordVO> messages = provider.queryMessages(STUDIO_INSTANCE_ID, "orders", null,
+                null, null, 1600000000000L, 1600001000000L);
+
+        ArgumentCaptor<DescribeMessageListRequest> captor = ArgumentCaptor.forClass(DescribeMessageListRequest.class);
+        verify(client, org.mockito.Mockito.times(2)).DescribeMessageList(captor.capture());
+        assertThat(captor.getAllValues().get(0).getOffset()).isZero();
+        assertThat(captor.getAllValues().get(1).getOffset())
+                .isEqualTo((long) TencentInstanceProvider.MESSAGE_LIMIT);
+        assertThat(messages).extracting(MessageRecordVO::getMsgId).doesNotHaveDuplicates();
+        assertThat(messages).hasSize(149);
     }
 
     @Test
@@ -1253,6 +1385,48 @@ class TencentInstanceProviderTest {
         assertThat(trace.getConsumerStatus().get(0).getDeliveryStatus())
                 .isEqualTo(DeliveryStatus.pending);
     }
+
+    @Test
+    void queryMessagesShouldPreserveRowsFromIncompleteShortPageTest() throws Exception {
+        MessageItem item = new MessageItem();
+        item.setMsgId("kept");
+        DescribeMessageListResponse response = new DescribeMessageListResponse();
+        response.setTotalCount(2L);
+        response.setData(new MessageItem[]{item});
+        when(client.DescribeMessageList(any())).thenReturn(response);
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "orders", null, null, null, 1600000000000L, 1600001000000L);
+        assertThat(result.messages()).singleElement().extracting(MessageRecordVO::getMsgId).isEqualTo("kept");
+        assertThat(result.mayBeTruncated()).isTrue();
+        verify(client).DescribeMessageList(any());
+    }
+
+    @Test
+    void queryMessagesShouldKeepEarlierPageAndTaskIdWhenNextPageIsIncompleteTest() throws Exception {
+        MessageItem[] items = java.util.stream.IntStream.range(0, TencentInstanceProvider.MESSAGE_LIMIT)
+                .mapToObj(i -> {
+                    MessageItem item = new MessageItem();
+                    item.setMsgId("msg-" + i);
+                    return item;
+                })
+                .toArray(MessageItem[]::new);
+        DescribeMessageListResponse first = new DescribeMessageListResponse();
+        first.setData(items);
+        first.setTotalCount((long) items.length + 1);
+        first.setTaskRequestId("same-task");
+        DescribeMessageListResponse second = new DescribeMessageListResponse();
+        second.setTotalCount((long) items.length + 1);
+        when(client.DescribeMessageList(any())).thenReturn(first, second);
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "orders", null, null, null, 1600000000000L, 1600001000000L);
+        assertThat(result.messages()).hasSize(items.length);
+        assertThat(result.mayBeTruncated()).isTrue();
+        ArgumentCaptor<DescribeMessageListRequest> captor = ArgumentCaptor.forClass(DescribeMessageListRequest.class);
+        verify(client, org.mockito.Mockito.times(2)).DescribeMessageList(captor.capture());
+        assertThat(captor.getAllValues().get(1).getTaskRequestId()).isEqualTo("same-task");
+        assertThat(captor.getAllValues().get(1).getOffset()).isEqualTo((long) items.length);
+    }
+
 
     private DirectConsumeMessageDTO directConsumeRequest() {
         DirectConsumeMessageDTO request = new DirectConsumeMessageDTO();

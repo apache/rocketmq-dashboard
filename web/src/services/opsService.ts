@@ -71,6 +71,7 @@ function distinctSorted(values: Array<string | null | undefined>): string[] {
 
 function getMockAuditFilterOptions(): AuditFilterOptions {
   return {
+    operators: distinctSorted(auditRecordsState.map((record) => record.operator)),
     operationTypes: distinctSorted(auditRecordsState.map((record) => record.operationType)),
     resourceTypes: distinctSorted(auditRecordsState.map((record) => record.resourceType)),
     clusterIds: distinctSorted(auditRecordsState.map((record) => record.clusterId)),
@@ -89,6 +90,7 @@ function filterAuditRecords(params: AuditFilter): AuditRecord[] {
     ) {
       return false;
     }
+    if (params.operator && record.operator !== params.operator) return false;
     if (params.operationType && record.operationType !== params.operationType) return false;
     if (params.resourceType && record.resourceType !== params.resourceType) return false;
     if (params.target && record.target !== params.target) return false;
@@ -236,6 +238,53 @@ export async function listNativeAlertMetrics(
   return opsApi.listNativeAlertMetrics(instanceId, domain);
 }
 
+// Mirror of the server's AlertRuleSemanticFingerprint for the fields this model keeps.
+// AlertService#rejectDuplicateSemanticRule answers 409 when a second rule carries the same
+// evaluation fingerprint, so a different display name does not make a rule distinct. The server's
+// brokerName and clusterName are absent from this model and normalize to an empty string there as
+// well.
+const RATIO_ALERT_METRICS = new Set([
+  'broker.disk.usage_ratio',
+  'broker.jvm.heap.usage_ratio',
+  'broker.send_queue.usage_ratio',
+]);
+
+function normalizeAlertField(value: string | null | undefined): string {
+  return (value ?? '').trim();
+}
+
+// The server prints the normalized threshold with
+// BigDecimal.valueOf(threshold).stripTrailingZeros().toPlainString(); String() keeps the same
+// digits for the thresholds a rule uses.
+function normalizedAlertThreshold(rule: AlertRule): string {
+  const threshold =
+    rule.thresholdUnit === '%' && RATIO_ALERT_METRICS.has(normalizeAlertField(rule.metric))
+      ? rule.threshold / 100
+      : rule.threshold;
+  return String(threshold);
+}
+
+function alertRuleSemanticKey(domain: AlertRuleDomain, rule: AlertRule): string {
+  return JSON.stringify([
+    domain,
+    normalizeAlertField(rule.instanceId),
+    normalizeAlertField(rule.metric),
+    normalizeAlertField(rule.operator).toUpperCase(),
+    normalizedAlertThreshold(rule),
+    normalizeAlertField(rule.duration).toLowerCase(),
+    (normalizeAlertField(rule.aggregation) || 'LAST').toUpperCase(),
+    Math.max(0, rule.windowSeconds ?? 0),
+    normalizeAlertField(rule.consumerGroup),
+    normalizeAlertField(rule.topic),
+    Math.max(1, rule.consecutiveSamples ?? 1),
+  ]);
+}
+
+function duplicateAlertRuleError(existing: AlertRule): Error {
+  const suffix = normalizeAlertField(existing.name) ? `: ${existing.name}` : '';
+  return new Error(`An alert rule with the same evaluation conditions already exists${suffix}`);
+}
+
 export async function createAlertRule(
   data: Partial<AlertRule>,
   domain: AlertRuleDomain = 'CLUSTER',
@@ -255,6 +304,10 @@ export async function createAlertRule(
       ...data,
       channels: [...(data.channels ?? [])],
     };
+    const duplicate = alertRulesState[domain].find(
+      (existing) => alertRuleSemanticKey(domain, existing) === alertRuleSemanticKey(domain, rule),
+    );
+    if (duplicate) throw duplicateAlertRuleError(duplicate);
     alertRulesState[domain].push(rule);
     return copyAlertRule(rule);
   }
@@ -408,7 +461,12 @@ export async function getCollectorStatus(): Promise<CollectorStatus> {
 export async function acknowledgeAlert(id: number): Promise<void> {
   if (isMockMode()) {
     const a = mockSystemAlerts.find((a: Record<string, unknown>) => a.id === id);
-    if (a) (a as Record<string, unknown>).acknowledged = true;
+    if (!a) {
+      // The endpoint answers 404 "System alert not found: <id>" (AlertService.acknowledgeAlert);
+      // acknowledging nothing must not read as a success.
+      throw new Error(`System alert not found: ${id}`);
+    }
+    (a as Record<string, unknown>).acknowledged = true;
     return;
   }
   return opsApi.acknowledgeAlert(id);
@@ -471,6 +529,21 @@ export async function listAlertSilencesPage(
 
 export async function createAlertSilence(data: CreateAlertSilence): Promise<AlertSilence> {
   if (!isMockMode()) return opsApi.createAlertSilence(data);
+  // Match AlertSilenceService.create: the end must be strictly after the start, and a
+  // rejected request must not mutate the Mock inventory.
+  if (!(new Date(data.endsAt).getTime() > new Date(data.startsAt).getTime())) {
+    throw new Error('Silence end time must be after start time');
+  }
+  // Same service, recurring branch: a recurring silence carries the end of its recurrence, and
+  // that end must not precede the first window's end.
+  if (data.recurrence && data.recurrence !== 'ONCE') {
+    if (!data.recurrenceUntil) {
+      throw new Error('Recurrence end time is required for recurring silences');
+    }
+    if (new Date(data.recurrenceUntil).getTime() < new Date(data.endsAt).getTime()) {
+      throw new Error('Recurrence end time must not be before the first window ends');
+    }
+  }
   const silence = { ...data, id: Date.now(), createdBy: 'admin' } as AlertSilence;
   alertSilencesState = [silence, ...alertSilencesState];
   return silence;

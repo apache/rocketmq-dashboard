@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.client.QueryResult;
+import org.apache.rocketmq.client.AccessChannel;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
@@ -25,8 +26,18 @@ import org.apache.rocketmq.client.impl.MQAdminImpl;
 import org.apache.rocketmq.client.impl.MQClientAPIImpl;
 import org.apache.rocketmq.client.impl.factory.MQClientInstance;
 import org.apache.rocketmq.client.trace.TraceConstants;
+import org.apache.rocketmq.client.trace.TraceBean;
+import org.apache.rocketmq.client.trace.TraceContext;
+import org.apache.rocketmq.client.trace.TraceDataEncoder;
+import org.apache.rocketmq.client.trace.TraceTransferBean;
+import org.apache.rocketmq.client.trace.TraceType;
 import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.message.MessageClientExt;
+import org.apache.rocketmq.common.message.MessageClientIDSetter;
 import org.apache.rocketmq.common.message.MessageDecoder;
+import org.apache.rocketmq.common.message.MessageConst;
+import org.apache.rocketmq.common.message.MessageAccessor;
+import org.apache.rocketmq.common.message.MessageType;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.message.MessageQueue;
@@ -55,6 +66,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -159,8 +172,11 @@ class RocketMQMessageProviderTest {
         brokerResult.setConsumeResult(CMResult.CR_SUCCESS);
         brokerResult.setRemark("consumed");
         brokerResult.setSpentTimeMills(12);
-        MessageExt message = prepareDirectConsumption();
-        String offsetId = message.getMsgId();
+        MessageClientExt message = prepareDirectConsumption();
+        String offsetId = message.getOffsetMsgId();
+        // The fixture has to model production, where the UNIQ_KEY getMsgId() returns is a different
+        // string from the offset id — otherwise this test cannot tell the two apart.
+        assertThat(message.getMsgId()).isNotEqualTo(offsetId);
         when(adminExt.consumeMessageDirectly("billing", "client-a", "orders", offsetId))
                 .thenReturn(brokerResult);
 
@@ -170,11 +186,13 @@ class RocketMQMessageProviderTest {
         assertThat(result.getRemark()).isEqualTo("consumed");
         assertThat(result.getSpentTimeMillis()).isEqualTo(12);
         verify(adminExt).consumeMessageDirectly("billing", "client-a", "orders", offsetId);
+        // The UNIQ_KEY is not a physical location; handing it to the broker is the bug this pins.
+        verify(adminExt, never()).consumeMessageDirectly("billing", "client-a", "orders", message.getMsgId());
     }
 
     @Test
     void directConsumptionRejectsInvalidActualMessageWithoutRemoteWriteTest() throws Exception {
-        MessageExt message = prepareDirectConsumption();
+        MessageClientExt message = prepareDirectConsumption();
         for (java.net.SocketAddress address : java.util.Arrays.asList(null,
                 InetSocketAddress.createUnresolved("unknown.invalid", 10911),
                 new InetSocketAddress("10.0.0.9", 10911))) {
@@ -185,7 +203,7 @@ class RocketMQMessageProviderTest {
         message.setTopic("other-topic");
         assertDirectConflict();
         message.setTopic("orders");
-        message.setMsgId("not-an-offset-id");
+        message.setOffsetMsgId("not-an-offset-id");
         assertDirectConflict();
         verify(adminExt, never()).consumeMessageDirectly(anyString(), anyString(), anyString(), anyString());
     }
@@ -195,7 +213,7 @@ class RocketMQMessageProviderTest {
         var instance = org.apache.rocketmq.studio.instance.InstanceVO.builder().name("cluster-a").build();
         when(ownershipGuard.requireInstance("instance-a")).thenReturn(instance);
         when(ownershipGuard.topicResource("orders")).thenCallRealMethod();
-        when(ownershipGuard.check(any(), any(), eq(true)))
+        when(ownershipGuard.checkOwnerInDomain(any(), any(), eq(true)))
                 .thenThrow(new BusinessException(409, "Resource belongs to another instance"));
         assertDirectConflict();
         verify(runtimeAdminClientResolver, never()).execute(anyString(), any());
@@ -207,13 +225,13 @@ class RocketMQMessageProviderTest {
                 .isInstanceOfSatisfying(BusinessException.class, error -> assertThat(error.getCode()).isEqualTo(409));
     }
 
-    private MessageExt prepareDirectConsumption() throws Exception {
+    private MessageClientExt prepareDirectConsumption() throws Exception {
         var instance = org.apache.rocketmq.studio.instance.InstanceVO.builder().name("cluster-a").build();
         when(ownershipGuard.requireInstance("instance-a")).thenReturn(instance);
         when(ownershipGuard.topicResource("orders")).thenCallRealMethod();
-        when(ownershipGuard.check(any(), any(), eq(true))).thenReturn(
+        when(ownershipGuard.checkOwnerInDomain(any(), any(), eq(true))).thenReturn(
                 new org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Ownership(
-                        1L, "orders", "cluster-a", "cluster-a", "NORMAL"));
+                        1L, "orders", "cluster-a", "cluster-a", "NORMAL", "ns:1"));
         when(ownershipGuard.withOwned(any(), any(), any())).thenAnswer(call ->
                 call.<java.util.function.Supplier<Object>>getArgument(2).get());
         ClusterInfo topology = new ClusterInfo();
@@ -229,9 +247,14 @@ class RocketMQMessageProviderTest {
         route.setQueueDatas(List.of(queue));
         when(adminExt.examineTopicRouteInfo("orders")).thenReturn(route);
         String offsetId = "AC1E0A6400002A9F0000000000000001";
-        MessageExt message = new MessageExt();
+        MessageClientExt message = new MessageClientExt();
         message.setTopic("orders");
-        message.setMsgId(offsetId);
+        // viewMessage hands back a MessageClientExt, whose getMsgId() prefers the client-side UNIQ_KEY
+        // (its "port" segment is a process id, so it cannot be decoded as a physical location); the
+        // broker address + commitlog offset the broker needs lives in getOffsetMsgId(). The fixture
+        // models both, otherwise passing the wrong one to the broker stays invisible.
+        MessageClientIDSetter.setUniqID(message);
+        message.setOffsetMsgId(offsetId);
         message.setStoreHost(new InetSocketAddress("172.30.10.100", 10911));
         when(adminExt.viewMessage("orders", "msg-1")).thenReturn(message);
         return message;
@@ -251,8 +274,8 @@ class RocketMQMessageProviderTest {
     void directlyConsumesMessageReportsAnOfflineClientAsNotFoundTest() throws Exception {
         // The broker answers SYSTEM_ERROR with "The Consumer <group> <client> not online" when
         // the typed client id is not connected, which is the normal state for a stale dialog.
-        MessageExt message = prepareDirectConsumption();
-        when(adminExt.consumeMessageDirectly("billing", "client-offline", "orders", message.getMsgId()))
+        MessageClientExt message = prepareDirectConsumption();
+        when(adminExt.consumeMessageDirectly("billing", "client-offline", "orders", message.getOffsetMsgId()))
                 .thenThrow(new MQClientException(ResponseCode.SYSTEM_ERROR,
                         "The Consumer billing client-offline not online"));
         DirectConsumeMessageDTO request = directRequest();
@@ -266,8 +289,8 @@ class RocketMQMessageProviderTest {
 
     @Test
     void directlyConsumesMessageKeepsOtherBrokerFailuresAsBadGatewayTest() throws Exception {
-        MessageExt message = prepareDirectConsumption();
-        when(adminExt.consumeMessageDirectly("billing", "client-a", "orders", message.getMsgId()))
+        MessageClientExt message = prepareDirectConsumption();
+        when(adminExt.consumeMessageDirectly("billing", "client-a", "orders", message.getOffsetMsgId()))
                 .thenThrow(new MQClientException(ResponseCode.SYSTEM_ERROR, "broker rejected the request"));
 
         assertThatThrownBy(() -> provider.consumeMessageDirectly(directRequest()))
@@ -896,6 +919,61 @@ class RocketMQMessageProviderTest {
         assertThat(record.isBodyTruncated()).isTrue();
     }
 
+    @ParameterizedTest
+    @CsvSource({"13,true,false", "13,false,false", "14,true,false", "14,false,false",
+                "15,true,false", "15,false,false", "13,true,true", "13,false,true",
+                "14,true,true", "14,false,true", "15,true,true", "15,false,true"})
+    void getMessageTraceShouldMatchSdkProducerTraceLayoutsTest(int fieldCount, boolean success,
+                                                               boolean emptyOptionalFields) throws Exception {
+        List<String> fields = new ArrayList<>(List.of("Pub", "1000", "cn", "prod-group", "TopicA", "msg-123",
+                "tag1", "key1", "broker:10911", "15", "50", "0"));
+        if (fieldCount >= 14) {
+            fields.add(fieldCount == 14 && emptyOptionalFields ? "" : "offset-1");
+        }
+        fields.add(Boolean.toString(success));
+        if (fieldCount == 15) {
+            fields.add(emptyOptionalFields ? "" : "producer-host:1000");
+        }
+        String context = traceContext(fields.toArray(String[]::new));
+        if (fieldCount == 13 && emptyOptionalFields) {
+            context += TraceConstants.CONTENT_SPLITOR;
+        }
+        String body = traceBody(context);
+        assertThat(TraceDataEncoder.decoderFromTraceDataString(body).getFirst().isSuccess()).isEqualTo(success);
+        MessageExt traceMessage = new MessageExt();
+        traceMessage.setBody(body.getBytes(StandardCharsets.UTF_8));
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenReturn(new QueryResult(0L, List.of(traceMessage)));
+
+        TraceRecordVO record = provider.getMessageTrace("instance-a", "msg-123", "orders");
+
+        assertThat(record.getNodes()).hasSize(1);
+        TraceNodeVO produce = record.getNodes().getFirst();
+        assertThat(produce.getTitle()).isEqualTo("produce");
+        assertThat(produce.getStatus()).isEqualTo(success ? "finish" : "failed");
+        assertThat(produce.getTimestamp()).isEqualTo(1000L);
+        assertThat(produce.getCostTime()).isEqualTo(50L);
+        assertThat(produce.getDescription()).isEqualTo("producer=prod-group, storeHost=broker:10911");
+    }
+
+    @Test
+    void getMessageTraceByKeyShouldPreserveLegacyProducerSuccessAndFilterOtherKeysTest() throws Exception {
+        String matching = traceContext("Pub", "1000", "cn", "prod-group", "TopicA", "msg-123",
+                "tag1", "shared-key", "broker:10911", "15", "50", "0", "true");
+        String unrelated = traceContext("Pub", "2000", "cn", "other-group", "TopicA", "msg-other",
+                "tag1", "other-key", "broker:10911", "15", "50", "0", "true");
+        MessageExt traceMessage = new MessageExt();
+        traceMessage.setBody(traceBody(matching, unrelated).getBytes(StandardCharsets.UTF_8));
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenReturn(new QueryResult(0L, List.of(traceMessage)));
+
+        TraceRecordVO record = provider.getMessageTraceByKey("instance-a", "shared-key", "orders", null);
+
+        assertThat(record.getNodes()).hasSize(1);
+        assertThat(record.getNodes().getFirst().getStatus()).isEqualTo("finish");
+        assertThat(record.getNodes().getFirst().getDescription()).contains("prod-group");
+    }
+
     void getMessageTraceParsesBatchedPubAndSubAfterContexts() throws Exception {
         // Field order follows RocketMQ 5.5.0 TraceDataEncoder:
         // Pub = type, time, region, group,
@@ -933,6 +1011,108 @@ class RocketMQMessageProviderTest {
         assertThat(record.getConsumerStatus().get(0).getGroup()).isEqualTo("cons-group");
         assertThat(record.getConsumerStatus().get(0).getDeliveryStatus())
                 .isEqualTo(DeliveryStatus.success);
+    }
+
+    @Test
+    void getMessageTraceResolvesPhysicalIdToSdkTraceIdentityTest() throws Exception {
+        String physicalId = "AC1E0A6400002A9F0000000001A3F2B1";
+        MessageExt original = originalWithTraceIdentity(physicalId, "logical-message-id");
+        when(adminExt.viewMessage("orders", physicalId)).thenReturn(original);
+        stubSdkTraceIndex("logical-message-id", physicalId);
+
+        TraceRecordVO result = provider.getMessageTrace("instance-a", physicalId, "orders", "CUSTOM_TRACE");
+
+        assertThat(result.getNodes()).extracting(TraceNodeVO::getTitle).containsExactly("produce", "consume");
+        assertThat(result.getConsumerStatus()).singleElement().satisfies(status -> {
+            assertThat(status.getGroup()).isEqualTo("consumer-group");
+            assertThat(status.getDeliveryStatus()).isEqualTo(DeliveryStatus.success);
+        });
+        verify(adminExt).queryMessage(eq("CUSTOM_TRACE"), eq("logical-message-id"), eq(64),
+                eq(original.getStoreTimestamp() - 5 * 60_000L), anyLong());
+    }
+
+    @Test
+    void getMessageTraceResolvesDecodedLookupIdentityTest() throws Exception {
+        String physicalId = "AC1E0A6400002A9F0000000001A3F2B1";
+        MQClientAPIImpl clientApi = mockOffsetLookupClient();
+        MessageExt original = originalWithTraceIdentity(physicalId, "logical-message-id");
+        when(clientApi.viewMessage("172.30.10.100:10911", null, 27521713L, 3000L)).thenReturn(original);
+        stubSdkTraceIndex("logical-message-id", physicalId);
+
+        TraceRecordVO result = provider.getMessageTrace("instance-a", physicalId, null);
+
+        assertThat(result.getNodes()).extracting(TraceNodeVO::getTitle).containsExactly("produce", "consume");
+        verify(adminExt).queryMessage(eq("RMQ_SYS_TRACE_TOPIC"), eq("logical-message-id"), eq(64),
+                eq(original.getStoreTimestamp() - 5 * 60_000L), anyLong());
+    }
+
+    @Test
+    void getMessageTraceKeepsSuppliedLogicalIdTest() throws Exception {
+        MessageExt original = originalWithTraceIdentity("physical-id", "logical-message-id");
+        when(adminExt.viewMessage("orders", "logical-message-id")).thenReturn(original);
+        stubSdkTraceIndex("logical-message-id", "physical-id");
+
+        TraceRecordVO result = provider.getMessageTrace("instance-a", "logical-message-id", "orders");
+
+        assertThat(result.getNodes()).extracting(TraceNodeVO::getTitle).containsExactly("produce", "consume");
+        verify(adminExt).queryMessage(eq("RMQ_SYS_TRACE_TOPIC"), eq("logical-message-id"), eq(64),
+                anyLong(), anyLong());
+    }
+
+    @Test
+    void getMessageTraceKeepsIdWhenOriginalHasNoUniquePropertyTest() throws Exception {
+        MessageExt original = originalWithTraceIdentity("legacy-message-id", null);
+        when(adminExt.viewMessage("orders", "legacy-message-id")).thenReturn(original);
+        stubSdkTraceIndex("legacy-message-id", "physical-id");
+
+        TraceRecordVO result = provider.getMessageTrace("instance-a", "legacy-message-id", "orders");
+
+        assertThat(result.getNodes()).extracting(TraceNodeVO::getTitle).containsExactly("produce", "consume");
+    }
+
+    private static MessageExt originalWithTraceIdentity(String physicalId, String logicalId) {
+        MessageExt original = new MessageExt();
+        original.setMsgId(physicalId);
+        original.setTopic("orders");
+        original.setStoreTimestamp(10_000_000L);
+        if (logicalId != null) {
+            MessageAccessor.putProperty(original, MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX, logicalId);
+        }
+        return original;
+    }
+
+    private void stubSdkTraceIndex(String logicalId, String physicalId) throws Exception {
+        TraceTransferBean producer = sdkTrace(TraceType.Pub, logicalId, physicalId);
+        TraceTransferBean consumer = sdkTrace(TraceType.SubAfter, logicalId, physicalId);
+        TraceTransferBean other = sdkTrace(TraceType.Pub, "unrelated-message-id", "other-offset-id");
+        assertThat(producer.getTransKey()).contains(logicalId).doesNotContain(physicalId);
+        MessageExt traceMessage = new MessageExt();
+        traceMessage.setBody((producer.getTransData() + consumer.getTransData() + other.getTransData())
+                .getBytes(StandardCharsets.UTF_8));
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenAnswer(invocation -> new QueryResult(0L,
+                        producer.getTransKey().contains(invocation.<String>getArgument(1))
+                                ? List.of(traceMessage) : List.of()));
+    }
+
+    private static TraceTransferBean sdkTrace(TraceType type, String logicalId, String physicalId) {
+        TraceBean bean = new TraceBean();
+        bean.setTopic("orders");
+        bean.setMsgId(logicalId);
+        bean.setOffsetMsgId(physicalId);
+        bean.setKeys("order-key");
+        bean.setTags("tag");
+        bean.setStoreHost("172.30.10.100:10911");
+        bean.setMsgType(MessageType.Normal_Msg);
+        TraceContext context = new TraceContext();
+        context.setTraceType(type);
+        context.setAccessChannel(AccessChannel.LOCAL);
+        context.setTimeStamp(10_000_000L);
+        context.setGroupName(type == TraceType.Pub ? "producer-group" : "consumer-group");
+        context.setRegionId("region-a");
+        context.setSuccess(true);
+        context.setTraceBeans(List.of(bean));
+        return TraceDataEncoder.encoderFromContextBean(context);
     }
 
     @Test

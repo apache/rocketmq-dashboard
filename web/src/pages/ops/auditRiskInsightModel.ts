@@ -17,6 +17,7 @@
 
 import type { AuditSummary } from '../../api/audit';
 import type { AuditRecord } from '../../api/ops';
+import { parseUtcDateTime, roundPercent } from '../../utils/format';
 import {
   getAuditOperationPresentation,
   isControlPlaneAuditRecord,
@@ -131,8 +132,6 @@ const highRiskOperationCodes = new Set([
   'DELETE_K8S_CERTIFICATE',
 ]);
 
-const roundPercent = (value: number): number => Math.round(value * 10) / 10;
-
 const percent = (count: number, total: number): number => {
   if (total <= 0) return 0;
   return roundPercent((count / total) * 100);
@@ -176,17 +175,18 @@ export const isHighRiskAuditOperation = (operationType: string | null | undefine
 };
 
 const compareTimestampDesc = (left: string | null, right: string | null): number => {
-  const leftTime = left ? new Date(left).getTime() : 0;
-  const rightTime = right ? new Date(right).getTime() : 0;
+  // Audit timestamps arrive as offset-less UTC wall clocks; parse them as UTC like the renders.
+  const leftTime = left ? parseUtcDateTime(left) || 0 : 0;
+  const rightTime = right ? parseUtcDateTime(right) || 0 : 0;
   return rightTime - leftTime;
 };
 
 const buildTargetKey = (record: AuditRecord): string =>
-  [
-    normalizeText(record.clusterId, 'global'),
-    normalizeAuditCode(record.resourceType) || 'RESOURCE',
-    normalizeText(record.target, '-'),
-  ].join('|');
+  JSON.stringify([
+    record.clusterId?.trim() || null,
+    normalizeAuditCode(record.resourceType) || null,
+    record.target?.trim() || null,
+  ]);
 
 const toRiskRecord = (record: AuditRecord): AuditRiskRecord | null => {
   const failed = isFailedAuditResult(record.result);
@@ -262,9 +262,10 @@ const buildTopOperator = (records: AuditRecord[]): AuditRiskOperator | null => {
   if (records.length === 0) return null;
   const operators = new Map<string, AuditRiskOperator>();
   records.forEach((record) => {
+    const identity = JSON.stringify(record.operator?.trim() || null);
     const name = normalizeText(record.operator, 'system');
     const existing =
-      operators.get(name) ??
+      operators.get(identity) ??
       ({
         name,
         count: 0,
@@ -276,7 +277,7 @@ const buildTopOperator = (records: AuditRecord[]): AuditRiskOperator | null => {
     existing.count += 1;
     if (isFailedAuditResult(record.result)) existing.failed += 1;
     if (isPartialAuditResult(record.result)) existing.partial += 1;
-    operators.set(name, existing);
+    operators.set(identity, existing);
   });
   const [topOperator] = [...operators.values()].sort(
     (left, right) => right.count - left.count || left.name.localeCompare(right.name),

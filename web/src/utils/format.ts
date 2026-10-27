@@ -49,30 +49,39 @@ export function formatTimeMs(value: number | string | null | undefined): string 
   return `${formatDateTime(date)}.${pad(date.getMilliseconds(), 3)}`;
 }
 
-export interface FormatUtcDateTimeOptions {
-  /**
-   * Append the viewer's short zone name (`GMT+8`). Defaults to true; pass false where the zone is
-   * column noise rather than information — a compact list whose every row would repeat the viewer's
-   * own zone, and whose width that suffix would otherwise dictate.
-   */
-  zone?: boolean;
+/**
+ * Epoch milliseconds of a backend alert timestamp, parsed the way the backend stamps it.
+ *
+ * Alert APIs serialize UTC `LocalDateTime` values without an offset, so a plain
+ * `new Date(value)` would read them in the browser's zone. An explicit offset (`Z` or
+ * `±hh:mm`) is honored; unusable input yields `NaN` so callers can treat it as absent.
+ */
+export function parseAlertTimestamp(date: string | Date | null | undefined): number {
+  if (date === null || date === undefined || (typeof date === 'string' && !date.trim())) {
+    return Number.NaN;
+  }
+  const utcDate =
+    typeof date === 'string' && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(date.trim())
+      ? new Date(`${date}Z`)
+      : new Date(date);
+  return utcDate.getTime();
 }
 
 /**
  * Format a UTC timestamp for alert events in the viewer's timezone. Alert APIs
  * serialize UTC LocalDateTime values without an offset, so normal Date parsing
  * would incorrectly treat them as browser-local timestamps.
+ *
+ * The zone name is deliberately not appended: every timestamp on a page renders in the viewer's own
+ * zone, so a `GMT+8` suffix repeats the reader's own setting on every row and forces every time
+ * column wider.
  */
 export function formatUtcDateTime(
   date: string | Date | null | undefined,
   timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
-  options: FormatUtcDateTimeOptions = {},
 ): string {
   if (date === null || date === undefined || (typeof date === 'string' && !date.trim())) return '-';
-  const utcDate =
-    typeof date === 'string' && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(date.trim())
-      ? new Date(`${date}Z`)
-      : new Date(date);
+  const utcDate = typeof date === 'string' ? new Date(parseUtcDateTime(date)) : new Date(date);
   if (Number.isNaN(utcDate.getTime())) return '-';
 
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -84,7 +93,6 @@ export function formatUtcDateTime(
     minute: '2-digit',
     second: '2-digit',
     hourCycle: 'h23',
-    timeZoneName: 'short',
   }).formatToParts(utcDate);
   const value = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((part) => part.type === type)?.value;
@@ -94,10 +102,24 @@ export function formatUtcDateTime(
   const hour = value('hour');
   const minute = value('minute');
   const second = value('second');
-  const zone = options.zone === false ? '' : value('timeZoneName');
   return year && month && day && hour && minute && second
-    ? `${year}-${month}-${day} ${hour}:${minute}:${second}${zone ? ` ${zone}` : ''}`
+    ? `${year}-${month}-${day} ${hour}:${minute}:${second}`
     : '-';
+}
+
+/**
+ * Parse a UTC timestamp serialized without an offset into epoch milliseconds. Same guard as
+ * {@link formatUtcDateTime}: a value that already names its zone is parsed as-is, a zone-less
+ * one is read as UTC — without the suffix Date would treat it as browser-local instead.
+ */
+export function parseUtcDateTime(date: string | null | undefined): number {
+  if (date === null || date === undefined || !date.trim()) return Number.NaN;
+  const trimmed = date.trim();
+  const normalized = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(trimmed)
+    ? trimmed
+    : `${trimmed.replace(' ', 'T')}Z`;
+  const parsed = new Date(normalized).getTime();
+  return Number.isNaN(parsed) ? Number.NaN : parsed;
 }
 
 /**
@@ -229,4 +251,53 @@ export function formatDelay(totalSeconds: number, lang: 'zh' | 'en' = 'zh'): str
 export function formatPercent(value: number, decimals = 1): string {
   if (!Number.isFinite(value)) return '-';
   return `${value.toFixed(safeDecimals(decimals))}%`;
+}
+
+/**
+ * Round a percentage to the one decimal the UI shows.
+ *
+ * Ratios scaled to percentage points carry binary floating point noise — a broker reporting
+ * `commitLogDiskRatio=0.29` becomes `28.999999999999996` — and an antd `Progress` reserves room
+ * for its label inside the bar, so a label that long squeezes the bar down to zero width.
+ */
+export function roundPercent(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+/**
+ * Convert a stored ratio to its percentage number the way the alert backend renders it.
+ *
+ * `AlertNotificationTemplate` scales ratio metrics with `BigDecimal.movePointRight(2)`, which
+ * moves the decimal point without changing the digits, so 0.29 renders as `29` and 0.1234 as
+ * `12.34`. Multiplying by 100 in binary floating point instead renders 0.29 as
+ * 28.999999999999996 — eight of the ninety-nine whole percents do not round-trip — and the alert
+ * pages used to print, and write back, that residue.
+ */
+export function ratioToPercent(value: number): number {
+  if (!Number.isFinite(value)) return value;
+  // `toString()` yields the shortest decimal that round-trips, which is the same representation
+  // `BigDecimal.valueOf(double)` starts from. Exponential notation only shows up outside the
+  // range a stored ratio can take, and `toLocaleString` falls back to the plain form there.
+  const text = /[eE]/.test(value.toString())
+    ? value.toLocaleString('en-US', { useGrouping: false, maximumFractionDigits: 20 })
+    : value.toString();
+  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(text);
+  if (!match) return value * 100;
+  const [, sign = '', integer = '', fraction = ''] = match;
+  const digits = integer + fraction;
+  const pointIndex = integer.length + 2;
+  const scaled =
+    pointIndex < digits.length
+      ? `${digits.slice(0, pointIndex)}.${digits.slice(pointIndex)}`
+      : `${digits}${'0'.repeat(pointIndex - digits.length)}`;
+  return Number(`${sign}${scaled}`);
+}
+
+/**
+ * Trace and consumption records report "no time" as 0. {@link formatTimeMs} deliberately treats
+ * zero as a real timestamp because stored values can legitimately be the epoch, so the
+ * optional-time call sites map zero to the placeholder themselves.
+ */
+export function formatOptionalTimeMs(value: number | string | null | undefined): string {
+  return value === 0 || value === '0' ? '-' : formatTimeMs(value);
 }

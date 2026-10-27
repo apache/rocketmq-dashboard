@@ -35,6 +35,7 @@ import org.apache.rocketmq.studio.ops.ai.tool.contract.broker.BrokerConfigOutput
 import org.apache.rocketmq.studio.ops.ai.tool.contract.broker.BrokerDescribeOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.cluster.ClusterListItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.litetopic.LiteTopicExtendTtlOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.litetopic.LiteTopicListItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.litetopic.LiteTopicQuotaOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.litetopic.LiteTopicSessionOutput;
@@ -70,12 +71,14 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Golden output-contract sweep: one representative sample per catalog tool, validated through
@@ -109,6 +112,29 @@ class ToolOutputSchemaContractTest {
                 .map(ToolDefinition::name)
                 .toList());
         assertThat(covered).isEqualTo(declared);
+    }
+
+    @Test
+    void acceptsLegacyDlqResendOutputWithoutDetailsTest() {
+        validator.validateOutput(catalog.getDefinition("rmq.message.redelivery_dlq"), executed(Map.of(
+                "matched", 5, "resent", 5, "failed", 0, "outcome", "ALL_RESENT",
+                "scanIncomplete", false, "failedQueueCount", 0)));
+    }
+
+    @Test
+    void rejectsOversizedOrUndeclaredDlqFailureDetailsTest() {
+        ToolDefinition definition = catalog.getDefinition("rmq.message.redelivery_dlq");
+        Map<String, Object> result = new LinkedHashMap<>(Map.of(
+                "matched", 101, "resent", 0, "failed", 101, "outcome", "FAILED",
+                "scanIncomplete", false, "failedQueueCount", 0, "failuresTruncated", true));
+        Map<String, Object> failure = new LinkedHashMap<>(Map.of("msgId", "MSG-1", "reason", "broker unavailable"));
+        result.put("failures", Collections.nCopies(101, failure));
+        assertThatThrownBy(() -> validator.validateOutput(definition, executed(result)))
+                .isInstanceOf(IllegalStateException.class);
+        failure.put("unexpected", "not part of the contract");
+        result.put("failures", List.of(failure));
+        assertThatThrownBy(() -> validator.validateOutput(definition, executed(result)))
+                .isInstanceOf(IllegalStateException.class);
     }
 
     private static Map<String, List<Object>> samples() {
@@ -166,6 +192,8 @@ class ToolOutputSchemaContractTest {
                 List.of(new LiteTopicSessionOutput.Entry("chat/sess-1/0", "ACTIVE", 1800L)))));
         samples.put("rmq.litetopic.quota", List.of(new LiteTopicQuotaOutput(
                 120, 1000, 30, 100, 5, 50, 0.12, 0.3, 3600L, 86400L, 880, 2.5)));
+        samples.put("rmq.litetopic.extend_ttl", List.of(planned(), executed(
+                new LiteTopicExtendTtlOutput("orders", 86400000L))));
 
         samples.put("rmq.audit.list", List.of(new PageOutput<>(1, 20, 1L, List.of(
                 new AuditItem(1L, "2026-08-22T08:00:00", "admin", "CREATE_TOPIC", "TOPIC",
@@ -346,8 +374,15 @@ class ToolOutputSchemaContractTest {
                 new MessageSendOutput("MSG-1", "OFF-1", TIMESTAMP))));
         samples.put("rmq.message.redelivery", List.of(planned(), executed(
                 new MessageRedeliveryOutput("MSG-1", "MSG-2", "%RETRY%cg-orders"))));
-        samples.put("rmq.message.redelivery_dlq", List.of(planned(), executed(
-                new MessageRedeliveryDlqOutput(5, 5, 0, "ALL_RESENT", false, 0))));
+        MessageRedeliveryDlqOutput.Failure failure = new MessageRedeliveryDlqOutput.Failure(
+                "MSG-1", "orders", "Producer send failed: broker unavailable");
+        samples.put("rmq.message.redelivery_dlq", List.of(planned(),
+                executed(new MessageRedeliveryDlqOutput(5, 5, 0, "ALL_RESENT", false, 0, List.of(), false)),
+                executed(new MessageRedeliveryDlqOutput(101, 0, 101, "FAILED", false, 0,
+                        Collections.nCopies(100, failure), true)),
+                executed(new MessageRedeliveryDlqOutput(1, 0, 1, "FAILED", true, 1,
+                        List.of(new MessageRedeliveryDlqOutput.Failure(
+                                "MSG-1", null, "No target topic could be resolved")), false))));
 
         return samples;
     }

@@ -22,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.cluster.metrics.MetricsBackendType;
+import org.apache.rocketmq.studio.cluster.metrics.PrometheusQueryUri;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.util.UrlHostGuard;
@@ -46,11 +47,11 @@ import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import java.util.function.UnaryOperator;
 
 @Slf4j
@@ -68,8 +69,6 @@ public class SettingsService {
                 0x00, 0x00, 0x02, 0x54
             }, // AWS IMDS IPv6: fd00:ec2::254
             new byte[] {100, 100, 100, (byte) 200}); // Alibaba Cloud ECS metadata
-    private static final Set<String> PROMETHEUS_COMPATIBLE_TYPES = Set.of(
-            "prometheus", "victoriametrics", "thanos", "mimir", "cortex", "arms");
     private static final String PROMETHEUS_TEST_QUERY = "up";
     private static final String AUTH_NONE = "none";
     private static final String AUTH_BASIC = "basic auth";
@@ -162,6 +161,18 @@ public class SettingsService {
         } else if (!StringUtils.hasText(settings.getDingtalkSigningSecret()) && currentSettings != null) {
             settings.setDingtalkSigningSecret(currentSettings.getDingtalkSigningSecret());
         }
+        // Non-admin sessions read the webhooks through redactNotificationWebhooks and every
+        // console save echoes what it loaded, so the marker this service itself emitted must
+        // restore the stored URL instead of being persisted over it (issue #5004). A genuinely
+        // retyped URL — or a blank, which is how the form clears a webhook — still wins.
+        if (currentSettings != null) {
+            if (REDACTED_NOTIFICATION_WEBHOOK.equals(settings.getDingtalkWebhook())) {
+                settings.setDingtalkWebhook(currentSettings.getDingtalkWebhook());
+            }
+            if (REDACTED_NOTIFICATION_WEBHOOK.equals(settings.getSmsWebhook())) {
+                settings.setSmsWebhook(currentSettings.getSmsWebhook());
+            }
+        }
         if (currentSettings != null) {
             if (!StringUtils.hasText(settings.getLlmEngine())) {
                 settings.setLlmEngine(currentSettings.getLlmEngine());
@@ -180,6 +191,10 @@ public class SettingsService {
             }
             if (settings.getTemperature() == null) {
                 settings.setTemperature(currentSettings.getTemperature());
+            }
+            // Older clients do not send the idle timeout; their saves must not reset it.
+            if (settings.getSessionIdleTimeout() == null) {
+                settings.setSessionIdleTimeout(currentSettings.getSessionIdleTimeout());
             }
         }
         settings.setClearApiKey(false);
@@ -317,13 +332,14 @@ public class SettingsService {
         if (request == null) {
             return failed("Data source test request is required");
         }
-        if (!isPrometheusCompatible(request.getType())) {
+        MetricsBackendType backend = resolveBackendType(request.getType());
+        if (backend == null) {
             return failed("Unsupported data source type: " + request.getType());
         }
 
         try {
             String body = restClient.get()
-                    .uri(prometheusQueryUri(request.getUrl(), request.getType()))
+                    .uri(prometheusQueryUri(request.getUrl(), backend))
                     .accept(MediaType.APPLICATION_JSON)
                     .headers(headers -> applyAuthentication(headers, request))
                     .retrieve()
@@ -346,10 +362,25 @@ public class SettingsService {
         }
     }
 
-    private boolean isPrometheusCompatible(String type) {
-        return StringUtils.hasText(type)
-                && PROMETHEUS_COMPATIBLE_TYPES.contains(
-                        type.replaceAll("\\s+", "").toLowerCase(Locale.ROOT));
+    /**
+     * Normalises a client-supplied data source type to its backend. The DTO accepts aliases the
+     * raw enum spelling does not carry - victoria_metrics, victoria-metrics, victoria metrics and
+     * VictoriaMetrics all name the same backend - and unknown types must stay rejected rather than
+     * silently falling back to Prometheus. Custom is not prometheus-compatible for this probe.
+     */
+    private MetricsBackendType resolveBackendType(String type) {
+        if (!StringUtils.hasText(type)) {
+            return null;
+        }
+        return switch (type.trim().replaceAll("[\\s_-]+", "").toUpperCase(Locale.ROOT)) {
+            case "PROMETHEUS" -> MetricsBackendType.PROMETHEUS;
+            case "VICTORIAMETRICS", "VICTORIA" -> MetricsBackendType.VICTORIA_METRICS;
+            case "THANOS" -> MetricsBackendType.THANOS;
+            case "CORTEX" -> MetricsBackendType.CORTEX;
+            case "MIMIR" -> MetricsBackendType.MIMIR;
+            case "ARMS" -> MetricsBackendType.ARMS;
+            default -> null;
+        };
     }
 
     private String normalizeDataSourceKey(String key) {
@@ -368,7 +399,7 @@ public class SettingsService {
             if (!StringUtils.hasText(request.getUsername()) || !StringUtils.hasText(request.getPassword())) {
                 throw new IllegalArgumentException("Basic authentication requires username and password");
             }
-            headers.setBasicAuth(request.getUsername().trim(), request.getPassword());
+            headers.setBasicAuth(request.getUsername().trim(), request.getPassword(), StandardCharsets.UTF_8);
             return;
         }
         if (AUTH_BEARER.equals(auth)) {
@@ -388,16 +419,11 @@ public class SettingsService {
         return auth.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
-    private URI prometheusQueryUri(String baseUrl, String providerType) throws URISyntaxException {
+    private URI prometheusQueryUri(String baseUrl, MetricsBackendType backend) throws URISyntaxException {
         if (!StringUtils.hasText(baseUrl)) {
             throw new IllegalArgumentException("Data source URL is required");
         }
-        String normalized = baseUrl.strip();
-        while (normalized.endsWith("/")) {
-            normalized = normalized.substring(0, normalized.length() - 1);
-        }
-
-        URI baseUri = new URI(normalized);
+        URI baseUri = new URI(baseUrl.strip());
         if (!"http".equalsIgnoreCase(baseUri.getScheme()) && !"https".equalsIgnoreCase(baseUri.getScheme())) {
             throw new IllegalArgumentException("Data source URL must start with http:// or https://");
         }
@@ -405,10 +431,10 @@ public class SettingsService {
             throw new IllegalArgumentException(
                     "Data source URL must not point to a local or private address");
         }
-        String queryPath = MetricsBackendType.fromProviderType(providerType).getInstantQueryPath();
-        return UriComponentsBuilder.fromUriString(normalized + queryPath)
+        String queryPath = backend.getInstantQueryPath();
+        return UriComponentsBuilder.fromUri(PrometheusQueryUri.appendPath(baseUri, queryPath))
                 .queryParam("query", PROMETHEUS_TEST_QUERY)
-                .build()
+                .build(true)
                 .toUri();
     }
 
