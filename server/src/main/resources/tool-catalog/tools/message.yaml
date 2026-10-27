@@ -89,6 +89,8 @@ tools:
                 type: boolean
               size:
                 type: integer
+                minimum: -1
+                description: Message body size in bytes; -1 when the vendor API reports none (unknown, not zero).
         resultMayBeTruncated:
           type: boolean
           description: True when rows were omitted by limit or the provider may have stopped at its own scan bound.
@@ -174,6 +176,8 @@ tools:
                 type: boolean
               size:
                 type: integer
+                minimum: -1
+                description: Message body size in bytes; -1 when the vendor API reports none (unknown, not zero).
         resultMayBeTruncated:
           type: boolean
           description: True when rows were omitted by limit or the provider may have stopped at its own scan bound.
@@ -257,6 +261,8 @@ tools:
                 type: boolean
               size:
                 type: integer
+                minimum: -1
+                description: Message body size in bytes; -1 when the vendor API reports none (unknown, not zero).
     viewHint: table
     deprecated: false
   - name: rmq.message.query_dlq

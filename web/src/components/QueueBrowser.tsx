@@ -36,7 +36,7 @@ import type { MessageRecord, QueueOffset } from '../api/message';
 import { getQueueOffsets, pullMessageAtOffset } from '../api/message';
 import { useLang } from '../i18n/LangContext';
 import { tableScrollX } from '../utils/table';
-import { formatBytes, formatTimeMs } from '../utils/format';
+import { formatOptionalBytes, formatTimeMs } from '../utils/format';
 
 const { Text } = Typography;
 
@@ -372,7 +372,7 @@ export const QueueBrowserResults = ({ state, onOpenMessage }: QueueBrowserResult
       align: 'right',
       render: (_: unknown, entry: PulledEntry) => (
         <span style={{ fontSize: 14 }}>
-          {entry.message ? formatBytes(entry.message.size) : '-'}
+          {entry.message ? formatOptionalBytes(entry.message.size) : '-'}
         </span>
       ),
     },
