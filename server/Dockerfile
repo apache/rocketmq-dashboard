@@ -72,15 +72,21 @@ COPY server/LICENSE server/NOTICE /usr/share/licenses/rocketmq-studio/
 # Node.js + AI agent CLIs (claude-code, qodercli).
 # These packages are obtained from npm at build time by the user; they are NOT
 # distributed as part of the ASF release artifact (only this Dockerfile is).
-RUN curl -fsSL https://npmmirror.com/mirrors/node/v20.19.2/node-v20.19.2-linux-x64.tar.gz \
+ARG TARGETARCH
+RUN case "${TARGETARCH}" in \
+      amd64) NODE_ARCH=x64 ;; \
+      arm64) NODE_ARCH=arm64 ;; \
+      *) echo "Unsupported Node.js architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL "https://npmmirror.com/mirrors/node/v20.19.2/node-v20.19.2-linux-${NODE_ARCH}.tar.gz" \
       | tar xz -C /opt \
-    && ln -s /opt/node-v20.19.2-linux-x64/bin/node  /usr/local/bin/node \
-    && ln -s /opt/node-v20.19.2-linux-x64/bin/npm   /usr/local/bin/npm \
-    && ln -s /opt/node-v20.19.2-linux-x64/bin/npx   /usr/local/bin/npx \
+    && ln -s "/opt/node-v20.19.2-linux-${NODE_ARCH}/bin/node"  /usr/local/bin/node \
+    && ln -s "/opt/node-v20.19.2-linux-${NODE_ARCH}/bin/npm"   /usr/local/bin/npm \
+    && ln -s "/opt/node-v20.19.2-linux-${NODE_ARCH}/bin/npx"   /usr/local/bin/npx \
     && npm config set registry https://registry.npmmirror.com \
     && npm install -g @anthropic-ai/claude-code @qoder-ai/qodercli \
-    && ln -s /opt/node-v20.19.2-linux-x64/bin/claude   /usr/local/bin/claude \
-    && ln -s /opt/node-v20.19.2-linux-x64/bin/qodercli /usr/local/bin/qodercli
+    && ln -s "/opt/node-v20.19.2-linux-${NODE_ARCH}/bin/claude"   /usr/local/bin/claude \
+    && ln -s "/opt/node-v20.19.2-linux-${NODE_ARCH}/bin/qodercli" /usr/local/bin/qodercli
 
 # rmqctl binary + legal materials from stage 1.
 COPY --from=rmqctl-build /out/rmqctl /usr/local/bin/rmqctl
@@ -152,6 +158,8 @@ RUN mvn dependency:go-offline
 COPY server/src ./src
 COPY server/style ./style
 COPY server/scripts/legal.py ./scripts/legal.py
+COPY server/scripts/legal-determinations.json ./scripts/legal-determinations.json
+COPY server/legal/licenses ./legal/licenses
 COPY server/LICENSE server/NOTICE ./
 
 RUN mvn package -DskipTests
