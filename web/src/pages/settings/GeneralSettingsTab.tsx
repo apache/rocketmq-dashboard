@@ -35,7 +35,7 @@ import type { GeneralSettings, GeneralSettingsUpdate } from '../../api/settings'
 import { useTheme } from '../../theme/useTheme';
 import type { ThemeMode } from '../../theme/themePreference';
 import { useLang } from '../../i18n/LangContext';
-import useAuthStore from '../../stores/authStore';
+import { useCanWriteSettings } from '../../hooks/useCanWriteSettings';
 
 const { Text } = Typography;
 
@@ -71,12 +71,10 @@ export const GeneralSettingsTab = () => {
   const [testingChannel, setTestingChannel] = useState<string>();
   const securityInFlightRef = useRef(false);
   const notifyInFlightRef = useRef(false);
-  const authUserId = useAuthStore((state) => state.userId);
-  const authAdmin = useAuthStore((state) => state.admin);
-  // Mirrors the server policy: POST /api/settings/general/save is admin-only, and the
-  // server also hands redacted webhook values to readers. Without a signed-in studio
-  // user (auth disabled) the caller counts as system, so writes stay allowed.
-  const canWriteSettings = !authUserId || authAdmin === true;
+  // Mirrors the server policy: POST /api/settings/general/save is admin-only, and the server also
+  // hands redacted webhook values to readers. The shared hook documents why a deployment without
+  // studio authentication keeps its writes enabled.
+  const canWriteSettings = useCanWriteSettings();
   const translationRef = useRef(t);
   const [securityForm] = Form.useForm();
   const [notifyForm] = Form.useForm();

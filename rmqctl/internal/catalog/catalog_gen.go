@@ -21,7 +21,7 @@ package catalog
 var defaultDocument = Document{
 	Version:              "2.0.0",
 	MinimumClientVersion: "2.0.0",
-	Digest:               "de70ac57695e5fb9db7b1a16d995c745eaa89c1e33f339954a9fb7831e7e9fd7",
+	Digest:               "e2ebdf66500503301025ed12f41ada2176e63249dce4732ee0e98c57300be682",
 	Tools: []Tool{
 		{
 			Name:                 "rmq.acl.list",
@@ -40,7 +40,7 @@ var defaultDocument = Document{
 					{Name: "page", Kind: ObjectField, Object: &InputSchema{
 						Fields: []Field{
 							{Name: "page", Flag: "page", Kind: IntegerField, Minimum: 1, HasMinimum: true},
-							{Name: "pageSize", Flag: "page-size", Kind: IntegerField, Minimum: 1, HasMinimum: true},
+							{Name: "pageSize", Flag: "page-size", Kind: IntegerField, Minimum: 1, HasMinimum: true, Maximum: 100, HasMaximum: true},
 						},
 					}},
 				},
@@ -163,7 +163,7 @@ var defaultDocument = Document{
 					{Name: "page", Kind: ObjectField, Object: &InputSchema{
 						Fields: []Field{
 							{Name: "page", Flag: "page", Kind: IntegerField, Minimum: 1, HasMinimum: true},
-							{Name: "pageSize", Flag: "page-size", Kind: IntegerField, Minimum: 1, HasMinimum: true},
+							{Name: "pageSize", Flag: "page-size", Kind: IntegerField, Minimum: 1, HasMinimum: true, Maximum: 100, HasMaximum: true},
 						},
 					}},
 				},
@@ -515,7 +515,7 @@ var defaultDocument = Document{
 					{Name: "page", Kind: ObjectField, Object: &InputSchema{
 						Fields: []Field{
 							{Name: "page", Flag: "page", Kind: IntegerField, Minimum: 1, HasMinimum: true},
-							{Name: "pageSize", Flag: "page-size", Kind: IntegerField, Minimum: 1, HasMinimum: true},
+							{Name: "pageSize", Flag: "page-size", Kind: IntegerField, Minimum: 1, HasMinimum: true, Maximum: 100, HasMaximum: true},
 						},
 					}},
 				},

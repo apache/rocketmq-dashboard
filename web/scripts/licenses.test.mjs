@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
@@ -51,6 +51,81 @@ test('upstreamFallbacksKeepCompleteTextTest', () => {
   assert.match(result.files.get('legal/licenses/@ant-design/icons-svg@4.5.0/LICENSE.txt').toString(), /2018-present Ant UED/);
 });
 
+function lineEndingFixture(t, ending = '\n') {
+  const directory = temporary(t);
+  const license = readFileSync(path.join(root, 'licenses/toggle-selection-1.0.6/LICENSE'), 'utf8').replace(/\r\n/g, '\n');
+  for (const name of ['LICENSE', 'NOTICE']) {
+    const text = readFileSync(path.join(root, name), 'utf8').replace(/\r\n/g, '\n');
+    write(directory, name, text.replace(/\n/g, ending));
+  }
+  for (const name of ['package.json', 'index.js', 'README.md']) {
+    write(directory, `node_modules/toggle-selection/${name}`, readFileSync(path.join(root, 'node_modules/toggle-selection', name)));
+  }
+  write(directory, 'licenses/toggle-selection-1.0.6/LICENSE', license.replace(/\n/g, ending));
+  // The vendored LobeHub icons are tracked too, so Git can hand them back as CRLF. The installed
+  // package has no root LICENSE: the vendored one is the only license text this component carries.
+  const logoLicense = readFileSync(path.join(root, 'src/assets/model-logos/LICENSE'), 'utf8').replace(/\r\n/g, '\n');
+  write(directory, 'src/assets/model-logos/LICENSE', logoLicense.replace(/\n/g, ending));
+  write(directory, 'node_modules/@lobehub/icons-static-svg/package.json',
+    readFileSync(path.join(root, 'node_modules/@lobehub/icons-static-svg/package.json')));
+  const icons = readdirSync(path.join(root, 'src/assets/model-logos')).filter((name) => name.endsWith('.svg')).sort();
+  for (const name of icons) {
+    const svg = readFileSync(path.join(root, 'src/assets/model-logos', name), 'utf8').replace(/\r\n/g, '\n');
+    write(directory, `src/assets/model-logos/${name}`, svg.replace(/\n/g, ending));
+    write(directory, `node_modules/@lobehub/icons-static-svg/icons/${name}`,
+      readFileSync(path.join(root, 'node_modules/@lobehub/icons-static-svg/icons', name)));
+  }
+  return { directory, license, logoLicense };
+}
+
+test('gitLineEndingsPreserveVerifiedLicenseAndBinaryAttributionTest', (t) => {
+  const lf = lineEndingFixture(t);
+  const crlf = lineEndingFixture(t, '\r\n');
+  const modules = ['node_modules/toggle-selection/index.js'];
+  const expected = collectLicenses(modules, lf.directory);
+  const actual = collectLicenses(modules, crlf.directory);
+  assert.deepEqual(actual.components, expected.components);
+  assert.deepEqual(actual.files, expected.files);
+  assert.equal(actual.files.get('legal/licenses/toggle-selection@1.0.6/LICENSE.txt').toString(), lf.license);
+  for (const name of ['LICENSE', 'NOTICE']) {
+    assert.doesNotMatch(actual.files.get(name).toString(), /Third-party source materials|src\/assets\/model-logos/);
+  }
+});
+
+test('gitLineEndingsPreserveTheVendoredIconAttributionTest', (t) => {
+  const lf = lineEndingFixture(t);
+  const crlf = lineEndingFixture(t, '\r\n');
+  const modules = ['src/assets/model-logos/openai.svg', 'node_modules/toggle-selection/index.js'];
+  const expected = collectLicenses(modules, lf.directory);
+  const actual = collectLicenses(modules, crlf.directory);
+  assert.deepEqual(actual.components, expected.components);
+  assert.deepEqual(actual.files, expected.files);
+  assert.equal(actual.files.get('legal/licenses/@lobehub/icons-static-svg@1.95.0/LICENSE.txt').toString(), lf.logoLicense);
+  assert.match(actual.files.get('NOTICE').toString(), /Copyright \(c\) 2023 LobeHub/);
+  assert.doesNotMatch(actual.files.get('LICENSE').toString(), /Third-party source materials|src\/assets\/model-logos/);
+  // Every tracked icon is a single line today, so Git leaves them alone and the byte comparison above
+  // proves nothing on its own. Re-wrap one pair to keep the icon gate honest about line endings.
+  const icon = 'openai.svg';
+  const upstream = readFileSync(path.join(root, 'node_modules/@lobehub/icons-static-svg/icons', icon), 'utf8')
+    .replace(/\r\n/g, '\n').replace('</svg>', '\n</svg>');
+  write(crlf.directory, `node_modules/@lobehub/icons-static-svg/icons/${icon}`, upstream);
+  write(crlf.directory, `src/assets/model-logos/${icon}`, upstream.replace(/\n/g, '\r\n'));
+  const rewrapped = collectLicenses(modules, crlf.directory);
+  assert.deepEqual(rewrapped.components, expected.components);
+  assert.deepEqual(rewrapped.files, expected.files);
+});
+
+test('lineEndingToleranceStillRejectsChangedLicenseAndCodeTest', (t) => {
+  const { directory, license } = lineEndingFixture(t, '\r\n');
+  const fallback = 'licenses/toggle-selection-1.0.6/LICENSE';
+  write(directory, fallback, license.replace('Copyright', 'Altered copyright').replace(/\n/g, '\r\n'));
+  assert.throws(() => collectLicenses(['node_modules/toggle-selection/index.js'], directory), /does not match the verified source/);
+  write(directory, fallback, license);
+  const code = readFileSync(path.join(directory, 'node_modules/toggle-selection/index.js'));
+  write(directory, 'node_modules/toggle-selection/index.js', Buffer.concat([code, Buffer.from('\n// changed code')]));
+  assert.throws(() => collectLicenses(['node_modules/toggle-selection/index.js'], directory), /does not match the verified source/);
+});
+
 test('missingOrUnknownLicenseFailsTest', (t) => {
   const directory = temporary(t);
   for (const name of ['LICENSE', 'NOTICE']) write(directory, name, readFileSync(path.join(root, name)));
@@ -65,6 +140,7 @@ test('missingOrUnknownLicenseFailsTest', (t) => {
 test('vitePackagingAndTamperGateTest', async (t) => {
   const directory = temporary(t);
   const licensePlugin = distributionLicenses();
+  const fixturePath = (name) => JSON.stringify(path.join(root, name).split(path.sep).join('/'));
   // Build only fixtures for React, CSS, SVG and small dependencies; do not build the app or run app tests.
   const result = await build({
     root,
@@ -75,7 +151,10 @@ test('vitePackagingAndTamperGateTest', async (t) => {
         name: 'license-fixture',
         resolveId(id) { if (id === 'license-fixture') return '\0license-fixture'; },
         load(id) {
-          if (id === '\0license-fixture') return `import React from '${root}node_modules/react/index.js'; import logo from '${root}src/assets/model-logos/openai.svg'; import '${root}src/index.css'; import toggle from '${root}node_modules/toggle-selection/index.js'; console.log(React, logo, toggle);`;
+          if (id === '\0license-fixture') return `import React from ${fixturePath('node_modules/react/index.js')};
+            import logo from ${fixturePath('src/assets/model-logos/openai.svg')};
+            import ${fixturePath('src/index.css')};
+            import toggle from ${fixturePath('node_modules/toggle-selection/index.js')}; console.log(React, logo, toggle);`;
         },
       },
       licensePlugin,

@@ -35,6 +35,7 @@ import { DeleteOutlined, DownloadOutlined, EditOutlined, PlusOutlined } from '@a
 import type { ColumnsType } from 'antd/es/table';
 import { MagnifyingGlass } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
+import { useCanWriteSettings } from '../../hooks/useCanWriteSettings';
 
 import {
   createCloudCredential,
@@ -65,6 +66,10 @@ interface CredentialFormValues {
 
 export const CloudCredentialTab = () => {
   const { t } = useLang();
+  // Credential writes are admin-only (POST/PUT/DELETE fall through to the admin requirement in
+  // AuthInterceptor), so a reader's save or delete could only ever come back 403. The controls stay
+  // disabled instead, the same way the other settings tabs treat the writes they own.
+  const canWriteSettings = useCanWriteSettings();
   const [credentials, setCredentials] = useState<CloudCredential[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -194,6 +199,7 @@ export const CloudCredentialTab = () => {
   };
 
   const handleSubmit = async () => {
+    if (!canWriteSettings) return;
     if (submitInFlightRef.current) return;
     submitInFlightRef.current = true;
     setSubmitting(true);
@@ -233,6 +239,7 @@ export const CloudCredentialTab = () => {
   };
 
   const handleDelete = async (credential: CloudCredential) => {
+    if (!canWriteSettings) return;
     if (loading || loadFailed || search.trim() !== debouncedSearch || loadedQueryKey !== queryKey)
       return;
     try {
@@ -277,7 +284,7 @@ export const CloudCredentialTab = () => {
             type="link"
             size="small"
             icon={<EditOutlined />}
-            disabled={staleActionsDisabled}
+            disabled={staleActionsDisabled || !canWriteSettings}
             onClick={() => openEditModal(record)}
           >
             {t('common.edit')}
@@ -293,7 +300,7 @@ export const CloudCredentialTab = () => {
               size="small"
               danger
               icon={<DeleteOutlined />}
-              disabled={staleActionsDisabled}
+              disabled={staleActionsDisabled || !canWriteSettings}
             >
               {t('common.delete')}
             </Button>
@@ -339,7 +346,9 @@ export const CloudCredentialTab = () => {
             type="primary"
             icon={<PlusOutlined />}
             onClick={openCreateModal}
-            disabled={loading || filtersPending || (queryMismatch && !loadFailed)}
+            disabled={
+              loading || filtersPending || (queryMismatch && !loadFailed) || !canWriteSettings
+            }
           >
             {t('settings.addCredential')}
           </Button>
@@ -385,6 +394,7 @@ export const CloudCredentialTab = () => {
         open={modalOpen}
         onCancel={closeModal}
         onOk={() => void handleSubmit()}
+        okButtonProps={{ disabled: !canWriteSettings }}
         confirmLoading={submitting}
         closable={!submitting}
         maskClosable={!submitting}
