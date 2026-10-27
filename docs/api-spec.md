@@ -168,6 +168,70 @@
 | 124 | POST | `/api/studio-users/:userId/role` | 修改账号的管理员角色 |
 | 125 | DELETE | `/api/studio-users/:userId` | 删除账号及其全部会话 |
 | 126 | GET | `/api/studio-users/login-lockouts` | 登录锁定快照 |
+| 127 | GET | `/api/clusters/registry` | 主机注册表集群列表 |
+| 128 | POST | `/api/clusters/test-connection` | 测试集群连接 |
+| 129 | POST | `/api/clusters/config/preview` | 预览集群配置变更 |
+| 130 | GET | `/api/clusters/:id/broker-config-diff` | 检查 Broker 配置漂移 |
+| 131 | GET | `/api/nameservers` | NameServer 注册表列表 |
+| 132 | POST | `/api/nameservers/registry/create` | 创建 NameServer 注册项 |
+| 133 | POST | `/api/nameservers/registry/update` | 更新 NameServer 注册项 |
+| 134 | POST | `/api/nameservers/registry/delete` | 删除 NameServer 注册项 |
+| 135 | GET | `/api/query-history/messages` | 消息查询历史 |
+| 136 | GET | `/api/query-history/traces` | 轨迹查询历史 |
+| 137 | GET | `/api/query-history/summary` | 查询历史汇总 |
+| 138 | GET | `/api/query-history/messages/:id/results` | 回放消息查询结果 |
+| 139 | GET | `/api/alert-rules/page` | 分页获取告警规则 |
+| 140 | GET | `/api/alert-rules/runtime` | 告警规则运行时状态 |
+| 141 | GET | `/api/alert-rules/export` | 导出告警规则（YAML） |
+| 142 | GET | `/api/alert-rules/transfer` | 导出告警规则（传输格式） |
+| 143 | POST | `/api/alert-rules/test` | 测试告警规则 |
+| 144 | POST | `/api/alert-rules/bulk-toggle` | 批量切换告警规则启用状态 |
+| 145 | POST | `/api/alert-rules/bulk-delete` | 批量删除告警规则 |
+| 146 | POST | `/api/alert-rules/import` | 导入告警规则 |
+| 147 | GET | `/api/system-alerts/page` | 分页获取系统告警 |
+| 148 | GET | `/api/system-alerts/:id/related` | 获取关联告警 |
+| 149 | GET | `/api/system-alerts/:id/deliveries` | 获取告警的通知投递记录 |
+| 150 | GET | `/api/system-alerts/deliveries/page` | 分页获取通知投递记录 |
+| 151 | POST | `/api/system-alerts/deliveries/:deliveryId/retry` | 重试单条失败投递 |
+| 152 | POST | `/api/system-alerts/deliveries/retry` | 批量重试失败投递 |
+| 153 | GET | `/api/native-alert-metrics` | 原生告警指标目录 |
+| 154 | GET | `/api/alert-collector-status` | 指标采集器状态 |
+| 155 | GET | `/api/alert-silences` | 静默窗口列表 |
+| 156 | GET | `/api/alert-silences/page` | 分页获取静默窗口列表 |
+| 157 | POST | `/api/alert-silences` | 创建静默窗口 |
+| 158 | DELETE | `/api/alert-silences/:id` | 删除静默窗口 |
+| 159 | GET | `/api/alert-rules/assets` | 告警规则资产清单 |
+| 160 | GET | `/api/alert-rules/assets/:name` | 告警规则资产 YAML |
+| 161 | GET | `/api/alert-rules/assets/:name/export` | 导出告警规则资产 |
+| 162 | POST | `/api/ai/runs/:runId/speed` | 上报生成速度 |
+| 163 | GET | `/api/metrics/profiles` | 指标画像列表 |
+| 164 | POST | `/api/metrics/query/datasource` | 按数据源查询指标数据 |
+| 165 | GET | `/api/studio-users` | 分页获取账号列表 |
+| 166 | POST | `/api/studio-users` | 创建账号 |
+| 167 | POST | `/api/studio-users/:userId/status` | 启用/禁用账号 |
+| 168 | POST | `/api/studio-users/:userId/password` | 重置账号密码 |
+| 169 | GET | `/api/studio-users/sessions/overview` | 会话概览 |
+| 170 | GET | `/api/studio-users/:userId/sessions` | 获取账号的活跃会话 |
+| 171 | GET | `/api/cloud-credentials` | 分页获取云凭证列表 |
+| 172 | GET | `/api/cloud-credentials/export` | 导出云凭证列表（CSV） |
+| 173 | POST | `/api/cloud-credentials/create` | 创建云凭证 |
+| 174 | POST | `/api/cloud-credentials/update` | 更新云凭证 |
+| 175 | POST | `/api/cloud-credentials/delete` | 删除云凭证 |
+| 176 | GET | `/api/cloud-credentials/:id/credentials` | 查看云凭证密钥 |
+| 177 | GET | `/api/llm/config` | 获取 LLM 配置 |
+| 178 | POST | `/api/llm/config` | 保存 LLM 配置 |
+| 179 | POST | `/api/llm/config/test` | 测试 LLM 配置 |
+| 180 | GET | `/api/llm/models` | 获取可用模型列表 |
+| 181 | GET | `/api/ops/homePage` | 获取运维配置概览 |
+| 182 | POST | `/api/ops/updateNameSvrAddr` | 更新当前 NameServer |
+| 183 | POST | `/api/ops/addNameSvrAddr` | 新增 NameServer 地址 |
+| 184 | POST | `/api/ops/deleteNameSvrAddr` | 删除 NameServer 地址 |
+| 185 | POST | `/api/ops/updateIsVIPChannel` | 更新 VIP 通道设置 |
+| 186 | POST | `/api/ops/updateUseTLS` | 更新 TLS 设置 |
+| 187 | GET | `/api/cloud/aliyun/regions` | 获取阿里云区域列表 |
+| 188 | GET | `/api/cloud/aliyun/instances` | 获取阿里云实例选项 |
+| 189 | GET | `/api/cloud/tencent/regions` | 获取腾讯云区域列表 |
+| 190 | GET | `/api/cloud/tencent/instances` | 获取腾讯云实例选项 |
 
 ## 通用响应格式
 
@@ -375,6 +439,8 @@ GET /api/dashboard
 ```
 
 ---
+
+## 3. 实例管理 Instances
 
 ### 3.1 获取实例列表
 
@@ -943,6 +1009,167 @@ POST /api/k8s-certs/delete
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `id` | `string` | 是 | 证书 ID |
+
+**Response `data`:** `null`
+
+### 4.21 获取主机注册表集群列表
+
+```
+GET /api/clusters/registry
+```
+
+不接受查询参数。逐个探测 NameServer 注册表（见 4.25）中 `namesrvAddr` 非空的条目，在每个地址上
+发现集群并汇总返回；注册表为空或没有可探测条目时返回空数组。
+
+**Response `data`:** `ClusterInfo[]`（同 4.1 的单条记录）
+
+### 4.22 测试集群连接
+
+```
+POST /api/clusters/test-connection
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `namesrvAddr` | `string` | 是 | NameServer 地址；缺失或空白返回 400（`namesrvAddr is required`） |
+
+**Response `data`:** `ClusterProbeResult`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `connected` | `boolean` | 是否连接成功 |
+| `namesrvAddr` | `string` | 探测的地址 |
+| `clusterName` | `string` | 集群名称 |
+| `brokerCount` | `number` | Broker 数量 |
+| `brokerNames` | `string[]` | Broker 名称列表 |
+| `elapsedMillis` | `number` | 探测耗时（毫秒） |
+| `message` | `string` | 补充信息 |
+
+探测失败不抛错，`connected` 为 `false`、原因写在 `message` 里。
+
+### 4.23 预览集群配置变更
+
+```
+POST /api/clusters/config/preview
+```
+
+**Request Body:** 同 4.3 的更新请求；请求体缺失返回 400
+（`Cluster config update request is required`）。只计算差异，不写回 Broker。
+
+**Response `data`:** `ClusterConfigPreview`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `cluster` | `ClusterInfo` | 目标集群 |
+| `currentConfig` | `ClusterConfig` | 当前配置 |
+| `proposedConfig` | `ClusterConfig` | 拟变更配置 |
+| `targetBrokers` | `object[]` | 目标 Broker：`{ name, address }` |
+| `brokerProperties` | `Record<string, string>` | 字段到 Broker property 的映射 |
+| `changes` | `object[]` | 变更明细：`{ field, currentValue, proposedValue, brokerProperty }` |
+| `changed` | `boolean` | 是否存在实际变更 |
+
+### 4.24 检查 Broker 配置漂移
+
+```
+GET /api/clusters/:id/broker-config-diff?instanceId={instanceId}
+```
+
+**Path Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `string` | 是 | 集群 ID |
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 否 | 实例 ID |
+
+**Response `data`:** `BrokerConfigDiff`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `cluster` | `string` | 集群 ID |
+| `complete` | `boolean` | 是否成功读取全部 Broker |
+| `driftDetected` | `boolean` | 可达 Broker 间是否存在差异 |
+| `brokerCount` | `number` | Broker 总数 |
+| `reachableBrokerCount` | `number` | 成功读取的 Broker 数 |
+| `comparedFields` | `string[]` | 本次比较的字段 |
+| `brokers` | `object[]` | Broker：`{ name, address, reachable, message }` |
+| `differences` | `object[]` | 差异：`{ field, brokerProperty, values: [{ brokerName, address, configured, value }] }` |
+
+### 4.25 获取 NameServer 注册表列表
+
+```
+GET /api/nameservers
+```
+
+不接受查询参数。返回 Studio 自己维护的 NameServer 注册表（`rmq_nameserver`），与 4.1 的集群发现
+视图相互独立。
+
+**Response `data`:** `NameserverRegistry[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 注册项 ID |
+| `name` | `string` | 名称 |
+| `namesrvAddr` | `string` | NameServer 地址（多个以 `,` 分隔） |
+| `k8sNamespace` | `string` | K8s 命名空间 |
+| `k8sId` | `string` | K8s 标识 |
+| `status` | `string` | 状态 |
+| `description` | `string` | 描述 |
+| `gmtCreate` | `string` | 创建时间 (ISO 8601) |
+| `gmtModified` | `string` | 更新时间 (ISO 8601) |
+
+### 4.26 创建 NameServer 注册项
+
+```
+POST /api/nameservers/registry/create
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `name` | `string` | 是 | 名称，最长 128 字符；空白返回 400（`name must not be blank`） |
+| `namesrvAddr` | `string` | 是 | NameServer 地址，最长 512 字符；每段必须是 `host:port` |
+| `k8sNamespace` | `string` | 否 | K8s 命名空间，最长 128 字符 |
+| `k8sId` | `string` | 否 | K8s 标识，最长 128 字符 |
+| `description` | `string` | 否 | 描述 |
+
+`name` 与 `namesrvAddr` 的必填校验在服务层（不是 Bean Validation），因此空白值同样返回 **400**。
+`namesrvAddr` 会被逐段规范化（去空格、IPv6 字面量小写、保留命名 zone），任一段缺 `host:port`
+或为空段返回 **400**。`name` 重复返回 **409**（`NameServer registry name already exists`）。
+
+**Response `data`:** `NameserverRegistry`
+
+### 4.27 更新 NameServer 注册项
+
+```
+POST /api/nameservers/registry/update
+```
+
+**Request Body:** 同 4.26，另加必填 `id`（`number`，缺失返回 400 `id is required`）。
+
+注册项不存在返回 **404**；改名撞到其他条目返回 **409**。整条记录按请求体覆盖，未传的可选字段
+会被清空。
+
+**Response `data`:** `NameserverRegistry`
+
+### 4.28 删除 NameServer 注册项
+
+```
+POST /api/nameservers/registry/delete
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `number` | 是 | 注册项 ID；缺失返回 400（`id is required`） |
 
 **Response `data`:** `null`
 
@@ -2022,6 +2249,101 @@ POST /api/messages/direct-consume
 | `order` | `boolean` | 是否为顺序消费（云厂商路径固定 `false`） |
 | `autoCommit` | `boolean` | 客户端是否启用自动提交（云厂商路径固定 `false`） |
 
+### 8.8 查询历史
+
+消息与轨迹查询的持久化历史：最近执行的查询及其结果快照被保存下来，供回放与审计。列表接口
+`pageSize` 上限 100；时间字段 `queriedAt` 为 ISO 8601。
+
+#### 8.8.1 获取消息查询历史
+
+```
+GET /api/query-history/messages?clusterId={clusterId}&queryType={queryType}&search={search}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `clusterId` | `string` | 否 | 按集群过滤 |
+| `queryType` | `string` | 否 | 按查询类型过滤（创建查询时的类型，如 `msgId` / `uniqueKey` / `key` / `topic`） |
+| `search` | `string` | 否 | 模糊搜索 |
+| `page` | `number` | 否 | 页码，默认 1（小于 1 返回 400 `page must be at least 1`） |
+| `pageSize` | `number` | 否 | 每页条数，默认 20（1-100，越界返回 400） |
+
+三个过滤参数都会先 `trim`，空白等价于不传。
+
+**Response `data`:** `PageResult<MessageQueryHistory>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 历史记录 ID |
+| `queryType` | `string` | 查询类型 |
+| `topic` | `string` | 查询的 Topic |
+| `msgId` | `string` | 查询的消息 ID（msgId 路径时） |
+| `tag` | `string` | 查询的 Tag |
+| `messageKey` | `string` | 查询的业务 Key |
+| `startTime` | `number` | 查询窗口开始（Unix 毫秒时间戳） |
+| `endTime` | `number` | 查询窗口结束（Unix 毫秒时间戳） |
+| `resultCount` | `number` | 结果条数 |
+| `clusterId` | `string` | 集群 ID |
+| `queriedBy` | `string` | 执行查询的用户 |
+| `queriedAt` | `string` | 查询时间 (ISO 8601) |
+
+#### 8.8.2 获取轨迹查询历史
+
+```
+GET /api/query-history/traces?clusterId={clusterId}&search={search}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:** 同 8.8.1（无 `queryType`）。
+
+**Response `data`:** `PageResult<TraceQueryHistory>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 历史记录 ID |
+| `msgId` | `string` | 查询的消息 ID |
+| `topic` | `string` | 原始 Topic |
+| `traceTopic` | `string` | 轨迹 Topic |
+| `nodeCount` | `number` | 轨迹节点数 |
+| `consumerCount` | `number` | 消费组数 |
+| `clusterId` | `string` | 集群 ID |
+| `queriedBy` | `string` | 执行查询的用户 |
+| `queriedAt` | `string` | 查询时间 (ISO 8601) |
+
+#### 8.8.3 获取查询历史汇总
+
+```
+GET /api/query-history/summary?clusterId={clusterId}
+```
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `messageQueries` | `number` | 消息查询总数 |
+| `traceQueries` | `number` | 轨迹查询总数 |
+| `latestQueryAt` | `string` | 最近一次查询时间 (ISO 8601) |
+
+#### 8.8.4 回放消息查询结果
+
+```
+GET /api/query-history/messages/:id/results
+```
+
+**Path Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `number` | 是 | 消息查询历史 ID |
+
+**Response `data`:** `MessageRecord[]`（同 8.1 的 `MessageRecord` 定义），内容取保存查询时的结果
+快照。
+
+历史记录按 `queried_by` 归属当前登录用户：**记录不存在、或属于别人，都返回 404**
+（`Query history record not found`）——不做归属泄露。只有记录存在但快照为空、或快照反序列化失败
+时，才返回 **空数组**（后者会记一条 warn 日志）。
+
 ---
 
 ## 9. 死信队列 Dead Letter Queue
@@ -2423,6 +2745,143 @@ POST /api/alert-rules/delete
 
 **Response `data`:** `null`
 
+> `AlertRuleController` 同时挂在 **`/api/alert-rules`** 与 **`/api/business-alert-rules`** 两个前缀
+> 上，11.1~11.13 的每个路径都有这份别名。两个前缀只在列表与分页上有差别：`/api/alert-rules` 返回
+> **全部告警域**的规则，`/api/business-alert-rules` 只返回 `BUSINESS` 域；其余端点（含
+> 11.7~11.13）无论走哪个前缀都固定按 `BUSINESS` 域处理。
+
+### 11.6 分页获取告警规则
+
+```
+GET /api/alert-rules/page?search={search}&enabled={enabled}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `search` | `string` | 否 | 按名称模糊搜索 |
+| `enabled` | `boolean` | 否 | 按启用状态过滤 |
+| `page` | `number` | 否 | 页码，默认 1 |
+| `pageSize` | `number` | 否 | 每页条数，默认 20 |
+
+**Response `data`:** `PageResult<AlertRule>`（同 11.1 的 `AlertRule` 定义）。
+
+### 11.7 获取告警规则运行时状态
+
+```
+GET /api/alert-rules/runtime
+```
+
+固定返回 `BUSINESS` 域的规则运行时状态。
+
+**Response `data`:** `AlertRuleRuntime[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `ruleId` | `number` | 规则 ID |
+| `fingerprint` | `string` | 运行时状态指纹 |
+| `status` | `string` | 状态: `OK` / `PENDING` / `FIRING` / `RESOLVED` / `ACKED` |
+| `consecutiveHits` | `number` | 连续命中次数 |
+| `currentValue` | `number` | 当前指标值 |
+| `lastNotifiedAt` | `string` | 最近通知时间 (ISO 8601) |
+| `nextReminderAt` | `string` | 下次提醒时间 (ISO 8601) |
+
+### 11.8 导出告警规则（YAML）
+
+```
+GET /api/alert-rules/export
+```
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `rules` | `string` | 规则的 Prometheus YAML 文本 |
+
+### 11.9 导出告警规则（传输格式）
+
+```
+GET /api/alert-rules/transfer
+```
+
+固定导出 `BUSINESS` 域。
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `version` | `number` | 传输格式版本，当前为 `1` |
+| `domain` | `string` | 告警域: `BUSINESS` / `CLUSTER` |
+| `rules` | `object[]` | 规则数组，元素即 11.2 的请求体（可用 11.13 的 import 端点回导） |
+
+### 11.10 测试告警规则
+
+```
+POST /api/alert-rules/test
+```
+
+**Request Body:** 同 11.2 的创建请求（缺失返回 400 `Alert rule request is required`）。请求体先过
+原生告警指标目录校验，指标键不合法直接 400。
+
+对规则当前绑定的指标与实例执行一次采样评估，不落库、不发通知。
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `samples` | `object[]` | 采样结果：`{ labels, availability, currentValue, conditionMet, unavailableReason }` |
+
+### 11.11 批量切换告警规则启用状态
+
+```
+POST /api/alert-rules/bulk-toggle
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `ids` | `number[]` | 是 | 规则 ID 列表，元素不得为 `null` |
+| `enabled` | `boolean` | 是 | 启用/禁用 |
+
+单条失败不中断整批：找不到的规则记入 `failures`（`Alert rule not found`），其余照常变更。
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `succeededIds` | `number[]` | 成功的规则 ID |
+| `failures` | `Record<number, string>` | 失败明细：`{ 规则ID: 原因 }` |
+| `updatedRules` | `AlertRule[]` | 变更后的规则记录 |
+
+### 11.12 批量删除告警规则
+
+```
+POST /api/alert-rules/bulk-delete
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `ids` | `number[]` | 是 | 规则 ID 列表，元素不得为 `null` |
+
+删除规则时一并清掉它的运行时状态记录，并逐条写审计（`DELETE_ALERT_RULE`）。
+
+**Response `data`:** 同 11.11（`updatedRules` 为删除后的存量规则）。
+
+### 11.13 导入告警规则
+
+```
+POST /api/alert-rules/import
+```
+
+**Request Body:** 11.9 的传输格式（`{ version, domain, rules[] }`），`rules` 元素不得为 `null`。
+固定导入到 `BUSINESS` 域。
+
+**Response `data`:** `AlertRule[]`（导入后的规则记录）。
+
 ---
 
 ## 12. 系统告警 System Alerts
@@ -2478,6 +2937,254 @@ POST /api/system-alerts/clear-acknowledged
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `cleared` | `number` | 清除数量 |
+
+### 12.4 分页获取系统告警
+
+```
+GET /api/system-alerts/page?level={level}&domain={domain}&instanceId={instanceId}&transition={transition}&labelKey={labelKey}&labelValue={labelValue}&from={from}&to={to}&notificationSuppressed={suppressed}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:** 全部可选。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `level` | `string` | 按级别过滤: `error` / `warning` / `info` |
+| `domain` | `string` | 按告警域过滤: `BUSINESS` / `CLUSTER` |
+| `instanceId` | `string` | 按实例过滤 |
+| `transition` | `string` | 按状态迁移过滤 |
+| `labelKey` / `labelValue` | `string` | 按标签键值过滤 |
+| `from` / `to` | `string` | 时间范围 (ISO 8601) |
+| `notificationSuppressed` | `boolean` | 是否只看被抑制通知的告警 |
+| `page` / `pageSize` | `number` | 分页，默认 1 / 20 |
+
+**Response `data`:** `PageResult<SystemAlert>`（同 12.1 的 `SystemAlert` 定义）。
+
+### 12.5 获取关联告警
+
+```
+GET /api/system-alerts/:id/related
+```
+
+**Response `data`:** `SystemAlert[]`（同 12.1 的 `SystemAlert` 定义）：另一告警域（`BUSINESS` ↔
+`CLUSTER`）中可能引发或关联本告警的记录——包括抑制来源（`suppressionCauseAlertId` 指向的记录），
+以及同实例在告警时间前后 30 分钟内处于 `FIRING` 的相关告警（该窗口最多取 100 条）。两路结果按
+告警 ID 去重，抑制来源排在前面。告警不存在时返回 404（`System alert not found`）。
+
+### 12.6 获取告警的通知投递记录
+
+```
+GET /api/system-alerts/:id/deliveries
+```
+
+**Response `data`:** `NotificationDelivery[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 投递记录 ID |
+| `channel` | `string` | 通知渠道 |
+| `status` | `string` | 状态: `PENDING` / `SENDING` / `DELIVERED` / `RETRY_WAIT` / `FAILED` |
+| `attemptCount` | `number` | 已尝试次数 |
+| `nextAttemptAt` | `string` | 下次尝试时间 (ISO 8601) |
+| `lastError` | `string` | 最近失败原因 |
+| `deliveredAt` | `string` | 成功投递时间 (ISO 8601) |
+
+### 12.7 分页获取通知投递记录
+
+```
+GET /api/system-alerts/deliveries/page?channel={channel}&status={status}&instanceId={instanceId}&search={search}&from={from}&to={to}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `channel` | `string` | 否 | 按通知渠道过滤 |
+| `status` | `string` | 否 | 按投递状态过滤（同 12.6） |
+| `instanceId` | `string` | 否 | 按关联实例过滤 |
+| `search` | `string` | 否 | 模糊搜索 |
+| `from` | `string` | 否 | 时间范围起点 (ISO 8601) |
+| `to` | `string` | 否 | 时间范围终点 (ISO 8601) |
+| `page` | `number` | 否 | 页码，默认 1 |
+| `pageSize` | `number` | 否 | 每页条数，默认 20 |
+
+**Response `data`:** `PageResult<NotificationDeliveryPage>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 投递记录 ID |
+| `alertId` | `number` | 关联告警 ID |
+| `channel` | `string` | 通知渠道 |
+| `status` | `string` | 状态（同 12.6） |
+| `attemptCount` | `number` | 已尝试次数 |
+| `nextAttemptAt` | `string` | 下次尝试时间 (ISO 8601) |
+| `lastError` | `string` | 最近失败原因 |
+| `deliveredAt` | `string` | 成功投递时间 (ISO 8601) |
+| `createdAt` | `string` | 创建时间 (ISO 8601) |
+| `messageContent` | `string` | 通知内容 |
+| `alertTitle` | `string` | 告警标题 |
+| `alertDomain` | `string` | 告警域: `BUSINESS` / `CLUSTER` |
+| `transition` | `string` | 状态迁移描述 |
+| `instanceId` | `string` | 关联实例 ID |
+
+### 12.8 重试单条失败投递
+
+```
+POST /api/system-alerts/deliveries/:deliveryId/retry
+```
+
+**Response `data`:** `null`
+
+### 12.9 批量重试失败投递
+
+```
+POST /api/system-alerts/deliveries/retry
+```
+
+**Request Body:** `number[]`（投递记录 ID 列表，须含 1-100 个 ID；缺失、为空或超过 100 个返回
+400）。
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `succeededIds` | `number[]` | 重试成功的投递 ID |
+| `failures` | `Record<number, string>` | 失败明细：`{ 投递ID: 原因 }` |
+
+### 12.10 获取原生告警指标目录
+
+```
+GET /api/native-alert-metrics?instanceId={instanceId}&domain={domain}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 实例标识 |
+| `domain` | `string` | 是 | 告警域: `BUSINESS` / `CLUSTER` |
+
+**Response `data`:** `NativeAlertMetricInfo[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `key` | `string` | 语义指标键 |
+| `label` | `string` | 显示名 |
+| `thresholdUnit` | `string` | 阈值单位 |
+| `supportsConsumerGroup` | `boolean` | 是否支持按消费组细分 |
+
+### 12.11 获取指标采集器状态
+
+```
+GET /api/alert-collector-status
+```
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `collectionInterval` | `string` | 采集间隔 |
+| `clusterCollectorCount` | `number` | 集群域采集器数量 |
+| `businessCollectorCount` | `number` | 业务域采集器数量 |
+
+### 12.12 获取静默窗口列表
+
+```
+GET /api/alert-silences
+```
+
+**Response `data`:** `AlertSilence[]`（同 12.13 的单条定义，未分页）。
+
+### 12.13 分页获取静默窗口列表
+
+```
+GET /api/alert-silences/page?page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:** `page` 默认 1，`pageSize` 默认 20。
+
+**Response `data`:** `PageResult<AlertSilence>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 静默窗口 ID |
+| `domain` | `string` | 告警域: `BUSINESS` / `CLUSTER` |
+| `ruleId` | `number` | 限定的规则 ID |
+| `instanceId` | `string` | 限定的实例 ID |
+| `labels` | `Record<string, string>` | 限定的标签集 |
+| `startsAt` | `string` | 开始时间 (ISO 8601) |
+| `endsAt` | `string` | 结束时间 (ISO 8601) |
+| `recurrence` | `string` | 重复策略: `ONCE` / `DAILY` / `WEEKLY` |
+| `timeZone` | `string` | 时区 |
+| `recurrenceDays` | `number[]` | 周重复的星期（1-7） |
+| `recurrenceUntil` | `string` | 重复截止时间 (ISO 8601) |
+| `reason` | `string` | 静默原因 |
+| `createdBy` | `string` | 创建人 |
+
+### 12.14 创建静默窗口
+
+```
+POST /api/alert-silences
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `domain` | `string` | 否 | 告警域 |
+| `ruleId` | `number` | 否 | 限定的规则 ID |
+| `instanceId` | `string` | 否 | 限定的实例 ID |
+| `labels` | `Record<string, string>` | 否 | 限定的标签集 |
+| `startsAt` | `string` | 是 | 开始时间 (ISO 8601 含时区偏移)；缺失返回 400 `startsAt is required` |
+| `endsAt` | `string` | 是 | 结束时间 (ISO 8601 含时区偏移)；缺失返回 400 `endsAt is required` |
+| `recurrence` | `string` | 否 | 重复策略: `ONCE` / `DAILY` / `WEEKLY` |
+| `timeZone` | `string` | 否 | 时区 |
+| `recurrenceDays` | `number[]` | 否 | 周重复的星期（1-7） |
+| `recurrenceUntil` | `string` | 否 | 重复截止时间 (ISO 8601) |
+| `reason` | `string` | 否 | 静默原因 |
+
+**Response `data`:** `AlertSilence`
+
+### 12.15 删除静默窗口
+
+```
+DELETE /api/alert-silences/:id
+```
+
+**Response `data`:** `null`
+
+### 12.16 获取告警规则资产清单
+
+```
+GET /api/alert-rules/assets
+```
+
+返回随 Studio 一起发布的每一份 RocketMQ Prometheus 告警规则 YAML 的元信息。
+
+**Response `data`:** `AlertRuleAssetInfo[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `name` | `string` | 资产名称 |
+| `group` | `string` | 资产分组 |
+| `ruleCount` | `number` | 内含规则数 |
+| `severities` | `string[]` | 覆盖的严重级别 |
+
+### 12.17 获取告警规则资产 YAML
+
+```
+GET /api/alert-rules/assets/:name
+```
+
+**Response `data`:** `string`（资产 YAML 文本）。资产名不存在返回 **404**。
+
+### 12.18 导出告警规则资产
+
+```
+GET /api/alert-rules/assets/:name/export
+```
+
+**Response:** 不走 `Result` 包装，直接返回 `application/x-yaml` 文件下载
+（`Content-Disposition: attachment`，文件名 `{name}.yaml`）。资产名不存在返回 **404**。
 
 ---
 
@@ -3351,6 +4058,29 @@ POST /api/ai/conversations/:id/followups
 ["查看该 Group 的堆积明细", "把位点重置到最近", "对比两个集群的 NameServer 配置"]
 ```
 
+### 15.15 上报生成速度
+
+```
+POST /api/ai/runs/:runId/speed
+```
+
+**Path Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `runId` | `number` | 是 | Run ID |
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `tokensPerSecond` | `number` | 是 | 客户端在流式输出期间实测的生成速度（token/s）；缺失返回 400，取值范围 0~100000，越界返回 400 |
+
+持久化客户端实测的生成速度，回放的会话记录会在回答旁显示同样的数字。Run 不属于调用者时按
+不存在处理（404）。
+
+**Response `data`:** `null`
+
 ---
 
 ## 16. 监控指标 Metrics
@@ -3545,12 +4275,63 @@ GET /api/metrics/grafana/dashboards/export
 | `404` | 没有可导出的有效内置看板 |
 | `500` | 看板 JSON 读取或 zip 打包失败 |
 
+### 16.6 获取指标画像列表
+
+```
+GET /api/metrics/profiles
+```
+
+返回版本感知的语义指标到 PromQL 的映射画像（`rocketmq4-exporter`、`rocketmq5-native`）；
+`application.yml` 里配置的 `profile` 对应的那一份会被排到列表首位。
+
+**Response `data`:** `MetricProfile[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `string` | 画像 ID |
+| `name` | `string` | 画像名称 |
+| `description` | `string` | 描述 |
+| `metrics` | `object[]` | 指标映射：`{ semanticMetric, name, unit, prometheusMetric, promql, labels, scopeLabels }` |
+
+`labels` 是该指标的分组标签名列表；`scopeLabels` 是「语义作用域 → Prometheus 标签名」的映射
+（如 `{ "cluster": "cluster", "consumer_group": "consumer_group" }`），可能为空对象。
+
+### 16.7 按数据源查询指标数据
+
+```
+POST /api/metrics/query/datasource?key={key}
+```
+
+在 14.3 / 14.4 的数据源配置流里登记的某个 Prometheus 兼容数据源上执行一次 range 查询。后端类型
+与地址取自已持久化的配置；凭据**按请求提供、绝不落库**。
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `key` | `string` | 是 | 数据源 ID；未知数据源返回 400 |
+
+**Request Body:** `MetricsDataSourceQueryRequest`
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `query` | `MetricQuery` | 是 | 查询体，形状同 16.1 的请求体；缺失返回 400 `query is required` |
+| `instanceId` | `string` | 否 | 实例 ID |
+| `username` | `string` | 否 | Basic 认证用户名 |
+| `password` | `string` | 否 | Basic 认证口令（不会被日志记录，也不会持久化） |
+| `bearerToken` | `string` | 否 | Bearer token（同样不落库、不入日志） |
+
+**Response `data`:** `MetricData`（同 16.1）
+
+错误码与 16.1 一致，另加：`400` 未知数据源、`422` 后端无法执行该表达式、`502` 后端连接或响应
+失败、`503` 后端不可用或未配置、`504` 后端查询超时。
+
 ---
 
 ## 17. Studio 账号与会话 Studio Users and Sessions
 
-> 本节记录账号角色变更、账号删除、登录锁定快照与会话注销；`/api/studio-users` 的账号列表与创建面
-> 尚未整体入档。
+> 本节记录 Studio 账号的完整生命周期（列表、创建、启用/禁用、重置密码、改角色、删除）、登录锁定
+> 快照，以及会话的注销、概览、客户端归因与按账号查询。
 
 ### 17.1 注销其他账号的全部会话
 
@@ -3635,6 +4416,456 @@ GET /api/studio-users/login-lockouts
 |------|------|------|
 | `username` | `string` | 被锁定的用户名 |
 | `remainingSeconds` | `number` | 剩余锁定秒数 |
+
+### 17.7 分页获取账号列表
+
+```
+GET /api/studio-users?search={search}&admin={admin}&enabled={enabled}&page={page}&pageSize={pageSize}
+```
+
+仅管理员可用。
+
+**Query Parameters:** `search`（否）、`admin`（否）、`enabled`（否）、`page`（默认 1）、
+`pageSize`（默认 20）。
+
+**Response `data`:** `PageResult<StudioUser>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 用户 ID |
+| `username` | `string` | 用户名 |
+| `admin` | `boolean` | 是否管理员 |
+| `enabled` | `boolean` | 是否启用 |
+| `passwordMustChange` | `boolean` | 下次登录是否必须改密码 |
+| `activeSessionCount` | `number` | 活跃会话数 |
+| `lastSessionSeenAt` | `string` | 最近活跃时间 (ISO 8601) |
+| `nearestSessionExpiresAt` | `string` | 最近到期会话时间 (ISO 8601) |
+| `passwordChangedAt` | `string` | 密码修改时间 (ISO 8601) |
+| `gmtCreate` | `string` | 创建时间 (ISO 8601) |
+| `gmtModified` | `string` | 更新时间 (ISO 8601) |
+
+三个会话相关字段来自一次批量会话汇总查询，没有活跃会话的账号分别是 `0` / `null` / `null`。
+
+### 17.8 创建账号
+
+```
+POST /api/studio-users
+```
+
+仅管理员可用。
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `username` | `string` | 是 | 用户名，最长 128 字符 |
+| `password` | `string` | 是 | 初始密码，8~256 字符 |
+| `admin` | `boolean` | 否 | 是否管理员，默认 `false` |
+
+**Response `data`:** `StudioUser`（字段同 17.7 的单条）
+
+### 17.9 启用/禁用账号
+
+```
+POST /api/studio-users/:userId/status
+```
+
+仅管理员可用。
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `enabled` | `boolean` | 是 | 启用或禁用；缺省返回 **400**（`Enabled is required`） |
+
+**Response `data`:** `StudioUser`（字段同 17.7 的单条）
+
+### 17.10 重置账号密码
+
+```
+POST /api/studio-users/:userId/password
+```
+
+仅管理员可用。管理员代改密码时不校验原密码。
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `newPassword` | `string` | 是 | 新密码，8~256 字符 |
+
+**Response `data`:** `null`
+
+### 17.11 会话概览
+
+```
+GET /api/studio-users/sessions/overview
+```
+
+仅管理员可用。全实例的会话健康度快照，供账号页顶部展示。
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `activeSessionCount` | `number` | 活跃会话总数 |
+| `activeUserCount` | `number` | 活跃用户数 |
+| `expiringSoonSessionCount` | `number` | 即将到期的会话数 |
+| `staleSessionCount` | `number` | 僵尸会话数 |
+| `expiringSoonWindowMinutes` | `number` | 即将到期的判定窗口（分钟） |
+| `staleSessionThresholdMinutes` | `number` | 僵尸会话的判定阈值（分钟） |
+
+### 17.12 获取账号的活跃会话
+
+```
+GET /api/studio-users/:userId/sessions
+```
+
+仅管理员可用。
+
+**Response `data`:** `StudioUserSession[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 会话 ID |
+| `userId` | `number` | 用户 ID |
+| `lastSeenAt` | `string` | 最近活跃时间 (ISO 8601) |
+| `expiresAt` | `string` | 到期时间 (ISO 8601) |
+| `gmtCreate` | `string` | 创建时间 (ISO 8601) |
+| `remainingSeconds` | `number` | 剩余秒数 |
+| `idleSeconds` | `number` | 空闲秒数 |
+| `expiringSoon` | `boolean` | 是否即将到期 |
+| `stale` | `boolean` | 是否僵尸会话 |
+| `clientIp` | `string?` | 签发会话的客户端地址，语义同 17.3 |
+| `userAgent` | `string?` | 签发会话的客户端 User-Agent，语义同 17.3 |
+
+---
+
+## 18. 云凭证 Cloud Credentials
+
+管理用于访问云厂商（阿里云 / 腾讯云）OpenAPI 的 AccessKey 凭证。列表与导出接口对 `accessKey`
+脱敏、`secretKey` 置空；仅 18.6 的凭据查看接口返回完整密钥，且该接口仅管理员可用。
+
+### 18.1 分页获取云凭证列表
+
+```
+GET /api/cloud-credentials?vendor={vendor}&search={search}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `vendor` | `string` | 否 | 按厂商过滤: `APACHE` / `ALIYUN` / `TENCENT` |
+| `search` | `string` | 否 | 按名称模糊搜索 |
+| `page` | `number` | 否 | 页码，默认 1 |
+| `pageSize` | `number` | 否 | 每页条数，默认 20，范围 1-100；越界返回 400 |
+
+**Response `data`:** `PageResult<CloudCredential>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 凭证 ID |
+| `name` | `string` | 凭证名称 |
+| `vendor` | `string` | 厂商: `APACHE` / `ALIYUN` / `TENCENT` |
+| `accessKey` | `string` | AccessKey（脱敏显示） |
+| `secretKey` | `string` | 恒为 `null`（列表不返回） |
+| `remark` | `string` | 备注 |
+| `gmtCreate` | `string` | 创建时间 (ISO 8601) |
+| `gmtModified` | `string` | 更新时间 (ISO 8601) |
+
+### 18.2 导出云凭证列表（CSV）
+
+```
+GET /api/cloud-credentials/export?vendor={vendor}&search={search}
+```
+
+**Query Parameters:** 同 18.1（无分页参数）。
+
+**Response `data`:** `string`（CSV 文本，带 UTF-8 BOM，表头
+`Name,Vendor,Access Key,Remark,Created,Modified`；`accessKey` 脱敏、不含 `secretKey`）。
+命中记录超过 10000 条时返回 **400**，要求收窄过滤条件。
+
+### 18.3 创建云凭证
+
+```
+POST /api/cloud-credentials/create
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `name` | `string` | 是 | 凭证名称 |
+| `vendor` | `string` | 是 | 厂商，大小写不敏感；无法识别时按 `null` 处理 |
+| `accessKey` | `string` | 是 | AccessKey |
+| `secretKey` | `string` | 是 | SecretKey |
+| `remark` | `string` | 否 | 备注 |
+
+请求体缺失返回 400（`Cloud credential request is required`）。
+
+**Response `data`:** `CloudCredential`（`secretKey` 不返回）
+
+### 18.4 更新云凭证
+
+```
+POST /api/cloud-credentials/update
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `number` | 是 | 凭证 ID；缺失返回 400 `credential id is required` |
+| `name` | `string` | 否 | 新名称 |
+| `secretKey` | `string` | 否 | 新 SecretKey（不传则保留） |
+| `remark` | `string` | 否 | 备注 |
+
+`vendor` 与 `accessKey` 不可通过本端点修改。请求体缺失返回 400。
+
+**Response `data`:** `CloudCredential`（`secretKey` 不返回）
+
+### 18.5 删除云凭证
+
+```
+POST /api/cloud-credentials/delete
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `string` | 是 | 凭证 ID（数字字符串） |
+
+**Response `data`:** `null`
+
+### 18.6 查看云凭证密钥
+
+```
+GET /api/cloud-credentials/:id/credentials
+```
+
+**Response `data`:** `CloudCredential`（`accessKey` / `secretKey` 为完整明文，仅用于需要直连云
+OpenAPI 的场景）。响应带 `Cache-Control: no-store`。仅管理员可用（`AuthInterceptor` 的
+credential-reveal 守卫）。凭证不存在返回 **404**，`id` 缺失返回 **400**。
+
+读取明文密钥是本资源上唯一不留其他痕迹的操作，因此和写操作一样记审计
+（`REVEAL_CLOUD_CREDENTIAL`）；审计详情只记凭证标识，不记密钥。
+
+---
+
+## 19. LLM 配置
+
+管理 AI 交互使用的 LLM 提供商连接配置。
+
+### 19.1 获取 LLM 配置
+
+```
+GET /api/llm/config
+```
+
+**Response `data`:** `LlmConfig`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `provider` | `string` | 提供商: `openai` / `azure` / `anthropic` / `deepseek` / `tongyi` / `ollama` / `bedrock` |
+| `engine` | `string` | 执行引擎: `http` / `claude-code` / `qoder`（空值按 `http` 处理） |
+| `apiKeyConfigured` | `boolean` | 是否已配置 API Key；只读派生字段，响应不会返回密钥内容 |
+| `ready` | `boolean` | 只读派生字段：配置是否已可直接发起调用 |
+| `apiBase` | `string` | API Base URL |
+| `model` | `string` | 模型名称 |
+| `maxTokens` | `number` | 最大输出 token 数 |
+| `temperature` | `number` | 采样温度 |
+| `enabled` | `boolean` | 是否启用 |
+| `deploymentName` | `string` | Azure 部署名 |
+| `apiVersion` | `string` | Azure API 版本 |
+| `awsRegion` | `string` | AWS 区域（Bedrock） |
+
+`ready` 的判定：未启用或未填 `model` 时为 `false`；引擎不是 `http` 时只看前两条；引擎是 `http`
+时还要求 `apiBase` 非空，且除 `ollama` 之外的提供商都要求已配置密钥。
+
+`apiKey` 与 `clearApiKey` 是**只写**字段，不会出现在响应里。该接口仅管理员可用。
+
+### 19.2 保存 LLM 配置
+
+```
+POST /api/llm/config
+```
+
+**Request Body:** 19.1 的字段，另加两个只写字段：`apiKey`（新密钥）、`clearApiKey`（显式清除）；
+省略 `apiKey` 时保留现有密钥。
+
+**Response `data`:** `LlmOperationResult`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `status` | `number` | 结果状态码：`0` 成功、`1` 失败 |
+| `msg` | `string` | 提示信息（成功时为 `saved`） |
+| `errMsg` | `string` | 失败原因 |
+| `code` | `string` | 错误码（默认 `llm.config.invalid`） |
+| `hint` | `string` | 修复建议 |
+| `models` | `object[]` | 可用模型：`{ id, name }` |
+
+### 19.3 测试 LLM 配置
+
+```
+POST /api/llm/config/test
+```
+
+**Request Body:** 同 19.2（测试请求体中的配置，不落库）。
+
+**Response `data`:** `LlmOperationResult`（同 19.2）
+
+### 19.4 获取可用模型列表
+
+```
+GET /api/llm/models
+```
+
+**Response `data`:** `LlmModelsResult`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `status` | `number` | 结果状态码：`0` 成功、`1` 失败 |
+| `data` | `object[]` | 模型列表：`{ id, name }` |
+| `source` | `string` | 模型列表来源: `provider` / `builtin` / `fallback` |
+| `warning` | `string` | 警告信息 |
+| `warningCode` | `string` | 警告码 |
+| `hint` | `string` | 修复建议 |
+
+该接口仅管理员可用。
+
+---
+
+## 20. 运维配置 Ops
+
+经典运维页使用的 NameServer / VIP 通道 / TLS 配置接口。
+
+### 20.1 获取运维配置概览
+
+```
+GET /api/ops/homePage
+```
+
+**Response `data`:** `OpsHome`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `configurationAvailable` | `boolean` | 集群是否支持读写 Ops 配置 |
+| `unavailableReason` | `string` | 不可用原因 |
+| `namesvrAddrList` | `string[]` | NameServer 地址列表 |
+| `useVIPChannel` | `boolean` | 是否启用 VIP 通道 |
+| `useTLS` | `boolean` | 是否启用 TLS |
+| `currentNamesrv` | `string` | 当前生效的 NameServer 地址 |
+
+### 20.2 更新当前 NameServer
+
+```
+POST /api/ops/updateNameSvrAddr
+```
+
+**Request Body:** `{ namesrvAddr: string }`（必填，缺失或空白返回 400 `namesrvAddr is required`）。
+
+**Response `data`:** `null`
+
+### 20.3 新增 NameServer 地址
+
+```
+POST /api/ops/addNameSvrAddr
+```
+
+**Request Body:** 同 20.2。
+
+**Response `data`:** `null`
+
+### 20.4 删除 NameServer 地址
+
+```
+POST /api/ops/deleteNameSvrAddr
+```
+
+**Request Body:** 同 20.2。
+
+**Response `data`:** `null`
+
+### 20.5 更新 VIP 通道设置
+
+```
+POST /api/ops/updateIsVIPChannel
+```
+
+**Request Body:** `{ useVIPChannel: boolean }`（必填，缺省返回 400 `useVIPChannel is required`）。
+
+**Response `data`:** `null`
+
+### 20.6 更新 TLS 设置
+
+```
+POST /api/ops/updateUseTLS
+```
+
+**Request Body:** `{ useTLS: boolean }`（必填，缺省返回 400 `useTLS is required`）。
+
+**Response `data`:** `null`
+
+---
+
+## 21. 云厂商目录 Cloud Catalog
+
+供实例创建页选择云厂商区域与实例；两个厂商的接口形状一致，且**都仅管理员可用**
+（`AuthInterceptor.isAdminOnlyGetPath` 把 `/api/cloud/aliyun/*` 与 `/api/cloud/tencent/*` 整体列为
+管理员只读路径）。
+
+### 21.1 获取阿里云区域列表
+
+```
+GET /api/cloud/aliyun/regions?credentialId={credentialId}
+```
+
+**Query Parameters:** `credentialId`（`number`，必填，云凭证 ID）。
+
+**Response `data`:** `CloudRegion[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `regionId` | `string` | 区域 ID |
+| `regionName` | `string` | 区域名称 |
+
+### 21.2 获取阿里云实例选项
+
+```
+GET /api/cloud/aliyun/instances?credentialId={credentialId}&regionId={regionId}&search={search}
+```
+
+**Query Parameters:** `credentialId`（必填）、`regionId`（必填）、`search`（否）。
+
+**Response `data`:** `CloudInstanceOption[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `instanceId` | `string` | 云实例 ID |
+| `instanceName` | `string` | 云实例名称 |
+| `status` | `string` | 实例状态 |
+| `regionId` | `string` | 区域 ID |
+| `topicCount` | `number` | Topic 数 |
+| `groupCount` | `number` | 消费组数 |
+| `remark` | `string` | 备注 |
+
+### 21.3 获取腾讯云区域列表
+
+```
+GET /api/cloud/tencent/regions?credentialId={credentialId}
+```
+
+**Response `data`:** 同 21.1。
+
+### 21.4 获取腾讯云实例选项
+
+```
+GET /api/cloud/tencent/instances?credentialId={credentialId}&regionId={regionId}&search={search}
+```
+
+**Response `data`:** 同 21.2。
 
 ---
 
