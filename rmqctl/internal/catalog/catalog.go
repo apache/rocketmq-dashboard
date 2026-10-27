@@ -113,6 +113,8 @@ type Field struct {
 	Enum        []string
 	Minimum     float64
 	HasMinimum  bool
+	Maximum     float64
+	HasMaximum  bool
 	MinLength   int
 	// ClientDefault records the x-client-default catalog extension. The only
 	// supported value today is ClientDefaultNow ("NOW"): rmqctl fills the
