@@ -2663,6 +2663,49 @@ describe('Consumer page', () => {
     expect(within(dialog).getByText('不可用')).toBeInTheDocument();
   });
 
+  it('reports a group without a consumed-message timestamp as an unknown delay', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([
+        {
+          ...group,
+          name: 'unknown-delay-cg',
+          delaySeconds: 0,
+          consumptionTimestampAvailable: false,
+        },
+        {
+          ...group,
+          name: 'known-delay-cg',
+          delaySeconds: 120,
+          consumptionTimestampAvailable: true,
+        },
+      ]),
+    );
+    renderWithProviders(<ConsumerPage />);
+
+    const unknownRow = await screen.findByRole('row', { name: /unknown-delay-cg/ });
+    // The provider's placeholder zero must not be presented as "caught up".
+    expect(within(unknownRow).getByText('不可用')).toBeInTheDocument();
+    expect(within(unknownRow).queryByText('0秒')).not.toBeInTheDocument();
+    await user.click(within(unknownRow).getByRole('button', { name: /详\s*情/ }));
+    const dialog = await screen.findByRole('dialog', { name: /unknown-delay-cg/ });
+    expect(within(dialog).getByText('不可用')).toBeInTheDocument();
+
+    // ... and neither sort direction may promote it.
+    const [delayHeader] = screen.getAllByText('消费延迟');
+    const rowTexts = () =>
+      Array.from(document.querySelectorAll('tbody tr')).map((row) => row.textContent ?? '');
+    const unknownIndex = () => rowTexts().findIndex((text) => text.includes('unknown-delay-cg'));
+    const knownIndex = () => rowTexts().findIndex((text) => /\bknown-delay-cg\b/.test(text));
+
+    // Ascending: pins the MAX_SAFE_INTEGER sentinel that keeps an unmeasured row last.
+    await user.click(delayHeader);
+    await waitFor(() => expect(unknownIndex()).toBeGreaterThan(knownIndex()));
+    // Descending: antd negates the comparator, so the sentinel has to flip with the direction.
+    await user.click(delayHeader);
+    await waitFor(() => expect(unknownIndex()).toBeGreaterThan(knownIndex()));
+  });
+
   it('sorts groups with an unknown lag after known backlogs in lag order', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(

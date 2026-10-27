@@ -53,7 +53,13 @@ const GROUP_EXPORT_COLUMNS: CsvColumn<ConsumerGroup>[] = [
     header: 'Total Lag',
     value: (group) => (isLagAvailable(group.totalLag) ? group.totalLag : 'unknown'),
   },
-  { header: 'Delay Seconds', value: (group) => group.delaySeconds },
+  {
+    header: 'Delay Seconds',
+    // The same placeholder zero as behind the table column: an unmeasured delay must not be
+    // exported as "0", which reads as caught up.
+    value: (group) =>
+      group.consumptionTimestampAvailable === false ? 'unknown' : group.delaySeconds,
+  },
   { header: 'Subscription Data Type', value: (group) => group.subscriptionDataType },
   { header: 'Delivery Order Type', value: (group) => group.deliveryOrderType },
   { header: 'Retry Max Times', value: (group) => group.retryMaxTimes },
