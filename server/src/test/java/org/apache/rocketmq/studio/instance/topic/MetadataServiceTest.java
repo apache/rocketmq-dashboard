@@ -52,6 +52,7 @@ import org.apache.rocketmq.studio.provider.apache.MetadataProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -180,6 +181,24 @@ class MetadataServiceTest {
         verify(cloudProvider).sendMessage(request.capture());
         assertThat(request.getValue().getTopic()).isEqualTo("%RETRY%group-a");
         assertThat(request.getValue().getProperties()).containsOnlyKeys("tenant");
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    void cloudRedeliveryOfAnEmptySourceBodyIsRejectedTest(String sourceBody) {
+        // Redelivery builds its DTO internally, so the @NotEmpty screening on the HTTP send request
+        // never sees it, and a stored message legitimately reports a null body. Without the guard in
+        // requireSendMessageRequest a cloud instance would forward the empty payload to the vendor
+        // SDK and surface its failure instead of a local 400.
+        MessageRecordVO source = MessageRecordVO.builder().topic("orders").body(sourceBody)
+                .properties(Map.of("tenant", "alpha")).build();
+
+        assertThatThrownBy(() -> metadataService.redeliverMessage("cloud-instance", "group-a", source, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("body must not be empty")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(cloudProvider);
     }
 
     @Test

@@ -26,6 +26,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -384,6 +386,36 @@ class TopicControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.message").value("name is required"));
 
         verifyNoInteractions(metadataService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "{\"instanceId\":\"instance-a\",\"topic\":\"orders\"}",
+        "{\"instanceId\":\"instance-a\",\"topic\":\"orders\",\"body\":null}",
+        "{\"instanceId\":\"instance-a\",\"topic\":\"orders\",\"body\":\"\"}"
+    })
+    void sendRejectsMissingOrEmptyBodyBeforeCallingMetadataTest(String json) throws Exception {
+        mockMvc.perform(post("/api/topics/send").contentType(MediaType.APPLICATION_JSON).content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("body must not be empty"));
+
+        verifyNoInteractions(metadataService);
+    }
+
+    @Test
+    void sendPreservesWhitespaceOnlyBodyTest() throws Exception {
+        String body = " \t\n";
+        SendMessageDTO request = SendMessageDTO.builder().instanceId("instance-a").topic("orders")
+                .body(body).build();
+
+        mockMvc.perform(post("/api/topics/send").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<SendMessageDTO> captor = ArgumentCaptor.forClass(SendMessageDTO.class);
+        verify(metadataService).sendMessage(captor.capture());
+        assertThat(captor.getValue().getBody()).isEqualTo(body);
     }
 
     @Test
