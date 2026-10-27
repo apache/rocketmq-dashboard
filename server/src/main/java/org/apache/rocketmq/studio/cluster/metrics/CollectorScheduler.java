@@ -339,13 +339,25 @@ public class CollectorScheduler {
         MetricCollectionScope actualScope = new MetricCollectionScope(domain, instance.getName(), scopeMetricKeys);
         // Refresh immediately before persisting so a slow remote collection cannot write after lease loss.
         // This second ownership check is defense-in-depth against a heartbeat tick racing this write.
-        if (!heartbeat.isHeld() || !collectionLease.tryAcquire() || !heartbeat.isHeld()) {
+        if (!heartbeat.isHeld() || cancelled.get()) {
+            log.debug("Discarding native metric samples before lease refresh");
+            return;
+        }
+        if (!collectionLease.tryAcquire() || !heartbeat.isHeld()) {
             heartbeat.markLost();
             log.debug("Discarding native metric samples because the collection lease was lost");
             return;
         }
+        if (cancelled.get()) {
+            log.debug("Discarding native metric samples after cancellation during lease refresh");
+            return;
+        }
         if (!collected.isEmpty()) {
             snapshotRepository.saveAll(collected);
+        }
+        if (!heartbeat.isHeld() || cancelled.get()) {
+            log.debug("Discarding native metric samples after cancellation or lease loss");
+            return;
         }
         alertProcessor.processSuccessfulCollection(actualScope, collected);
     }
