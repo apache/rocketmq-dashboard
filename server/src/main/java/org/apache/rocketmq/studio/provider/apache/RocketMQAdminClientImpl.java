@@ -26,6 +26,7 @@ import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicAttributes;
+import org.apache.rocketmq.common.constant.PermName;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.message.MessageAccessor;
 import org.apache.rocketmq.common.message.MessageConst;
@@ -34,6 +35,8 @@ import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.route.QueueData;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
@@ -91,6 +94,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     private static final int MAX_MESSAGE_SIZE = 4 * 1024 * 1024; // 4 MB default broker limit
     private static final long RESET_OFFSET_PREVIEW_TIMEOUT_MILLIS = 3_000L;
+    /**
+     * Warning every offset-reset preview path carries when the broker reported no consume offset:
+     * the group is not connected. The paths differ in what they can still compute from it.
+     */
+    private static final String OFFLINE_GROUP_PREVIEW_WARNING =
+            "Consumer group is not online and no consume offset data is available";
     private static final String RISK_INFO = "INFO";
     private static final String RISK_WARNING = "WARNING";
     private static final String RISK_ERROR = "ERROR";
@@ -1070,11 +1079,170 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     .queues(queues)
                     .build();
         } catch (Exception e) {
-            if (isConsumerNotOnline(e)) {
+            if (isBroadcastOrNeverConsumedGroup(e)) {
+                // Broadcast groups keep offsets per consumer and a group with no %RETRY% route
+                // has never consumed: there is nothing meaningful to preview, so keep blocking.
                 return emptyResetOffsetPreview(instanceId, name, timestamp, topic,
-                        "Consumer group is not online and no consume offset data is available");
+                        OFFLINE_GROUP_PREVIEW_WARNING);
+            }
+            if (isConsumerNotOnline(e)) {
+                // CONSUMER_NOT_ONLINE only means the broker-side offset table came back empty for
+                // a group that is not connected; resetOffsetNew still applies to it, so preview
+                // from the topic route instead of permanently blocking the reset.
+                return offlineResetOffsetPreview(instanceId, admin, name, timestamp, topic);
             }
             throw new BusinessException(500, "Failed to preview reset offset: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Grades the two "no data at all" exceptions {@code examineConsumeStats} raises as still
+     * blocking, so they do not reach {@link #offlineResetOffsetPreview}.
+     *
+     * <p>{@code BROADCAST_CONSUMPTION} marks a broadcast group: its offsets live in each client,
+     * so a broker-side write would not reset anything the group reads. {@code TOPIC_NOT_EXIST} on
+     * {@code %RETRY%<group>} means rocketmq-tools never resolved the group, i.e. it has never
+     * consumed, and creating broker-side offsets for it is not a preview.
+     */
+    private static boolean isBroadcastOrNeverConsumedGroup(Exception exception) {
+        if (MqResponseCodes.hasResponseCode(exception, ResponseCode.BROADCAST_CONSUMPTION)) {
+            return true;
+        }
+        String message = exception.getMessage();
+        return MqResponseCodes.hasResponseCode(exception, ResponseCode.TOPIC_NOT_EXIST)
+                && message != null && message.contains("%RETRY%");
+    }
+
+    /**
+     * Preview for a group that is not connected, mirroring what {@code resetOffsetNew} will do to
+     * it. {@code MQAdminExt.resetOffsetNew(group, topic, timestamp)} (rocketmq-tools 5.5.0) calls
+     * {@code resetOffsetByTimestamp} with {@code force = true} and, on
+     * {@code MQClientException(CONSUMER_NOT_ONLINE)}, falls back to
+     * {@code resetOffsetByTimestampOld(group, topic, timestamp, true)}. That fallback reads the
+     * broker offset store rather than the live consumers and, when it finds no consume stats for
+     * the topic, enumerates {@code queueData.getReadQueueNums()} queues of the topic route and
+     * writes {@code searchOffset(brokerAddr, queue, timestamp)} to each one unconditionally
+     * ({@code force}). This preview therefore walks the same route and the same per-queue search,
+     * so an offline group sees the targets the reset will actually commit.
+     *
+     * <p>Current consumer offsets are genuinely unavailable offline, so the lag and delta fields
+     * carry the {@link ConsumerLagResolver#UNKNOWN} / neutral sentinels the online path already
+     * uses and the preview adds an explicit offline warning; presentation layers render those
+     * sentinels as "unavailable" instead of as numbers. Falls back to the empty preview when the
+     * topic route is unavailable too.
+     */
+    private ResetConsumerOffsetPreviewVO offlineResetOffsetPreview(String instanceId, MQAdminExt admin,
+                                                                   String name, long timestamp,
+                                                                   String topic) {
+        List<ResetConsumerOffsetQueuePreviewVO> queues = new ArrayList<>();
+        try {
+            TopicRouteData route = admin.examineTopicRouteInfo(topic);
+            if (route != null && route.getQueueDatas() != null) {
+                for (QueueData queueData : route.getQueueDatas()) {
+                    // resetOffsetByTimestampOld enumerates the read queues of every routed broker;
+                    // a queue the route does not expose for reading is never consumed from, so the
+                    // reset cannot move it and the preview must not claim a target for it.
+                    if (queueData == null || !PermName.isReadable(queueData.getPerm())) {
+                        continue;
+                    }
+                    for (int queueId = 0; queueId < queueData.getReadQueueNums(); queueId++) {
+                        queues.add(offlineResetOffsetQueue(admin,
+                                new MessageQueue(topic, queueData.getBrokerName(), queueId), timestamp));
+                    }
+                }
+            }
+        } catch (Exception routeFailure) {
+            return emptyResetOffsetPreview(instanceId, name, timestamp, topic,
+                    OFFLINE_GROUP_PREVIEW_WARNING
+                            + "; the topic route is also unavailable: " + routeFailure.getMessage());
+        }
+        if (queues.isEmpty()) {
+            return emptyResetOffsetPreview(instanceId, name, timestamp, topic,
+                    OFFLINE_GROUP_PREVIEW_WARNING + "; no readable queues found for topic " + topic);
+        }
+        queues.sort(Comparator
+                .comparing((ResetConsumerOffsetQueuePreviewVO queue) ->
+                                queue.getBroker() == null ? "" : queue.getBroker(),
+                        String.CASE_INSENSITIVE_ORDER)
+                .thenComparingInt(ResetConsumerOffsetQueuePreviewVO::getQueueId));
+        long currentTotalLag = ConsumerLagResolver.UNKNOWN;
+        long projectedTotalLag = aggregateResetPreviewLag(queues, true);
+        // Delta is unavailable offline (no current offset), so no queue is classified as a rewind
+        // or a fast-forward; the warnings only carry the unavailable-offset and reset-extent notes.
+        List<String> warnings = new ArrayList<>(buildResetOffsetPreviewWarnings(queues, 0, 0));
+        warnings.add(OFFLINE_GROUP_PREVIEW_WARNING
+                + "; current offsets are unavailable, so offset deltas cannot be computed");
+        boolean complete = queues.stream().noneMatch(queue -> RISK_ERROR.equals(queue.getRiskLevel()));
+        return ResetConsumerOffsetPreviewVO.builder()
+                .instanceId(instanceId)
+                .groupName(name)
+                .topic(topic)
+                .timestamp(timestamp)
+                .complete(complete)
+                .allowReset(complete)
+                .queueCount(queues.size())
+                .warningCount(warnings.size())
+                .rewindQueueCount(0)
+                .fastForwardQueueCount(0)
+                .currentTotalLag(currentTotalLag)
+                .projectedTotalLag(projectedTotalLag)
+                .totalOffsetDelta(0L)
+                .warnings(warnings)
+                .queues(queues)
+                .build();
+    }
+
+    /**
+     * Computes the target {@code resetOffsetNew} commits for one routed queue of an offline group:
+     * {@code searchOffset(brokerAddr, queue, timestamp)}, clamped to the retained range the same way
+     * {@link #previewResetOffsetQueue} clamps it. The broker maximum is the broker offset (nothing
+     * is being consumed), so the projected lag is real; the current offset and lag stay
+     * {@link ConsumerLagResolver#UNKNOWN} because no consumer reported them.
+     */
+    private ResetConsumerOffsetQueuePreviewVO offlineResetOffsetQueue(MQAdminExt admin, MessageQueue queue,
+                                                                      long timestamp) {
+        try {
+            long minOffset = admin.minOffset(queue);
+            long maxOffset = admin.maxOffset(queue);
+            String brokerAddr = resolveBrokerAddress(admin, queue.getBrokerName());
+            long targetOffset = admin.searchOffset(brokerAddr, queue.getTopic(), queue.getQueueId(),
+                    timestamp, RESET_OFFSET_PREVIEW_TIMEOUT_MILLIS);
+            targetOffset = clampOffset(targetOffset, minOffset, maxOffset);
+            return ResetConsumerOffsetQueuePreviewVO.builder()
+                    .topic(queue.getTopic())
+                    .broker(queue.getBrokerName())
+                    .queueId(queue.getQueueId())
+                    .minOffset(minOffset)
+                    .maxOffset(maxOffset)
+                    .brokerOffset(maxOffset)
+                    .consumerOffset(ConsumerLagResolver.UNKNOWN)
+                    .targetOffset(targetOffset)
+                    .currentLag(ConsumerLagResolver.UNKNOWN)
+                    .projectedLag(resolveLag(maxOffset, targetOffset))
+                    .offsetDelta(0L)
+                    .riskLevel(resetOffsetRiskLevel(0, targetOffset, minOffset, maxOffset))
+                    // Never splice resetOffsetPreviewMessage in here: its first clause states an
+                    // offset delta, and the delta is unavailable offline, which read as
+                    // "moves the offset to Offset unchanged".
+                    .message("Current offset unavailable (group offline); target offset " + targetOffset
+                            + resetOffsetExtentNote(targetOffset, minOffset, maxOffset))
+                    .build();
+        } catch (Exception e) {
+            return ResetConsumerOffsetQueuePreviewVO.builder()
+                    .topic(queue.getTopic())
+                    .broker(queue.getBrokerName())
+                    .queueId(queue.getQueueId())
+                    .minOffset(-1L)
+                    .maxOffset(-1L)
+                    .brokerOffset(-1L)
+                    .consumerOffset(ConsumerLagResolver.UNKNOWN)
+                    .targetOffset(-1L)
+                    .currentLag(ConsumerLagResolver.UNKNOWN)
+                    .projectedLag(ConsumerLagResolver.UNKNOWN)
+                    .offsetDelta(0L)
+                    .riskLevel(RISK_ERROR)
+                    .message("Failed to preview queue offset: " + e.getMessage())
+                    .build();
         }
     }
 
@@ -1232,13 +1400,30 @@ public class RocketMQAdminClientImpl implements AdminClient {
         } else {
             messages.add("Offset unchanged");
         }
+        messages.addAll(resetOffsetExtentNotes(targetOffset, minOffset, maxOffset));
+        return String.join("; ", messages);
+    }
+
+    /**
+     * Notes stating that the target sits on an end of the retained range. Shared by the online
+     * message, whose first clause is the offset delta, and the offline message, which has no delta
+     * to state and therefore must not borrow one.
+     */
+    private List<String> resetOffsetExtentNotes(long targetOffset, long minOffset, long maxOffset) {
+        List<String> notes = new ArrayList<>();
         if (targetOffset == minOffset) {
-            messages.add("target is the minimum retained offset");
+            notes.add("target is the minimum retained offset");
         }
         if (targetOffset == maxOffset) {
-            messages.add("target is the latest offset");
+            notes.add("target is the latest offset");
         }
-        return String.join("; ", messages);
+        return notes;
+    }
+
+    /** The extent notes as a message suffix; empty when the target is inside the retained range. */
+    private String resetOffsetExtentNote(long targetOffset, long minOffset, long maxOffset) {
+        List<String> notes = resetOffsetExtentNotes(targetOffset, minOffset, maxOffset);
+        return notes.isEmpty() ? "" : "; " + String.join("; ", notes);
     }
 
     @Override

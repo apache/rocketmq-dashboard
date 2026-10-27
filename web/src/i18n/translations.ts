@@ -2587,6 +2587,15 @@ const translations: Record<string, Record<Lang, string>> = {
   'consumer.viewDistribution': { zh: '查看分布', en: 'View Distribution' },
   'consumer.resetToTime': { zh: '重置到指定时间', en: 'Reset to Time' },
   'consumer.resetSuccess': { zh: '位点重置成功', en: 'Offset reset successfully' },
+  'consumer.resetPreview.previewFailed': { zh: '预览失败', en: 'Preview failed' },
+  'consumer.resetPreview.targetOffsetUnavailable': {
+    zh: '目标位点不可用',
+    en: 'Target offset unavailable',
+  },
+  'consumer.resetPreview.currentOffsetUnavailable': {
+    zh: '消费组离线，当前位点不可用；重置将按目标时间定位',
+    en: 'Group offline, current offset unavailable; the reset targets the searched offset',
+  },
   'consumer.fetchListFailed': {
     zh: '消费组列表加载失败，请稍后重试',
     en: 'Failed to load consumer groups. Please try again later.',

@@ -194,15 +194,23 @@ const issueSeverityLabel = (severity: ConsumerGroupHealthIssue['severity']) => {
   return '提示';
 };
 
-const resetPreviewQueueMessage = (queue: ResetConsumerOffsetQueuePreview) => {
+const resetPreviewQueueMessage = (
+  queue: ResetConsumerOffsetQueuePreview,
+  t: (key: string) => string,
+) => {
   const messages: string[] = [];
   if (queue.riskLevel === 'ERROR') {
-    return queue.message || '预览失败';
+    return queue.message || t('consumer.resetPreview.previewFailed');
   }
-  if (queue.targetOffset < 0 || queue.consumerOffset < 0) {
-    return queue.message || '目标位点不可用';
+  if (queue.targetOffset < 0) {
+    return t('consumer.resetPreview.targetOffsetUnavailable');
   }
-  if (queue.offsetDelta < 0) {
+  if (queue.consumerOffset < 0) {
+    // The group is offline: the broker still reports the target, but no consumer reported a
+    // current offset, so the delta is not a measurement. Never fall back to queue.message here —
+    // it is English prose built around a delta and would read as a broken sentence in this column.
+    messages.push(t('consumer.resetPreview.currentOffsetUnavailable'));
+  } else if (queue.offsetDelta < 0) {
     messages.push(`将回放 ${Math.abs(queue.offsetDelta).toLocaleString()} 条消息`);
   } else if (queue.offsetDelta > 0) {
     messages.push(`将跳过 ${queue.offsetDelta.toLocaleString()} 条未消费消息`);
@@ -217,6 +225,14 @@ const resetPreviewQueueMessage = (queue: ResetConsumerOffsetQueuePreview) => {
   }
   return messages.join('；');
 };
+
+/**
+ * True when any previewed queue has no current offset the broker could report (an offline group),
+ * which makes the aggregate net delta a fabricated zero rather than a measurement. The per-queue
+ * 变化 column already renders such rows as '-', so the summary must not claim a number either.
+ */
+const hasUnavailableCurrentOffset = (queues: ResetConsumerOffsetQueuePreview[]) =>
+  queues.some((queue) => queue.consumerOffset < 0 || queue.targetOffset < 0);
 
 // Shared helper exported alongside the page component; fast-refresh rule waived.
 // eslint-disable-next-line react-refresh/only-export-components
@@ -1487,11 +1503,14 @@ const ConsumerPageContent = ({
       key: 'message',
       width: 240,
       ellipsis: true,
-      render: (_: unknown, record: ResetConsumerOffsetQueuePreview) => (
-        <Text style={{ fontSize: 14 }} title={resetPreviewQueueMessage(record)}>
-          {resetPreviewQueueMessage(record)}
-        </Text>
-      ),
+      render: (_: unknown, record: ResetConsumerOffsetQueuePreview) => {
+        const message = resetPreviewQueueMessage(record, t);
+        return (
+          <Text style={{ fontSize: 14 }} title={message}>
+            {message}
+          </Text>
+        );
+      },
     },
   ];
 
@@ -2811,7 +2830,9 @@ const ConsumerPageContent = ({
                     {formatOffsetValue(resetPreview.projectedTotalLag)}
                   </Descriptions.Item>
                   <Descriptions.Item label="位点净变化">
-                    {formatOffsetDelta(resetPreview.totalOffsetDelta)}
+                    {hasUnavailableCurrentOffset(resetPreviewQueues)
+                      ? '-'
+                      : formatOffsetDelta(resetPreview.totalOffsetDelta)}
                   </Descriptions.Item>
                   <Descriptions.Item label="回放 Queue">
                     {resetPreview.rewindQueueCount}

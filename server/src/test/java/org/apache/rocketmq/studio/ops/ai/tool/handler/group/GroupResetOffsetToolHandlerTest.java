@@ -6,13 +6,17 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.handler.group;
 
+import java.util.List;
 import java.util.Map;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
+import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetQueuePreviewVO;
 import org.apache.rocketmq.studio.instance.topic.MetadataService;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupResetOffsetInput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.group.ResetOffsetOutput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.plan.ToolPlan;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -26,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class GroupResetOffsetToolHandlerTest {
@@ -99,5 +104,62 @@ class GroupResetOffsetToolHandlerTest {
                 .hasMessage("timestamp must be positive")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
         verifyNoInteractions(metadataService);
+    }
+
+    @Test
+    void previewShouldRenderAnUnavailableLagInsteadOfTheSentinelTest() {
+        // An offline group has no current offset, so the preview reports the -1 "cannot be
+        // determined" sentinel for the current lag. The plan prose must never interpolate it, or
+        // the operator is told "projected lag changes from -1 to 500".
+        GroupResetOffsetInput input = new GroupResetOffsetInput(
+                "untrusted-instance", "group-1", "TopicA", 1700000000000L);
+        ToolExecutionContext execution = ToolExecutionContext.of(
+                "instance-a", null, Map.of("instanceId", "untrusted-instance"));
+        ResetConsumerOffsetPreviewVO preview = ResetConsumerOffsetPreviewVO.builder()
+                .instanceId("instance-a")
+                .groupName("group-1")
+                .topic("TopicA")
+                .timestamp(1700000000000L)
+                .complete(true)
+                .allowReset(true)
+                .queueCount(1)
+                .warningCount(1)
+                .currentTotalLag(-1L)
+                .projectedTotalLag(500L)
+                .totalOffsetDelta(0L)
+                .warnings(List.of(
+                        "Consumer group is not online and no consume offset data is available"
+                                + "; current offsets are unavailable, so offset deltas cannot be computed"))
+                .queues(List.of(ResetConsumerOffsetQueuePreviewVO.builder()
+                        .topic("TopicA")
+                        .broker("broker-a")
+                        .queueId(0)
+                        .minOffset(10L)
+                        .maxOffset(600L)
+                        .brokerOffset(600L)
+                        .consumerOffset(-1L)
+                        .targetOffset(100L)
+                        .currentLag(-1L)
+                        .projectedLag(500L)
+                        .offsetDelta(0L)
+                        .riskLevel("INFO")
+                        .message("Current offset unavailable (group offline); target offset 100")
+                        .build()))
+                .build();
+        when(metadataService.previewResetOffset("instance-a", "group-1", 1700000000000L, "TopicA"))
+                .thenReturn(preview);
+
+        ToolPlan plan = handler.preview(input, execution);
+
+        assertThat(plan.impact()).containsExactly(
+                "Moves offsets for 1 queues; projected lag changes from unavailable to 500.");
+        assertThat(plan.impact()).noneMatch(line -> line.contains("-1"));
+        assertThat(plan.warnings()).containsExactly(
+                "Consumer group is not online and no consume offset data is available"
+                        + "; current offsets are unavailable, so offset deltas cannot be computed");
+        // The structured before/after state keeps the documented sentinel rather than a fabricated
+        // zero, so the caller can still tell "unknown" from "measured as nothing".
+        assertThat(((Number) plan.before().get("totalLag")).longValue()).isEqualTo(-1L);
+        assertThat(((Number) plan.after().get("totalLag")).longValue()).isEqualTo(500L);
     }
 }
