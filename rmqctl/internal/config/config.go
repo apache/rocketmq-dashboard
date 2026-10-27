@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -201,6 +202,41 @@ func ContextName(explicit string, cfg Config) (string, error) {
 		return "", fmt.Errorf("context %q does not exist", name)
 	}
 	return name, nil
+}
+
+// RedactServerURL masks embedded user credentials in a Studio Server URL for display.
+// set-context rejects userinfo URLs, but configs written by older rmqctl versions or by
+// hand still load, and echoing their credentials through `config get-contexts` or an
+// L2/L3 confirmation prompt would disclose them. The redaction is display-only: the
+// stored value and the structured output keep the URL verbatim, and a URL without user
+// info is returned unchanged (parse failures fall through to the raw value, where the
+// table renderer's control escaping still applies).
+func RedactServerURL(server string) string {
+	parsed, err := url.Parse(server)
+	if err != nil || parsed.User == nil {
+		return server
+	}
+	// The marker is spliced into the raw authority rather than rebuilt through
+	// URL.String(): url.User percent-encodes "*" as "%2A", and the raw userinfo may
+	// contain characters whose escaped form would not match the stored text.
+	authorityStart := strings.Index(server, "//")
+	if authorityStart < 0 {
+		return server
+	}
+	authorityStart += len("//")
+	authorityEnd := len(server)
+	for i := authorityStart; i < len(server); i++ {
+		if server[i] == '/' || server[i] == '?' || server[i] == '#' {
+			authorityEnd = i
+			break
+		}
+	}
+	// User != nil guarantees an "@" inside the authority; it ends the userinfo.
+	separator := strings.LastIndex(server[authorityStart:authorityEnd], "@")
+	if separator < 0 {
+		return server
+	}
+	return server[:authorityStart] + "***" + server[authorityStart+separator:]
 }
 
 func ResolveCredential(reference CredentialRef, getenv func(string) string) (Credential, error) {

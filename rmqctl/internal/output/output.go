@@ -129,7 +129,7 @@ func ConfigTable(w io.Writer, cfg config.Config) error {
 		}
 		context := cfg.Contexts[name]
 		fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n",
-			current, escapeTableCell(name), escapeTableCell(context.Server),
+			current, escapeTableCell(name), escapeTableCell(config.RedactServerURL(context.Server)),
 			escapeTableCell(context.Credential.AccessKeyRef), escapeTableCell(context.Credential.SecretKeyRef))
 	}
 	return table.Flush()
