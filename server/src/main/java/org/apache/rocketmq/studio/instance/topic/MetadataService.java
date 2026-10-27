@@ -41,6 +41,7 @@ import org.apache.rocketmq.studio.provider.apache.MetadataProvider;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
+import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CsvUtil;
 import org.apache.rocketmq.studio.common.util.MessagePropertyDisplay;
@@ -59,6 +60,7 @@ import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.MessageService;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
+import org.apache.rocketmq.studio.provider.LiteTopicProvider;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -91,6 +93,7 @@ public class MetadataService {
     private final MessageService messageService;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final ResourceOwnershipGuard ownershipGuard;
+    private final LiteTopicProvider liteTopicProvider;
 
     /**
      * Canonicalizes registered instance names and legacy numeric IDs, while preserving physical
@@ -170,6 +173,7 @@ public class MetadataService {
         }
         String target = requireWriteInstance(instanceId, new Resource(Kind.TOPIC, topic.getName()), false);
         topic.setInstanceId(target);
+        guardLiteCreate(target, topic);
         InstanceProvider provider = resolve(target);
         return executeWithAudit(provider, Operation.CREATE_TOPIC, ResourceType.TOPIC, topic.getName(),
                 target, topicDetail(topic), () -> importing
@@ -182,6 +186,10 @@ public class MetadataService {
 
     public TopicVO updateTopic(String instanceId, TopicVO topic) {
         requireTopic(topic);
+        if (topic.getLiteTtlMinutes() != null) {
+            throw new BusinessException(400,
+                    "liteTtlMinutes is create-only; use the LiteTopic TTL extension to change it");
+        }
         String target = requireWriteInstance(instanceId, new Resource(Kind.TOPIC, topic.getName()), false);
         topic.setInstanceId(target);
         guardImmutableType(target, topic);
@@ -200,6 +208,47 @@ public class MetadataService {
                 throw new BusinessException(400, "topic message type is immutable");
             }
         });
+    }
+
+    /**
+     * A Lite parent topic is created through the generic topic dialog. Its TTL is the create-time
+     * {@code lite.topic.expiration} attribute in minutes, the {@code '$'} name separator is
+     * reserved for the implicit {@code %LMQ%$parent$liteTopic} children, and the write needs an
+     * Apache-vendor instance on a lite-capable cluster.
+     *
+     * <p>The instance gate mirrors {@link LiteTopicService#extendTTL}. A cloud OpenAPI has no
+     * {@code lite.topic.expiration} equivalent, so a LITE parent created there would keep the
+     * broker's own {@code -1} (never expire) default and stay outside that vendor's control plane.
+     *
+     * <p>{@code instanceId} is the canonical name resolved by {@code requireWriteInstance}, so the
+     * guard sees the same instance the write is about to target.
+     */
+    private void guardLiteCreate(String instanceId, TopicVO topic) {
+        if (topic.getLiteTtlMinutes() != null && topic.getType() != TopicType.LITE) {
+            throw new BusinessException(400, "liteTtlMinutes is only accepted when type is LITE");
+        }
+        if (topic.getLiteTtlMinutes() != null
+                && (topic.getLiteTtlMinutes() < 1
+                        || topic.getLiteTtlMinutes() > LiteTopicProvider.MAX_LITE_TTL_MINUTES)) {
+            throw new BusinessException(400, "liteTtlMinutes must be between 1 and 43200");
+        }
+        if (topic.getType() != TopicType.LITE) {
+            return;
+        }
+        if (topic.getName().contains("$")) {
+            throw new BusinessException(400,
+                    "Lite parent topic name must not contain '$': '$' separates the parent topic from its lite topics");
+        }
+        InstanceVO instance = ownershipGuard.requireInstance(instanceId);
+        ownershipGuard.requireSupportedProvider(instance);
+        if (!liteTopicProvider.isSupported()) {
+            throw new BusinessException(LiteTopicProvider.NOT_IMPLEMENTED, LiteTopicProvider.UNSUPPORTED);
+        }
+        if (topic.getLiteTtlMinutes() == null) {
+            // The broker treats a missing or non-positive lite.topic.expiration as "never expire",
+            // so an omitted TTL is filled with the console default rather than forwarded as-is.
+            topic.setLiteTtlMinutes(LiteTopicProvider.DEFAULT_LITE_TTL_MINUTES);
+        }
     }
 
     public void deleteTopic(String name) {

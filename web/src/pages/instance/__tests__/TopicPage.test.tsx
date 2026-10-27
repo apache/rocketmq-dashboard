@@ -125,7 +125,9 @@ const healthyBrokerRoute: BrokerRoute = {
   replicaCount: 1,
 };
 
-const renderWithProviders = (initialEntry = '/instance/topic') =>
+const renderWithProviders = (
+  initialEntry: string | { pathname: string; state?: unknown } = '/instance/topic',
+) =>
   render(
     <App>
       <LangProvider>
@@ -374,6 +376,81 @@ describe('TopicPage', () => {
     expect(within(getTableBody()).getByText('topic-b')).toBeInTheDocument();
     expect(within(getTableBody()).getByText('server page response')).toBeInTheDocument();
     expect(within(getTableBody()).queryByText('create response')).not.toBeInTheDocument();
+  });
+
+  it('sends the Lite TTL when creating a Lite parent topic', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders('/instance/instance-proxy-1/topic');
+
+    await screen.findByText('topic-01');
+    await user.click(screen.getByRole('button', { name: /创建 Topic/ }));
+    const dialog = await screen.findByRole('dialog', { name: /创建 Topic/ });
+    await user.type(within(dialog).getByLabelText('Topic 名称'), 'chat');
+    await user.click(within(dialog).getByText('LiteTopic'));
+
+    // The TTL input appears only for LITE creates and is prefilled with one day (1440 minutes).
+    const ttl = within(dialog).getByLabelText('TTL（分钟）') as HTMLInputElement;
+    expect(ttl.value).toBe('1440');
+
+    await user.click(within(dialog).getByRole('button', { name: /创\s*建/ }));
+
+    await waitFor(() => expect(topicServiceMocks.createTopic).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.createTopic).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'chat', type: 'LITE', liteTtlMinutes: 1440 }),
+    );
+  });
+
+  it('leaves the Lite TTL out of non-Lite creates', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders('/instance/instance-proxy-1/topic');
+
+    await screen.findByText('topic-01');
+    await user.click(screen.getByRole('button', { name: /创建 Topic/ }));
+    const dialog = await screen.findByRole('dialog', { name: /创建 Topic/ });
+    expect(within(dialog).queryByLabelText('TTL（分钟）')).not.toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText('Topic 名称'), 'orders');
+    await user.click(within(dialog).getByRole('button', { name: /创\s*建/ }));
+
+    await waitFor(() => expect(topicServiceMocks.createTopic).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.createTopic.mock.calls[0][0]).not.toHaveProperty('liteTtlMinutes');
+  });
+
+  it('never sends the Lite TTL on topic updates', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const liteTopic = { ...buildTopics(1)[0], type: 'LITE' };
+    mockTopicsList([liteTopic]);
+    renderWithProviders('/instance/instance-proxy-1/topic');
+
+    await screen.findByText('topic-01');
+    const row = screen.getByText('topic-01').closest('tr') as HTMLElement;
+    await user.click(within(row).getByRole('button', { name: /配置/ }));
+    const dialog = await screen.findByRole('dialog', { name: /编辑 Topic/ });
+
+    // TTL is create-only: the edit dialog has no TTL input even for a Lite parent topic.
+    expect(within(dialog).queryByLabelText('TTL（分钟）')).not.toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => expect(topicServiceMocks.updateTopic).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.updateTopic.mock.calls[0][0]).not.toHaveProperty('liteTtlMinutes');
+  });
+
+  it('opens the create dialog with LITE preselected for the LiteTopic page action', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders({
+      pathname: '/instance/instance-proxy-1/topic',
+      state: { createType: 'LITE' },
+    });
+
+    const dialog = await screen.findByRole('dialog', { name: /创建 Topic/ });
+    expect(within(dialog).getByLabelText('TTL（分钟）')).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText('Topic 名称'), 'chat');
+    await user.click(within(dialog).getByRole('button', { name: /创\s*建/ }));
+
+    await waitFor(() => expect(topicServiceMocks.createTopic).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.createTopic).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'chat', type: 'LITE', liteTtlMinutes: 1440 }),
+    );
   });
 
   it('updates topic config through the update service and reloads the page', async () => {
