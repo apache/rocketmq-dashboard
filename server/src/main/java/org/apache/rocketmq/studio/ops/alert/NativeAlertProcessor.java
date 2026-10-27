@@ -197,7 +197,8 @@ public class NativeAlertProcessor {
                 .title(rule.getName()).description(update.transition() + " " + metricKey + " on " + instanceId)
                 .time(eventTime).acknowledged(false).domain(domain).ruleId(rule.getId())
                 .fingerprint(key.fingerprint()).transition(update.transition().name()).instanceId(instanceId)
-                .currentValue(update.state().currentValue()).labels(eventLabels).build();
+                .currentValue(AlertRuleSemanticFingerprint.displayValue(rule, update.state().currentValue()))
+                .labels(eventLabels).build();
         boolean suppressNotification = shouldSuppress(domain, update.transition());
         if (suppressNotification) {
             Optional<SystemAlertVO> cause = notificationSuppressionService.findSuppressingClusterAlert(event);

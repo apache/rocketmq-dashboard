@@ -268,6 +268,28 @@ class NativeAlertRuleTestServiceTest {
         verifyNoInteractions(snapshots);
     }
 
+    @Test
+    void scalesRatioSamplesToTheRulePercentUnitTest() {
+        InstanceRepository instances = mock(InstanceRepository.class);
+        ClusterMetricsCollector collector = mock(ClusterMetricsCollector.class);
+        InstanceVO instance = InstanceVO.builder().name("local").build();
+        when(instances.findByIdentifier("local")).thenReturn(Optional.of(instance));
+        when(collector.supports(instance)).thenReturn(true);
+        when(collector.collect(instance)).thenReturn(List.of(new MetricSample("broker.disk.usage_ratio",
+                AlertDomain.CLUSTER, "local", "cluster-a", Map.of("brokerName", "broker-a"), 0.91,
+                MetricAvailability.AVAILABLE, Instant.now())));
+        AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.CLUSTER).metric("broker.disk.usage_ratio")
+                .instanceId("local").brokerName("broker-a").operator(">").threshold(85).thresholdUnit("%").build();
+
+        AlertRuleTestResultVO result = new NativeAlertRuleTestService(instances, List.of(collector), List.of(),
+                new AlertRuleEvaluator(), snapshots).test(rule);
+
+        assertThat(result.samples()).singleElement().satisfies(sample -> {
+            assertThat(sample.currentValue()).isEqualTo(91);
+            assertThat(sample.conditionMet()).isTrue();
+        });
+    }
+
     private AlertRuleTestResultVO testBusinessRule(AlertRuleVO rule, MetricSample... samples) {
         InstanceRepository instances = mock(InstanceRepository.class);
         BusinessMetricsCollector collector = mock(BusinessMetricsCollector.class);
