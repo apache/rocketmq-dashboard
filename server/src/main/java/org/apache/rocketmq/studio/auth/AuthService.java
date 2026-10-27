@@ -190,10 +190,12 @@ public class AuthService {
     public void logout(String authorization) {
         tokenFromAuthorization(authorization).ifPresent(token -> {
             if (databaseBacked()) {
+                LocalDateTime current = now();
                 sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
                         .eq("token_hash", tokenHash(token))
                         .isNull("revoked_at")
-                        .set("revoked_at", now()));
+                        .set("revoked_at", current)
+                        .set("gmt_modified", current));
             } else {
                 activeTokens.remove(token);
             }
@@ -350,6 +352,7 @@ public class AuthService {
             wrapper.ne("user_id", Long.parseLong(currentUserId));
         }
         wrapper.set("revoked_at", current);
+        wrapper.set("gmt_modified", current);
         return sessionMapper.update(null, wrapper);
     }
 
@@ -371,7 +374,8 @@ public class AuthService {
         sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
                 .eq("id", sessionId)
                 .isNull("revoked_at")
-                .set("revoked_at", current));
+                .set("revoked_at", current)
+                .set("gmt_modified", current));
     }
 
     public RmqStudioUser createUser(String username, String password, boolean admin) {
@@ -386,10 +390,16 @@ public class AuthService {
         user.setPasswordHash(passwordHasher.hash(password));
         user.setAdmin(admin);
         user.setEnabled(true);
-        user.setPasswordChangedAt(now());
+        LocalDateTime current = now();
+        user.setPasswordChangedAt(current);
         // The initial password was chosen by the creator, not the owner: the owner rotates it
         // at first login.
         user.setPasswordMustChange(true);
+        // An omitted gmt_create/gmt_modified falls back to the database session's
+        // CURRENT_TIMESTAMP, which is not UTC on a server running in another zone, while the
+        // API serializes every zone-less timestamp as UTC.
+        user.setGmtCreate(current);
+        user.setGmtModified(current);
         try {
             userMapper.insert(user);
         } catch (DuplicateKeyException exception) {
@@ -418,7 +428,11 @@ public class AuthService {
                 throw new BusinessException(409, "The last enabled administrator cannot be disabled");
             }
         }
-        userMapper.updateById(userWithEnabled(user, enabled));
+        RmqStudioUser enableUpdate = userWithEnabled(user, enabled);
+        // updateById only writes non-null fields, so without this the column's ON UPDATE
+        // CURRENT_TIMESTAMP - the database session's zone, not UTC - would be the audit instant.
+        enableUpdate.setGmtModified(now());
+        userMapper.updateById(enableUpdate);
         if (!enabled) {
             revokeUserSessions(user.getId());
         }
@@ -454,6 +468,10 @@ public class AuthService {
         RmqStudioUser update = new RmqStudioUser();
         update.setId(user.getId());
         update.setAdmin(admin);
+        // Same reason as in setUserEnabled: updateById writes only non-null fields, so the audit
+        // instant has to be stamped here or the column's ON UPDATE CURRENT_TIMESTAMP - the
+        // database session's zone, not UTC - would be it.
+        update.setGmtModified(now());
         userMapper.updateById(update);
         revokeUserSessions(user.getId());
         user.setAdmin(admin);
@@ -516,7 +534,8 @@ public class AuthService {
                 .set("password_changed_at", now())
                 // A password chosen by its owner needs no rotation; one handed out by an
                 // administrator does, until the owner replaces it.
-                .set("password_must_change", !requireCurrentPassword));
+                .set("password_must_change", !requireCurrentPassword)
+                .set("gmt_modified", now()));
         revokeUserSessions(user.getId());
     }
 
@@ -535,7 +554,8 @@ public class AuthService {
                         .isNotNull("last_seen_at")
                         .ge("expires_at", current)
                         .lt("last_seen_at", current.minusMinutes(idleTimeoutMinutes))
-                        .set("revoked_at", current));
+                        .set("revoked_at", current)
+                        .set("gmt_modified", current));
             }
             sessionMapper.delete(new QueryWrapper<RmqStudioSession>().lt("expires_at", current));
         } else {
@@ -576,6 +596,8 @@ public class AuthService {
         session.setExpiresAt(current.plusSeconds(tokenTtlSeconds));
         session.setClientIp(truncate(clientIp, MAX_CLIENT_IP_LENGTH));
         session.setUserAgent(truncate(userAgent, MAX_USER_AGENT_LENGTH));
+        session.setGmtCreate(current);
+        session.setGmtModified(current);
         sessionMapper.insert(session);
         return loginResponse(userInfo(user), token, tokenTtlSeconds);
     }
@@ -616,7 +638,8 @@ public class AuthService {
                 && !session.getLastSeenAt().plusMinutes(idleTimeoutMinutes).isAfter(current)) {
             sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
                     .eq("id", session.getId())
-                    .set("revoked_at", current));
+                    .set("revoked_at", current)
+                    .set("gmt_modified", current));
             return Optional.empty();
         }
         if (session.getLastSeenAt() == null
@@ -625,7 +648,8 @@ public class AuthService {
                     .eq("id", session.getId())
                     // A delayed request must not overwrite activity a newer request already recorded.
                     .and(activity -> activity.isNull("last_seen_at").or().lt("last_seen_at", current))
-                    .set("last_seen_at", current));
+                    .set("last_seen_at", current)
+                    .set("gmt_modified", current));
         }
         return Optional.of(userInfo(user));
     }
@@ -668,7 +692,10 @@ public class AuthService {
             user.setPasswordHash(passwordHasher.hash(configuredUser.getPassword()));
             user.setAdmin(configuredUser.isAdmin());
             user.setEnabled(true);
-            user.setPasswordChangedAt(now());
+            LocalDateTime current = now();
+            user.setPasswordChangedAt(current);
+            user.setGmtCreate(current);
+            user.setGmtModified(current);
             try {
                 userMapper.insert(user);
             } catch (DuplicateKeyException exception) {
@@ -704,7 +731,8 @@ public class AuthService {
                 .eq("user_id", userId)
                 .isNull("revoked_at")
                 .gt("expires_at", current)
-                .set("revoked_at", current));
+                .set("revoked_at", current)
+                .set("gmt_modified", current));
     }
 
     private Set<Long> normalizeUserIds(Collection<Long> userIds) {

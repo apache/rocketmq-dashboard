@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+import type { SortOrder } from 'antd/es/table/interface';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -120,6 +121,24 @@ const { Text } = Typography;
 
 const UNKNOWN_LAG_COLOR = '#8c8c8c';
 const UNAVAILABLE_LAG_LABEL = '不可用';
+
+/**
+ * The provider leaves delaySeconds at zero when the broker consume stats carried no
+ * consumed-message timestamp (RocketMQMetadataProvider: "keep zeros") and says so through
+ * consumptionTimestampAvailable. Rendering that zero claims the group is caught up, so the
+ * column and its order have to treat it as unknown.
+ */
+const isDelayAvailable = (group: ConsumerGroup): boolean =>
+  group.consumptionTimestampAvailable !== false;
+
+const delaySortValue = (group: ConsumerGroup, sortOrder?: SortOrder): number => {
+  if (isDelayAvailable(group) && Number.isFinite(group.delaySeconds)) {
+    return group.delaySeconds;
+  }
+  // Ant Design negates the comparator for a descending column, so the sentinel has to flip with
+  // the direction to keep unmeasured rows after measured ones in both orders.
+  return sortOrder === 'descend' ? Number.MIN_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+};
 
 const lagColor = (lag: number): string => {
   // The backend reports -1 when the lag cannot be determined; do not color it
@@ -1044,7 +1063,8 @@ const ConsumerPageContent = ({
       key: 'totalLag',
       width: 96,
       align: 'right',
-      sorter: (a, b) => lagSortValue(a.totalLag) - lagSortValue(b.totalLag),
+      sorter: (a, b, sortOrder) =>
+        lagSortValue(a.totalLag, sortOrder) - lagSortValue(b.totalLag, sortOrder),
       render: (lag: number) =>
         isLagAvailable(lag) ? (
           lag.toLocaleString()
@@ -1058,8 +1078,13 @@ const ConsumerPageContent = ({
       key: 'delaySeconds',
       width: 100,
       align: 'right',
-      sorter: (a, b) => (a.delaySeconds ?? 0) - (b.delaySeconds ?? 0),
-      render: (seconds: number) => formatDelay(seconds ?? 0, lang),
+      sorter: (a, b, sortOrder) => delaySortValue(a, sortOrder) - delaySortValue(b, sortOrder),
+      render: (seconds: number, record: ConsumerGroup) =>
+        isDelayAvailable(record) ? (
+          formatDelay(seconds ?? 0, lang)
+        ) : (
+          <Text type="secondary">{UNAVAILABLE_LAG_LABEL}</Text>
+        ),
     },
     {
       title: '创建时间',
@@ -1859,7 +1884,11 @@ const ConsumerPageContent = ({
                         </Tag>
                       </Descriptions.Item>
                       <Descriptions.Item label="消费延迟">
-                        <Text strong>{formatDelay(selectedGroup.delaySeconds, lang)}</Text>
+                        <Text strong>
+                          {isDelayAvailable(selectedGroup)
+                            ? formatDelay(selectedGroup.delaySeconds, lang)
+                            : UNAVAILABLE_LAG_LABEL}
+                        </Text>
                       </Descriptions.Item>
                       <Descriptions.Item label="最大重试次数">
                         <Text strong>{selectedGroup.retryMaxTimes}</Text> 次
