@@ -317,6 +317,12 @@ const TopicPageContent = ({
     {},
   );
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  // Type of every row this page has shown, keyed by name. The batch delete submits every
+  // selected name, and a reload (create, import, single delete) reshuffles the
+  // server-paginated rows: a selected row can leave the page while its name stays
+  // selected. The Lite cascade warning has to count those too, so remember the type
+  // where it was seen instead of re-deriving it from the rows visible right now.
+  const topicTypesByName = useRef(new Map<string, string>());
   const [searchText, setSearchText] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [tablePage, setTablePage] = useState(1);
@@ -464,6 +470,10 @@ const TopicPageContent = ({
     () => visibleTopics(topics, selectedInstanceId, searchText, typeFilter),
     [topics, selectedInstanceId, searchText, typeFilter],
   );
+
+  useEffect(() => {
+    for (const topic of topics) topicTypesByName.current.set(topic.name, topic.type);
+  }, [topics]);
 
   const maxTablePage = Math.max(1, Math.ceil(totalTopics / tablePageSize));
   const currentTablePage = Math.min(tablePage, maxTablePage);
@@ -672,10 +682,10 @@ const TopicPageContent = ({
     } else if (key === 'delete') {
       const openDeleteConfirm = (liteSummary: LiteTopicItem | undefined) => {
         modal.confirm({
-          title: '确认删除',
+          title: t('topic.deleteConfirmTitle'),
           content: (
             <div>
-              <div>{`确定要删除 Topic「${topic.name}」吗？此操作不可撤销。`}</div>
+              <div>{t('topic.deleteContent', { name: topic.name })}</div>
               {topic.type === 'LITE' && (
                 <>
                   <div>{t('topic.liteDeleteWarning', { name: topic.name })}</div>
@@ -692,9 +702,9 @@ const TopicPageContent = ({
               )}
             </div>
           ),
-          okText: '删除',
+          okText: t('common.delete'),
           okType: 'danger',
-          cancelText: '取消',
+          cancelText: t('common.cancel'),
           onOk: async () => {
             try {
               await deleteTopic(topic.name, selectedInstanceId || undefined);
@@ -703,9 +713,9 @@ const TopicPageContent = ({
               // failure path re-seeds that same selection - leaving nothing to uncheck.
               setSelectedRowKeys((previous) => previous.filter((key) => key !== topic.name));
               await reloadTopicPage();
-              message.success(`Topic「${topic.name}」已删除`);
+              message.success(t('topic.deleteSuccess', { name: topic.name }));
             } catch {
-              message.error('删除 Topic 失败，请稍后重试');
+              message.error(t('topic.deleteFailed'));
             }
           },
         });
@@ -1364,14 +1374,16 @@ const TopicPageContent = ({
               danger
               icon={<DeleteOutlined />}
               onClick={() => {
-                const liteParentCount = filteredTopics.filter(
-                  (topic) => selectedRowKeys.includes(topic.name) && topic.type === 'LITE',
+                // Count from what was checked, not from the visible rows: the delete below
+                // submits every selected name, and a selected row may have left the page.
+                const liteParentCount = selectedRowKeys.filter(
+                  (key) => topicTypesByName.current.get(String(key)) === 'LITE',
                 ).length;
                 Modal.confirm({
-                  title: '确认批量删除',
+                  title: t('topic.batchDeleteConfirmTitle'),
                   content: (
                     <div>
-                      <div>{`确定要删除选中的 ${selectedRowKeys.length} 个 Topic 吗？此操作不可撤销。`}</div>
+                      <div>{t('topic.batchDeleteContent', { count: selectedRowKeys.length })}</div>
                       {liteParentCount > 0 && (
                         <>
                           <div>{t('topic.liteDeleteBatchWarning', { count: liteParentCount })}</div>
@@ -1380,9 +1392,9 @@ const TopicPageContent = ({
                       )}
                     </div>
                   ),
-                  okText: '删除',
+                  okText: t('common.delete'),
                   okType: 'danger',
-                  cancelText: '取消',
+                  cancelText: t('common.cancel'),
                   onOk: async () => {
                     try {
                       const names = selectedRowKeys.map(String);
@@ -1394,16 +1406,19 @@ const TopicPageContent = ({
                       setSelectedRowKeys(failed);
 
                       if (failed.length === 0) {
-                        message.success(`已删除 ${deleted.length} 个 Topic`);
+                        message.success(t('topic.batchDeleteSuccess', { count: deleted.length }));
                       } else if (deleted.length > 0) {
                         message.warning(
-                          `已删除 ${deleted.length} 个 Topic，${failed.length} 个删除失败`,
+                          t('topic.batchDeletePartial', {
+                            deleted: deleted.length,
+                            failed: failed.length,
+                          }),
                         );
                       } else {
-                        message.error(`${failed.length} 个 Topic 删除失败，请稍后重试`);
+                        message.error(t('topic.batchDeleteFailCount', { count: failed.length }));
                       }
                     } catch {
-                      message.error('批量删除 Topic 失败，请稍后重试');
+                      message.error(t('topic.batchDeleteFailed'));
                     }
                   },
                 });

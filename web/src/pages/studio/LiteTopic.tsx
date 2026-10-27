@@ -420,6 +420,24 @@ const LiteTopicPage: React.FC = () => {
   const handleOpenDelete = (record: LiteTopicItem) => {
     const requestId = ++deleteInstanceRequestId.current;
     setDeleteTarget(record);
+    // The cascade warning must not trust the counts from the last list refresh: look the
+    // parent up again the moment the dialog opens, mirroring the topic page single delete.
+    // A failed lookup keeps the row counts and never blocks the delete.
+    queryLiteTopicList(record.topicPattern)
+      .then((items) => {
+        const fresh = items.find((item) => item.topicPattern === record.topicPattern);
+        if (!fresh) return;
+        setDeleteTarget((current) =>
+          current?.topicPattern === record.topicPattern
+            ? {
+                ...current,
+                topicCount: fresh.topicCount ?? current.topicCount,
+                consumerCount: fresh.consumerCount ?? current.consumerCount,
+              }
+            : current,
+        );
+      })
+      .catch(() => undefined);
     setDeleteInstanceId('');
     setDeleteModalOpen(true);
     setDeleteInstanceOptions([]);

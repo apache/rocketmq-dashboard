@@ -1819,4 +1819,50 @@ describe('TopicPage', () => {
     expect(screen.getByText(/级联删除/)).toBeInTheDocument();
     expect(screen.getByText(/绑定消费组不会被删除/)).toBeInTheDocument();
   });
+
+  it('keeps the Lite cascade warning for a selected parent that fell out of the current page', async () => {
+    // The batch delete submits every selected name, but a reload (create, import or a
+    // single delete) reshuffles the server-paginated rows and can push a selected Lite
+    // parent off the page while its name stays selected. The warning has to count it
+    // from what was checked, not from the rows that happen to be visible now.
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    liteTopicApiMocks.queryLiteTopicList.mockReset().mockResolvedValue([]);
+    const [normalTopic, liteParent] = buildTopics(2);
+    const liteRow = { ...liteParent, type: 'LITE' };
+    const replacement = buildTopics(3)[2];
+    let call = 0;
+    topicServiceMocks.listTopicsPage.mockImplementation(async () => {
+      call += 1;
+      return call === 1
+        ? { items: [normalTopic, liteRow], total: 2, page: 1, size: 20 }
+        : // The reload after the single delete returns a page without the selected
+          // parent, as a name that shifted to another page would.
+          { items: [replacement], total: 1, page: 1, size: 20 };
+    });
+    topicServiceMocks.deleteTopic.mockResolvedValue(undefined);
+    renderWithProviders();
+
+    expect(await screen.findByText('topic-02')).toBeInTheDocument();
+    await user.click(
+      within(screen.getByText('topic-02').closest('tr') as HTMLElement).getByRole('checkbox'),
+    );
+    expect(screen.getByRole('button', { name: /删除 \(1\)$/ })).toBeInTheDocument();
+
+    const normalRow = screen.getByText('topic-01').closest('tr') as HTMLElement;
+    await user.click(within(normalRow).getByRole('button', { name: /删除/ }));
+    const dialog = (await screen.findByText(/确定要删除 Topic「topic-01」/)).closest(
+      '.ant-modal',
+    ) as HTMLElement;
+    await user.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+
+    await waitFor(() =>
+      expect(topicServiceMocks.deleteTopic).toHaveBeenCalledWith('topic-01', 'instance-proxy-1'),
+    );
+    await waitFor(() => expect(screen.queryByText('topic-02')).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /删除 \(1\)$/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /删除 \(1\)$/ }));
+    expect(await screen.findByText(/包含 1 个 Lite 父主题/)).toBeInTheDocument();
+    expect(screen.getByText(/绑定消费组不会被删除/)).toBeInTheDocument();
+  });
 });

@@ -915,6 +915,66 @@ describe('LiteTopic Page', () => {
     expect(screen.getByText(/绑定消费组不会被删除/)).toBeInTheDocument();
   });
 
+  it('refreshes the blast-radius counts when the delete dialog opens', async () => {
+    // The dialog must not trust the counts from the last list refresh - a stale pair
+    // would misstate what the cascade is about to delete. Mirror the topic page single
+    // delete: look the parent up again the moment the dialog opens.
+    apiMocks.queryLiteTopicList.mockImplementation(async (pattern?: string) => [
+      {
+        namespace: 'default',
+        topicPattern: 'order-*',
+        topicCount: pattern ? 7 : 5,
+        consumerCount: pattern ? 3 : 2,
+        sessionIds: ['session-1'],
+      },
+    ]);
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('order-*');
+    await user.click(await screen.findByRole('button', { name: /删\s*除/ }));
+
+    expect(await screen.findByText(/子 Lite 会话 7 个/)).toBeInTheDocument();
+    expect(screen.getByText(/绑定消费组 3 个/)).toBeInTheDocument();
+    expect(screen.queryByText(/子 Lite 会话 5 个/)).not.toBeInTheDocument();
+  });
+
+  it('keeps the row counts in the delete dialog when the refresh lookup fails', async () => {
+    // A failed refresh must not block the delete or blank the blast radius: the row
+    // counts are still the best numbers available.
+    instanceApiMocks.listInstances.mockResolvedValue([
+      { id: 1, name: 'apache-main', vendor: 'APACHE' },
+    ] as unknown as Instance[]);
+    apiMocks.queryLiteTopicList.mockImplementation(async (pattern?: string) => {
+      if (pattern) throw new Error('lite list unavailable');
+      return [
+        {
+          namespace: 'default',
+          topicPattern: 'order-*',
+          topicCount: 5,
+          consumerCount: 2,
+          sessionIds: ['session-1'],
+        },
+      ];
+    });
+    topicServiceMocks.deleteTopic.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('order-*');
+    await user.click(await screen.findByRole('button', { name: /删\s*除/ }));
+
+    expect(await screen.findByText(/子 Lite 会话 5 个/)).toBeInTheDocument();
+    expect(screen.getByText(/绑定消费组 2 个/)).toBeInTheDocument();
+    const dialog = (await screen.findByText('删除 Lite 父主题')).closest(
+      '.ant-modal',
+    ) as HTMLElement;
+    await user.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+    await waitFor(() =>
+      expect(topicServiceMocks.deleteTopic).toHaveBeenCalledWith('order-*', 'apache-main'),
+    );
+  });
+
   it('sends the owning instance id when deleting a Lite parent', async () => {
     // The delete is ownership-checked against the owning instance; mirror the
     // Extend-TTL modal: only Apache-vendor instances are candidates, and a sole
