@@ -21,6 +21,7 @@ import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { attachRunStream, executeTool, listTools, openRunStream } from '../../../api/ai';
 import {
   createConversation,
@@ -714,6 +715,102 @@ describe('AiPage', () => {
       state: { engine: 'qoder' },
     });
     expect(getLlmModels).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { fromHome: false, lang: 'zh', title: 'AI 对话历史' },
+    { fromHome: true, lang: 'zh', title: 'AI 对话历史' },
+    { fromHome: false, lang: 'en', title: 'AI conversation history' },
+    { fromHome: true, lang: 'en', title: 'AI conversation history' },
+  ])(
+    'doesNotLoadRealConversationHistoryInMockModeTest ($lang, route intent: $fromHome)',
+    async ({ fromHome, lang, title }) => {
+      dataModeMocks.useMock = true;
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+      vi.mocked(listConversations).mockResolvedValue({
+        items: [CONVERSATION_7],
+        total: 1,
+        page: 1,
+        size: 20,
+      });
+      renderPage(fromHome ? { historyIntent: 'open' } : undefined);
+      if (!fromHome) {
+        await userEvent.setup().click(screen.getByRole('button', { name: title }));
+      }
+      const dialog = await screen.findByRole('dialog', { name: title });
+      await act(async () => {});
+
+      expect(listConversations).not.toHaveBeenCalled();
+      expect(within(dialog).queryByTestId('ai-conversation-link-7')).not.toBeInTheDocument();
+      expect(within(dialog).queryByTestId('ai-conversation-page-delete')).not.toBeInTheDocument();
+      expect(within(dialog).getByTestId('ai-mock-history-disabled')).toHaveTextContent(
+        lang === 'zh'
+          ? 'Mock 模式不加载或修改已保存的 AI 会话，请切换到真实数据模式后使用。'
+          : 'Saved AI conversations are not loaded or changed in mock mode; switch to real data mode to use them.',
+      );
+    },
+  );
+
+  it('doesNotReadOrAttachARealConversationDeepLinkInMockModeTest', async () => {
+    dataModeMocks.useMock = true;
+    vi.mocked(getConversationTimeline).mockResolvedValue(
+      timelinePage([item(1, { type: 'text', text: 'real conversation content' })], {
+        id: 41,
+        status: 'RUNNING',
+      }),
+    );
+    vi.mocked(attachRunStream).mockReturnValue(new Promise(() => {}));
+    renderRouted('/ai/c/7');
+    await screen.findByTestId('ai-mock-disabled');
+    await act(async () => {});
+
+    expect.soft(getConversationTimeline).not.toHaveBeenCalled();
+    expect.soft(attachRunStream).not.toHaveBeenCalled();
+    expect(screen.queryByText('real conversation content')).not.toBeInTheDocument();
+    expect(screen.getByTestId('ai-send-stop-button')).toHaveAttribute('data-state', 'send');
+    expect(stopRun).not.toHaveBeenCalled();
+  });
+
+  it.each(['/ai', '/ai/c/7'])(
+    'keepsTheHomeDraftWithoutCreatingARealConversationInMockModeTest (%s)',
+    async (path) => {
+      dataModeMocks.useMock = true;
+      renderRouted(path, { prompt: 'Keep this mock draft', mode: 'diagnose', enhance: true });
+      await waitFor(() => expect(readProbeLocation().state).toBeNull());
+
+      expect.soft(createConversation).not.toHaveBeenCalled();
+      expect.soft(listInstances).not.toHaveBeenCalled();
+      expect.soft(openRunStream).not.toHaveBeenCalled();
+      expect.soft(readProbeLocation().pathname).toBe(path);
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toHaveValue('Keep this mock draft');
+      expect(sessionStorage.getItem(COMPOSER_DRAFT_STORAGE_KEY)).toBe('Keep this mock draft');
+    },
+  );
+
+  it('onlySendsTheRetainedMockDraftAfterManualSubmitInRealModeTest', async () => {
+    dataModeMocks.useMock = true;
+    const view = renderPage({ prompt: 'Submit this after switching to real mode' });
+    await waitFor(() => expect(readProbeLocation().state).toBeNull());
+    expect(createConversation).not.toHaveBeenCalled();
+    view.unmount();
+
+    // MainLayout changes modes with a full reload. The draft survives it locally, but its
+    // consumed route state must not silently turn that reload into a live backend operation.
+    dataModeMocks.useMock = false;
+    vi.mocked(openRunStream).mockReturnValue(new Promise(() => {}));
+    renderPage();
+    await waitFor(() => expect(getLlmModels).toHaveBeenCalled());
+    const input = screen.getByPlaceholderText(PLACEHOLDER);
+    expect(input).toHaveValue('Submit this after switching to real mode');
+    expect(createConversation).not.toHaveBeenCalled();
+    expect(openRunStream).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(openRunStream).toHaveBeenCalledTimes(1));
+    expect(createConversation).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(openRunStream).mock.calls[0][1].message).toBe(
+      'Submit this after switching to real mode',
+    );
   });
 
   it('doesNotLoadTheLlmRuntimeInMockModeAndDisablesTheComposerTest', async () => {

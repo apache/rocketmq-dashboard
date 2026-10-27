@@ -62,8 +62,10 @@ const AiPage = () => {
   const { t } = useLang();
   const { token } = theme.useToken();
   const navigate = useNavigate();
-  const conversationId = parseConversationId(useParams().conversationId);
+  const routeConversationId = parseConversationId(useParams().conversationId);
   const useMock = useDataModeStore((state) => state.useMock);
+  // Persisted conversations and active runs are real backend resources, even on a Mock deep link.
+  const conversationId = useMock ? null : routeConversationId;
   const userId = useAuthStore((state) => state.userId);
   const admin = useAuthStore((state) => state.admin);
   const engine = useEngineStore((state) => state.engine);
@@ -101,6 +103,7 @@ const AiPage = () => {
   });
 
   useDraftHandoff(conversationId, {
+    sendEnabled: !useMock,
     applyDraft: (draft) => {
       setInputValue(draft.prompt);
       if (draft.enhance !== undefined) setEnhance(draft.enhance);
@@ -344,6 +347,7 @@ const AiPage = () => {
       />
       <ConversationListModal
         open={overlay === 'history'}
+        disabled={useMock}
         onClose={() => setOverlay(null)}
         activeConversationId={conversationId}
         onSelect={(id) => {

@@ -1843,6 +1843,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '切换到真实数据模式并配置 LLM Provider 后，才会加载模型、工具目录和对话能力。',
     en: 'Models, the tool catalog and chat capabilities are loaded only after you switch to real data mode and configure an LLM provider.',
   },
+  'ai.mockConversationsUnavailable': {
+    zh: 'Mock 模式不加载或修改已保存的 AI 会话，请切换到真实数据模式后使用。',
+    en: 'Saved AI conversations are not loaded or changed in mock mode; switch to real data mode to use them.',
+  },
   'ai.mockToolsUnavailable': {
     zh: 'Mock 模式不加载 AI 工具目录，请切换到真实数据模式后使用。',
     en: 'The AI tool catalog is not loaded in mock mode; switch to real data mode to use it.',
