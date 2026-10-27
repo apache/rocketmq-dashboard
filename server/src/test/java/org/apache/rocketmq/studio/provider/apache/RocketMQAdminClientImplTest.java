@@ -572,6 +572,77 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void previewResetOffsetReportsUnavailableCurrentOffsetForOfflineGroupTest() throws Exception {
+        // The offline preview must not splice the delta-based online message into its own: with no
+        // current offset there is no delta, and borrowing that clause read as the broken
+        // "the reset moves the offset to Offset unchanged".
+        long timestamp = 1784246400000L;
+        when(adminExt.examineConsumeStats("cg-orders"))
+                .thenThrow(new MQClientException(ResponseCode.CONSUMER_NOT_ONLINE,
+                        "Not found the consumer group connection"));
+        QueueData queueData = new QueueData();
+        queueData.setBrokerName("broker-1");
+        queueData.setReadQueueNums(1);
+        queueData.setPerm(6);
+        TopicRouteData routeData = new TopicRouteData();
+        routeData.setQueueDatas(List.of(queueData));
+        when(adminExt.examineTopicRouteInfo("orders")).thenReturn(routeData);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(adminExt.minOffset(any(MessageQueue.class))).thenReturn(10L);
+        when(adminExt.maxOffset(any(MessageQueue.class))).thenReturn(50L);
+        when(adminExt.searchOffset(eq("10.0.0.1:10911"), eq("orders"), anyInt(), eq(timestamp), anyLong()))
+                .thenReturn(900L);
+
+        ResetConsumerOffsetPreviewVO preview = adminClient.previewResetOffset(
+                "instance-a", "cg-orders", timestamp, "orders");
+
+        // searchOffset answered 900, beyond the retained range, so the target is clamped to the
+        // broker maximum and the message names which end of the range it landed on.
+        assertThat(preview.getQueues()).singleElement().satisfies(row -> {
+            assertThat(row.getTargetOffset()).isEqualTo(50L);
+            assertThat(row.getConsumerOffset()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+            assertThat(row.getCurrentLag()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+            assertThat(row.getProjectedLag()).isZero();
+            assertThat(row.getMessage()).isEqualTo(
+                    "Current offset unavailable (group offline); target offset 50; "
+                            + "target is the latest offset");
+            assertThat(row.getMessage()).doesNotContain("Offset unchanged");
+        });
+        assertThat(preview.getWarnings()).anySatisfy(warning -> {
+            assertThat(warning).contains("not online");
+            assertThat(warning).contains("current offsets are unavailable");
+            assertThat(warning).doesNotContain("-1");
+        });
+    }
+
+    @Test
+    void previewResetOffsetSkipsUnreadableQueuesForOfflineGroupTest() throws Exception {
+        // resetOffsetByTimestampOld walks the read queues of the route; a write-only queue is never
+        // consumed from, so the preview must not invent a target the reset will not commit.
+        long timestamp = 1784246400000L;
+        when(adminExt.examineConsumeStats("cg-orders"))
+                .thenThrow(new MQClientException(ResponseCode.CONSUMER_NOT_ONLINE,
+                        "Not found the consumer group connection"));
+        QueueData writeOnly = new QueueData();
+        writeOnly.setBrokerName("broker-1");
+        writeOnly.setReadQueueNums(2);
+        writeOnly.setPerm(2);
+        TopicRouteData routeData = new TopicRouteData();
+        routeData.setQueueDatas(List.of(writeOnly));
+        when(adminExt.examineTopicRouteInfo("orders")).thenReturn(routeData);
+
+        ResetConsumerOffsetPreviewVO preview = adminClient.previewResetOffset(
+                "instance-a", "cg-orders", timestamp, "orders");
+
+        assertThat(preview.isAllowReset()).isFalse();
+        assertThat(preview.getQueueCount()).isZero();
+        assertThat(preview.getWarnings())
+                .containsExactly("Consumer group is not online and no consume offset data is available"
+                        + "; no readable queues found for topic orders");
+        verify(adminExt, never()).searchOffset(anyString(), anyString(), anyInt(), anyLong(), anyLong());
+    }
+
+    @Test
     void previewResetOffsetShouldPreserveUnknownCurrentLagTest() throws Exception {
         long timestamp = 1784246400000L;
         ConsumeStats stats = new ConsumeStats();

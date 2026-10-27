@@ -1228,6 +1228,90 @@ describe('Consumer page', () => {
     expect(consumerService.resetConsumerOffset).not.toHaveBeenCalled();
   });
 
+  it('previews an offline group without leaking the unknown sentinel', async () => {
+    vi.mocked(consumerService.previewConsumerOffsetReset).mockResolvedValue({
+      instanceId: 'instance-1',
+      groupName: 'remote-cg',
+      topic: 'remote-topic',
+      timestamp: 1784246400000,
+      complete: true,
+      allowReset: true,
+      queueCount: 1,
+      warningCount: 2,
+      rewindQueueCount: 0,
+      fastForwardQueueCount: 0,
+      currentTotalLag: -1,
+      projectedTotalLag: 50,
+      totalOffsetDelta: 0,
+      warnings: [
+        'At least one queue has unavailable lag; affected backlog totals are unavailable',
+        'Consumer group is not online and no consume offset data is available; ' +
+          'current offsets are unavailable, so offset deltas cannot be computed',
+      ],
+      queues: [
+        {
+          topic: 'remote-topic',
+          broker: 'broker-a',
+          queueId: 0,
+          minOffset: 10,
+          maxOffset: 100,
+          brokerOffset: 100,
+          // The group is offline: the broker still reports the target, but no consumer reported a
+          // current offset, so the backend sends the -1 sentinel for the current offset and lag.
+          consumerOffset: -1,
+          targetOffset: 50,
+          currentLag: -1,
+          projectedLag: 50,
+          offsetDelta: 0,
+          riskLevel: 'INFO',
+          message: 'Current offset unavailable (group offline); target offset 50',
+        },
+      ],
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /重置位点/ }));
+    await user.click(screen.getByRole('combobox', { name: '目标 Topic' }));
+    const option = await waitFor(() => {
+      const element = screen
+        .getAllByText('remote-topic')
+        .find((candidate) => candidate.classList.contains('ant-select-item-option-content'));
+      if (!element) throw new Error('Missing target Topic option');
+      return element;
+    });
+    await user.click(option);
+    await user.click(screen.getByRole('button', { name: /预览影响/ }));
+
+    // The 说明 column speaks the page's own language; the English server message is built around a
+    // delta the offline preview cannot compute, so it must not be echoed here.
+    expect(
+      await screen.findByText('消费组离线，当前位点不可用；重置将按目标时间定位'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Current offset unavailable (group offline); target offset 50'),
+    ).not.toBeInTheDocument();
+
+    const dialog = screen.getByRole('dialog');
+    const row = within(dialog)
+      .getAllByRole('row')
+      .find((candidate) => within(candidate).queryByText('broker-a'));
+    expect(row).toBeDefined();
+    const cells = within(row!)
+      .getAllByRole('cell')
+      .map((cell) => cell.textContent?.trim());
+    // 当前位点 / 变化 / 当前堆积 render the sentinel as '-', the way the consumer progress table does.
+    expect(cells.filter((cell) => cell === '-')).toHaveLength(3);
+    expect(cells.join('|')).not.toContain('-1');
+    // The aggregate net delta is not a measurement either, so the summary must not show 0.
+    const netChangeLabel = within(dialog).getByText('位点净变化');
+    const netChange = (netChangeLabel.closest('th') ?? netChangeLabel).nextElementSibling;
+    expect(netChange?.textContent?.trim()).toBe('-');
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '确认重置' })).toBeEnabled());
+    expect(consumerService.resetConsumerOffset).not.toHaveBeenCalled();
+  });
+
   it('reloads same-named group diagnostics after changing the selected instance', async () => {
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {

@@ -66,8 +66,8 @@ public class GroupResetOffsetToolHandler extends MutationToolHandler<GroupResetO
                 .before(OffsetState.current(input, preview))
                 .after(OffsetState.proposed(input, preview, timestamp))
                 .impact("Moves offsets for " + preview.getQueueCount()
-                        + " queues; projected lag changes from " + preview.getCurrentTotalLag()
-                        + " to " + preview.getProjectedTotalLag() + ".")
+                        + " queues; projected lag changes from " + lagPhrase(preview.getCurrentTotalLag())
+                        + " to " + lagPhrase(preview.getProjectedTotalLag()) + ".")
                 .warnings(warnings)
                 .build();
     }
@@ -108,6 +108,12 @@ public class GroupResetOffsetToolHandler extends MutationToolHandler<GroupResetO
         }
     }
 
+    /**
+     * One queue's offsets. {@code offset} and {@code lag} carry the {@code -1} sentinel the preview
+     * reports for a value the broker could not determine — an offline group has no current offset,
+     * so its "before" side is {@code -1} on both fields. Structured output keeps the sentinel the
+     * way {@code GroupListItem} documents its own, and {@link #lagPhrase} keeps it out of prose.
+     */
     private record QueueState(String topic, String broker, int queueId, long offset, long lag) {
 
         static QueueState current(ResetConsumerOffsetQueuePreviewVO queue) {
@@ -119,5 +125,14 @@ public class GroupResetOffsetToolHandler extends MutationToolHandler<GroupResetO
             return new QueueState(queue.getTopic(), queue.getBroker(), queue.getQueueId(),
                     queue.getTargetOffset(), queue.getProjectedLag());
         }
+    }
+
+    /**
+     * Renders a lag for the plan prose. The {@code -1} "cannot be determined" sentinel must never
+     * be interpolated as a number, or the plan reads "projected lag changes from -1 to 500";
+     * {@code unavailable} is the wording {@code GroupDetailToolHandler} already uses for it.
+     */
+    private static String lagPhrase(long lag) {
+        return lag < 0 ? "unavailable" : Long.toString(lag);
     }
 }
