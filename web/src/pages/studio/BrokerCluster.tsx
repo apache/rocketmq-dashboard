@@ -29,6 +29,7 @@ import {
   App,
   Select,
   theme,
+  Typography,
 } from 'antd';
 import {
   ArrowClockwise,
@@ -200,6 +201,8 @@ const BrokerClusterPage = () => {
   const [nameServerData, setNameServerData] = useState<NameServerRecord[]>([]);
   const [proxyData, setProxyData] = useState<ProxyRecord[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
+  const [instancesLoadFailed, setInstancesLoadFailed] = useState(false);
+  const [instancesReloadNonce, setInstancesReloadNonce] = useState(0);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined);
   const mountedRef = useRef(true);
   const loadRequestId = useRef(0);
@@ -251,6 +254,7 @@ const BrokerClusterPage = () => {
         if (!active) return;
         const apacheInstances = nextInstances.filter(supportsApacheRuntime);
         setInstances(apacheInstances);
+        setInstancesLoadFailed(false);
         setSelectedInstanceId((current) =>
           apacheInstances.some((instance) => instance.name === current)
             ? current
@@ -258,14 +262,15 @@ const BrokerClusterPage = () => {
         );
       })
       .catch(() => {
+        // A transient toast still left the page looking like a deployment without instances, and
+        // clearing the loaded topology discarded data the failure says nothing about.
         if (!active) return;
-        clearData();
-        message.error(t('common.fetchDataFailed'));
+        setInstancesLoadFailed(true);
       });
     return () => {
       active = false;
     };
-  }, [clearData, message, t]);
+  }, [instancesReloadNonce, t]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -547,9 +552,25 @@ const BrokerClusterPage = () => {
             value={selectedInstanceId}
             onChange={setSelectedInstanceId}
             placeholder={t('common.selectInstance')}
+            status={instancesLoadFailed ? 'error' : undefined}
             style={{ minWidth: 180 }}
             options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
           />
+          {instancesLoadFailed && (
+            <Space size={4}>
+              <Typography.Text type="danger" style={{ fontSize: 14 }}>
+                {t('instance.listLoadFailed')}
+              </Typography.Text>
+              <Button
+                type="link"
+                size="small"
+                style={{ padding: 0, height: 'auto' }}
+                onClick={() => setInstancesReloadNonce((nonce) => nonce + 1)}
+              >
+                {t('common.retry')}
+              </Button>
+            </Space>
+          )}
           <Button
             icon={<DownloadSimple size={14} />}
             size="small"
