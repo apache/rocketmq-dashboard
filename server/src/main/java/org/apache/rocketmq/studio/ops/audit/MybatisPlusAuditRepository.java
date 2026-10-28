@@ -55,13 +55,14 @@ public class MybatisPlusAuditRepository implements AuditRepository {
 
     @Override
     public PageResult<AuditRecordVO> findPage(String search, String operator, String operationType,
+                                              List<String> operationTypes,
                                               String resourceType, String target, String clusterId,
                                               boolean clusterIdMissing,
                                               LocalDateTime startDate, LocalDateTime endDate,
                                               String result, int page, int pageSize) {
         QueryWrapper<RmqOperationAudit> query = new QueryWrapper<>();
-        applyFilters(query, search, operator, operationType, resourceType, target, clusterId,
-                clusterIdMissing, startDate, endDate, result);
+        applyFilters(query, search, operator, operationType, operationTypes, resourceType, target,
+                clusterId, clusterIdMissing, startDate, endDate, result);
         query.orderByDesc("gmt_create", "id");
         Page<RmqOperationAudit> resultPage = auditMapper.selectPage(
                 new Page<>(page, pageSize), query);
@@ -109,7 +110,8 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                                     LocalDateTime startDate, LocalDateTime endDate,
                                     String result) {
         Consumer<QueryWrapper<RmqOperationAudit>> filters = query -> applyFilters(query, search,
-                operator, operationType, resourceType, null, clusterId, false, startDate, endDate, result);
+                operator, operationType, null, resourceType, null, clusterId, false,
+                startDate, endDate, result);
 
         // One GROUP BY result query computes total / SUCCESS / FAILED / PARTIAL in a single
         // round trip instead of four separate COUNT(*) statements. Note that when the caller
@@ -248,7 +250,8 @@ public class MybatisPlusAuditRepository implements AuditRepository {
      * hotspot queries so a card can never disagree with the rows it describes.
      */
     private void applyFilters(QueryWrapper<RmqOperationAudit> query, String search,
-                              String operator, String operationType, String resourceType,
+                              String operator, String operationType, List<String> operationTypes,
+                              String resourceType,
                               String target, String clusterId, boolean clusterIdMissing,
                               LocalDateTime startDate, LocalDateTime endDate, String result) {
         String searchPattern = StringUtils.hasText(search) ? LikePatterns.escape(search) : null;
@@ -258,6 +261,7 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                         .or().like("detail", searchPattern))
                 .eq(StringUtils.hasText(operator), "operator", operator)
                 .eq(StringUtils.hasText(operationType), "operation", operationType)
+                .in(operationTypes != null && !operationTypes.isEmpty(), "operation", operationTypes)
                 .eq(StringUtils.hasText(resourceType), "resource_type", resourceType)
                 .eq(StringUtils.hasText(target), "resource_name", target)
                 .eq(!clusterIdMissing && StringUtils.hasText(clusterId), "cluster_id", clusterId)

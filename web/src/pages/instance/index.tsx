@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Table,
@@ -129,6 +129,7 @@ const InstancePage = () => {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<InstanceTypeFilter>('ALL');
+  const [regionFilter, setRegionFilter] = useState<string>('ALL');
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [vendor, setVendor] = useState<InstanceVendor>(DEFAULT_VENDOR);
   const [addForm] = Form.useForm();
@@ -194,6 +195,27 @@ const InstancePage = () => {
       requestIdRef.current += 1;
     };
   }, [debouncedSearch, loadInstances, typeFilter]);
+
+  // 地域选项取自已加载实例（列表不分页、一次全量），开源实例无地域不进选项；
+  // 选中某地域后开源实例因无地域而自然被过滤掉。
+  const regionOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const instance of instances) {
+      if (!instance.regionId || seen.has(instance.regionId)) continue;
+      seen.set(instance.regionId, instance.regionName || instance.regionId);
+    }
+    return Array.from(seen.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([value, label]) => ({ value, label }));
+  }, [instances]);
+
+  const visibleInstances = useMemo(
+    () =>
+      regionFilter === 'ALL'
+        ? instances
+        : instances.filter((instance) => instance.regionId === regionFilter),
+    [instances, regionFilter],
+  );
 
   const cloudVendor = vendor === 'ALIYUN' || vendor === 'TENCENT';
 
@@ -788,6 +810,7 @@ const InstancePage = () => {
             value={typeFilter}
             onChange={setTypeFilter}
             style={{ width: 140 }}
+            aria-label={t('instance.filterByType')}
             options={[
               { value: 'ALL', label: t('instance.allTypes') },
               { value: 'CLOUD', label: t('instance.cloudType') },
@@ -795,6 +818,13 @@ const InstancePage = () => {
               { value: 'PROXY_CLUSTER', label: t('instance.proxyClusterMode') },
               { value: 'DIRECT', label: t('instance.directMode') },
             ]}
+          />
+          <Select
+            value={regionFilter}
+            onChange={setRegionFilter}
+            style={{ width: 160 }}
+            aria-label={t('instance.filterByRegion')}
+            options={[{ value: 'ALL', label: t('instance.allRegions') }, ...regionOptions]}
           />
         </Space>
         <Space size={12}>
@@ -821,7 +851,7 @@ const InstancePage = () => {
         <Table
           className="instance-table"
           columns={columns}
-          dataSource={instances}
+          dataSource={visibleInstances}
           loading={loading}
           rowKey="name"
           rowSelection={{

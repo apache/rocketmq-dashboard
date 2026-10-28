@@ -215,6 +215,11 @@ export interface AuditQuery {
   search?: string;
   operator?: string;
   operationType?: string;
+  /**
+   * Several operation codes at once (cluster-events view); sent comma-joined because the
+   * backend takes the multi-value form as one query-string parameter.
+   */
+  operationTypes?: string[];
   resourceType?: string;
   target?: string;
   clusterId?: string;
@@ -408,8 +413,12 @@ export async function deleteAlertSilence(id: number) {
 
 // ─── Audit Logs ─────────────────────────────────────────────────
 export async function listAuditRecords(params?: AuditQuery) {
+  const { operationTypes, ...rest } = params ?? {};
   const res = await client.get<{ data: PageResult<AuditRecord> }>('/audit-logs', {
-    params,
+    params: {
+      ...rest,
+      ...(operationTypes?.length ? { operationTypes: operationTypes.join(',') } : {}),
+    },
   });
   return res.data.data;
 }
