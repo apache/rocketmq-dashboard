@@ -208,6 +208,82 @@ func TestRenderTableWarningScopeTest(t *testing.T) {
 	}
 }
 
+// A paged listing renders one page, and the payload always carries the page, its size and the total,
+// so the table view has to say which page it printed: `rmqctl audit list` used to show 20 rows of 180
+// with nothing to tell the two apart, while the message tools already disclose a bounded result.
+func TestPagedTableDisclosureTest(t *testing.T) {
+	pageRows := func(count int) []any {
+		rows := make([]any, 0, count)
+		for i := 0; i < count; i++ {
+			rows = append(rows, map[string]any{"id": i + 1})
+		}
+		return rows
+	}
+	cases := []struct {
+		name    string
+		payload map[string]any
+		want    string
+	}{
+		{
+			name:    "first_page_of_many",
+			payload: map[string]any{"page": 1, "pageSize": 20, "total": 180, "items": pageRows(1)},
+			want:    "WARNING: the table shows page 1 of 9 (1 of 180 rows); pass --page/--page-size to see the rest, or --output json for the full payload.\n",
+		},
+		{
+			name:    "last_page_still_short_of_the_total",
+			payload: map[string]any{"page": 9, "pageSize": 20, "total": 180, "items": pageRows(20)},
+			want:    "WARNING: the table shows page 9 of 9 (20 of 180 rows); pass --page/--page-size to see the rest, or --output json for the full payload.\n",
+		},
+		{
+			name:    "listing_that_fits_one_page",
+			payload: map[string]any{"page": 1, "pageSize": 20, "total": 3, "items": pageRows(3)},
+			want:    "",
+		},
+		{
+			name:    "unpaged_payload",
+			payload: map[string]any{"items": pageRows(2)},
+			want:    "",
+		},
+	}
+	tools := []struct {
+		tool string
+		args []string
+	}{
+		{"rmq.audit.list", []string{"audit", "list"}},
+		{"rmq.acl.list", []string{"acl", "list"}},
+		{"rmq.message.query_dlq", []string{"message", "query-dlq"}},
+	}
+	for _, entry := range tools {
+		for _, tc := range cases {
+			t.Run(entry.tool+"/"+tc.name, func(t *testing.T) {
+				stdout, stderr, exitCode := executeCatalogResult(t, entry.tool, tc.payload, entry.args...)
+				if exitCode != 0 {
+					t.Fatalf("exit code = %d, stderr = %q", exitCode, stderr)
+				}
+				if stderr != tc.want {
+					t.Fatalf("stderr = %q, want %q", stderr, tc.want)
+				}
+				if !bytes.Contains([]byte(stdout), []byte("ID")) || bytes.Contains([]byte(stdout), []byte("WARNING")) {
+					t.Fatalf("stdout must carry only the table: %q", stdout)
+				}
+			})
+		}
+	}
+	// The structured formats carry the whole envelope, so they need no notice.
+	for _, format := range []string{"json", "yaml"} {
+		t.Run("structured_"+format, func(t *testing.T) {
+			payload := map[string]any{"page": 1, "pageSize": 20, "total": 180, "items": pageRows(1)}
+			stdout, stderr, exitCode := executeCatalogResult(t, "rmq.audit.list", payload, "audit", "list", "--output", format)
+			if exitCode != 0 || stderr != "" {
+				t.Fatalf("exit = %d, stderr = %q", exitCode, stderr)
+			}
+			if !bytes.Contains([]byte(stdout), []byte("180")) {
+				t.Fatalf("structured output lost the total: %q", stdout)
+			}
+		})
+	}
+}
+
 type catalogErrorWriter struct{ err error }
 
 func (w catalogErrorWriter) Write([]byte) (int, error) { return 0, w.err }
