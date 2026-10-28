@@ -325,7 +325,7 @@ describe('Audit page', () => {
 
     expect(await screen.findByText('匹配记录')).toBeInTheDocument();
     expect(screen.getByText('80')).toBeInTheDocument();
-    expect(screen.getAllByText('DELETE TOPIC').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('删除 Topic').length).toBeGreaterThan(0);
     await user.type(screen.getByPlaceholderText('搜索操作人或操作对象'), 'topic-a');
 
     await waitFor(
