@@ -70,7 +70,7 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
                 .target("topic-a")
                 .result("SUCCESS")
                 .build();
-        when(auditService.queryLogs(eq(2), eq(10), eq("topic"), eq("admin"), eq("DELETE"),
+        when(auditService.queryLogs(eq(2), eq(10), eq("topic"), eq("admin"), eq("DELETE"), isNull(),
                 eq("TOPIC"), eq("topic-a"), eq("prod-cn"), eq(false), eq("2026-07-01"), eq("2026-07-24"), eq("SUCCESS")))
                 .thenReturn(PageResult.of(List.of(record), 1, 2, 10));
 
@@ -92,7 +92,7 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data.items[0].operationType").value("DELETE"))
                 .andExpect(jsonPath("$.data.total").value(1));
 
-        verify(auditService).queryLogs(eq(2), eq(10), eq("topic"), eq("admin"), eq("DELETE"),
+        verify(auditService).queryLogs(eq(2), eq(10), eq("topic"), eq("admin"), eq("DELETE"), isNull(),
                 eq("TOPIC"), eq("topic-a"), eq("prod-cn"), eq(false), eq("2026-07-01"), eq("2026-07-24"), eq("SUCCESS"));
     }
 
@@ -184,7 +184,7 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
     @Test
     void queryLogsShouldUseDefaultPagination() throws Exception {
         when(auditService.queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(), isNull(),
-                isNull(), eq(false), isNull(), isNull(), isNull()))
+                isNull(), isNull(), eq(false), isNull(), isNull(), isNull()))
                 .thenReturn(PageResult.of(List.of(), 0, 1, 20));
 
         mockMvc.perform(get("/api/audit-logs"))
@@ -194,12 +194,12 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data.size").value(20));
 
         verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(), isNull(),
-                isNull(), eq(false), isNull(), isNull(), isNull());
+                isNull(), isNull(), eq(false), isNull(), isNull(), isNull());
     }
 
     @Test
     void queryLogsShouldForwardAnExplicitMissingClusterScopeTest() throws Exception {
-        when(auditService.queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), eq("SETTINGS"),
+        when(auditService.queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(), eq("SETTINGS"),
                 eq("general"), isNull(), eq(true), isNull(), isNull(), isNull()))
                 .thenReturn(PageResult.of(List.of(), 0, 1, 20));
 
@@ -209,7 +209,7 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
                         .param("clusterIdMissing", "true"))
                 .andExpect(status().isOk());
 
-        verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), eq("SETTINGS"),
+        verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(), eq("SETTINGS"),
                 eq("general"), isNull(), eq(true), isNull(), isNull(), isNull());
     }
 
