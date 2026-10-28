@@ -71,12 +71,22 @@ public class AuthService {
     private static final int DEFAULT_SESSION_TIMEOUT_MINUTES = 1440;
     private static final int MIN_SESSION_TIMEOUT_MINUTES = 5;
     private static final int MAX_SESSION_TIMEOUT_MINUTES = 1440;
+    // Sessions unused for longer than this window are treated as expired even before their
+    // absolute expiry. The minimum sits above LAST_SEEN_UPDATE_INTERVAL so the throttled
+    // last-seen writes can never lag far enough to idle out an actually active session.
+    // The default is 0 — off — because an upgrade must not start revoking sessions that were
+    // issued under the old absolute-expiry-only rule; an operator turns the deadline on.
+    private static final int DEFAULT_SESSION_IDLE_TIMEOUT_MINUTES = 0;
+    private static final int MIN_SESSION_IDLE_TIMEOUT_MINUTES = 10;
+    private static final int MAX_SESSION_IDLE_TIMEOUT_MINUTES = 1440;
     private static final Duration LAST_SEEN_UPDATE_INTERVAL = Duration.ofMinutes(5);
     private static final Duration SESSION_EXPIRING_SOON_WINDOW = Duration.ofMinutes(5);
     private static final Duration STALE_SESSION_THRESHOLD = Duration.ofMinutes(15);
     private static final int MAX_USER_PAGE_SIZE = 100;
     private static final int MAX_USER_SEARCH_LENGTH = 128;
     private static final int MAX_USERNAME_LENGTH = 128;
+    private static final int MAX_CLIENT_IP_LENGTH = 64;
+    private static final int MAX_USER_AGENT_LENGTH = 255;
     private static final String TOKEN_PREFIX = "Bearer ";
     private static final String EXPIRING_SOON_CUTOFF_PARAM = "expiringSoonCutoff";
     private static final String STALE_CUTOFF_PARAM = "staleCutoff";
@@ -136,10 +146,21 @@ public class AuthService {
     }
 
     public LoginVO login(LoginDTO request) {
+        return login(request, null, null);
+    }
+
+    /**
+     * Logs in and attributes the issued session to the requesting client. The address and
+     * user agent are observability metadata for the session drawer — best-effort behind
+     * reverse proxies (the first X-Forwarded-For hop) and never used for authorization.
+     */
+    public LoginVO login(LoginDTO request, String clientIp, String userAgent) {
         validateLogin(request);
         loginRateLimiter.checkAllowed(request.getUsername());
         try {
-            LoginVO login = databaseBacked() ? loginDatabaseUser(request) : loginConfiguredUser(request);
+            LoginVO login = databaseBacked()
+                    ? loginDatabaseUser(request, clientIp, userAgent)
+                    : loginConfiguredUser(request);
             loginRateLimiter.recordSuccess(request.getUsername());
             return login;
         } catch (BusinessException exception) {
@@ -169,10 +190,12 @@ public class AuthService {
     public void logout(String authorization) {
         tokenFromAuthorization(authorization).ifPresent(token -> {
             if (databaseBacked()) {
+                LocalDateTime current = now();
                 sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
                         .eq("token_hash", tokenHash(token))
                         .isNull("revoked_at")
-                        .set("revoked_at", now()));
+                        .set("revoked_at", current)
+                        .set("gmt_modified", current));
             } else {
                 activeTokens.remove(token);
             }
@@ -280,7 +303,8 @@ public class AuthService {
         getUser(userId);
         LocalDateTime current = now();
         return sessionMapper.selectList(activeSessionQuery(current)
-                        .select("id", "user_id", "last_seen_at", "expires_at", "gmt_create")
+                        .select("id", "user_id", "last_seen_at", "expires_at", "gmt_create",
+                                "client_ip", "user_agent")
                         .eq("user_id", userId)
                         .orderByDesc("last_seen_at")
                         .orderByAsc("id"))
@@ -295,6 +319,65 @@ public class AuthService {
         return revokeUserSessions(userId);
     }
 
+    /**
+     * Currently locked logins, sorted by remaining lock time. Read-only visibility into the
+     * brute-force limiter: locks always lift by themselves, and the snapshot reflects this
+     * instance only (the limiter is in-memory like every other login-protection state).
+     */
+    public List<StudioLoginLockoutVO> listLoginLockouts() {
+        requireDatabaseBacked();
+        return loginRateLimiter.activeLockouts().stream()
+                .map(lockout -> StudioLoginLockoutVO.builder()
+                        .username(lockout.username())
+                        .remainingSeconds(lockout.remainingSeconds())
+                        .build())
+                .toList();
+    }
+
+    /**
+     * Revokes every active session in one statement. The operator's own sessions are spared:
+     * the incident responder who pulls this lever must not log themselves out mid-response,
+     * and can still revoke their own account from its session drawer afterwards. The
+     * predicate is the active-session half of {@link #revokeUserSessions}, without the
+     * per-user column.
+     */
+    public int revokeAllSessions() {
+        requireDatabaseBacked();
+        LocalDateTime current = now();
+        UpdateWrapper<RmqStudioSession> wrapper = new UpdateWrapper<RmqStudioSession>()
+                .isNull("revoked_at")
+                .gt("expires_at", current);
+        String currentUserId = AuthenticatedUserContext.currentUserId();
+        if (currentUserId != null) {
+            wrapper.ne("user_id", Long.parseLong(currentUserId));
+        }
+        wrapper.set("revoked_at", current);
+        wrapper.set("gmt_modified", current);
+        return sessionMapper.update(null, wrapper);
+    }
+
+    /**
+     * Revokes one session row. Revoking an already-revoked or expired session is a no-op
+     * rather than an error, so a stale drawer never turns a repeated confirmation into a
+     * failure toast; the row disappears from the active list either way.
+     */
+    public void revokeSessionById(Long sessionId) {
+        requireDatabaseBacked();
+        RmqStudioSession session = sessionMapper.selectById(sessionId);
+        if (session == null) {
+            throw new BusinessException(404, "Session not found");
+        }
+        LocalDateTime current = now();
+        if (session.getRevokedAt() != null || !session.getExpiresAt().isAfter(current)) {
+            return;
+        }
+        sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
+                .eq("id", sessionId)
+                .isNull("revoked_at")
+                .set("revoked_at", current)
+                .set("gmt_modified", current));
+    }
+
     public RmqStudioUser createUser(String username, String password, boolean admin) {
         requireDatabaseBacked();
         validateUsername(username);
@@ -307,7 +390,16 @@ public class AuthService {
         user.setPasswordHash(passwordHasher.hash(password));
         user.setAdmin(admin);
         user.setEnabled(true);
-        user.setPasswordChangedAt(now());
+        LocalDateTime current = now();
+        user.setPasswordChangedAt(current);
+        // The initial password was chosen by the creator, not the owner: the owner rotates it
+        // at first login.
+        user.setPasswordMustChange(true);
+        // An omitted gmt_create/gmt_modified falls back to the database session's
+        // CURRENT_TIMESTAMP, which is not UTC on a server running in another zone, while the
+        // API serializes every zone-less timestamp as UTC.
+        user.setGmtCreate(current);
+        user.setGmtModified(current);
         try {
             userMapper.insert(user);
         } catch (DuplicateKeyException exception) {
@@ -336,12 +428,84 @@ public class AuthService {
                 throw new BusinessException(409, "The last enabled administrator cannot be disabled");
             }
         }
-        userMapper.updateById(userWithEnabled(user, enabled));
+        RmqStudioUser enableUpdate = userWithEnabled(user, enabled);
+        // updateById only writes non-null fields, so without this the column's ON UPDATE
+        // CURRENT_TIMESTAMP - the database session's zone, not UTC - would be the audit instant.
+        enableUpdate.setGmtModified(now());
+        userMapper.updateById(enableUpdate);
         if (!enabled) {
             revokeUserSessions(user.getId());
         }
         user.setEnabled(enabled);
         return user;
+    }
+
+    /**
+     * Grants or revokes the administrator role for an existing user. Revoking from the last
+     * enabled administrator is refused with the same row-locking guard as disabling, so two
+     * concurrent revokes cannot strip every administrator at once. Any role change revokes the
+     * user's sessions: the authenticated session snapshots the admin flag, and forcing a
+     * re-login is the only way the new role takes effect immediately.
+     */
+    @Transactional
+    public RmqStudioUser setUserAdmin(Long userId, boolean admin) {
+        requireDatabaseBacked();
+        RmqStudioUser user = getUser(userId);
+        if (Boolean.valueOf(admin).equals(user.getAdmin())) {
+            return user;
+        }
+        if (!admin && Boolean.TRUE.equals(user.getAdmin())) {
+            List<RmqStudioUser> enabledAdmins = userMapper.selectList(new QueryWrapper<RmqStudioUser>()
+                    .eq("admin", true)
+                    .eq("enabled", true)
+                    .last("FOR UPDATE"));
+            boolean targetStillAdmin = enabledAdmins.stream()
+                    .anyMatch(candidate -> userId.equals(candidate.getId()));
+            if (targetStillAdmin && enabledAdmins.size() <= 1) {
+                throw new BusinessException(409, "The last enabled administrator cannot lose the role");
+            }
+        }
+        RmqStudioUser update = new RmqStudioUser();
+        update.setId(user.getId());
+        update.setAdmin(admin);
+        // Same reason as in setUserEnabled: updateById writes only non-null fields, so the audit
+        // instant has to be stamped here or the column's ON UPDATE CURRENT_TIMESTAMP - the
+        // database session's zone, not UTC - would be it.
+        update.setGmtModified(now());
+        userMapper.updateById(update);
+        revokeUserSessions(user.getId());
+        user.setAdmin(admin);
+        return user;
+    }
+
+    /**
+     * Deletes a studio account and its sessions. The operator's own account cannot be deleted
+     * (the session would turn into a confusing mid-request failure — disable it instead), and
+     * the last enabled administrator is protected by the same row-locking guard the disable
+     * path uses. Sessions are removed in the same transaction: the table has no foreign key,
+     * so rows would otherwise linger as unreachable tokens.
+     */
+    @Transactional
+    public void deleteUser(Long userId) {
+        requireDatabaseBacked();
+        RmqStudioUser user = getUser(userId);
+        String currentUserId = AuthenticatedUserContext.currentUserId();
+        if (currentUserId != null && currentUserId.equals(String.valueOf(userId))) {
+            throw new BusinessException(400, "The current account cannot delete itself; disable it instead");
+        }
+        if (Boolean.TRUE.equals(user.getAdmin()) && Boolean.TRUE.equals(user.getEnabled())) {
+            List<RmqStudioUser> enabledAdmins = userMapper.selectList(new QueryWrapper<RmqStudioUser>()
+                    .eq("admin", true)
+                    .eq("enabled", true)
+                    .last("FOR UPDATE"));
+            boolean targetStillEnabled = enabledAdmins.stream()
+                    .anyMatch(admin -> userId.equals(admin.getId()));
+            if (targetStillEnabled && enabledAdmins.size() <= 1) {
+                throw new BusinessException(409, "The last enabled administrator cannot be deleted");
+            }
+        }
+        sessionMapper.delete(new QueryWrapper<RmqStudioSession>().eq("user_id", userId));
+        userMapper.deleteById(userId);
     }
 
     /**
@@ -367,20 +531,39 @@ public class AuthService {
         userMapper.update(null, new UpdateWrapper<RmqStudioUser>()
                 .eq("id", user.getId())
                 .set("password_hash", passwordHasher.hash(newPassword))
-                .set("password_changed_at", now()));
+                .set("password_changed_at", now())
+                // A password chosen by its owner needs no rotation; one handed out by an
+                // administrator does, until the owner replaces it.
+                .set("password_must_change", !requireCurrentPassword)
+                .set("gmt_modified", now()));
         revokeUserSessions(user.getId());
     }
 
+    // The first pass waits a full interval instead of running at startup: a startup run of the
     @Scheduled(fixedDelayString = "${studio.auth.session-cleanup-interval:PT5M}")
     public void purgeExpiredSessions() {
         if (databaseBacked()) {
-            sessionMapper.delete(new QueryWrapper<RmqStudioSession>().lt("expires_at", now()));
+            LocalDateTime current = now();
+            int idleTimeoutMinutes = sessionIdleTimeoutMinutes();
+            // Sessions that idled out are revoked here so the active-session views stay
+            // truthful even when the abandoned token is never presented again; the rows
+            // are then removed by the absolute-expiry delete below.
+            if (idleTimeoutMinutes > 0) {
+                sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
+                        .isNull("revoked_at")
+                        .isNotNull("last_seen_at")
+                        .ge("expires_at", current)
+                        .lt("last_seen_at", current.minusMinutes(idleTimeoutMinutes))
+                        .set("revoked_at", current)
+                        .set("gmt_modified", current));
+            }
+            sessionMapper.delete(new QueryWrapper<RmqStudioSession>().lt("expires_at", current));
         } else {
             purgeExpiredSessions(clock.millis());
         }
     }
 
-    private LoginVO loginDatabaseUser(LoginDTO request) {
+    private LoginVO loginDatabaseUser(LoginDTO request, String clientIp, String userAgent) {
         ensureBootstrapUsers();
         Optional<RmqStudioUser> found = findUserByUsername(request.getUsername());
         if (found.isEmpty()) {
@@ -411,6 +594,10 @@ public class AuthService {
         session.setTokenHash(tokenHash(token));
         session.setLastSeenAt(current);
         session.setExpiresAt(current.plusSeconds(tokenTtlSeconds));
+        session.setClientIp(truncate(clientIp, MAX_CLIENT_IP_LENGTH));
+        session.setUserAgent(truncate(userAgent, MAX_USER_AGENT_LENGTH));
+        session.setGmtCreate(current);
+        session.setGmtModified(current);
         sessionMapper.insert(session);
         return loginResponse(userInfo(user), token, tokenTtlSeconds);
     }
@@ -421,7 +608,7 @@ public class AuthService {
         purgeExpiredSessions(current);
         int tokenTtlSeconds = sessionTimeoutSeconds();
         String token = "studio-jwt-" + UUID.randomUUID();
-        activeTokens.put(token, new AuthSession(user, current + tokenTtlSeconds * 1000L));
+        activeTokens.put(token, new AuthSession(user, current + tokenTtlSeconds * 1000L, current));
         return loginResponse(user, token, tokenTtlSeconds);
     }
 
@@ -441,11 +628,28 @@ public class AuthService {
             return Optional.empty();
         }
         LocalDateTime current = now();
+        int idleTimeoutMinutes = sessionIdleTimeoutMinutes();
+        // A session whose token has gone unused past the idle window is revoked rather than
+        // merely rejected, so it disappears from the active-session views instead of
+        // lingering as a seemingly valid row until its absolute expiry. last_seen_at is only
+        // absent on rows written before the column existed; those keep the absolute expiry
+        // as their only deadline.
+        if (idleTimeoutMinutes > 0 && session.getLastSeenAt() != null
+                && !session.getLastSeenAt().plusMinutes(idleTimeoutMinutes).isAfter(current)) {
+            sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
+                    .eq("id", session.getId())
+                    .set("revoked_at", current)
+                    .set("gmt_modified", current));
+            return Optional.empty();
+        }
         if (session.getLastSeenAt() == null
                 || !session.getLastSeenAt().plus(LAST_SEEN_UPDATE_INTERVAL).isAfter(current)) {
             sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
                     .eq("id", session.getId())
-                    .set("last_seen_at", current));
+                    // A delayed request must not overwrite activity a newer request already recorded.
+                    .and(activity -> activity.isNull("last_seen_at").or().lt("last_seen_at", current))
+                    .set("last_seen_at", current)
+                    .set("gmt_modified", current));
         }
         return Optional.of(userInfo(user));
     }
@@ -455,10 +659,18 @@ public class AuthService {
         if (session == null) {
             return Optional.empty();
         }
-        if (session.expiresAtMillis() <= clock.millis()) {
+        long current = clock.millis();
+        if (session.expiresAtMillis() <= current) {
             activeTokens.remove(token);
             return Optional.empty();
         }
+        int idleTimeoutMinutes = sessionIdleTimeoutMinutes();
+        if (idleTimeoutMinutes > 0
+                && current - session.lastSeenMillis() > idleTimeoutMinutes * 60_000L) {
+            activeTokens.remove(token);
+            return Optional.empty();
+        }
+        activeTokens.put(token, new AuthSession(session.user(), session.expiresAtMillis(), current));
         return Optional.of(session.user());
     }
 
@@ -480,7 +692,10 @@ public class AuthService {
             user.setPasswordHash(passwordHasher.hash(configuredUser.getPassword()));
             user.setAdmin(configuredUser.isAdmin());
             user.setEnabled(true);
-            user.setPasswordChangedAt(now());
+            LocalDateTime current = now();
+            user.setPasswordChangedAt(current);
+            user.setGmtCreate(current);
+            user.setGmtModified(current);
             try {
                 userMapper.insert(user);
             } catch (DuplicateKeyException exception) {
@@ -516,7 +731,8 @@ public class AuthService {
                 .eq("user_id", userId)
                 .isNull("revoked_at")
                 .gt("expires_at", current)
-                .set("revoked_at", current));
+                .set("revoked_at", current)
+                .set("gmt_modified", current));
     }
 
     private Set<Long> normalizeUserIds(Collection<Long> userIds) {
@@ -553,6 +769,8 @@ public class AuthService {
                         && !expiresAt.isAfter(current.plus(SESSION_EXPIRING_SOON_WINDOW)))
                 .stale(lastSeenAt != null
                         && lastSeenAt.isBefore(current.minus(STALE_SESSION_THRESHOLD)))
+                .clientIp(session.getClientIp())
+                .userAgent(session.getUserAgent())
                 .build();
     }
 
@@ -616,7 +834,12 @@ public class AuthService {
     }
 
     private LoginVO.UserInfo userInfo(RmqStudioUser user) {
-        return userInfo(user.getId(), user.getUsername(), Boolean.TRUE.equals(user.getAdmin()));
+        return LoginVO.UserInfo.builder()
+                .userId(user.getId())
+                .username(user.getUsername())
+                .admin(Boolean.TRUE.equals(user.getAdmin()))
+                .mustChangePassword(Boolean.TRUE.equals(user.getPasswordMustChange()))
+                .build();
     }
 
     private LoginVO.UserInfo userInfo(Long userId, String username, boolean admin) {
@@ -633,8 +856,38 @@ public class AuthService {
         return Math.toIntExact(Duration.ofMinutes(minutes).toSeconds());
     }
 
+    /**
+     * Effective idle-timeout window in minutes: {@code 0} disables enforcement. A missing value
+     * (settings written before the field existed) keeps the default; values between 1 and the
+     * minimum are raised to it rather than silently flapping against the throttled last-seen
+     * writes, and out-of-range values fall back to the default like the absolute timeout does.
+     */
+    private int sessionIdleTimeoutMinutes() {
+        GeneralSettingsVO settings = settingsRepository.loadGeneralSettings();
+        Integer minutes = settings == null ? null : settings.getSessionIdleTimeout();
+        if (minutes == null) {
+            return DEFAULT_SESSION_IDLE_TIMEOUT_MINUTES;
+        }
+        if (minutes <= 0) {
+            return 0;
+        }
+        if (minutes > MAX_SESSION_IDLE_TIMEOUT_MINUTES) {
+            log.warn("Ignoring invalid persisted session idle timeout: {} minutes", minutes);
+            return DEFAULT_SESSION_IDLE_TIMEOUT_MINUTES;
+        }
+        return Math.max(minutes, MIN_SESSION_IDLE_TIMEOUT_MINUTES);
+    }
+
     private LocalDateTime now() {
         return LocalDateTime.ofInstant(Instant.ofEpochMilli(clock.millis()), ZoneOffset.UTC);
+    }
+
+    private static String truncate(String value, int maxLength) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() <= maxLength ? trimmed : trimmed.substring(0, maxLength);
     }
 
     private String newBearerToken() {
@@ -662,7 +915,16 @@ public class AuthService {
     }
 
     private void purgeExpiredSessions(long current) {
-        activeTokens.entrySet().removeIf(entry -> entry.getValue().expiresAtMillis() <= current);
+        int idleTimeoutMinutes = sessionIdleTimeoutMinutes();
+        activeTokens.entrySet().removeIf(entry -> sessionExpiredOrIdle(entry.getValue(), current, idleTimeoutMinutes));
+    }
+
+    private boolean sessionExpiredOrIdle(AuthSession session, long current, int idleTimeoutMinutes) {
+        if (session.expiresAtMillis() <= current) {
+            return true;
+        }
+        return idleTimeoutMinutes > 0
+                && current - session.lastSeenMillis() > idleTimeoutMinutes * 60_000L;
     }
 
     private boolean databaseBacked() {
@@ -675,6 +937,6 @@ public class AuthService {
         }
     }
 
-    private record AuthSession(LoginVO.UserInfo user, long expiresAtMillis) {
+    private record AuthSession(LoginVO.UserInfo user, long expiresAtMillis, long lastSeenMillis) {
     }
 }

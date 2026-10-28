@@ -19,6 +19,8 @@ export interface Topic {
   tps: number;
   consumerGroupCount: number;
   remark: string;
+  /** Create-only TTL of a Lite parent topic in minutes (type=LITE); never sent on updates. */
+  liteTtlMinutes?: number;
   gmtCreate: string;
   gmtModified: string;
 }
@@ -109,16 +111,23 @@ export interface ConsumerGroup {
   gmtCreate: string;
   gmtModified: string;
   delaySeconds: number;
+  /**
+   * Whether the broker consume stats carried a consumed-message timestamp. When false,
+   * `delaySeconds` is the provider's placeholder zero, not a measured delay.
+   */
+  consumptionTimestampAvailable?: boolean;
   instances: ConsumerInstance[];
 }
 
 export interface ConsumerInstance {
   clientId: string;
-  protocol: string;
+  /** Absent when the backend cannot tell (Apache connections carry no protocol marker). */
+  protocol?: string;
   address: string;
-  subscribedTopics: string[];
-  lastHeartbeat: string;
-  topicLag: Record<string, number>;
+  /** Populated only when the provider reports per-topic lag for the instance. */
+  subscribedTopics?: string[];
+  lastHeartbeat?: string;
+  topicLag?: Record<string, number>;
 }
 
 export interface ConsumerThreadStack {
@@ -172,6 +181,8 @@ export interface ConsumerGroupQuery {
   instanceId?: string;
   clusterId?: string;
   search?: string;
+  /** Subscription mode filter ("Push" / "Pop"); absent or "ALL" means no restriction. */
+  subscriptionMode?: string;
 }
 
 export interface ConsumerGroupPageQuery extends ConsumerGroupQuery {
@@ -181,7 +192,6 @@ export interface ConsumerGroupPageQuery extends ConsumerGroupQuery {
 
 export interface ConsumerGroupExportQuery extends ConsumerGroupQuery {
   names?: string[];
-  subscriptionMode?: string;
 }
 
 export interface ImportConsumerGroupsRequest {

@@ -7,6 +7,9 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.cluster.metrics.MetricProfileService;
+import org.apache.rocketmq.studio.cluster.metrics.PrometheusProperties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -23,6 +26,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -95,6 +100,30 @@ class AlertRuleTransferServiceTest {
 
         verify(metricCatalogService, times(2)).validate(any(AlertRuleVO.class));
         verify(alertService, never()).createRule(eq(AlertDomain.CLUSTER), any(AlertRuleVO.class));
+    }
+
+    @Test
+    void rejectsImportedNativeRuleWithoutOperatorBeforePersistenceTest() {
+        AlertRepository repository = mock(AlertRepository.class);
+        OperationAuditService auditService = mock(OperationAuditService.class);
+        AlertService realService = new AlertService(repository, mock(AlertStateRepository.class),
+                new AlertRuleAssetService(), auditService, new MetricProfileService(new PrometheusProperties()),
+                org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class));
+        AlertRuleTransferService realTransfer = new AlertRuleTransferService(realService, metricCatalogService);
+        lenient().when(repository.insertRule(any(AlertRuleVO.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        AlertRuleRequestDTO invalid = request("Missing operator");
+        invalid.setMetric("broker.availability");
+        invalid.setInstanceId("local");
+        invalid.setOperator(null);
+
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> realTransfer.importRules(AlertDomain.CLUSTER,
+                        transfer(AlertDomain.CLUSTER, invalid)));
+
+        assertEquals(400, error.getCode());
+        verify(repository, never()).insertRule(any(AlertRuleVO.class));
+        verifyNoInteractions(auditService);
     }
 
     @Test

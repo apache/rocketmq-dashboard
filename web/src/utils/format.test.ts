@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from 'vitest';
 import {
+  UNKNOWN_MESSAGE_SIZE,
   formatBytes,
   formatDate,
   formatDateTime,
   formatUtcDateTime,
   formatDelay,
   formatNumber,
+  formatOptionalBytes,
   formatPercent,
   formatRelativeTime,
   formatTimeOfDay,
   formatTimeMs,
+  parseAlertTimestamp,
   ratioToPercent,
   roundPercent,
 } from './format';
@@ -117,6 +120,44 @@ describe('formatBytes', () => {
     expect(formatRelativeTime(now - 5 * 60_000, 'en', en, now)).toBe('5 min ago');
     expect(formatRelativeTime(now - 2 * 60 * 60_000, 'zh', zh, now)).toBe('13:30');
     expect(formatTimeOfDay(now)).toBe('15:30');
+  });
+});
+
+describe('formatOptionalBytes', () => {
+  it('renders the unknown-size sentinel as the placeholder instead of -1 B', () => {
+    expect(formatOptionalBytes(UNKNOWN_MESSAGE_SIZE)).toBe('-');
+  });
+
+  it('keeps a measured zero as a real byte count', () => {
+    expect(formatOptionalBytes(0)).toBe('0 B');
+    expect(formatOptionalBytes(1536)).toBe('1.5 KB');
+  });
+});
+
+describe('parseAlertTimestamp', () => {
+  it('parses an offset-less alert timestamp as UTC regardless of the browser zone', () => {
+    // Expressed against Date.parse with an explicit Z so the expectation cannot drift with TZ.
+    expect(parseAlertTimestamp('2026-08-23T10:35:38')).toBe(Date.parse('2026-08-23T10:35:38Z'));
+    expect(parseAlertTimestamp('2026-08-23 10:35:38')).toBe(Date.parse('2026-08-23T10:35:38Z'));
+  });
+
+  it('honors an explicit offset instead of assuming UTC', () => {
+    expect(parseAlertTimestamp('2026-08-23T10:35:38Z')).toBe(Date.parse('2026-08-23T10:35:38Z'));
+    expect(parseAlertTimestamp('2026-08-23T10:35:38+08:00')).toBe(
+      Date.parse('2026-08-23T10:35:38+08:00'),
+    );
+    expect(parseAlertTimestamp('2026-08-23T10:35:38-05:00')).toBe(
+      Date.parse('2026-08-23T10:35:38-05:00'),
+    );
+  });
+
+  it('passes Date objects through and reports unusable values as NaN', () => {
+    const date = new Date(Date.parse('2026-08-23T10:35:38Z'));
+    expect(parseAlertTimestamp(date)).toBe(date.getTime());
+    expect(parseAlertTimestamp('not a timestamp')).toBeNaN();
+    expect(parseAlertTimestamp('')).toBeNaN();
+    expect(parseAlertTimestamp(null)).toBeNaN();
+    expect(parseAlertTimestamp(undefined)).toBeNaN();
   });
 });
 

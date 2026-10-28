@@ -37,6 +37,7 @@ import {
   Statistic,
   Tooltip,
   message,
+  theme,
 } from 'antd';
 import {
   SearchOutlined,
@@ -78,7 +79,7 @@ import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import useAuthStore from '../../stores/authStore';
 import { downloadBlob } from '../../utils/download';
 import { describeThrownMessage } from '../../utils/apiError';
-import { formatBytes, formatTimeMs } from '../../utils/format';
+import { formatOptionalBytes, formatOptionalTimeMs, formatTimeMs } from '../../utils/format';
 import {
   readMessageTraceTopic,
   writeMessageTraceTopic,
@@ -348,6 +349,7 @@ const MessagePageContent = ({
   reloadInstances,
 }: InstanceFilterProps) => {
   const { t } = useLang();
+  const { token } = theme.useToken();
   const [topicOptions, setTopicOptions] = useState<string[]>([]);
   const [topicError, setTopicError] = useState<string | null>(null);
   const [topicLoading, setTopicLoading] = useState(false);
@@ -902,7 +904,7 @@ const MessagePageContent = ({
       // 「12.3 MB」实测 48px + 左右 padding 16px；原来给 80 是把宽度让给了溢出的操作列。
       width: 68,
       align: 'right',
-      render: (size: number) => formatBytes(size),
+      render: (size: number) => formatOptionalBytes(size),
     },
     {
       title: t('common.actions'),
@@ -980,12 +982,14 @@ const MessagePageContent = ({
       title: t('messagePage.consumeTime'),
       dataIndex: 'consumeTime',
       key: 'consumeTime',
-      render: (time: string) =>
-        time === '-' ? (
+      render: (time: number | string) => {
+        const formatted = formatOptionalTimeMs(time);
+        return formatted === '-' ? (
           <span style={{ color: '#9CA3AF' }}>-</span>
         ) : (
-          <span style={{ fontFamily: 'monospace', fontSize: 14 }}>{formatTimeMs(time)}</span>
-        ),
+          <span style={{ fontFamily: 'monospace', fontSize: 14 }}>{formatted}</span>
+        );
+      },
     },
     {
       title: t('messagePage.retryCount'),
@@ -1023,7 +1027,7 @@ const MessagePageContent = ({
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.key}</span>
             </Descriptions.Item>
             <Descriptions.Item label={t('messagePage.size')}>
-              {formatBytes(selectedMsg.size)}
+              {formatOptionalBytes(selectedMsg.size)}
             </Descriptions.Item>
             <Descriptions.Item label={t('messagePage.reconsumeTimes')}>
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.reconsumeTimes ?? '-'}</span>
@@ -1069,7 +1073,9 @@ const MessagePageContent = ({
           <Paragraph
             copyable={{ text: selectedMsg.body }}
             style={{
-              background: '#f5f5f5',
+              // Theme fill instead of a fixed light grey: the body text inherits the active
+              // theme's color, so a hardcoded light background made it unreadable in dark mode.
+              background: token.colorFillQuaternary,
               padding: '12px 16px',
               borderRadius: 6,
               fontFamily: "'SF Mono', Monaco, 'Cascadia Code', Consolas, monospace",
@@ -1153,7 +1159,7 @@ const MessagePageContent = ({
                   description: (
                     <div style={{ fontSize: 14 }}>
                       <div style={{ color: '#9CA3AF', fontFamily: 'monospace' }}>
-                        {formatTimeMs(node.timestamp)}
+                        {formatOptionalTimeMs(node.timestamp)}
                       </div>
                       <div style={{ marginTop: 2 }}>{node.description}</div>
                       <div style={{ color: '#9CA3AF', fontSize: 14 }}>
@@ -1236,6 +1242,7 @@ const MessagePageContent = ({
                   <RangePicker
                     showTime
                     style={{ width: 400 }}
+                    allowClear={false}
                     value={dateRange}
                     onChange={(vals) => {
                       if (vals && vals[0] && vals[1]) {
@@ -1327,7 +1334,9 @@ const MessagePageContent = ({
         </Space>
       </Card>
 
-      {queryMode === 'queue' && <QueueBrowserResults state={queueBrowser} />}
+      {queryMode === 'queue' && (
+        <QueueBrowserResults state={queueBrowser} onOpenMessage={openDetail} />
+      )}
 
       {topicError && (
         <Alert

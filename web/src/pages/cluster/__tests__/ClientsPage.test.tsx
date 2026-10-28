@@ -168,6 +168,29 @@ async function expectInteractive(element: Element) {
 }
 
 describe('Clients page', () => {
+  it('shows one producer connected to two brokers without a false ID collision Test', async () => {
+    vi.mocked(connectionsService.listConnections).mockResolvedValue([
+      {
+        ...connection,
+        clientId: '192.0.2.10@4242',
+        protocol: 'Remoting',
+        address: '192.0.2.10:51001',
+      },
+      {
+        ...connection,
+        clientId: '192.0.2.10@4242',
+        protocol: 'Remoting',
+        address: '192.0.2.10:51002',
+      },
+    ]);
+    renderWithProviders(<ClientsPage />);
+    await screen.findAllByText('192.0.2.10:51001');
+    await screen.findAllByText('192.0.2.10:51002');
+    const diagnostics = screen.getByTestId('client-connection-diagnostics');
+    expect(within(diagnostics).queryByText('Client ID 连接到多个地址')).not.toBeInTheDocument();
+    expect(within(diagnostics).getByText('客户端连接健康')).toBeInTheDocument();
+  });
+
   it('returns to the first page when the connection search changes', async () => {
     const pagedConnections = Array.from({ length: 21 }, (_, index) => ({
       ...connection,
@@ -272,6 +295,38 @@ describe('Clients page', () => {
     expect(within(languageVersions).getByText('Java 5.0.7: 1')).toBeInTheDocument();
     expect(within(languageVersions).getByText('Go 2.1.0: 1')).toBeInTheDocument();
     expect(within(languageVersions).getByText('C++ 4.9.8: 1')).toBeInTheDocument();
+  });
+
+  it('countsEveryListedConnectionWhenAClientServesSeveralGroupsTest', async () => {
+    // A RocketMQ client registers one entry per group it serves - its own group plus the shared
+    // CLIENT_INNER_PRODUCER - so the same clientId appears on several rows. The summary tiles
+    // describe the connections the table lists; the de-duplicated clients stay the diagnostics
+    // panel's job ("唯一 Client / 唯一地址" below).
+    vi.mocked(connectionsService.listConnections).mockResolvedValue([
+      { ...connection, clientId: 'shared-client', groupOrTopic: 'order-create' },
+      { ...connection, clientId: 'shared-client', groupOrTopic: 'CLIENT_INNER_PRODUCER' },
+      {
+        ...connection,
+        clientId: 'order-consumer',
+        type: 'Consumer',
+        groupOrTopic: 'cg-order',
+        address: '10.0.1.40:49152',
+      },
+    ]);
+    renderWithProviders(<ClientsPage />);
+
+    await waitFor(() => {
+      expect(within(screen.getByTestId('connection-total')).getByText('3')).toBeInTheDocument();
+    });
+    expect(within(screen.getByTestId('producer-total')).getByText('2')).toBeInTheDocument();
+    expect(within(screen.getByTestId('consumer-total')).getByText('1')).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('protocol-distribution')).getByText('gRPC: 3'),
+    ).toBeInTheDocument();
+
+    const diagnostics = screen.getByTestId('client-connection-diagnostics');
+    expect(diagnostics.textContent).toContain('唯一 Client: 2');
+    expect(diagnostics.textContent).toContain('唯一地址: 2');
   });
 
   it('renders client connection diagnostics for risky inventories', async () => {
@@ -592,8 +647,8 @@ describe('Clients page', () => {
     const blob = createObjectURL.mock.calls[0][0] as Blob;
     await expect(blob.text()).resolves.toBe(
       [
-        '"Cluster","Client ID","Type","Group/Topic","Protocol","Address","Language","Version","Connected At","Partial"',
-        '"ns-prod","\'=risky-client","Producer","order-create","gRPC","10.0.1.12:49152","Java","5.0.7","2026-07-01 08:30:00","false"',
+        '"Cluster","Client ID","Type","Group/Topic","Protocol","Address","Language","Version","Partial"',
+        '"ns-prod","\'=risky-client","Producer","order-create","gRPC","10.0.1.12:49152","Java","5.0.7","false"',
       ].join('\n'),
     );
     expect(
@@ -888,6 +943,39 @@ describe('Clients page', () => {
     expect(within(dialog).getByText('10.0.1.12:49152')).toBeInTheDocument();
     expect(within(dialog).getByText('Java')).toBeInTheDocument();
     expect(within(dialog).getByText('5.0.7')).toBeInTheDocument();
-    expect(within(dialog).getByText('2026-07-01 08:30:00')).toBeInTheDocument();
+  });
+
+  // #6086: no provider (Apache remoting, proxy, or stub) can supply a connection time, so the page
+  // must not advertise one in the table, in the detail dialog or in the CSV export.
+  it('omits every connection-time control the API can never fill', async () => {
+    const createObjectURL = vi.fn((blob: Blob | MediaSource) => {
+      expect(blob).toBeInstanceOf(Blob);
+      return 'blob:connections-without-a-connection-time';
+    });
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      writable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ClientsPage />);
+
+    const row = await screen.findByRole('row', { name: /order-svc-0@10\.0\.1\.12:49152/ });
+    expect(screen.queryAllByText('心跳时间')).toHaveLength(0);
+
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+    const csv = await (createObjectURL.mock.calls[0][0] as Blob).text();
+    expect(csv.split('\n')[0]).toBe(
+      '"Cluster","Client ID","Type","Group/Topic","Protocol","Address","Language","Version","Partial"',
+    );
+
+    await expectInteractive(within(row).getByRole('button', { name: /详情/ }));
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+    const dialog = await screen.findByRole('dialog', { name: /客户端详情/ });
+    expect(within(dialog).queryAllByText('心跳时间')).toHaveLength(0);
   });
 });

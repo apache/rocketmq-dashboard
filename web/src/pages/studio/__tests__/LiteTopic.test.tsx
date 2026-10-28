@@ -18,6 +18,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import type { LiteTopicItem, LiteTopicQuota } from '../../../api/liteTopic';
@@ -75,7 +76,12 @@ const renderPage = () =>
   render(
     <App>
       <LangProvider>
-        <LiteTopic />
+        <MemoryRouter initialEntries={['/studio/lite-topic']}>
+          <Routes>
+            <Route path="/studio/lite-topic" element={<LiteTopic />} />
+            <Route path="/instance/topic" element={<div>topic-create-page</div>} />
+          </Routes>
+        </MemoryRouter>
       </LangProvider>
     </App>,
   );
@@ -92,7 +98,10 @@ const createDeferred = <T,>() => {
 
 describe('LiteTopic time formatting', () => {
   it('preserves epoch timestamps and rejects invalid provider values', () => {
-    expect(formatTime(0)).toBe(new Date(0).toLocaleString());
+    // Epoch instants render as a stable `YYYY-MM-DD HH:mm:ss` in the viewer's zone, never the
+    // locale-dependent Date.toLocaleString string.
+    expect(formatTime(0)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    expect(formatTime(0)).not.toBe(new Date(0).toLocaleString());
     expect(formatTime(Number.POSITIVE_INFINITY)).toBe('-');
     expect(formatTime(Number.MAX_VALUE)).toBe('-');
   });
@@ -323,6 +332,46 @@ describe('LiteTopic Page', () => {
     await waitFor(() => {
       expect(apiMocks.extendLiteTopicTTL).toHaveBeenCalledWith('apache-main', 'order-*', 7200);
     });
+  });
+
+  it('ignores an old instance lookup after the TTL dialog is reopened', async () => {
+    const first = createDeferred<Instance[]>();
+    const second = createDeferred<Instance[]>();
+    instanceApiMocks.listInstances
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise);
+    const user = userEvent.setup();
+    renderPage();
+
+    const open = await screen.findByText('延长 TTL');
+    await user.click(open);
+    await waitFor(() => expect(instanceApiMocks.listInstances).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: /取\s*消/ }));
+    await user.click(open);
+    await waitFor(() => expect(instanceApiMocks.listInstances).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      first.resolve([{ id: 1, name: 'previous-owner', vendor: 'APACHE' } as Instance]);
+    });
+    expect(document.querySelector('.ant-modal .ant-select-selection-item')).toBeNull();
+
+    await act(async () => {
+      second.resolve([{ id: 2, name: 'current-owner', vendor: 'APACHE' } as Instance]);
+    });
+    await waitFor(() =>
+      expect(document.querySelector('.ant-modal .ant-select-selection-item')?.textContent).toBe(
+        'current-owner',
+      ),
+    );
+  });
+
+  it('routes to the generic topic page to create a Lite parent', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('order-*');
+    await user.click(screen.getByRole('button', { name: /创建 Lite 父主题/ }));
+
+    expect(await screen.findByText('topic-create-page')).toBeInTheDocument();
   });
 
   it('returns to the first page when the local TTL filter changes', async () => {

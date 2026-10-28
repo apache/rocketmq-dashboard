@@ -42,7 +42,7 @@ import {
 } from '../../api/producer';
 import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
-import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { buildCsv, downloadCsv, localExportDateStamp, type CsvColumn } from '../../utils/download';
 
 const readinessConfig: Record<ProducerReadiness, { color: string; type: 'success' | 'warning' }> = {
   READY: { color: 'success', type: 'success' },
@@ -123,8 +123,8 @@ const ProducerPage = () => {
   }, []);
 
   // Invalidates any in-flight connection query and drops its visible results,
-  // shared by every scope change (instance / topic) so a slow response can never
-  // repopulate results that belong to a different scope.
+  // shared by every scope change (instance / topic / producer group) so a slow
+  // response can never repopulate results that belong to a different scope.
   const resetConnectionQuery = () => {
     queryRequestIdRef.current += 1;
     queryInFlightRef.current = null;
@@ -314,7 +314,7 @@ const ProducerPage = () => {
       readiness: connectionSummary?.readiness,
       warnings,
     }));
-    const filename = `rocketmq-producer-connections-${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename = `rocketmq-producer-connections-${localExportDateStamp()}.csv`;
     const csv = buildCsv(PRODUCER_CONNECTION_EXPORT_COLUMNS, rows);
     downloadCsv(filename, csv);
   };
@@ -374,6 +374,12 @@ const ProducerPage = () => {
               }}
               onSearch={(value) => {
                 void loadProducerGroups(value);
+              }}
+              onChange={() => {
+                // Editing the optional group filter is a criteria change like a topic edit:
+                // an in-flight query belongs to the group it was started with, and its rows
+                // must not survive the edit or land underneath the new criteria.
+                resetConnectionQuery();
               }}
               filterOption={(inputValue, option) =>
                 option?.value.toLowerCase().includes(inputValue.toLowerCase()) ?? false

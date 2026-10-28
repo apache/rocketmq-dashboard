@@ -18,6 +18,8 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -38,7 +40,12 @@ func TestMCPConfigEmitsOnlyContextAndConfigReferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	output := stdout.String()
-	for _, want := range []string{`"--config"`, `"/tmp/rmqctl.yaml"`, `"--context"`, `"prod"`} {
+	configPath, err := filepath.Abs("/tmp/rmqctl.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encodedPath, _ := json.Marshal(configPath)
+	for _, want := range []string{`"--config"`, string(encodedPath), `"--context"`, `"prod"`} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("config missing %s: %s", want, output)
 		}

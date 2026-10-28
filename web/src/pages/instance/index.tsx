@@ -40,6 +40,7 @@ import type { ColumnsType } from 'antd/es/table';
 import type { SortOrder } from 'antd/es/table/interface';
 import type { Instance, InstanceQuery } from '../../api/instance';
 import { listCloudCredentials, type CloudCredential } from '../../api/cloudCredential';
+import { listNameserverRegistry, type NameserverRegistryEntry } from '../../api/cluster';
 import {
   listAliyunInstances,
   listAliyunRegions,
@@ -50,6 +51,7 @@ import { listTencentInstances, listTencentRegions } from '../../api/tencentCatal
 import { describeApiError } from '../../utils/apiError';
 import { formatDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
+import ResourceRuleHelp from '../../components/ResourceRuleHelp';
 import {
   createInstance,
   deleteInstance,
@@ -140,6 +142,8 @@ const InstancePage = () => {
   const [cloudInstances, setCloudInstances] = useState<CloudInstanceOption[]>([]);
   const [cloudInstancesLoading, setCloudInstancesLoading] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [nameservers, setNameservers] = useState<NameserverRegistryEntry[]>([]);
+  const [nameserversLoading, setNameserversLoading] = useState(false);
   const [editingInstance, setEditingInstance] = useState<Instance | null>(null);
   const [editForm] = Form.useForm();
   const editInstanceType = Form.useWatch<Instance['type'] | undefined>('type', editForm);
@@ -192,6 +196,38 @@ const InstancePage = () => {
   }, [debouncedSearch, loadInstances, typeFilter]);
 
   const cloudVendor = vendor === 'ALIYUN' || vendor === 'TENCENT';
+
+  useEffect(() => {
+    if (nameservers.length === 1 && addForm.getFieldValue('nameserverId') == null) {
+      addForm.setFieldsValue({ nameserverId: nameservers[0].id });
+    }
+  }, [nameservers, addForm]);
+
+  useEffect(() => {
+    if (!(addModalOpen || editModalOpen) || cloudVendor) {
+      return;
+    }
+    let active = true;
+    // Deferred like the credential loader: a synchronous setState here trips the
+    // react-hooks lint rule about cascading renders inside effect bodies.
+    const timer = window.setTimeout(() => {
+      setNameserversLoading(true);
+      listNameserverRegistry()
+        .then((entries) => {
+          if (active) setNameservers(entries);
+        })
+        .catch(() => {
+          if (active) setNameservers([]);
+        })
+        .finally(() => {
+          if (active) setNameserversLoading(false);
+        });
+    }, 0);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [addModalOpen, editModalOpen, cloudVendor]);
 
   useEffect(() => {
     if (!cloudVendor || !addModalOpen) {
@@ -620,10 +656,19 @@ const InstancePage = () => {
       },
     },
     {
+      title: t('instance.nameserverColumn'),
+      dataIndex: 'nameserverName',
+      key: 'nameserverName',
+      width: 140,
+      render: (name: string | null, record: Instance) =>
+        record.vendor === 'ALIYUN' || record.vendor === 'TENCENT' ? '-' : (name ?? '-'),
+    },
+    {
       title: 'Topic',
       dataIndex: 'topicCount',
       key: 'topicCount',
-      width: 70,
+      // 表头「Topic」+ 排序图标实测需 ~78，70 会把排序图标挤出列宽
+      width: 84,
       align: 'center' as const,
       sorter: (a, b, sortOrder) => compareResourceCounts(a, b, 'topicCount', sortOrder),
       render: (count: number, record: Instance) =>
@@ -633,7 +678,7 @@ const InstancePage = () => {
       title: 'Group',
       dataIndex: 'consumerGroupCount',
       key: 'consumerGroupCount',
-      width: 70,
+      width: 84,
       align: 'center' as const,
       sorter: (a, b, sortOrder) => compareResourceCounts(a, b, 'consumerGroupCount', sortOrder),
       render: (count: number, record: Instance) =>
@@ -964,6 +1009,36 @@ const InstancePage = () => {
               <Input placeholder={t('instance.namePlaceholder')} />
             </Form.Item>
             <Form.Item
+              label={
+                <Space size={4}>
+                  {t('instance.nameserver')}
+                  <ResourceRuleHelp />
+                </Space>
+              }
+              name="nameserverId"
+              rules={[{ required: true, message: t('instance.nameserverRequired') }]}
+              extra={t('instance.nameserverExtra')}
+            >
+              <Select
+                placeholder={t('instance.selectNameserver')}
+                loading={nameserversLoading}
+                notFoundContent={
+                  nameserversLoading ? (
+                    t('instance.loading')
+                  ) : (
+                    <span>
+                      {t('instance.noNameserver')}
+                      <Link to="/cluster">{t('instance.addInClusterPage')}</Link>
+                    </span>
+                  )
+                }
+                options={nameservers.map((entry) => ({
+                  value: entry.id,
+                  label: `${entry.name}（${entry.namesrvAddr}）`,
+                }))}
+              />
+            </Form.Item>
+            <Form.Item
               label={t('instance.accessType')}
               name="type"
               rules={[{ required: true, message: t('instance.accessTypeRequired') }]}
@@ -1026,6 +1101,11 @@ const InstancePage = () => {
           <Form.Item label={t('instance.instanceName')}>
             <Input value={editingInstance?.name} disabled />
           </Form.Item>
+          {editingInstance?.vendor !== 'ALIYUN' && editingInstance?.vendor !== 'TENCENT' && (
+            <Form.Item label={t('instance.nameserver')} extra={t('instance.nameserverImmutable')}>
+              <Input value={editingInstance?.nameserverName ?? '-'} disabled />
+            </Form.Item>
+          )}
           <Form.Item
             label={t('instance.accessType')}
             name="type"

@@ -16,6 +16,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { formatUtcDateTime } from '../../utils/format';
 import {
   Table,
   Button,
@@ -45,7 +46,9 @@ import {
   Gauge,
   Info,
   DownloadSimple,
+  Plus,
 } from '@phosphor-icons/react';
+import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import { useLang } from '../../i18n/LangContext';
@@ -60,7 +63,7 @@ import {
   type LiteTopicSession,
 } from '../../api/liteTopic';
 import { listInstances, supportsApacheRuntime, type Instance } from '../../api/instance';
-import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { buildCsv, downloadCsv, localExportDateStamp, type CsvColumn } from '../../utils/download';
 
 const formatDuration = (ms: number | undefined | null): string => {
   if (ms == null) return '-';
@@ -70,10 +73,13 @@ const formatDuration = (ms: number | undefined | null): string => {
   return `${(ms / 3600000).toFixed(1)}h`;
 };
 
+/* LiteTopic instants (create / last-active) are epoch millis. Render them through the shared
+ * formatter like the other timestamp surfaces: a stable `YYYY-MM-DD HH:mm:ss` in the viewer's
+ * zone, instead of Date.toLocaleString's locale-dependent browser-local string. */
 export const formatTime = (timestamp: number | undefined | null): string => {
   if (timestamp == null || !Number.isFinite(timestamp)) return '-';
   const date = new Date(timestamp);
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? '-' : formatUtcDateTime(date);
 };
 
 /**
@@ -136,6 +142,7 @@ const collectNamespaces = (items: LiteTopicItem[]): string[] => {
 const LiteTopicPage: React.FC = () => {
   const { t } = useLang();
   const { message } = App.useApp();
+  const navigate = useNavigate();
   const messageRef = useRef(message);
   const translationRef = useRef(t);
 
@@ -178,6 +185,7 @@ const LiteTopicPage: React.FC = () => {
   const displayRequestId = useRef(0);
   const displayQueryRef = useRef<{ pattern?: string; namespace?: string }>({});
   const sessionRequestId = useRef(0);
+  const ttlInstanceRequestId = useRef(0);
 
   useEffect(() => {
     messageRef.current = message;
@@ -235,6 +243,7 @@ const LiteTopicPage: React.FC = () => {
     const mountedState = mountedRef;
     const bootstrapCounter = bootstrapRequestId;
     const displayCounter = displayRequestId;
+    const ttlCounter = ttlInstanceRequestId;
     mountedState.current = true;
 
     const bootstrapId = ++bootstrapCounter.current;
@@ -296,6 +305,7 @@ const LiteTopicPage: React.FC = () => {
       mountedState.current = false;
       ++bootstrapCounter.current;
       ++displayCounter.current;
+      ++ttlCounter.current;
     };
   }, [capabilityRetryVersion, fetchData]);
 
@@ -338,18 +348,21 @@ const LiteTopicPage: React.FC = () => {
   };
 
   const handleOpenExtendTTL = (record: LiteTopicItem) => {
+    const requestId = ++ttlInstanceRequestId.current;
     setExtendTTLForm({
       instanceId: '',
       topicPattern: record.topicPattern || '',
       newTTL: null,
     });
     setExtendTTLModalOpen(true);
+    setTtlInstanceOptions([]);
     // The TTL write is ownership-checked against the owning instance, so the
     // modal needs the Apache-vendor instance list; auto-select when only one
     // candidate exists.
     setTtlInstancesLoading(true);
     listInstances()
       .then((instances) => {
+        if (requestId !== ttlInstanceRequestId.current) return;
         const candidates = instances.filter(supportsApacheRuntime);
         setTtlInstanceOptions(candidates);
         setExtendTTLForm((form) =>
@@ -359,11 +372,17 @@ const LiteTopicPage: React.FC = () => {
         );
       })
       .catch(() => {
-        setTtlInstanceOptions([]);
+        if (requestId === ttlInstanceRequestId.current) setTtlInstanceOptions([]);
       })
       .finally(() => {
-        setTtlInstancesLoading(false);
+        if (requestId === ttlInstanceRequestId.current) setTtlInstancesLoading(false);
       });
+  };
+
+  const closeExtendTTL = () => {
+    ++ttlInstanceRequestId.current;
+    setExtendTTLModalOpen(false);
+    setTtlInstancesLoading(false);
   };
 
   const handleExtendTTL = async () => {
@@ -377,7 +396,7 @@ const LiteTopicPage: React.FC = () => {
         extendTTLForm.newTTL,
       );
       message.success(t('liteTopic.extendTtlSuccess'));
-      setExtendTTLModalOpen(false);
+      closeExtendTTL();
       void fetchData(patternFilter || undefined, namespaceFilter || undefined);
     } catch {
       message.error(t('liteTopic.extendTtlFailed'));
@@ -423,7 +442,7 @@ const LiteTopicPage: React.FC = () => {
         ttlStatusLabel: getTTLStatusLabel(item.ttlStatus),
         sessionCount: item.sessionIds?.length ?? 0,
       }));
-      const filename = `rocketmq-lite-topics-${new Date().toISOString().slice(0, 10)}.csv`;
+      const filename = `rocketmq-lite-topics-${localExportDateStamp()}.csv`;
       downloadCsv(filename, buildCsv(LITE_TOPIC_EXPORT_COLUMNS, rows));
       message.success(t('liteTopic.exportSuccess', { total: rows.length }));
     } catch {
@@ -861,6 +880,14 @@ const LiteTopicPage: React.FC = () => {
         extra={
           <Space>
             <Button
+              type="primary"
+              icon={<Plus size={14} />}
+              size="small"
+              onClick={() => navigate('/instance/topic', { state: { createType: 'LITE' } })}
+            >
+              {t('liteTopic.createParent')}
+            </Button>
+            <Button
               icon={<DownloadSimple size={14} />}
               size="small"
               disabled={loading || filteredTopicList.length === 0}
@@ -994,7 +1021,7 @@ const LiteTopicPage: React.FC = () => {
         title={t('liteTopic.extendTtlModalTitle')}
         open={extendTTLModalOpen}
         onOk={handleExtendTTL}
-        onCancel={() => setExtendTTLModalOpen(false)}
+        onCancel={closeExtendTTL}
         confirmLoading={extendTTLLoading}
         okText={t('common.confirm')}
         cancelText={t('common.cancel')}

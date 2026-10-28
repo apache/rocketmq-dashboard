@@ -35,12 +35,9 @@ import type { GeneralSettings, GeneralSettingsUpdate } from '../../api/settings'
 import { useTheme } from '../../theme/useTheme';
 import type { ThemeMode } from '../../theme/themePreference';
 import { useLang } from '../../i18n/LangContext';
-import useAuthStore from '../../stores/authStore';
+import { useCanWriteSettings } from '../../hooks/useCanWriteSettings';
 
 const { Text } = Typography;
-
-const toThemeMode = (value?: string): ThemeMode =>
-  value === 'light' || value === 'dark' ? value : 'system';
 
 const buildPayload = (settings: GeneralSettings): GeneralSettingsUpdate => ({
   preserveLlmConfig: true,
@@ -49,6 +46,8 @@ const buildPayload = (settings: GeneralSettings): GeneralSettingsUpdate => ({
   desktopNotify: settings.desktopNotify,
   notifySound: settings.notifySound,
   sessionTimeout: settings.sessionTimeout,
+  // Backends predating the field omit it; saving the server default keeps the two in sync.
+  sessionIdleTimeout: settings.sessionIdleTimeout ?? 0,
   requireLogin: settings.requireLogin,
   llmProvider: settings.llmProvider,
   model: settings.model,
@@ -63,7 +62,7 @@ const buildPayload = (settings: GeneralSettings): GeneralSettingsUpdate => ({
 export const GeneralSettingsTab = () => {
   const { t } = useLang();
   const { message } = App.useApp();
-  const { setThemeMode, setCompact } = useTheme();
+  const { themeMode, compact, setThemeMode, setCompact } = useTheme();
   const [settings, setSettings] = useState<GeneralSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingPreference, setSavingPreference] = useState(false);
@@ -72,12 +71,10 @@ export const GeneralSettingsTab = () => {
   const [testingChannel, setTestingChannel] = useState<string>();
   const securityInFlightRef = useRef(false);
   const notifyInFlightRef = useRef(false);
-  const authUserId = useAuthStore((state) => state.userId);
-  const authAdmin = useAuthStore((state) => state.admin);
-  // Mirrors the server policy: POST /api/settings/general/save is admin-only, and the
-  // server also hands redacted webhook values to readers. Without a signed-in studio
-  // user (auth disabled) the caller counts as system, so writes stay allowed.
-  const canWriteSettings = !authUserId || authAdmin === true;
+  // Mirrors the server policy: POST /api/settings/general/save is admin-only, and the server also
+  // hands redacted webhook values to readers. The shared hook documents why a deployment without
+  // studio authentication keeps its writes enabled.
+  const canWriteSettings = useCanWriteSettings();
   const translationRef = useRef(t);
   const [securityForm] = Form.useForm();
   const [notifyForm] = Form.useForm();
@@ -94,7 +91,10 @@ export const GeneralSettingsTab = () => {
       .then((loaded) => {
         if (cancelled) return;
         setSettings(loaded);
-        securityForm.setFieldsValue({ sessionTimeout: loaded.sessionTimeout });
+        securityForm.setFieldsValue({
+          sessionTimeout: loaded.sessionTimeout,
+          sessionIdleTimeout: loaded.sessionIdleTimeout ?? 0,
+        });
         notifyForm.setFieldsValue({
           dingtalkWebhook: loaded.dingtalkWebhook,
           dingtalkSigningSecret: '',
@@ -179,12 +179,20 @@ export const GeneralSettingsTab = () => {
     }
   };
 
-  const handleSecurityFinish = async (values: { sessionTimeout: number }) => {
+  const handleSecurityFinish = async (values: {
+    sessionTimeout: number;
+    sessionIdleTimeout: number;
+  }) => {
     if (!canWriteSettings || securityInFlightRef.current) return;
     securityInFlightRef.current = true;
     setSavingSecurity(true);
     try {
-      if (await mergeAndSave({ sessionTimeout: values.sessionTimeout })) {
+      if (
+        await mergeAndSave({
+          sessionTimeout: values.sessionTimeout,
+          sessionIdleTimeout: values.sessionIdleTimeout,
+        })
+      ) {
         message.success(t('settings.saveSuccess'));
       }
     } finally {
@@ -230,7 +238,10 @@ export const GeneralSettingsTab = () => {
   };
 
   return (
-    <Flex vertical gap={24} style={{ maxWidth: 860 }}>
+    // 不设 maxWidth：1600 视口下内容区约 1330，860 的上限让卡片只占六成宽、右侧大片留白
+    // （用户约定 2026-10-16 视觉验收）。表单行是「说明左 / 控件右」的 space-between 布局，铺满后
+    // 控件贴右缘，与其它页卡片宽度一致。
+    <Flex vertical gap={24}>
       <Card
         title={
           <Space>
@@ -249,7 +260,7 @@ export const GeneralSettingsTab = () => {
               </Text>
             </div>
             <Segmented
-              value={toThemeMode(settings?.theme)}
+              value={themeMode}
               options={[
                 { value: 'light', label: t('settings.lightTheme') },
                 { value: 'dark', label: t('settings.darkTheme') },
@@ -271,7 +282,7 @@ export const GeneralSettingsTab = () => {
               </Text>
             </div>
             <Switch
-              checked={Boolean(settings?.compact)}
+              checked={compact}
               disabled={savingPreference}
               onChange={(checked) => {
                 setCompact(checked);
@@ -307,6 +318,28 @@ export const GeneralSettingsTab = () => {
               </Form.Item>
               <Input
                 aria-label={t('settings.sessionTimeoutUnit')}
+                readOnly
+                value={t('settings.minutes')}
+                style={{ width: 64 }}
+              />
+            </Space.Compact>
+          </Form.Item>
+
+          <Form.Item
+            label={t('settings.sessionIdleTimeout')}
+            extra={t('settings.sessionIdleTimeoutHelp')}
+            style={{ marginBottom: 16 }}
+          >
+            <Space.Compact>
+              <Form.Item
+                name="sessionIdleTimeout"
+                noStyle
+                rules={[{ required: true, message: t('settings.sessionIdleTimeoutRequired') }]}
+              >
+                <InputNumber min={0} max={1440} style={{ width: 120 }} />
+              </Form.Item>
+              <Input
+                aria-label={t('settings.sessionIdleTimeoutUnit')}
                 readOnly
                 value={t('settings.minutes')}
                 style={{ width: 64 }}

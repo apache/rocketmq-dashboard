@@ -21,6 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.cluster.metrics.BusinessMetricsCollector;
 import org.apache.rocketmq.studio.cluster.metrics.ClusterMetricsCollector;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
+import org.apache.rocketmq.studio.cluster.metrics.MetricSnapshotRepository;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
@@ -39,6 +40,7 @@ public class NativeAlertRuleTestService {
     private final List<ClusterMetricsCollector> clusterCollectors;
     private final List<BusinessMetricsCollector> businessCollectors;
     private final AlertRuleEvaluator evaluator;
+    private final MetricSnapshotRepository snapshotRepository;
 
     public AlertRuleTestResultVO test(AlertRuleVO rule) {
         normalizeRule(rule);
@@ -78,11 +80,12 @@ public class NativeAlertRuleTestService {
                 .filter(sample -> rule.getMetric().equals(sample.metricKey()))
                 .filter(sample -> NativeAlertRuleScopeMatcher.matches(rule, sample))
                 .map(sample -> {
-                    AlertEvaluationResult evaluation = evaluator.evaluate(rule, sample);
-                    return AlertRuleTestResultVO.Sample.builder().labels(sample.labels())
-                            .availability(sample.availability().name()).currentValue(evaluation.currentValue())
+                    MetricSample evaluatedSample = NativeAlertSampleAggregator.aggregate(rule, sample, snapshotRepository);
+                    AlertEvaluationResult evaluation = evaluator.evaluate(rule, evaluatedSample);
+                    return AlertRuleTestResultVO.Sample.builder().labels(evaluatedSample.labels())
+                            .availability(evaluatedSample.availability().name()).currentValue(evaluation.currentValue())
                             .conditionMet(evaluation.conditionMet())
-                            .unavailableReason(sample.unavailableReason()).build();
+                            .unavailableReason(evaluatedSample.unavailableReason()).build();
                 }).toList()).build();
     }
 

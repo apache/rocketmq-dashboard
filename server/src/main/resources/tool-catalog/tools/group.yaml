@@ -104,7 +104,6 @@ tools:
         - totalLag
         - subscribedTopics
         - subscriptions
-        - delaySeconds
         - health
       additionalProperties: false
       properties:
@@ -143,6 +142,10 @@ tools:
         delaySeconds:
           type: integer
           minimum: 0
+          description: >-
+            Seconds since the group last consumed a message. Absent when the broker reported no
+            consumed-message timestamp, so the delay cannot be measured - the value is not a
+            measured zero in that case.
         subscriptions:
           type: array
           items:

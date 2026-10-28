@@ -49,7 +49,8 @@ import {
   listAuditRecords,
 } from '../../services/opsService';
 import { downloadBlob } from '../../utils/download';
-import { formatDateTime } from '../../utils/format';
+import { describeApiError } from '../../utils/apiError';
+import { formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import {
   describeAuditRecord,
@@ -65,6 +66,7 @@ import ResourceOperationTimelineModal, {
 } from './ResourceOperationTimelineModal';
 
 const emptyFilterOptions: AuditFilterOptions = {
+  operators: [],
   operationTypes: [],
   resourceTypes: [],
   clusterIds: [],
@@ -73,6 +75,7 @@ const emptyFilterOptions: AuditFilterOptions = {
 
 const buildAuditFilter = (
   searchText: string,
+  selectedOperator: string | undefined,
   selectedType: string | undefined,
   selectedResourceType: string | undefined,
   selectedClusterId: string | undefined,
@@ -80,6 +83,7 @@ const buildAuditFilter = (
   resultFilter: string,
 ): AuditFilter => ({
   search: searchText || undefined,
+  operator: selectedOperator,
   operationType: selectedType,
   resourceType: selectedResourceType,
   clusterId: selectedClusterId,
@@ -98,6 +102,7 @@ const AuditPage: React.FC = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [searchText, setSearchText] = useState('');
   const [debouncedSearchText, setDebouncedSearchText] = useState('');
+  const [selectedOperator, setSelectedOperator] = useState<string | undefined>(undefined);
   const [selectedType, setSelectedType] = useState<string | undefined>(undefined);
   const [selectedResourceType, setSelectedResourceType] = useState<string | undefined>(undefined);
   const [selectedClusterId, setSelectedClusterId] = useState<string | undefined>(undefined);
@@ -147,6 +152,7 @@ const AuditPage: React.FC = () => {
       pageSize,
       ...buildAuditFilter(
         debouncedSearchText,
+        selectedOperator,
         selectedType,
         selectedResourceType,
         selectedClusterId,
@@ -165,6 +171,8 @@ const AuditPage: React.FC = () => {
       })
       .catch(() => {
         if (recordsRequestRef.current === requestId) {
+          setRecords([]);
+          setTotal(0);
           message.error(t('audit.loadFailed'));
         }
       })
@@ -175,6 +183,7 @@ const AuditPage: React.FC = () => {
     page,
     pageSize,
     debouncedSearchText,
+    selectedOperator,
     selectedType,
     selectedResourceType,
     selectedClusterId,
@@ -196,6 +205,7 @@ const AuditPage: React.FC = () => {
     () =>
       buildAuditFilter(
         debouncedSearchText,
+        selectedOperator,
         selectedType,
         selectedResourceType,
         selectedClusterId,
@@ -204,6 +214,7 @@ const AuditPage: React.FC = () => {
       ),
     [
       debouncedSearchText,
+      selectedOperator,
       selectedType,
       selectedResourceType,
       selectedClusterId,
@@ -225,7 +236,10 @@ const AuditPage: React.FC = () => {
         if (!cancelled) setSummary(value);
       })
       .catch(() => {
-        if (!cancelled) message.error(t('audit.summaryLoadFailed'));
+        if (!cancelled) {
+          setSummary(null);
+          message.error(t('audit.summaryLoadFailed'));
+        }
       })
       .finally(() => {
         if (!cancelled) setSummaryLoading(false);
@@ -316,8 +330,10 @@ const AuditPage: React.FC = () => {
       const csv = await exportAuditLogs(activeFilter);
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       downloadBlob(blob, `rocketmq-audit-logs-${dayjs().format('YYYY-MM-DD')}.csv`);
-    } catch {
-      message.error(t('audit.exportFailed'));
+    } catch (error) {
+      // The server refuses an export above AuditService.MAX_EXPORT_RECORDS with a 400 that names
+      // the cap and says to narrow the filters; retrying the same request can never succeed.
+      message.error(describeApiError(error, t('audit.exportFailed')));
     } finally {
       setExporting(false);
     }
@@ -328,9 +344,10 @@ const AuditPage: React.FC = () => {
       title: t('audit.time'),
       dataIndex: 'timestamp',
       width: 180,
-      sorter: (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+      // The wire carries a UTC wall clock; parsing it as browser-local would shift the render
+      // by the server-viewer offset. The sorter is left to #6687's removal direction.
       defaultSortOrder: 'descend',
-      render: (timestamp: string) => formatDateTime(timestamp),
+      render: (timestamp: string) => formatUtcDateTime(timestamp),
     },
     {
       title: t('audit.operator'),
@@ -446,6 +463,18 @@ const AuditPage: React.FC = () => {
             }}
             style={{ width: 240 }}
             allowClear
+          />
+          <Select
+            aria-label={t('audit.operator')}
+            placeholder={t('audit.operator')}
+            allowClear
+            style={{ width: 150 }}
+            value={selectedOperator}
+            onChange={(value) => {
+              setPage(1);
+              setSelectedOperator(value);
+            }}
+            options={filterOptions.operators.map((value) => ({ label: value, value }))}
           />
           <Select
             aria-label={t('audit.opType')}

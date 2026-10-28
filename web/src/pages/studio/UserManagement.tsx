@@ -31,6 +31,7 @@ import {
   Switch,
   Table,
   Tag,
+  Tooltip,
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -41,6 +42,7 @@ import {
   ListBullets,
   Plus,
   SignOut,
+  Trash,
 } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
@@ -48,19 +50,25 @@ import InfoBanner from '../../components/InfoBanner';
 import { changePassword } from '../../api/auth';
 import {
   createStudioUser,
+  deleteStudioUser,
   getStudioUserSessionOverview,
   listAllStudioUsers as exportStudioUsers,
+  listStudioLoginLockouts,
   listStudioUserSessions,
   listStudioUsers,
   resetStudioUserPassword,
+  revokeAllStudioUserSessions,
+  revokeStudioSession,
   revokeStudioUserSessions,
   setStudioUserEnabled,
+  setStudioUserRole,
+  type StudioLoginLockout,
   type StudioUser,
   type StudioUserSessionDetail,
   type StudioUserSessionOverview,
 } from '../../api/studioUsers';
 import useAuthStore from '../../stores/authStore';
-import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { buildCsv, downloadCsv, localExportDateStamp, type CsvColumn } from '../../utils/download';
 import { formatDelay, formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import { useLang } from '../../i18n/LangContext';
@@ -131,13 +139,16 @@ const UserManagementPage = () => {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>();
   const [loading, setLoading] = useState(false);
   const [sessionOverview, setSessionOverview] = useState<StudioUserSessionOverview | null>(null);
+  const [sessionOverviewFailed, setSessionOverviewFailed] = useState(false);
   const [sessionModalUser, setSessionModalUser] = useState<StudioUser | null>(null);
+  const [loginLockouts, setLoginLockouts] = useState<StudioLoginLockout[]>([]);
   const [sessionDetails, setSessionDetails] = useState<StudioUserSessionDetail[]>([]);
   const [sessionDetailsLoading, setSessionDetailsLoading] = useState(false);
   const [sessionDetailsFailed, setSessionDetailsFailed] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState<StudioUser | null>(null);
   const [userExporting, setUserExporting] = useState(false);
+  const [revokingAllSessions, setRevokingAllSessions] = useState(false);
   const [mutatingUserIds, setMutatingUserIds] = useState<Set<number>>(() => new Set());
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [createForm] = Form.useForm<CreateFormValues>();
@@ -158,8 +169,10 @@ const UserManagementPage = () => {
       setUsers([]);
       setTotal(0);
       setSessionOverview(null);
+      setSessionOverviewFailed(false);
       sessionModalUserIdRef.current = null;
       setSessionModalUser(null);
+      setLoginLockouts([]);
       setSessionDetails([]);
       return;
     }
@@ -168,7 +181,7 @@ const UserManagementPage = () => {
       if (requestId === requestSeqRef.current) setLoading(true);
     });
     try {
-      const [result, overview] = await Promise.all([
+      const [result, overview, lockouts] = await Promise.all([
         listStudioUsers({
           search: debouncedSearch || undefined,
           admin: roleFilter === undefined ? undefined : roleFilter === 'admin',
@@ -176,10 +189,16 @@ const UserManagementPage = () => {
           page,
           pageSize,
         }),
-        getStudioUserSessionOverview().catch(() => null),
+        getStudioUserSessionOverview().then(
+          (value) => ({ value, failed: false }),
+          () => ({ value: null, failed: true }),
+        ),
+        listStudioLoginLockouts().catch(() => []),
       ]);
       if (requestId !== requestSeqRef.current) return;
-      setSessionOverview(overview);
+      setSessionOverview(overview.value);
+      setSessionOverviewFailed(overview.failed);
+      setLoginLockouts(lockouts);
       if (result.items.length === 0 && result.total > 0 && page > 1) {
         const lastPage = Math.max(1, Math.ceil(result.total / result.size));
         if (page > lastPage) {
@@ -314,6 +333,30 @@ const UserManagementPage = () => {
       t('userMgmt.updateStatusFailed'),
     );
 
+  const setRole = (record: StudioUser, admin: boolean) =>
+    runUserMutation(
+      record.id,
+      async () => {
+        await setStudioUserRole(record.id, admin);
+        message.success(admin ? t('userMgmt.roleGranted') : t('userMgmt.roleRevoked'));
+        await loadUsers();
+      },
+      t('userMgmt.updateRoleFailed'),
+    );
+
+  const confirmRoleChange = (record: StudioUser, admin: boolean) => {
+    Modal.confirm({
+      title: admin
+        ? t('userMgmt.grantRoleConfirmTitle', { username: record.username })
+        : t('userMgmt.revokeRoleConfirmTitle', { username: record.username }),
+      content: t('userMgmt.roleChangeConfirmBody'),
+      okText: admin ? t('userMgmt.roleAdmin') : t('userMgmt.roleUser'),
+      cancelText: t('common.cancel'),
+      okButtonProps: admin ? undefined : { danger: true },
+      onOk: () => setRole(record, admin),
+    });
+  };
+
   const updatePassword = async () => {
     if (!passwordTarget) return;
     try {
@@ -361,7 +404,54 @@ const UserManagementPage = () => {
       t('userMgmt.revokeFailed'),
     );
 
+  const deleteUser = (record: StudioUser) =>
+    runUserMutation(
+      record.id,
+      async () => {
+        await deleteStudioUser(record.id);
+        message.success(t('userMgmt.deleted', { username: record.username }));
+        if (sessionModalUser?.id === record.id) {
+          setSessionModalUser(null);
+        }
+        await loadUsers();
+      },
+      t('userMgmt.deleteFailed'),
+    );
+
+  // Shares the per-user in-flight guard with revoke-all, so the two can never overlap.
+  const revokeSession = (record: StudioUser, sessionId: number) =>
+    runUserMutation(
+      record.id,
+      async () => {
+        await revokeStudioSession(sessionId);
+        message.success(t('userMgmt.sessionRevoked', { id: sessionId }));
+        await loadSessionDetails(record);
+        await loadUsers();
+      },
+      t('userMgmt.revokeFailed'),
+    );
+
   const openCreateUserModal = () => setCreateOpen(true);
+
+  // The endpoint spares this operator's own sessions, so the incident responder stays
+  // logged in; everyone else has to sign in again.
+  const handleRevokeAllSessions = async () => {
+    if (revokingAllSessions) return;
+    setRevokingAllSessions(true);
+    try {
+      const revokedCount = await revokeAllStudioUserSessions();
+      message.success(t('userMgmt.revokedAllCount', { count: revokedCount }));
+      if (sessionModalUser) {
+        setSessionModalUser(null);
+      }
+      await loadUsers();
+    } catch {
+      message.error(t('userMgmt.revokeAllFailed'));
+    } finally {
+      setRevokingAllSessions(false);
+    }
+  };
+
   const handleExportUsers = useCallback(async () => {
     if (!admin) return;
     setUserExporting(true);
@@ -373,7 +463,7 @@ const UserManagementPage = () => {
         admin: roleFilter === undefined ? undefined : roleFilter === 'admin',
         enabled: statusFilter === undefined ? undefined : statusFilter === 'enabled',
       });
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localExportDateStamp();
       downloadCsv(
         `rocketmq-studio-users-${today}.csv`,
         buildCsv(STUDIO_USER_EXPORT_COLUMNS, exportedUsers),
@@ -425,6 +515,39 @@ const UserManagementPage = () => {
       ellipsis: true,
       render: dateTime,
     },
+    {
+      title: t('userMgmt.clientOrigin'),
+      dataIndex: 'clientIp',
+      width: 160,
+      ellipsis: true,
+      render: (value: string | null | undefined, record) =>
+        value ? (
+          <Tooltip title={record.userAgent ?? value} placement="topLeft">
+            <span>{value}</span>
+          </Tooltip>
+        ) : (
+          '-'
+        ),
+    },
+    {
+      title: t('common.actions'),
+      key: 'actions',
+      width: 96,
+      render: (_, record) =>
+        sessionModalUser && !mutatingUserIds.has(sessionModalUser.id) ? (
+          <Popconfirm
+            title={t('userMgmt.revokeSessionConfirm', { id: record.id })}
+            okText={t('userMgmt.revokeSession')}
+            cancelText={t('common.cancel')}
+            okButtonProps={{ danger: true }}
+            onConfirm={() => void revokeSession(sessionModalUser, record.id)}
+          >
+            <Button size="small" danger icon={<SignOut size={14} />}>
+              {t('userMgmt.revokeSession')}
+            </Button>
+          </Popconfirm>
+        ) : null,
+    },
   ];
   // Declared widths total 1116px, which stays inside the usable content width of a normal
   // 1440px viewport (220px Sider plus page and Card padding), so the table does not show a
@@ -438,8 +561,18 @@ const UserManagementPage = () => {
       title: t('userMgmt.role'),
       dataIndex: 'admin',
       width: 88,
-      render: (value: boolean) =>
-        value ? (
+      // The role is fixed at creation unless an administrator changes it here; readers keep
+      // the read-only tag so the mutation surface stays admin-only like every other action.
+      render: (value: boolean, record: StudioUser) =>
+        admin ? (
+          <Switch
+            checked={value}
+            loading={mutatingUserIds.has(record.id)}
+            checkedChildren={t('userMgmt.roleAdmin')}
+            unCheckedChildren={t('userMgmt.roleUser')}
+            onChange={(next: boolean) => confirmRoleChange(record, next)}
+          />
+        ) : value ? (
           <Tag color="blue">{t('userMgmt.roleAdmin')}</Tag>
         ) : (
           <Tag>{t('userMgmt.roleUser')}</Tag>
@@ -448,13 +581,21 @@ const UserManagementPage = () => {
     {
       title: t('common.status'),
       dataIndex: 'enabled',
-      width: 88,
-      render: (value: boolean) =>
-        value ? (
-          <Tag color="green">{t('common.enabled')}</Tag>
-        ) : (
-          <Tag color="default">{t('common.disabled')}</Tag>
-        ),
+      width: 150,
+      render: (value: boolean, record) => (
+        <>
+          {value ? (
+            <Tag color="green">{t('common.enabled')}</Tag>
+          ) : (
+            <Tag color="default">{t('common.disabled')}</Tag>
+          )}
+          {record.passwordMustChange && (
+            <Tooltip title={t('userMgmt.passwordMustChangeHelp')}>
+              <Tag color="orange">{t('userMgmt.passwordMustChange')}</Tag>
+            </Tooltip>
+          )}
+        </>
+      ),
     },
     {
       title: t('userMgmt.activeSessions'),
@@ -536,6 +677,25 @@ const UserManagementPage = () => {
             unCheckedChildren={t('userMgmt.disable')}
             onChange={(enabled) => void setEnabled(record, enabled)}
           />
+          <Popconfirm
+            title={t('userMgmt.deleteConfirm', { username: record.username })}
+            description={t('userMgmt.deleteDescription')}
+            okText={t('common.delete')}
+            cancelText={t('common.cancel')}
+            okButtonProps={{ danger: true }}
+            disabled={record.id === userId}
+            onConfirm={() => void deleteUser(record)}
+          >
+            <Button
+              size="small"
+              danger
+              icon={<Trash size={14} />}
+              disabled={record.id === userId}
+              loading={mutatingUserIds.has(record.id)}
+            >
+              {t('common.delete')}
+            </Button>
+          </Popconfirm>
         </Space>
       ),
     },
@@ -590,8 +750,42 @@ const UserManagementPage = () => {
           {t('userMgmt.changeMyPassword')}
         </Button>
       </Card>
+      {admin && sessionOverviewFailed && (
+        <Alert
+          type="error"
+          showIcon
+          message={t('userMgmt.sessionOverviewLoadFailed')}
+          action={
+            <Button
+              size="small"
+              loading={loading}
+              onClick={() => setRefreshVersion((version) => version + 1)}
+            >
+              {t('common.retry')}
+            </Button>
+          }
+          style={{ marginBottom: 16 }}
+        />
+      )}
       {admin && sessionOverview && (
-        <Card title={t('userMgmt.sessionOverview')} style={{ marginBottom: 16 }}>
+        <Card
+          title={t('userMgmt.sessionOverview')}
+          extra={
+            <Popconfirm
+              title={t('userMgmt.revokeAllConfirmTitle')}
+              description={t('userMgmt.revokeAllConfirmDescription')}
+              okText={t('userMgmt.revokeAllSessions')}
+              cancelText={t('common.cancel')}
+              okButtonProps={{ danger: true }}
+              onConfirm={() => void handleRevokeAllSessions()}
+            >
+              <Button danger icon={<SignOut size={14} />} loading={revokingAllSessions}>
+                {t('userMgmt.revokeAllSessions')}
+              </Button>
+            </Popconfirm>
+          }
+          style={{ marginBottom: 16 }}
+        >
           <Flex gap={32} wrap>
             <Statistic
               title={t('userMgmt.activeSessions')}
@@ -610,7 +804,26 @@ const UserManagementPage = () => {
               })}
               value={sessionOverview.staleSessionCount}
             />
+            <Statistic title={t('userMgmt.loginLockouts')} value={loginLockouts.length} />
           </Flex>
+          {loginLockouts.length > 0 && (
+            <Flex gap={8} wrap style={{ marginTop: 8 }}>
+              {loginLockouts.map((lockout) => (
+                <Tooltip
+                  key={lockout.username}
+                  title={t('userMgmt.loginLockoutHelp')}
+                  placement="top"
+                >
+                  <Tag color="red">
+                    {lockout.username} ·{' '}
+                    {t('userMgmt.loginLockoutRemaining', {
+                      seconds: lockout.remainingSeconds,
+                    })}
+                  </Tag>
+                </Tooltip>
+              ))}
+            </Flex>
+          )}
         </Card>
       )}
       {admin && (

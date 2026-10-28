@@ -171,9 +171,8 @@ export const buildMessagePropertiesFromRows = (
     const rawKey = row.key ?? '';
     const rawValue = row.value ?? '';
     const key = rawKey.trim();
-    // Form mode preserves padding in nonblank data; propsMode: 'text' still trims.
-    // Keep the existing empty-value convention.
-    const value = rawValue.trim() ? rawValue : '';
+    const trimmedValue = rawValue.trim();
+    const value = trimmedValue.length === 0 ? trimmedValue : rawValue;
 
     if (!key && !value) return;
     if (!key) {

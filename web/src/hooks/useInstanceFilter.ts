@@ -20,8 +20,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { listInstances } from '../services/instanceService';
 import type { Instance } from '../api/instance';
 
-const INSTANCE_SCOPED_PATH = /^\/instance\/([^/]+)\/(topic|consumer|message|acl|dlq)$/;
-const STATIC_SECTION_PATH = /^\/instance\/(topic|consumer|message|acl|dlq)$/;
+const INSTANCE_SCOPED_PATH = /^\/instance\/([^/]+)\/(topic|consumer|message|acl|dlq)\/*$/;
+const STATIC_SECTION_PATH = /^\/instance\/(topic|consumer|message|acl|dlq)\/*$/;
 
 function decodeRouteSegment(segment: string | undefined) {
   if (segment === undefined) return undefined;

@@ -16,7 +16,11 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.contract.message;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import org.apache.rocketmq.studio.instance.dlq.DLQResendFailureVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQResendResultVO;
+
+import java.util.List;
 
 public record MessageRedeliveryDlqOutput(
         int matched,
@@ -24,7 +28,9 @@ public record MessageRedeliveryDlqOutput(
         int failed,
         String outcome,
         boolean scanIncomplete,
-        int failedQueueCount) {
+        int failedQueueCount,
+        List<Failure> failures,
+        boolean failuresTruncated) {
 
     public static MessageRedeliveryDlqOutput from(DLQResendResultVO result) {
         return new MessageRedeliveryDlqOutput(
@@ -33,6 +39,16 @@ public record MessageRedeliveryDlqOutput(
                 result.getFailed(),
                 result.getOutcome(),
                 result.isScanIncomplete(),
-                result.getFailedQueueCount());
+                result.getFailedQueueCount(),
+                result.getFailures().stream().map(Failure::from).toList(),
+                result.isFailuresTruncated());
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Failure(String msgId, String targetTopic, String reason) {
+
+        public static Failure from(DLQResendFailureVO failure) {
+            return new Failure(failure.getMsgId(), failure.getTargetTopic(), failure.getReason());
+        }
     }
 }

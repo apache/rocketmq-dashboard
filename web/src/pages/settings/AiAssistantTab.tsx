@@ -45,6 +45,7 @@ import {
 } from '../../api/llm';
 import { fallbackModelOptions } from '../studio/llmModelOptions';
 import { describeThrownMessage } from '../../utils/apiError';
+import { useCanWriteSettings } from '../../hooks/useCanWriteSettings';
 
 const DEFAULT_BASE_URL: Record<string, string> = {
   tongyi: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
@@ -108,6 +109,11 @@ interface TestState {
 export const AiAssistantTab = () => {
   const { t } = useLang();
   const { message } = App.useApp();
+  // The LLM configuration surface is admin-only on both ends (the GET is an admin-only read, the
+  // POST falls through to the admin requirement), so a reader's save, test or key clear could only
+  // ever come back 403. The controls stay disabled instead, the same way the other settings tabs
+  // treat the writes they own.
+  const canWriteSettings = useCanWriteSettings();
   const [form] = Form.useForm();
   const selectedProvider = Form.useWatch('provider', form);
 
@@ -239,6 +245,7 @@ export const AiAssistantTab = () => {
   };
 
   const handleClearApiKey = async () => {
+    if (!canWriteSettings) return;
     const payload = await buildPayload();
     if (!payload) return;
     const confirmed = window.confirm(t('settings.clearApiKeyConfirm'));
@@ -277,6 +284,7 @@ export const AiAssistantTab = () => {
   };
 
   const handleTest = async () => {
+    if (!canWriteSettings) return;
     const payload = await buildPayload();
     if (!payload) return;
     const requestId = testRequestIdRef.current + 1;
@@ -304,6 +312,7 @@ export const AiAssistantTab = () => {
   };
 
   const handleSave = async () => {
+    if (!canWriteSettings) return;
     const payload = await buildPayload();
     if (!payload) return;
     const configGeneration = configGenerationRef.current;
@@ -338,7 +347,7 @@ export const AiAssistantTab = () => {
   };
 
   return (
-    <Flex vertical gap={24} style={{ maxWidth: 860 }}>
+    <Flex vertical gap={24}>
       {loadError && (
         <Alert
           type="error"
@@ -444,6 +453,7 @@ export const AiAssistantTab = () => {
                   size="small"
                   style={{ marginLeft: 8 }}
                   loading={saving}
+                  disabled={!canWriteSettings}
                   onClick={() => void handleClearApiKey()}
                 >
                   {t('settings.clearApiKey')}
@@ -554,12 +564,16 @@ export const AiAssistantTab = () => {
             <Button
               type="primary"
               loading={saving}
-              disabled={loading}
+              disabled={loading || !canWriteSettings}
               onClick={() => void handleSave()}
             >
               {t('common.save')}
             </Button>
-            <Button loading={testing} disabled={loading} onClick={() => void handleTest()}>
+            <Button
+              loading={testing}
+              disabled={loading || !canWriteSettings}
+              onClick={() => void handleTest()}
+            >
               {t('settings.testConnection')}
             </Button>
           </Space>

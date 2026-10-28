@@ -50,6 +50,24 @@ export function formatTimeMs(value: number | string | null | undefined): string 
 }
 
 /**
+ * Epoch milliseconds of a backend alert timestamp, parsed the way the backend stamps it.
+ *
+ * Alert APIs serialize UTC `LocalDateTime` values without an offset, so a plain
+ * `new Date(value)` would read them in the browser's zone. An explicit offset (`Z` or
+ * `±hh:mm`) is honored; unusable input yields `NaN` so callers can treat it as absent.
+ */
+export function parseAlertTimestamp(date: string | Date | null | undefined): number {
+  if (date === null || date === undefined || (typeof date === 'string' && !date.trim())) {
+    return Number.NaN;
+  }
+  const utcDate =
+    typeof date === 'string' && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(date.trim())
+      ? new Date(`${date}Z`)
+      : new Date(date);
+  return utcDate.getTime();
+}
+
+/**
  * Format a UTC timestamp for alert events in the viewer's timezone. Alert APIs
  * serialize UTC LocalDateTime values without an offset, so normal Date parsing
  * would incorrectly treat them as browser-local timestamps.
@@ -63,10 +81,7 @@ export function formatUtcDateTime(
   timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
 ): string {
   if (date === null || date === undefined || (typeof date === 'string' && !date.trim())) return '-';
-  const utcDate =
-    typeof date === 'string' && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(date.trim())
-      ? new Date(`${date}Z`)
-      : new Date(date);
+  const utcDate = typeof date === 'string' ? new Date(parseUtcDateTime(date)) : new Date(date);
   if (Number.isNaN(utcDate.getTime())) return '-';
 
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -90,6 +105,21 @@ export function formatUtcDateTime(
   return year && month && day && hour && minute && second
     ? `${year}-${month}-${day} ${hour}:${minute}:${second}`
     : '-';
+}
+
+/**
+ * Parse a UTC timestamp serialized without an offset into epoch milliseconds. Same guard as
+ * {@link formatUtcDateTime}: a value that already names its zone is parsed as-is, a zone-less
+ * one is read as UTC — without the suffix Date would treat it as browser-local instead.
+ */
+export function parseUtcDateTime(date: string | null | undefined): number {
+  if (date === null || date === undefined || !date.trim()) return Number.NaN;
+  const trimmed = date.trim();
+  const normalized = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(trimmed)
+    ? trimmed
+    : `${trimmed.replace(' ', 'T')}Z`;
+  const parsed = new Date(normalized).getTime();
+  return Number.isNaN(parsed) ? Number.NaN : parsed;
 }
 
 /**
@@ -261,4 +291,25 @@ export function ratioToPercent(value: number): number {
       ? `${digits.slice(0, pointIndex)}.${digits.slice(pointIndex)}`
       : `${digits}${'0'.repeat(pointIndex - digits.length)}`;
   return Number(`${sign}${scaled}`);
+}
+
+/**
+ * Trace and consumption records report "no time" as 0. {@link formatTimeMs} deliberately treats
+ * zero as a real timestamp because stored values can legitimately be the epoch, so the
+ * optional-time call sites map zero to the placeholder themselves.
+ */
+export function formatOptionalTimeMs(value: number | string | null | undefined): string {
+  return value === 0 || value === '0' ? '-' : formatTimeMs(value);
+}
+
+/** The server's sentinel for a message body size the vendor API does not report: unknown, not zero. */
+export const UNKNOWN_MESSAGE_SIZE = -1;
+
+/**
+ * Message records report "no body size" as {@link UNKNOWN_MESSAGE_SIZE}. {@link formatBytes}
+ * deliberately formats negatives as real byte counts, so the message-size call sites map the
+ * sentinel to the placeholder themselves.
+ */
+export function formatOptionalBytes(bytes: number): string {
+  return bytes < 0 ? '-' : formatBytes(bytes);
 }

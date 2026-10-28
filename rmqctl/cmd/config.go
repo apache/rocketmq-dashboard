@@ -8,6 +8,7 @@ package cmd
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/config"
@@ -16,6 +17,8 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// Configuration changes are saved before confirmation output. Report output errors without
+// rolling back or replaying the successful change.
 func newConfigCommand(runtime commandRuntime) *cobra.Command {
 	root := &cobra.Command{Use: "config", Short: "Manage local rmqctl contexts"}
 	root.AddCommand(newConfigSetContextCommand(runtime))
@@ -35,6 +38,24 @@ func newConfigSetContextCommand(runtime commandRuntime) *cobra.Command {
 		Short: "Create or update a complete Studio access context",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("server") {
+				parsed, err := url.Parse(server)
+				if err != nil {
+					return invalidArgument("--server must be a valid Studio Server URL")
+				}
+				if parsed.User != nil {
+					return invalidArgument("--server must not contain user info; use environment credential references")
+				}
+				// studio.Target.validate() rejects a query and a fragment at request time. Without the
+				// same guard here "--server https://host/?accessKey=..." is written to the config file
+				// and echoed back by `config get-contexts` in plain text.
+				if parsed.RawQuery != "" {
+					return invalidArgument("--server must not contain a query; use environment credential references")
+				}
+				if parsed.Fragment != "" {
+					return invalidArgument("--server must not contain a fragment; use environment credential references")
+				}
+			}
 			path, cfg, err := runtime.configForWrite()
 			if err != nil {
 				return err
@@ -66,8 +87,8 @@ func newConfigSetContextCommand(runtime commandRuntime) *cobra.Command {
 			if output.IsStructured(runtime.options.output) {
 				return output.Structured(out, runtime.options.output, map[string]any{"context": name, "created": !exists})
 			}
-			fmt.Fprintf(out, "updated context %s\n", name)
-			return nil
+			_, err = fmt.Fprintf(out, "updated context %s\n", name)
+			return err
 		},
 	}
 	cmd.Flags().StringVar(&server, "server", "", "Studio Server URL")
@@ -98,8 +119,8 @@ func newConfigUseContextCommand(runtime commandRuntime) *cobra.Command {
 			if output.IsStructured(runtime.options.output) {
 				return output.Structured(out, runtime.options.output, map[string]string{"currentContext": args[0]})
 			}
-			fmt.Fprintf(out, "current context: %s\n", args[0])
-			return nil
+			_, err = fmt.Fprintf(out, "current context: %s\n", args[0])
+			return err
 		},
 	}
 }
@@ -130,8 +151,8 @@ func newConfigDeleteContextCommand(runtime commandRuntime) *cobra.Command {
 			if output.IsStructured(runtime.options.output) {
 				return output.Structured(out, runtime.options.output, map[string]any{"deleted": name})
 			}
-			fmt.Fprintf(out, "deleted context %s\n", name)
-			return nil
+			_, err = fmt.Fprintf(out, "deleted context %s\n", name)
+			return err
 		},
 	}
 }
@@ -172,8 +193,8 @@ func newConfigCurrentContextCommand(runtime commandRuntime) *cobra.Command {
 			if output.IsStructured(runtime.options.output) {
 				return output.Structured(out, runtime.options.output, map[string]string{"currentContext": cfg.CurrentContext})
 			}
-			fmt.Fprintln(out, cfg.CurrentContext)
-			return nil
+			_, err = fmt.Fprintln(out, cfg.CurrentContext)
+			return err
 		},
 	}
 }

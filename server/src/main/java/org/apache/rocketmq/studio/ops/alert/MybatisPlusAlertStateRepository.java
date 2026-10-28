@@ -29,6 +29,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Repository;
 import org.springframework.util.StringUtils;
 
+import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -141,7 +142,9 @@ public class MybatisPlusAlertStateRepository implements AlertStateRepository {
                 && AlertStateStatus.FIRING.name().equals(entity.getStatus())) {
             Duration interval = AlertRuleDuration.parse(rule.getReminderInterval());
             if (!interval.isZero() && !interval.isNegative()) {
-                next = entity.getLastNotifiedAt().plus(interval);
+                // A valid Duration can exceed LocalDateTime's range. The state machine never reaches its
+                // elapsed-time comparison for such an interval either, so project no reminder at all.
+                next = plusWithinRange(entity.getLastNotifiedAt(), interval);
             }
         }
         return AlertRuleRuntimeVO.builder().ruleId(entity.getRuleId()).fingerprint(entity.getFingerprint())
@@ -207,6 +210,15 @@ public class MybatisPlusAlertStateRepository implements AlertStateRepository {
 
     private static Instant toInstant(LocalDateTime value) {
         return value == null ? null : value.toInstant(ZoneOffset.UTC);
+    }
+
+    /** Adds an interval that may exceed the representable range, yielding {@code null} instead of throwing. */
+    private static LocalDateTime plusWithinRange(LocalDateTime from, Duration interval) {
+        try {
+            return from.plus(interval);
+        } catch (DateTimeException overflow) {
+            return null;
+        }
     }
 
     private static Map<String, String> readLabels(String labelsJson) {

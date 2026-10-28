@@ -22,6 +22,7 @@ import com.tencentcloudapi.trocket.v20230308.models.DescribeConsumerGroupListRes
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListByGroupResponse;
 import com.tencentcloudapi.trocket.v20230308.models.SubscriptionData;
 import org.apache.rocketmq.studio.cluster.metrics.MetricAvailability;
+import org.apache.rocketmq.studio.cluster.metrics.MetricSnapshotRepository;
 import org.apache.rocketmq.studio.cluster.metrics.collectors.CloudRocketMqBusinessMetricsCollector;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -146,6 +147,7 @@ class TencentCloudLagFailureScopeTest {
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
         when(registry.byInstanceId("tencent-prod")).thenReturn(Optional.of(provider));
         return new NativeAlertRuleTestService(instances, List.of(),
-                List.of(new CloudRocketMqBusinessMetricsCollector(registry)), new AlertRuleEvaluator());
+                List.of(new CloudRocketMqBusinessMetricsCollector(registry)), new AlertRuleEvaluator(),
+                mock(MetricSnapshotRepository.class));
     }
 }

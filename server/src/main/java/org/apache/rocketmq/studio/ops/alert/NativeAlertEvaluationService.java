@@ -17,7 +17,6 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import lombok.RequiredArgsConstructor;
-import org.apache.rocketmq.studio.cluster.metrics.MetricAvailability;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSnapshotRepository;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
@@ -26,11 +25,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
@@ -53,7 +49,14 @@ public class NativeAlertEvaluationService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void evaluate(AlertRuleVO rule, MetricSample sample) {
-        MetricSample evaluatedSample = aggregate(rule, sample);
+        MetricSample evaluatedSample = NativeAlertSampleAggregator.aggregate(rule, sample, snapshotRepository);
+        // Aggregation can block while management commits. A current locking read, rather than
+        // another snapshot read, also sees those commits under MySQL REPEATABLE READ.
+        Optional<AlertRuleVO> current = NativeAlertRulePolicy.lockMatchingRule(alertRepository, rule);
+        if (current.isEmpty()) {
+            return;
+        }
+        rule = current.get();
         AlertEvaluationResult evaluation = evaluator.evaluate(rule, evaluatedSample);
         if (!evaluation.matches()) {
             return;
@@ -100,27 +103,6 @@ public class NativeAlertEvaluationService {
         if (!event.isNotificationSuppressed()) {
             notificationOutboxService.enqueue(event, rule, event.getLabels());
         }
-    }
-
-    /** Reads the optional snapshot window inside this evaluation's independent transaction. */
-    private MetricSample aggregate(AlertRuleVO rule, MetricSample sample) {
-        if (sample.availability() != MetricAvailability.AVAILABLE || rule.getWindowSeconds() <= 0) {
-            return sample;
-        }
-        List<MetricSample> window = snapshotRepository.findRecent(sample,
-                sample.collectedAt().minus(Duration.ofSeconds(rule.getWindowSeconds())));
-        if (window.isEmpty()) {
-            return sample;
-        }
-        double value = switch (rule.getAggregation() == null ? "LAST" : rule.getAggregation().toUpperCase(Locale.ROOT)) {
-            case "MAX" -> window.stream().mapToDouble(item -> item.value()).max().orElse(sample.value());
-            case "MIN" -> window.stream().mapToDouble(item -> item.value()).min().orElse(sample.value());
-            case "AVG" -> window.stream().mapToDouble(item -> item.value()).average().orElse(sample.value());
-            case "SUM" -> window.stream().mapToDouble(item -> item.value()).sum();
-            default -> window.get(window.size() - 1).value();
-        };
-        return new MetricSample(sample.metricKey(), sample.domain(), sample.instanceId(), sample.clusterId(),
-                sample.labels(), value, MetricAvailability.AVAILABLE, sample.collectedAt());
     }
 
     private void applyNotificationSuppression(SystemAlertVO event, AlertDomain domain,

@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App } from 'antd';
+import { App, ConfigProvider, theme } from 'antd';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
@@ -24,6 +24,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { MessageRecord } from '../../../api/message';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as downloadUtils from '../../../utils/download';
+import { UNKNOWN_MESSAGE_SIZE } from '../../../utils/format';
 
 const messageServiceMocks = vi.hoisted(() => ({
   consumeMessageDirectly: vi.fn(),
@@ -104,6 +105,14 @@ const renderWithProviders = (ui: React.ReactElement) =>
   );
 
 const lastElement = <T,>(elements: T[]): T => elements[elements.length - 1]!;
+
+// Comparing raw CSS text would depend on how each side spells a colour, so both the element's
+// value and the expected token go through the same parser before they are compared.
+const normalizeBackground = (value: string): string => {
+  const probe = document.createElement('span');
+  probe.style.background = value;
+  return probe.style.background;
+};
 
 describe('Message page query history', () => {
   beforeEach(() => {
@@ -777,6 +786,54 @@ describe('Message page query history', () => {
     expect(await screen.findByText('cg-billing')).toBeInTheDocument();
   });
 
+  it('renders a consumption with no recorded time as the placeholder instead of the Unix epoch', async () => {
+    messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-NO-TIME')]);
+    messageServiceMocks.getMessageTrace.mockResolvedValue({
+      nodes: [
+        {
+          title: 'Consumer 消费',
+          timestamp: 0,
+          costTime: 5,
+          status: 'finish',
+          description: 'consumer record carried no timestamp',
+        },
+      ],
+      consumerStatus: [
+        {
+          group: 'cg-orders',
+          deliveryStatus: 'pending',
+          consumeTime: 0,
+          retryCount: 0,
+        },
+      ],
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-NO-TIME');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    const row = await screen.findByRole('row', { name: /MID-NO-TIME/ });
+    await user.click(within(row).getByRole('button', { name: /轨迹/ }));
+    const dialog = await screen.findByRole('dialog');
+
+    // A trace node whose record carried no timestamp (0) must read as absent,
+    // not as the Unix epoch.
+    const node = (await within(dialog).findByText('Consumer 消费')).closest('.ant-steps-item');
+    expect(node).not.toBeNull();
+    expect(node).not.toHaveTextContent('1970-01-01');
+    expect(within(node as HTMLElement).getByText('-')).toBeInTheDocument();
+
+    // The same placeholder applies to a consumer group with no consumption time.
+    await user.click(within(dialog).getByRole('tab', { name: '验证' }));
+    const statusRow = (await within(dialog).findByText('cg-orders')).closest('tr');
+    expect(statusRow).not.toBeNull();
+    expect(within(statusRow as HTMLElement).getAllByRole('cell')[2]).toHaveTextContent('-');
+  });
+
   it('renders placeholders on the detail panel when the storage location is unknown', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     messageServiceMocks.queryMessages.mockResolvedValue([
@@ -803,6 +860,42 @@ describe('Message page query history', () => {
     expect(locationItems[2]).toHaveTextContent('-');
   });
 
+  it('renders the message body on the theme fill token so dark mode stays readable', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      { ...createMessage('MID-DARK-BODY'), body: '{"dark":true}' },
+    ]);
+    render(
+      <ConfigProvider theme={{ algorithm: theme.darkAlgorithm }}>
+        <App>
+          <LangProvider>
+            <MemoryRouter>
+              <MessagePage />
+            </MemoryRouter>
+          </LangProvider>
+        </App>
+      </ConfigProvider>,
+    );
+
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /MID-DARK-BODY/ });
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    const bodyPanel = within(dialog).getByText(/"dark": true/);
+    // A fixed light background leaves the dark theme's light text unreadable on it, so the
+    // panel has to follow the theme's fill token instead.
+    const darkFill = theme.getDesignToken({ algorithm: theme.darkAlgorithm }).colorFillQuaternary;
+    expect(normalizeBackground((bodyPanel as HTMLElement).style.background)).toBe(
+      normalizeBackground(darkFill),
+    );
+    expect(normalizeBackground((bodyPanel as HTMLElement).style.background)).not.toBe(
+      normalizeBackground('#f5f5f5'),
+    );
+  });
+
   it('renders a message larger than a megabyte with the matching unit', async () => {
     const user = userEvent.setup();
     messageServiceMocks.queryMessages.mockResolvedValue([
@@ -822,5 +915,39 @@ describe('Message page query history', () => {
     await user.click(within(row).getByRole('button', { name: /详情/ }));
     expect(await screen.findByText('消息体')).toBeInTheDocument();
     expect(screen.getAllByText('5.0 GB').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('offers no clear control on the query window it always sends', () => {
+    const { container } = renderWithProviders(<MessagePage />);
+
+    // The topic query always carries a start/end pair, so a clear control would
+    // snap back and silently reuse the previous window. It must not be offered.
+    expect(container.querySelector('.ant-picker-clear')).toBeNull();
+  });
+
+  it('renders an unknown message size as unavailable instead of 0 B', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      { ...createMessage('MID-UNKNOWN-SIZE'), size: UNKNOWN_MESSAGE_SIZE },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /MID-UNKNOWN-SIZE/ });
+    // -1 is the server's unknown sentinel: the size column must not claim a fabricated
+    // "0 B", and the sentinel itself must not leak into the table either.
+    expect(within(row).queryByText('0 B')).not.toBeInTheDocument();
+    expect(within(row).queryByText('-1 B')).not.toBeInTheDocument();
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    const sizeItems = within(dialog)
+      .getAllByText('大小')
+      .map((label) => label.closest('.ant-descriptions-item'));
+    expect(sizeItems).toHaveLength(1);
+    const content = sizeItems[0]?.querySelector('.ant-descriptions-item-content');
+    expect(content?.textContent?.trim()).toBe('-');
   });
 });

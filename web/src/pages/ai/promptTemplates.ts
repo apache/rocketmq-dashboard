@@ -59,6 +59,10 @@ export interface SavePromptTemplateResult {
 type Translate = (key: string) => string;
 
 export const PROMPT_TEMPLATE_STORAGE_KEY = 'rocketmq-studio-ai-prompt-templates';
+const storageKeyFor = (owner?: string): string =>
+  owner
+    ? `${PROMPT_TEMPLATE_STORAGE_KEY}:user:${encodeURIComponent(owner)}`
+    : PROMPT_TEMPLATE_STORAGE_KEY;
 export const MAX_CUSTOM_PROMPT_TEMPLATES = 20;
 export const MAX_PROMPT_TEMPLATE_BODY_LENGTH = 6000;
 export const MAX_PROMPT_TEMPLATE_TITLE_LENGTH = 80;
@@ -272,7 +276,10 @@ function getBuiltinPromptTemplates(translate?: Translate): PromptTemplate[] {
   }));
 }
 
-function readCustomPromptTemplates(storage = getStorage()): {
+function readCustomPromptTemplates(
+  storage = getStorage(),
+  owner?: string,
+): {
   templates: PromptTemplate[];
   storageAvailable: boolean;
   invalidCustomCount: number;
@@ -280,7 +287,7 @@ function readCustomPromptTemplates(storage = getStorage()): {
   if (!storage) return { templates: [], storageAvailable: false, invalidCustomCount: 0 };
   let raw: string | null;
   try {
-    raw = storage.getItem(PROMPT_TEMPLATE_STORAGE_KEY);
+    raw = storage.getItem(storageKeyFor(owner));
   } catch {
     return { templates: [], storageAvailable: false, invalidCustomCount: 0 };
   }
@@ -307,11 +314,15 @@ function readCustomPromptTemplates(storage = getStorage()): {
   };
 }
 
-function writeCustomPromptTemplates(templates: PromptTemplate[], storage = getStorage()): boolean {
+function writeCustomPromptTemplates(
+  templates: PromptTemplate[],
+  storage = getStorage(),
+  owner?: string,
+): boolean {
   if (!storage) return false;
   try {
     storage.setItem(
-      PROMPT_TEMPLATE_STORAGE_KEY,
+      storageKeyFor(owner),
       JSON.stringify(templates.slice(0, MAX_CUSTOM_PROMPT_TEMPLATES)),
     );
     return true;
@@ -323,8 +334,9 @@ function writeCustomPromptTemplates(templates: PromptTemplate[], storage = getSt
 export function loadPromptTemplateCatalog(
   storage = getStorage(),
   translate?: Translate,
+  owner?: string,
 ): PromptTemplateCatalog {
-  const custom = readCustomPromptTemplates(storage);
+  const custom = readCustomPromptTemplates(storage, owner);
   return {
     templates: [...custom.templates, ...getBuiltinPromptTemplates(translate)],
     customCount: custom.templates.length,
@@ -337,13 +349,14 @@ export function saveCustomPromptTemplate(
   draft: PromptTemplateDraft,
   storage = getStorage(),
   timestamp = nowMs(),
+  owner?: string,
 ): SavePromptTemplateResult {
   const title = normalizeText(draft.title, MAX_PROMPT_TEMPLATE_TITLE_LENGTH);
   const body = normalizeText(draft.body, MAX_PROMPT_TEMPLATE_BODY_LENGTH);
   if (!title) return { ok: false, reason: 'empty_title' };
   if (!body) return { ok: false, reason: 'empty_body' };
 
-  const current = readCustomPromptTemplates(storage);
+  const current = readCustomPromptTemplates(storage, owner);
   if (!current.storageAvailable) return { ok: false, reason: 'storage_unavailable' };
 
   const template: PromptTemplate = {
@@ -359,26 +372,30 @@ export function saveCustomPromptTemplate(
     updatedAt: timestamp,
   };
   const next = [template, ...current.templates].slice(0, MAX_CUSTOM_PROMPT_TEMPLATES);
-  if (!writeCustomPromptTemplates(next, storage)) {
+  if (!writeCustomPromptTemplates(next, storage, owner)) {
     return { ok: false, reason: 'storage_unavailable' };
   }
   return { ok: true, template };
 }
 
-export function deleteCustomPromptTemplate(id: string, storage = getStorage()): boolean {
-  const current = readCustomPromptTemplates(storage);
+export function deleteCustomPromptTemplate(
+  id: string,
+  storage = getStorage(),
+  owner?: string,
+): boolean {
+  const current = readCustomPromptTemplates(storage, owner);
   if (!current.storageAvailable) return false;
   const next = current.templates.filter((template) => template.id !== id);
   if (next.length === current.templates.length) return true;
   if (next.length === 0) {
     try {
-      storage?.removeItem(PROMPT_TEMPLATE_STORAGE_KEY);
+      storage?.removeItem(storageKeyFor(owner));
       return true;
     } catch {
       return false;
     }
   }
-  return writeCustomPromptTemplates(next, storage);
+  return writeCustomPromptTemplates(next, storage, owner);
 }
 
 export function applyPromptTemplate(

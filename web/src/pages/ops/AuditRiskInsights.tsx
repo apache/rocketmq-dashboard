@@ -33,7 +33,7 @@ import type { ColumnsType } from 'antd/es/table';
 import type { AuditSummary } from '../../api/audit';
 import type { AuditRecord } from '../../api/ops';
 import { useLang } from '../../i18n/LangContext';
-import { formatDateTime, formatNumber } from '../../utils/format';
+import { formatUtcDateTime, formatNumber } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import TagList from '../../components/TagList';
 import {
@@ -169,7 +169,7 @@ const AuditRiskInsights = ({ summary, records, loading }: Props) => {
       dataIndex: 'latestAt',
       key: 'latestAt',
       width: 180,
-      render: (latestAt: string | null) => formatDateTime(latestAt),
+      render: (latestAt: string | null) => formatUtcDateTime(latestAt),
     },
   ];
 
@@ -179,7 +179,7 @@ const AuditRiskInsights = ({ summary, records, loading }: Props) => {
       dataIndex: 'timestamp',
       key: 'timestamp',
       width: 180,
-      render: (timestamp: string) => formatDateTime(timestamp),
+      render: (timestamp: string) => formatUtcDateTime(timestamp),
     },
     {
       title: t('audit.operator'),

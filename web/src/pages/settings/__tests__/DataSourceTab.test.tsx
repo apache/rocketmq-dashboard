@@ -15,11 +15,12 @@
  * limitations under the License.
  */
 
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { App } from 'antd';
+import { App, ConfigProvider, message } from 'antd';
 import type { DataSource, DataSourcePage } from '../../../api/settings';
+import type { Instance } from '../../../api/instance';
 import {
   createDataSource,
   deleteDataSource,
@@ -32,6 +33,9 @@ import { LangProvider } from '../../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { downloadCsv } from '../../../utils/download';
 import { DataSourceTab } from '../DataSourceTab';
+import { listInstances } from '../../../services/instanceService';
+
+vi.mock('../../../services/instanceService', () => ({ listInstances: vi.fn() }));
 
 vi.mock('../../../api/settings', () => ({
   createDataSource: vi.fn(),
@@ -78,6 +82,45 @@ const sourcePage: DataSourcePage = {
   size: 20,
 };
 
+const bindingInstances: Instance[] = [
+  {
+    id: 1,
+    name: 'apache-main',
+    vendor: 'APACHE',
+    type: 'DIRECT',
+    endpoint: 'nameserver.example:9876',
+    remark: null,
+    topicCount: 0,
+    consumerGroupCount: 0,
+    gmtCreate: '2026-10-11T00:00:00',
+    gmtModified: '2026-10-11T00:00:00',
+  },
+  {
+    id: 7,
+    name: 'legacy-instance',
+    vendor: 'APACHE',
+    type: 'DIRECT',
+    endpoint: 'legacy.example:9876',
+    remark: null,
+    topicCount: 0,
+    consumerGroupCount: 0,
+    gmtCreate: '2026-10-11T00:00:00',
+    gmtModified: '2026-10-11T00:00:00',
+  },
+  {
+    id: 2,
+    name: '1',
+    vendor: 'ALIYUN',
+    type: 'CLOUD',
+    endpoint: 'cloud.example:8080',
+    remark: null,
+    topicCount: 0,
+    consumerGroupCount: 0,
+    gmtCreate: '2026-10-11T00:00:00',
+    gmtModified: '2026-10-11T00:00:00',
+  },
+];
+
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -105,11 +148,93 @@ beforeAll(() => {
 });
 
 describe('DataSourceTab', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.removeItem(LANGUAGE_STORAGE_KEY);
     vi.mocked(listDataSourcesPage).mockResolvedValue(sourcePage);
     vi.mocked(listAllDataSources).mockResolvedValue(sources);
+    vi.mocked(listInstances).mockResolvedValue([]);
+  });
+
+  it('keeps a numeric instance name in the table and edit selection Test', async () => {
+    const boundSource = { ...sources[0], instanceIds: ['1'] };
+    vi.mocked(listInstances).mockResolvedValue(bindingInstances);
+    vi.mocked(listDataSourcesPage).mockResolvedValue({
+      ...sourcePage,
+      items: [boundSource],
+      total: 1,
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+
+    const row = await screen.findByRole('row', { name: /Prometheus prod/ });
+    await user.click(within(row).getByRole('button', { name: /编\s*辑/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByText('1', { selector: '.ant-select-selection-item-content' }),
+    ).toBeInTheDocument();
+    expect(within(row).getAllByRole('cell')[3]).toHaveTextContent(/^1$/);
+  });
+
+  it('exports the numeric instance name instead of another instance with that ID Test', async () => {
+    const boundSource = { ...sources[0], instanceIds: ['1'] };
+    vi.mocked(listInstances).mockResolvedValue(bindingInstances);
+    vi.mocked(listDataSourcesPage).mockResolvedValue({
+      ...sourcePage,
+      items: [boundSource],
+      total: 1,
+    });
+    vi.mocked(listAllDataSources).mockResolvedValue([boundSource]);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+    await screen.findByText('Prometheus prod');
+    await user.click(screen.getByRole('button', { name: /编\s*辑/ }));
+    const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByText('1', { selector: '.ant-select-selection-item-content' });
+    await user.click(within(dialog).getByRole('button', { name: /Cancel|取\s*消/ }));
+    await user.click(screen.getByRole('button', { name: '导出' }));
+
+    await waitFor(() => expect(downloadCsv).toHaveBeenCalled());
+    const csv = vi.mocked(downloadCsv).mock.calls[0][1];
+    expect(csv).toContain('"Applicable Instances"');
+    expect(csv).toContain('"http://prometheus:9090","1","None"');
+    expect(csv).not.toContain('apache-main');
+  });
+
+  it('keeps legacy numeric bindings, unknown names, and global sources readable Test', async () => {
+    vi.mocked(listInstances).mockResolvedValue(bindingInstances);
+    const boundSource = { ...sources[0], instanceIds: ['7', 'missing-instance'] };
+    vi.mocked(listDataSourcesPage).mockResolvedValue({
+      ...sourcePage,
+      items: [boundSource, sources[1]],
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+
+    const row = await screen.findByRole('row', { name: /Prometheus prod/ });
+    await user.click(within(row).getByRole('button', { name: /编\s*辑/ }));
+    await screen.findByRole('dialog');
+    expect(within(row).getAllByRole('cell')[3]).toHaveTextContent(
+      'legacy-instance、missing-instance',
+    );
+    const globalRow = screen.getByRole('row', { name: /Thanos DR/ });
+    expect(within(globalRow).getAllByRole('cell')[3]).toHaveTextContent('全局');
   });
 
   it.each([false, true])(
@@ -281,6 +406,43 @@ describe('DataSourceTab', () => {
     await waitFor(() => expect(screen.queryByText('Prometheus prod')).not.toBeInTheDocument());
   });
 
+  it('disables old-row actions and export while a changed search is pending', async () => {
+    const nextList = deferred<DataSourcePage>();
+    vi.mocked(listDataSourcesPage)
+      .mockResolvedValueOnce(sourcePage)
+      .mockReturnValueOnce(nextList.promise);
+    render(
+      <App>
+        <LangProvider>
+          <DataSourceTab />
+        </LangProvider>
+      </App>,
+    );
+
+    const oldRow = await screen.findByRole('row', { name: /Prometheus prod/ });
+    fireEvent.change(screen.getByPlaceholderText('搜索数据源名称'), {
+      target: { value: 'stage' },
+    });
+    expect(within(oldRow).getByRole('button', { name: /编辑/ })).toBeDisabled();
+    expect(within(oldRow).getByRole('button', { name: /删除/ })).toBeDisabled();
+    expect(within(oldRow).getByRole('button', { name: /测试连接/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /导出/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /导出/ }));
+    expect(listAllDataSources).not.toHaveBeenCalled();
+
+    await waitFor(() =>
+      expect(listDataSourcesPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'stage' }),
+      ),
+    );
+    expect(within(oldRow).getByRole('button', { name: /编辑/ })).toBeDisabled();
+    await act(async () => nextList.resolve({ ...sourcePage, items: [], total: 0 }));
+    await waitFor(() => expect(screen.queryByText('Prometheus prod')).not.toBeInTheDocument());
+    expect(testDataSource).not.toHaveBeenCalled();
+    expect(deleteDataSource).not.toHaveBeenCalled();
+    expect(listAllDataSources).not.toHaveBeenCalled();
+  });
+
   it('does not report a data source as offline when the backend has not tested it', async () => {
     render(
       <LangProvider>
@@ -383,6 +545,112 @@ describe('DataSourceTab', () => {
       expect(buttons[1]).not.toHaveClass('ant-btn-loading');
     });
   });
+
+  it.each(['success', 'failure', 'rejection'] as const)(
+    'ignores a previous modal connection test after reopening (%s) Test',
+    async (outcome) => {
+      const previousTest = deferred<{ success: boolean; message: string }>();
+      const currentTest = deferred<{ success: boolean; message: string }>();
+      vi.mocked(testDataSource)
+        .mockReturnValueOnce(previousTest.promise)
+        .mockReturnValueOnce(currentTest.promise);
+      const successMessage = vi.spyOn(message, 'success');
+      const errorMessage = vi.spyOn(message, 'error');
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      render(
+        <ConfigProvider theme={{ token: { motion: false } }}>
+          <App>
+            <LangProvider>
+              <DataSourceTab />
+            </LangProvider>
+          </App>
+        </ConfigProvider>,
+      );
+
+      const row = await screen.findByRole('row', { name: /Prometheus prod/ });
+      await user.click(within(row).getByRole('button', { name: /edit/i }));
+      const previousDialog = await screen.findByRole('dialog');
+      await user.click(within(previousDialog).getByRole('button', { name: /test connection/i }));
+      await waitFor(() => expect(testDataSource).toHaveBeenCalledTimes(1));
+      await user.click(within(previousDialog).getByRole('button', { name: /cancel/i }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+      await user.click(within(row).getByRole('button', { name: /edit/i }));
+      const currentDialog = await screen.findByRole('dialog');
+      const testButton = within(currentDialog).getByRole('button', { name: /test connection/i });
+      expect(testButton).not.toHaveClass('ant-btn-loading');
+      fireEvent.change(within(currentDialog).getByLabelText('URL'), {
+        target: { value: 'http://prometheus-new:9090' },
+      });
+      await user.click(testButton);
+      await waitFor(() => expect(testDataSource).toHaveBeenCalledTimes(2));
+      expect(testDataSource).toHaveBeenLastCalledWith({
+        type: 'Prometheus',
+        url: 'http://prometheus-new:9090',
+        auth: 'None',
+      });
+      expect(testButton).toHaveClass('ant-btn-loading');
+
+      await act(async () => {
+        if (outcome === 'rejection') previousTest.reject(new Error('old request failed'));
+        else previousTest.resolve({ success: outcome === 'success', message: 'Old test result' });
+      });
+      expect(testButton).toHaveClass('ant-btn-loading');
+      expect(successMessage).not.toHaveBeenCalled();
+      expect(errorMessage).not.toHaveBeenCalled();
+
+      await act(async () => currentTest.resolve({ success: true, message: 'Current test result' }));
+      await waitFor(() => expect(testButton).not.toHaveClass('ant-btn-loading'));
+      expect(successMessage).toHaveBeenCalledWith('Current test result');
+    },
+  );
+
+  it.each(['cancel', 'save', 'unmount'] as const)(
+    'ignores a pending modal connection test after %s Test',
+    async (action) => {
+      const pendingTest = deferred<{ success: boolean; message: string }>();
+      vi.mocked(testDataSource).mockReturnValueOnce(pendingTest.promise);
+      vi.mocked(updateDataSource).mockResolvedValueOnce(sources[0]);
+      const successMessage = vi.spyOn(message, 'success');
+      const errorMessage = vi.spyOn(message, 'error');
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      const { unmount } = render(
+        <ConfigProvider theme={{ token: { motion: false } }}>
+          <App>
+            <LangProvider>
+              <DataSourceTab />
+            </LangProvider>
+          </App>
+        </ConfigProvider>,
+      );
+
+      const row = await screen.findByRole('row', { name: /Prometheus prod/ });
+      await user.click(within(row).getByRole('button', { name: /edit/i }));
+      const dialog = await screen.findByRole('dialog');
+      await user.click(within(dialog).getByRole('button', { name: /test connection/i }));
+      await waitFor(() => expect(testDataSource).toHaveBeenCalledTimes(1));
+
+      if (action === 'unmount') unmount();
+      else {
+        await user.click(
+          within(dialog).getByRole('button', { name: action === 'save' ? 'OK' : /cancel/i }),
+        );
+        await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+        if (action === 'save') expect(updateDataSource).toHaveBeenCalledTimes(1);
+      }
+      successMessage.mockClear();
+      errorMessage.mockClear();
+
+      await act(async () => {
+        if (action === 'unmount') pendingTest.reject(new Error('request failed after unmount'));
+        else pendingTest.resolve({ success: true, message: 'Closed modal test result' });
+      });
+      expect(successMessage).not.toHaveBeenCalled();
+      expect(errorMessage).not.toHaveBeenCalled();
+    },
+  );
 
   it('exports all data sources that match the active filters without secrets', async () => {
     vi.mocked(listAllDataSources).mockResolvedValue([
@@ -622,6 +890,52 @@ describe('DataSourceTab', () => {
         url: 'http://prometheus:9090',
         auth: 'Basic Auth',
       });
+    });
+  });
+
+  it('creates each data source once per modal confirmation', async () => {
+    const pendingCreate = deferred<DataSource>();
+    vi.mocked(createDataSource).mockReturnValueOnce(pendingCreate.promise);
+
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+
+    await screen.findByText('Prometheus prod');
+    await user.click(screen.getByRole('button', { name: /添加数据源/ }));
+    await user.type(screen.getByLabelText('名称'), 'Prometheus dupe');
+    await selectAntdOption(user, '类型', 'Prometheus');
+    await user.type(screen.getByLabelText('URL'), 'http://prometheus:9090');
+
+    const confirmButton = screen.getByRole('button', { name: 'OK' });
+    fireEvent.click(confirmButton);
+    // The modal must lock with the first click: `submitting` alone flips only after
+    // validateFields resolves and React re-renders, so a second OK in that window would
+    // create the same data source twice.
+    expect(confirmButton).toHaveClass('ant-btn-loading');
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => expect(createDataSource).toHaveBeenCalledTimes(1));
+    expect(createDataSource).toHaveBeenCalledTimes(1);
+    expect(createDataSource).toHaveBeenCalledWith({
+      name: 'Prometheus dupe',
+      type: 'Prometheus',
+      url: 'http://prometheus:9090',
+      auth: 'None',
+    });
+
+    await act(async () => {
+      pendingCreate.resolve({
+        key: 'prom-dupe',
+        name: 'Prometheus dupe',
+        type: 'Prometheus',
+        url: 'http://prometheus:9090',
+        auth: 'None',
+      });
+      await pendingCreate.promise;
     });
   });
 

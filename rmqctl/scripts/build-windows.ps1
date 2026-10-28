@@ -53,7 +53,12 @@ $ErrorActionPreference = "Stop"
 # Resolve module root: this script lives in scripts/, module root is one level up.
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $moduleRoot = Split-Path -Parent $scriptDir
-Set-Location $moduleRoot
+$previousGoos = [Environment]::GetEnvironmentVariable("GOOS", "Process")
+$previousGoarch = [Environment]::GetEnvironmentVariable("GOARCH", "Process")
+$previousCgoEnabled = [Environment]::GetEnvironmentVariable("CGO_ENABLED", "Process")
+$previousPath = [Environment]::GetEnvironmentVariable("Path", "Process")
+Push-Location -LiteralPath $moduleRoot
+try {
 
 # Locate the Go toolchain.
 if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
@@ -66,6 +71,15 @@ if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
 
 Write-Host ">> $(go version)"
 Write-Host ">> module root: $moduleRoot"
+
+# This entry point builds and optionally tests a native executable. Do not
+# inherit GOOS/GOARCH left over from a previous cross-compilation command.
+$nativeTarget = go env -json GOHOSTOS GOHOSTARCH | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or -not $nativeTarget.GOHOSTOS -or -not $nativeTarget.GOHOSTARCH) {
+    throw "Could not determine the native Go build target"
+}
+$env:GOOS = $nativeTarget.GOHOSTOS
+$env:GOARCH = $nativeTarget.GOHOSTARCH
 
 # Version metadata, mirroring the Makefile LDFLAGS.
 $gitCommit = "unknown"
@@ -93,3 +107,10 @@ if ($RunTests) {
 }
 
 Write-Host ">> done. verify with: .\$Output version"
+} finally {
+    [Environment]::SetEnvironmentVariable("GOOS", $previousGoos, "Process")
+    [Environment]::SetEnvironmentVariable("GOARCH", $previousGoarch, "Process")
+    [Environment]::SetEnvironmentVariable("CGO_ENABLED", $previousCgoEnabled, "Process")
+    [Environment]::SetEnvironmentVariable("Path", $previousPath, "Process")
+    Pop-Location
+}

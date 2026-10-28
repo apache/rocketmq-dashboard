@@ -16,12 +16,20 @@
  */
 package org.apache.rocketmq.studio.ops.alert;
 
+import org.apache.rocketmq.studio.cluster.metrics.MetricAvailability;
+import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -84,7 +92,50 @@ class NativeAlertRulePolicyTest {
     @Test
     void leavesLegacyPrometheusRulesCompatibleTest() {
         assertThatCode(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.BUSINESS,
-                "rocketmq_consumer_lag_messages").build())).doesNotThrowAnyException();
+                "rocketmq_consumer_lag_messages").operator(null).build())).doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {" ", "INVALID", "GT", "unavailable"})
+    void rejectsNativeRulesWithoutSupportedOperatorTest(String operator) {
+        assertThatThrownBy(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.CLUSTER, "broker.availability")
+                .instanceId("local").operator(operator).build()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("operator")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {">", ">=", "<", "<=", "==", "!=", "UNAVAILABLE"})
+    void acceptsSupportedNativeOperatorsTest(String operator) {
+        assertThatCode(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.CLUSTER, "broker.availability")
+                .instanceId("local").operator(operator).build())).doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {" > ", " UNAVAILABLE "})
+    void acceptsPaddedOperatorsLikeTheEvaluatorDoesTest(String operator) {
+        // AlertRuleEvaluator.compare() trims the operator, so validation has to accept the padded form
+        // instead of rejecting a rule the evaluator would happily run.
+        assertThatCode(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.CLUSTER, "broker.availability")
+                .instanceId("local").operator(operator).build())).doesNotThrowAnyException();
+    }
+
+    @Test
+    void keepsNativeOperatorWhitelistInSyncWithTheEvaluatorTest() {
+        // The whitelist exists three times: AlertRuleRequestDTO's @Pattern, AlertRuleEvaluator.compare()
+        // and NativeAlertRulePolicy.NATIVE_OPERATORS. Pinning the evaluator here means an operator added
+        // to the policy without a matching switch case fails the build instead of silently evaluating to
+        // false at runtime.
+        assertThat(NativeAlertRulePolicy.NATIVE_OPERATORS)
+                .containsExactlyInAnyOrder(">", ">=", "<", "<=", "==", "!=", "UNAVAILABLE");
+        AlertRuleEvaluator evaluator = new AlertRuleEvaluator();
+        for (String operator : NativeAlertRulePolicy.NATIVE_OPERATORS) {
+            assertThat(evaluatorSupports(evaluator, operator))
+                    .as("AlertRuleEvaluator must implement operator %s", operator)
+                    .isTrue();
+        }
     }
 
     @Test
@@ -118,6 +169,25 @@ class NativeAlertRulePolicyTest {
     }
 
     private static AlertRuleVO.AlertRuleVOBuilder rule(AlertDomain domain, String metric) {
-        return AlertRuleVO.builder().domain(domain).name("Test rule").metric(metric).consecutiveSamples(1);
+        return AlertRuleVO.builder().domain(domain).name("Test rule").metric(metric).operator(">")
+                .consecutiveSamples(1);
+    }
+
+    /**
+     * Probes one operator against the sample values that make every supported comparison fire at least
+     * once, so an operator missing from AlertRuleEvaluator.compare() reports false here.
+     */
+    private static boolean evaluatorSupports(AlertRuleEvaluator evaluator, String operator) {
+        List<MetricSample> samples = List.of(sample(4D, MetricAvailability.AVAILABLE),
+                sample(5D, MetricAvailability.AVAILABLE), sample(6D, MetricAvailability.AVAILABLE),
+                sample(null, MetricAvailability.UNAVAILABLE));
+        AlertRuleVO rule = rule(AlertDomain.CLUSTER, "broker.availability").instanceId("local")
+                .operator(operator).threshold(5D).build();
+        return samples.stream().anyMatch(sample -> evaluator.evaluate(rule, sample).conditionMet());
+    }
+
+    private static MetricSample sample(Double value, MetricAvailability availability) {
+        return new MetricSample("broker.availability", AlertDomain.CLUSTER, "local", "local", Map.of(), value,
+                availability, Instant.EPOCH);
     }
 }

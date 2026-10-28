@@ -38,6 +38,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.LongFunction;
 
@@ -274,6 +275,13 @@ final class AiRunTestSupport {
         final List<AgentEvent> scripted = new ArrayList<>();
         Consumer<AgentStreamOptions> beforeStream = options -> {
         };
+        /**
+         * Runs after each scripted frame reaches the sink, with the stream's options in hand — the
+         * hook for a test whose stop must land <em>between</em> frames, which {@code beforeStream}
+         * (it fires before the script) cannot express.
+         */
+        BiConsumer<AgentEvent, AgentStreamOptions> afterEvent = (event, options) -> {
+        };
         RuntimeException failure;
         /**
          * Thrown instead of any RuntimeException, so a test can reach the paths that only an {@link Error}
@@ -313,7 +321,10 @@ final class AiRunTestSupport {
             lastPrompt = options.getPrompt();
             lastOptions = options;
             beforeStream.accept(options);
-            scripted.forEach(sink);
+            scripted.forEach(event -> {
+                sink.accept(event);
+                afterEvent.accept(event, options);
+            });
             if (error != null) {
                 throw error;
             }
@@ -351,6 +362,7 @@ final class AiRunTestSupport {
         copy.setErrorCode(run.getErrorCode());
         copy.setErrorMessage(run.getErrorMessage());
         copy.setTokensPerSecond(run.getTokensPerSecond());
+        copy.setGmtModified(run.getGmtModified());
         return copy;
     }
 

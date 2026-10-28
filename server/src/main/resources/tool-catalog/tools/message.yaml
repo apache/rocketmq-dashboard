@@ -89,6 +89,8 @@ tools:
                 type: boolean
               size:
                 type: integer
+                minimum: -1
+                description: Message body size in bytes; -1 when the vendor API reports none (unknown, not zero).
         resultMayBeTruncated:
           type: boolean
           description: True when rows were omitted by limit or the provider may have stopped at its own scan bound.
@@ -174,6 +176,8 @@ tools:
                 type: boolean
               size:
                 type: integer
+                minimum: -1
+                description: Message body size in bytes; -1 when the vendor API reports none (unknown, not zero).
         resultMayBeTruncated:
           type: boolean
           description: True when rows were omitted by limit or the provider may have stopped at its own scan bound.
@@ -257,6 +261,8 @@ tools:
                 type: boolean
               size:
                 type: integer
+                minimum: -1
+                description: Message body size in bytes; -1 when the vendor API reports none (unknown, not zero).
     viewHint: table
     deprecated: false
   - name: rmq.message.query_dlq
@@ -300,6 +306,7 @@ tools:
             pageSize:
               type: integer
               minimum: 1
+              maximum: 100
     outputSchema:
       type: object
       required:
@@ -732,5 +739,27 @@ tools:
               type: boolean
             failedQueueCount:
               type: integer
+            failures:
+              type: array
+              description: At most 100 per-message failures, with the same bounded reasons as the REST resend response.
+              maxItems: 100
+              items:
+                type: object
+                required:
+                  - msgId
+                  - reason
+                additionalProperties: false
+                properties:
+                  msgId:
+                    type: string
+                  targetTopic:
+                    type: string
+                    description: Omitted when no destination could be resolved.
+                  reason:
+                    type: string
+                    maxLength: 256
+            failuresTruncated:
+              type: boolean
+              description: True when more failures occurred than the retained details; independent of scanIncomplete.
     viewHint: object
     deprecated: false
