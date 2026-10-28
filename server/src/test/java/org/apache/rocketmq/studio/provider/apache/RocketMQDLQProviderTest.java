@@ -57,6 +57,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
@@ -88,6 +89,7 @@ import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -1380,6 +1382,69 @@ class RocketMQDLQProviderTest {
             assertThat(failure.getReason()).contains("broker unavailable");
         });
         assertThat(result.isFailuresTruncated()).isFalse();
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "false, 229, true", "false, 230, false", "false, 231, false",
+        "true, 226, true", "true, 227, false", "true, 228, false"
+    })
+    void resendFailuresPreserveUnicodeAtCutBoundaryTest(boolean sessionFailure, int filler,
+                                                       boolean keepsEmoji) throws Exception {
+        String prefix = sessionFailure ? "Producer session failed: " : "Producer send failed: ";
+        String error = "x".repeat(filler) + "😀" + "y".repeat(40);
+        DLQResendResultVO result = resendWithProducerError(error, sessionFailure);
+
+        assertThat(result).extracting("matched", "resent", "failed", "outcome")
+                .containsExactly(1, 0, 1, "FAILED");
+        assertThat(result.getFailures()).singleElement().satisfies(failure -> {
+            String expected = prefix + "x".repeat(filler) + (keepsEmoji ? "😀" : "") + "...";
+            assertThat(failure.getReason()).isEqualTo(expected).hasSizeLessThanOrEqualTo(256);
+            assertThat(new String(failure.getReason().getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8))
+                    .isEqualTo(failure.getReason());
+            assertThat(failure.getMsgId()).isEqualTo("selected-msg");
+            assertThat(failure.getTargetTopic()).isEqualTo("orders");
+        });
+        assertThat(result.isFailuresTruncated()).isFalse();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"false", "true"})
+    void resendFailuresKeepShortUnicodeAndNormalizeWhitespaceTest(boolean sessionFailure) throws Exception {
+        String prefix = sessionFailure ? "Producer session failed: " : "Producer send failed: ";
+        DLQResendResultVO result = resendWithProducerError("  broker\n  😀 unavailable  ", sessionFailure);
+
+        assertThat(result.getFailures()).singleElement().satisfies(failure ->
+                assertThat(failure.getReason()).isEqualTo(prefix + "broker 😀 unavailable"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"false", "true"})
+    void resendFailuresKeepAsciiReasonBudgetTest(boolean sessionFailure) throws Exception {
+        String prefix = sessionFailure ? "Producer session failed: " : "Producer send failed: ";
+        DLQResendResultVO result = resendWithProducerError("x".repeat(300), sessionFailure);
+
+        assertThat(result.getFailures()).singleElement().satisfies(failure ->
+                assertThat(failure.getReason())
+                        .isEqualTo(prefix + "x".repeat(253 - prefix.length()) + "...")
+                        .hasSize(256));
+    }
+
+    private DLQResendResultVO resendWithProducerError(String error, boolean sessionFailure) throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageExt deadLetter = new MessageExt();
+        deadLetter.setMsgId("selected-msg");
+        deadLetter.setTopic(dlqTopic);
+        deadLetter.setBody(new byte[] {1});
+        MessageAccessor.putProperty(deadLetter, MessageConst.PROPERTY_DLQ_ORIGIN_TOPIC, "orders");
+        when(adminExt.viewMessage(dlqTopic, "selected-msg")).thenReturn(deadLetter);
+        if (sessionFailure) {
+            doThrow(new IllegalStateException(error)).when(runtimeAdminClientResolver)
+                    .executeProducer(anyString(), any());
+        } else {
+            when(dlqProducer.send(any(Message.class))).thenThrow(new IllegalStateException(error));
+        }
+        return provider.resendMessages("instance-a", "group-a", List.of("selected-msg"), null);
     }
 
     @Test

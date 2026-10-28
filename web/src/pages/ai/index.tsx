@@ -15,11 +15,12 @@
  * limitations under the License.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Alert, Button, Flex, message, theme } from 'antd';
 import { useLang } from '../../i18n/LangContext';
 import type { McpTool } from '../../api/ai';
+import { suggestFollowups } from '../../api/aiConversations';
 import useAuthStore from '../../stores/authStore';
 import { useDataModeStore } from '../../stores/dataModeStore';
 import { useEngineStore, type AgentEngine } from '../../stores/engineStore';
@@ -61,8 +62,10 @@ const AiPage = () => {
   const { t } = useLang();
   const { token } = theme.useToken();
   const navigate = useNavigate();
-  const conversationId = parseConversationId(useParams().conversationId);
+  const routeConversationId = parseConversationId(useParams().conversationId);
   const useMock = useDataModeStore((state) => state.useMock);
+  // Persisted conversations and active runs are real backend resources, even on a Mock deep link.
+  const conversationId = useMock ? null : routeConversationId;
   const userId = useAuthStore((state) => state.userId);
   const admin = useAuthStore((state) => state.admin);
   const engine = useEngineStore((state) => state.engine);
@@ -72,6 +75,12 @@ const AiPage = () => {
   const [enhance, setEnhance] = useState(false);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [tools, setTools] = useState<McpTool[]>([]);
+  // Messages typed while a run is in flight. Component state on purpose: a queue belongs to the
+  // conversation it was typed in, so switching conversations drops it rather than admitting a
+  // message into a transcript the operator is no longer looking at.
+  const [queue, setQueue] = useState<string[]>([]);
+  const [followups, setFollowups] = useState<string[]>([]);
+  const followupKeyRef = useRef<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const draftEngineRef = useRef<AgentEngine | null>(null);
 
@@ -94,6 +103,7 @@ const AiPage = () => {
   });
 
   useDraftHandoff(conversationId, {
+    sendEnabled: !useMock,
     applyDraft: (draft) => {
       setInputValue(draft.prompt);
       if (draft.enhance !== undefined) setEnhance(draft.enhance);
@@ -111,6 +121,7 @@ const AiPage = () => {
 
   const handleSend = useCallback(
     (text: string) => {
+      setFollowups([]);
       if (!llm.llmReady) {
         setInputValue(text); // a rejected send gives the cleared draft back
         message.warning(t('ai.providerRequired'));
@@ -137,11 +148,96 @@ const AiPage = () => {
     ],
   );
 
-  // Estimated context footprint of this conversation — persisted text plus whatever the run in
-  // flight has produced so far — drawn as the composer's context-usage bar. The persisted half is
-  // memoised on the timeline rows: a streaming tick re-renders this page at display rate, and
-  // re-scanning EVERY persisted answer with the token estimator each frame is pure waste; only
-  // the live blocks of the run in flight are recomputed per render.
+  useEffect(() => {
+    // A queue belongs to the conversation it was typed in; switching conversations drops it rather
+    // than admitting a message into a transcript the operator is no longer looking at.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setQueue([]);
+    setFollowups([]);
+  }, [conversationId]);
+
+  const queueMessage = useCallback((text: string) => {
+    setQueue((previous) => [...previous, text]);
+  }, []);
+
+  const dropQueued = useCallback(
+    (index: number) => {
+      setQueue(queue.filter((_, position) => position !== index));
+    },
+    [queue],
+  );
+
+  const editQueued = useCallback(
+    (index: number) => {
+      const text = queue[index];
+      if (text === undefined) return;
+      setInputValue(text);
+      setQueue(queue.filter((_, position) => position !== index));
+      textareaRef.current?.focus();
+    },
+    [queue, setInputValue],
+  );
+
+  const promoteQueued = useCallback(
+    (index: number) => {
+      if (index <= 0 || index >= queue.length) return;
+      const next = [...queue];
+      const [item] = next.splice(index, 1);
+      next.unshift(item);
+      setQueue(next);
+    },
+    [queue],
+  );
+
+  // Drain one queued message per terminal transition, through the SAME path a typed message uses,
+  // so admission, draft restore and the 409 guard all apply unchanged. One per transition rather
+  // than a loop: each send flips isStreaming back on, and the next terminal state drains the next.
+  useEffect(() => {
+    if (run.isStreaming || !llm.llmReady || queue.length === 0) return;
+    const [head, ...rest] = queue;
+    // Draining is inherently an effect: the head leaves through the same send path a typed message
+    // uses, which flips isStreaming back on and schedules the next drain.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setQueue(rest);
+    handleSend(head);
+  }, [handleSend, llm.llmReady, queue, run.isStreaming]);
+
+  // Follow-up chips for the latest answer. Refetched whenever the transcript tail moves while
+  // idle — which is exactly "a run just finished and the refetch landed" — and keyed on
+  // (conversation, lastSeq) so a finished fetch is never repeated. A tail that ends on a user
+  // message has no answer to follow up on, so the chips stay hidden.
+  useEffect(() => {
+    if (conversationId === null || run.isStreaming || timeline.loading) return;
+    const last = timeline.bubbles[timeline.bubbles.length - 1];
+    if (last === undefined || last.role !== 'assistant') {
+      followupKeyRef.current = null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFollowups([]);
+      return;
+    }
+    const key = `${conversationId}:${timeline.lastSeq}`;
+    if (followupKeyRef.current === key) return;
+    followupKeyRef.current = key;
+    let cancelled = false;
+    suggestFollowups(conversationId)
+      .then((items) => {
+        if (!cancelled) setFollowups(items);
+      })
+      .catch(() => {
+        if (!cancelled) setFollowups([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, run.isStreaming, timeline.bubbles, timeline.lastSeq, timeline.loading]);
+
+  // Context footprint of this conversation for the composer's meter. The provider's own usage of
+  // the newest run wins — a resumed CLI session replays the whole transcript, so that number is
+  // what the next call actually carries — and the transcript estimate stays the fallback for
+  // engines that report no usage. Either way the live blocks of the run in flight are added on
+  // top per render: they are not in any persisted row yet. The persisted half is memoised on the
+  // timeline rows, because a streaming tick re-renders this page at display rate and re-scanning
+  // EVERY persisted answer with the token estimator each frame is pure waste.
   const persistedTokens = useMemo(() => {
     let tokens = 0;
     for (const item of timeline.items) {
@@ -152,7 +248,8 @@ const AiPage = () => {
     }
     return tokens;
   }, [timeline.items]);
-  let contextTokens = persistedTokens;
+  const contextFromUsage = timeline.contextUsage !== null;
+  let contextTokens = contextFromUsage ? (timeline.contextUsage as number) : persistedTokens;
   for (const block of run.blocksRef.current) {
     if (block.kind === 'text') contextTokens += estimateTokens(block.text);
   }
@@ -165,6 +262,8 @@ const AiPage = () => {
         streaming={run.isStreaming}
         pendingUserText={run.pendingUserMessage}
         toolCatalog={tools}
+        followups={inputValue.trim().length === 0 ? followups : []}
+        onFollowup={handleSend}
         liveTokensPerSecond={run.liveTokensPerSecond}
         lastRunTokensPerSecond={run.lastRunTokensPerSecond}
         model={llm.selectedModel}
@@ -236,12 +335,19 @@ const AiPage = () => {
               onOpenHistory={() => setOverlay('history')}
               textareaRef={textareaRef}
               contextTokens={contextTokens}
+              contextSource={contextFromUsage ? 'usage' : 'estimate'}
+              queue={queue}
+              onQueue={queueMessage}
+              onEditQueued={editQueued}
+              onDropQueued={dropQueued}
+              onPromoteQueued={promoteQueued}
             />
           </>
         }
       />
       <ConversationListModal
         open={overlay === 'history'}
+        disabled={useMock}
         onClose={() => setOverlay(null)}
         activeConversationId={conversationId}
         onSelect={(id) => {

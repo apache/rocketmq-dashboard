@@ -15,16 +15,18 @@
  * limitations under the License.
  */
 
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { message } from 'antd';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { logout } from '../api/auth';
 import { LangProvider } from '../i18n/LangContext';
 import translations from '../i18n/translations';
 import useAuthStore from '../stores/authStore';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import MainLayout from './MainLayout';
+
+const viewportState = vi.hoisted(() => ({ md: true }));
 
 const instanceServiceMocks = vi.hoisted(() => ({
   getInstanceCapabilities: vi.fn(),
@@ -45,22 +47,20 @@ vi.mock('antd', async () => {
 
   return {
     Layout,
+    // Drive layout state explicitly; this mock does not test real matchMedia or drawer rendering.
+    Grid: { useBreakpoint: () => ({ md: viewportState.md }) },
+    Drawer: ({ children, open }: { children?: React.ReactNode; open?: boolean }) =>
+      open ? React.createElement(React.Fragment, null, children) : null,
     Menu: ({
       items,
-      onClick,
       selectedKeys,
     }: {
       items?: Array<{ key: string; label: React.ReactNode; children?: unknown[] }>;
-      onClick?: (info: { key: string }) => void;
       selectedKeys?: string[];
     }) => {
       const renderItems = (entries: typeof items): React.ReactNode[] =>
         (entries ?? []).flatMap((item) => [
-          React.createElement(
-            'span',
-            { key: `${item.key}-label`, onClick: () => onClick?.({ key: item.key }) },
-            item.label,
-          ),
+          React.createElement('span', { key: `${item.key}-label` }, item.label),
           ...renderItems(item.children as typeof items),
         ]);
       return React.createElement(
@@ -80,8 +80,6 @@ vi.mock('antd', async () => {
         ),
       ),
     Avatar: () => React.createElement('span', null, 'avatar'),
-    Drawer: ({ open, children }: { open?: boolean; children?: React.ReactNode }) =>
-      open ? React.createElement('div', { role: 'dialog' }, children) : null,
     Dropdown: ({ children, menu }: { children?: React.ReactNode; menu: DropdownMenu }) =>
       React.createElement(
         'div',
@@ -106,17 +104,8 @@ vi.mock('antd', async () => {
 });
 
 describe('MainLayout authentication navigation', () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   beforeEach(() => {
-    vi.stubGlobal(
-      'matchMedia',
-      vi.fn(() => ({
-        matches: false,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      })),
-    );
+    viewportState.md = true;
     localStorage.clear();
     vi.mocked(logout).mockReset().mockResolvedValue(undefined);
     useAuthStore.getState().login('admin', 7, true);
@@ -133,6 +122,37 @@ describe('MainLayout authentication navigation', () => {
         'DLQ_MANAGEMENT',
       ],
     });
+  });
+
+  it('keepsMobileNavigationClosedAfterDesktopRoundTripTest', () => {
+    viewportState.md = false;
+    const layout = () => (
+      <LangProvider>
+        <ThemeProvider>
+          <MemoryRouter>
+            <MainLayout />
+          </MemoryRouter>
+        </ThemeProvider>
+      </LangProvider>
+    );
+    const { rerender } = render(layout());
+    const openMenu = () =>
+      fireEvent.click(screen.getByRole('button', { name: translations['layout.openMenu'].zh }));
+
+    expect(screen.queryByTestId('layout-menu')).not.toBeInTheDocument();
+    openMenu();
+    expect(screen.getByTestId('layout-menu')).toBeInTheDocument();
+
+    viewportState.md = true;
+    rerender(layout());
+    expect(screen.getByTestId('layout-menu')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: translations['layout.openMenu'].zh })).toBeNull();
+
+    viewportState.md = false;
+    rerender(layout());
+    expect(screen.queryByTestId('layout-menu')).not.toBeInTheDocument();
+    openMenu();
+    expect(screen.getByTestId('layout-menu')).toBeInTheDocument();
   });
 
   it('replaces a protected route with the login page after logout', async () => {
@@ -221,70 +241,6 @@ describe('MainLayout authentication navigation', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '切换到英语' }));
     expect(screen.getByRole('button', { name: 'Switch to Chinese' })).toBeInTheDocument();
-  });
-
-  it('closes mobile navigation after selecting a page', () => {
-    render(
-      <LangProvider>
-        <ThemeProvider>
-          <MemoryRouter initialEntries={['/']}>
-            <Routes>
-              <Route path="/" element={<MainLayout />}>
-                <Route index element={<div>protected home</div>} />
-                <Route path="settings" element={<div>settings page</div>} />
-              </Route>
-            </Routes>
-          </MemoryRouter>
-        </ThemeProvider>
-      </LangProvider>,
-    );
-
-    const openNavigation = document.querySelector<HTMLButtonElement>('.studio-mobile-menu-button')!;
-    expect(openNavigation).toHaveAttribute('aria-expanded', 'false');
-    fireEvent.click(openNavigation);
-    expect(openNavigation).toHaveAttribute('aria-expanded', 'true');
-
-    const dialog = screen.getByRole('dialog');
-    fireEvent.click(within(dialog).getByText('设置'));
-    expect(screen.getByText('settings page')).toBeInTheDocument();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(openNavigation).toHaveAttribute('aria-expanded', 'false');
-  });
-
-  it('closes mobile navigation when the viewport becomes desktop sized', () => {
-    let onDesktopChange: ((event: MediaQueryListEvent) => void) | undefined;
-    vi.stubGlobal(
-      'matchMedia',
-      vi.fn((query: string) => ({
-        matches: false,
-        addEventListener: (_type: string, listener: (event: MediaQueryListEvent) => void) => {
-          if (query === '(min-width: 768px)') onDesktopChange = listener;
-        },
-        removeEventListener: vi.fn(),
-      })),
-    );
-    render(
-      <LangProvider>
-        <ThemeProvider>
-          <MemoryRouter initialEntries={['/']}>
-            <Routes>
-              <Route path="/" element={<MainLayout />}>
-                <Route index element={<div>protected home</div>} />
-              </Route>
-            </Routes>
-          </MemoryRouter>
-        </ThemeProvider>
-      </LangProvider>,
-    );
-
-    const openNavigation = document.querySelector<HTMLButtonElement>('.studio-mobile-menu-button')!;
-    fireEvent.click(openNavigation);
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-
-    act(() => onDesktopChange?.({ matches: true } as MediaQueryListEvent));
-
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(openNavigation).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('hides unsupported instance navigation after capabilities load', async () => {

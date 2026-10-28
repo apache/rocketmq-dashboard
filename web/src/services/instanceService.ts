@@ -86,6 +86,10 @@ export async function getInstanceCapabilities(instanceId: string): Promise<Insta
 
 export async function createInstance(data: CreateInstanceRequest): Promise<Instance> {
   if (isMockMode()) {
+    const requestedName = data.name?.trim();
+    if (requestedName && mockInstances.some((instance) => instance.name.trim() === requestedName)) {
+      throw new Error(`Instance name already exists: ${requestedName}`);
+    }
     const cloudManaged = data.vendor === 'ALIYUN' || data.vendor === 'TENCENT';
     const instance: Instance = {
       id: Date.now(),

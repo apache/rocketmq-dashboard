@@ -19,6 +19,7 @@ package studio
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -113,5 +114,88 @@ func TestRequestPreservesLargeIntegersInPassthroughPayload(t *testing.T) {
 	}
 	if !strings.Contains(string(encoded), "9007199254740993") {
 		t.Fatalf("payload lost integer precision: %s", encoded)
+	}
+}
+
+// A scoped IPv6 literal such as [fe80::1%25eth0] is a valid Studio endpoint:
+// url.Parse decodes the "%25" escape and reports the hostname "fe80::1%eth0",
+// zone included. net.ParseIP rejects that zone suffix, so scoped loopback,
+// link-local and private addresses were misclassified as public hosts and plain
+// HTTP was refused. Classification must parse the scoped address as-is, while
+// the zone is preserved in the outgoing URL so the kernel can pick an interface.
+func TestValidateServerSchemeScopedIPv6(t *testing.T) {
+	tests := []struct {
+		name    string
+		server  string
+		wantErr string
+	}{
+		{"http link-local named zone", "http://[fe80::1%25eth0]:6789", ""},
+		{"http link-local numeric zone", "http://[fe80::1%252]:6789", ""},
+		{"http loopback named zone", "http://[::1%25lo]:6789", ""},
+		{"http private ula named zone", "http://[fd00::1%25eth0]:6789", ""},
+		{"https link-local named zone", "https://[fe80::1%25eth0]:6789", ""},
+		{"http public ipv6 with zone rejected", "http://[2001:db8::1%25eth0]:6789", "must use HTTPS"},
+		{"http public ipv6 rejected", "http://[2001:db8::1]:6789", "must use HTTPS"},
+		{"empty zone rejected", "http://[fe80::1%25]:6789", "invalid Studio Server URL"},
+		{"malformed ipv6 rejected", "http://[zz::1%25eth0]:6789", "invalid Studio Server URL"},
+		{"missing bracket rejected", "http://[fe80::1:6789", "invalid Studio Server URL"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			target := Target{
+				Server:     tt.server,
+				InstanceID: "test-instance",
+				Credential: Credential{AccessKey: "ak", SecretKey: "sk"},
+			}
+			err := target.validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("validate(%q) = %v, want nil", tt.server, err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("validate(%q) = nil, want error containing %q", tt.server, tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("validate(%q) = %v, want error containing %q", tt.server, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// The interface zone is part of the outgoing URL: it must survive URL joining
+// and request construction as the "%25eth0" escape, otherwise a scoped literal
+// cannot identify its link-local interface.
+func TestRequestPreservesScopedIPv6Zone(t *testing.T) {
+	var recorded *http.Request
+	client := NewClient(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		recorded = request
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{"code":200,"message":"ok","data":null}`)),
+			Request:    request,
+		}, nil
+	})})
+	target := Target{
+		Server:     "http://[fe80::1%25eth0]:6789",
+		InstanceID: "instance-1",
+		Credential: Credential{AccessKey: "ak", SecretKey: "sk"},
+		Timeout:    DefaultTimeout,
+	}
+
+	var payload any
+	if err := client.request(context.Background(), target, http.MethodGet, "/api/brokers", nil, &payload); err != nil {
+		t.Fatalf("request to scoped link-local endpoint returned error: %v", err)
+	}
+	if recorded == nil {
+		t.Fatal("request never reached the transport")
+	}
+	if got, want := recorded.URL.Hostname(), "fe80::1%eth0"; got != want {
+		t.Fatalf("hostname = %q, want %q", got, want)
+	}
+	if got, want := recorded.URL.String(), "http://[fe80::1%25eth0]:6789/api/brokers"; got != want {
+		t.Fatalf("request URL = %q, want %q", got, want)
 	}
 }

@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+import type { SortOrder } from 'antd/es/table/interface';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -67,6 +68,7 @@ import type { Dayjs } from 'dayjs';
 
 import PageHeader from '../../components/PageHeader';
 import { InstanceSelect } from '../../components/InstanceSelect';
+import ResourceRuleHelp from '../../components/ResourceRuleHelp';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, PROTOCOL_MAP } from '../../constants/theme';
 import { formatDateTime, formatDelay, formatUtcDateTime } from '../../utils/format';
@@ -120,6 +122,24 @@ const { Text } = Typography;
 const UNKNOWN_LAG_COLOR = '#8c8c8c';
 const UNAVAILABLE_LAG_LABEL = '不可用';
 
+/**
+ * The provider leaves delaySeconds at zero when the broker consume stats carried no
+ * consumed-message timestamp (RocketMQMetadataProvider: "keep zeros") and says so through
+ * consumptionTimestampAvailable. Rendering that zero claims the group is caught up, so the
+ * column and its order have to treat it as unknown.
+ */
+const isDelayAvailable = (group: ConsumerGroup): boolean =>
+  group.consumptionTimestampAvailable !== false;
+
+const delaySortValue = (group: ConsumerGroup, sortOrder?: SortOrder): number => {
+  if (isDelayAvailable(group) && Number.isFinite(group.delaySeconds)) {
+    return group.delaySeconds;
+  }
+  // Ant Design negates the comparator for a descending column, so the sentinel has to flip with
+  // the direction to keep unmeasured rows after measured ones in both orders.
+  return sortOrder === 'descend' ? Number.MIN_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+};
+
 const lagColor = (lag: number): string => {
   // The backend reports -1 when the lag cannot be determined; do not color it
   // as healthy (green) or backlogged.
@@ -127,16 +147,6 @@ const lagColor = (lag: number): string => {
   if (lag >= 10_000) return '#ff4d4f';
   if (lag >= 1_000) return '#faad14';
   return '#52c41a';
-};
-
-const visibleConsumerGroups = (groups: ConsumerGroup[], modeFilter: string): ConsumerGroup[] => {
-  let data = groups;
-
-  if (modeFilter !== 'ALL') {
-    data = data.filter((group) => group.subscriptionMode === modeFilter);
-  }
-
-  return data;
 };
 
 const normalizedConsistency = (value?: string | null): string => value?.trim().toLowerCase() ?? '';
@@ -203,15 +213,23 @@ const issueSeverityLabel = (severity: ConsumerGroupHealthIssue['severity']) => {
   return '提示';
 };
 
-const resetPreviewQueueMessage = (queue: ResetConsumerOffsetQueuePreview) => {
+const resetPreviewQueueMessage = (
+  queue: ResetConsumerOffsetQueuePreview,
+  t: (key: string) => string,
+) => {
   const messages: string[] = [];
   if (queue.riskLevel === 'ERROR') {
-    return queue.message || '预览失败';
+    return queue.message || t('consumer.resetPreview.previewFailed');
   }
-  if (queue.targetOffset < 0 || queue.consumerOffset < 0) {
-    return queue.message || '目标位点不可用';
+  if (queue.targetOffset < 0) {
+    return t('consumer.resetPreview.targetOffsetUnavailable');
   }
-  if (queue.offsetDelta < 0) {
+  if (queue.consumerOffset < 0) {
+    // The group is offline: the broker still reports the target, but no consumer reported a
+    // current offset, so the delta is not a measurement. Never fall back to queue.message here —
+    // it is English prose built around a delta and would read as a broken sentence in this column.
+    messages.push(t('consumer.resetPreview.currentOffsetUnavailable'));
+  } else if (queue.offsetDelta < 0) {
     messages.push(`将回放 ${Math.abs(queue.offsetDelta).toLocaleString()} 条消息`);
   } else if (queue.offsetDelta > 0) {
     messages.push(`将跳过 ${queue.offsetDelta.toLocaleString()} 条未消费消息`);
@@ -226,6 +244,14 @@ const resetPreviewQueueMessage = (queue: ResetConsumerOffsetQueuePreview) => {
   }
   return messages.join('；');
 };
+
+/**
+ * True when any previewed queue has no current offset the broker could report (an offline group),
+ * which makes the aggregate net delta a fabricated zero rather than a measurement. The per-queue
+ * 变化 column already renders such rows as '-', so the summary must not claim a number either.
+ */
+const hasUnavailableCurrentOffset = (queues: ResetConsumerOffsetQueuePreview[]) =>
+  queues.some((queue) => queue.consumerOffset < 0 || queue.targetOffset < 0);
 
 // Shared helper exported alongside the page component; fast-refresh rule waived.
 // eslint-disable-next-line react-refresh/only-export-components
@@ -266,6 +292,8 @@ const ConsumerPageContent = ({
   const [selectedGroup, setSelectedGroup] = useState<ConsumerGroup | null>(null);
   const [settingsGroup, setSettingsGroup] = useState<ConsumerGroup | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsReady, setSettingsReady] = useState(false);
+  const [settingsFailed, setSettingsFailed] = useState(false);
   const [settingsSubmitting, setSettingsSubmitting] = useState(false);
   const [settingsForm] = Form.useForm<{
     retryQueueNums: number;
@@ -352,12 +380,15 @@ const ConsumerPageContent = ({
         const result = await listConsumerGroupPage({
           instanceId: selectedInstanceId,
           search: search.trim() || undefined,
+          subscriptionMode: modeFilter !== 'ALL' ? modeFilter : undefined,
           page: pageToLoad,
           pageSize: pageSizeToLoad,
         });
         if (requestId === groupRequestIdRef.current) {
           setGroups(result.items);
           setTotalGroups(result.total);
+          // A current successful empty result confirms there are no targets in this query.
+          if (result.total === 0) setSelectedRowKeys([]);
           if (result.items.length === 0 && result.total > 0 && pageToLoad > 1) {
             setPage(Math.max(1, Math.ceil(result.total / pageSizeToLoad)));
           }
@@ -375,7 +406,7 @@ const ConsumerPageContent = ({
         if (requestId === groupRequestIdRef.current) setLoading(false);
       }
     },
-    [t, selectedInstanceId, search],
+    [t, selectedInstanceId, search, modeFilter],
   );
 
   const reloadConsumerGroupPage = useCallback(async () => {
@@ -517,9 +548,9 @@ const ConsumerPageContent = ({
   }, [modalOpen, selectedGroupName, selectedInstanceId, loadProgress, loadSubscriptions]);
 
   /* ─── Filtered & sorted data ─── */
-  const filtered = useMemo(() => {
-    return visibleConsumerGroups(groups, modeFilter);
-  }, [groups, modeFilter]);
+  // The subscription-mode filter is applied server-side (it is part of the page query), so the
+  // loaded page is already the filtered inventory and the total matches what is displayed.
+  const filtered = useMemo(() => groups, [groups]);
 
   const handleExport = async () => {
     setExporting(true);
@@ -556,6 +587,9 @@ const ConsumerPageContent = ({
     const requestId = ++settingsRequestIdRef.current;
     setSettingsGroup(group);
     setSettingsLoading(true);
+    setSettingsReady(false);
+    setSettingsFailed(false);
+    originalSettingsRef.current = null;
     try {
       const settings = await getConsumerGroupSettings(group.name, selectedInstanceId);
       if (requestId === settingsRequestIdRef.current) {
@@ -564,10 +598,12 @@ const ConsumerPageContent = ({
           consumeEnable: settings.consumeEnable,
           consumeMessageOrderly: settings.consumeMessageOrderly,
         };
+        setSettingsReady(true);
       }
     } catch {
       if (requestId === settingsRequestIdRef.current) {
-        message.error('加载消费组配置失败，请稍后重试');
+        setSettingsFailed(true);
+        message.error(t('consumer.settingsLoadFailed'));
       }
     } finally {
       if (requestId === settingsRequestIdRef.current) {
@@ -588,7 +624,7 @@ const ConsumerPageContent = ({
   };
 
   const saveSettings = async () => {
-    if (!settingsGroup || !selectedInstanceId) return;
+    if (!settingsGroup || !selectedInstanceId || !settingsReady || settingsLoading) return;
     const requestId = settingsRequestIdRef.current;
     const values = await settingsForm.validateFields();
     if (requestId !== settingsRequestIdRef.current) return;
@@ -1027,7 +1063,8 @@ const ConsumerPageContent = ({
       key: 'totalLag',
       width: 96,
       align: 'right',
-      sorter: (a, b) => lagSortValue(a.totalLag) - lagSortValue(b.totalLag),
+      sorter: (a, b, sortOrder) =>
+        lagSortValue(a.totalLag, sortOrder) - lagSortValue(b.totalLag, sortOrder),
       render: (lag: number) =>
         isLagAvailable(lag) ? (
           lag.toLocaleString()
@@ -1041,8 +1078,13 @@ const ConsumerPageContent = ({
       key: 'delaySeconds',
       width: 100,
       align: 'right',
-      sorter: (a, b) => (a.delaySeconds ?? 0) - (b.delaySeconds ?? 0),
-      render: (seconds: number) => formatDelay(seconds ?? 0, lang),
+      sorter: (a, b, sortOrder) => delaySortValue(a, sortOrder) - delaySortValue(b, sortOrder),
+      render: (seconds: number, record: ConsumerGroup) =>
+        isDelayAvailable(record) ? (
+          formatDelay(seconds ?? 0, lang)
+        ) : (
+          <Text type="secondary">{UNAVAILABLE_LAG_LABEL}</Text>
+        ),
     },
     {
       title: '创建时间',
@@ -1116,10 +1158,16 @@ const ConsumerPageContent = ({
                 okButtonProps: { danger: true },
                 cancelText: '取消',
                 onOk: async () => {
-                  await deleteConsumerGroup(record.name, selectedInstanceId || undefined);
-                  await reloadConsumerGroupPage();
-                  setSelectedRowKeys((prev) => prev.filter((key) => key !== record.name));
-                  message.success(`消费组 ${record.name} 已删除`);
+                  try {
+                    await deleteConsumerGroup(record.name, selectedInstanceId || undefined);
+                    await reloadConsumerGroupPage();
+                    setSelectedRowKeys((prev) => prev.filter((key) => key !== record.name));
+                    message.success(`消费组 ${record.name} 已删除`);
+                  } catch {
+                    // A failed delete must tell the operator: the row still exists on the
+                    // server, and a silent rejection leaves the dialog open with no outcome.
+                    message.error(t('consumer.deleteFailed'));
+                  }
                 },
               });
             }}
@@ -1489,11 +1537,14 @@ const ConsumerPageContent = ({
       key: 'message',
       width: 240,
       ellipsis: true,
-      render: (_: unknown, record: ResetConsumerOffsetQueuePreview) => (
-        <Text style={{ fontSize: 14 }} title={resetPreviewQueueMessage(record)}>
-          {resetPreviewQueueMessage(record)}
-        </Text>
-      ),
+      render: (_: unknown, record: ResetConsumerOffsetQueuePreview) => {
+        const message = resetPreviewQueueMessage(record, t);
+        return (
+          <Text style={{ fontSize: 14 }} title={message}>
+            {message}
+          </Text>
+        );
+      },
     },
   ];
 
@@ -1710,6 +1761,8 @@ const ConsumerPageContent = ({
           setShowOnlyInconsistent(false);
           setSettingsGroup(null);
           setSettingsLoading(false);
+          setSettingsReady(false);
+          setSettingsFailed(false);
           setSettingsSubmitting(false);
           originalSettingsRef.current = null;
           settingsForm.resetFields();
@@ -1831,7 +1884,11 @@ const ConsumerPageContent = ({
                         </Tag>
                       </Descriptions.Item>
                       <Descriptions.Item label="消费延迟">
-                        <Text strong>{formatDelay(selectedGroup.delaySeconds, lang)}</Text>
+                        <Text strong>
+                          {isDelayAvailable(selectedGroup)
+                            ? formatDelay(selectedGroup.delaySeconds, lang)
+                            : UNAVAILABLE_LAG_LABEL}
+                        </Text>
                       </Descriptions.Item>
                       <Descriptions.Item label="最大重试次数">
                         <Text strong>{selectedGroup.retryMaxTimes}</Text> 次
@@ -2014,7 +2071,9 @@ const ConsumerPageContent = ({
                     >
                       <Space size={24} wrap>
                         <Space size={4}>
-                          <Text type="secondary">健康分:</Text>
+                          <Tooltip title={t('consumer.health.scoreHint')}>
+                            <Text type="secondary">{t('consumer.health.scoreLabel')}</Text>
+                          </Tooltip>
                           <Text
                             strong
                             style={{ color: healthStatusColor(selectedGroupHealth.status) }}
@@ -2023,7 +2082,9 @@ const ConsumerPageContent = ({
                           </Text>
                         </Space>
                         <Space size={4}>
-                          <Text type="secondary">已知堆积:</Text>
+                          <Tooltip title={t('consumer.health.knownLagHint')}>
+                            <Text type="secondary">{t('consumer.health.knownLagLabel')}</Text>
+                          </Tooltip>
                           <Text
                             strong
                             style={{ color: lagColor(selectedGroupHealth.summary.totalKnownLag) }}
@@ -2032,26 +2093,39 @@ const ConsumerPageContent = ({
                           </Text>
                         </Space>
                         <Space size={4}>
-                          <Text type="secondary">报告堆积:</Text>
+                          <Tooltip title={t('consumer.health.reportedLagHint')}>
+                            <Text type="secondary">{t('consumer.health.reportedLagLabel')}</Text>
+                          </Tooltip>
                           <Text strong>
                             {selectedGroupHealth.summary.reportedLag === null
                               ? UNAVAILABLE_LAG_LABEL
                               : selectedGroupHealth.summary.reportedLag.toLocaleString()}
                           </Text>
                         </Space>
+                        {/* "覆盖" read like a completion ratio of two unrelated dimensions; the
+                            label now names both units and the tooltip states the caliber. */}
                         <Space size={4}>
-                          <Text type="secondary">Queue 覆盖:</Text>
+                          <Tooltip title={t('consumer.health.queueProgressHint')}>
+                            <Text type="secondary">{t('consumer.health.queueProgressLabel')}</Text>
+                          </Tooltip>
                           <Text strong>
-                            {selectedGroupHealth.summary.queueCount} /{' '}
-                            {selectedGroupHealth.summary.subscribedTopicCount} Topic
+                            {t('consumer.health.queueProgressValue', {
+                              queues: selectedGroupHealth.summary.queueCount,
+                              topics: selectedGroupHealth.summary.subscribedTopicCount,
+                            })}
                           </Text>
                         </Space>
+                        {/* The old label said 堆积 but the value reports offset availability. */}
                         <Space size={4}>
-                          <Text type="secondary">Queue 堆积:</Text>
+                          <Tooltip title={t('consumer.health.queueOffsetHint')}>
+                            <Text type="secondary">{t('consumer.health.queueOffsetLabel')}</Text>
+                          </Tooltip>
                           <Text strong>
                             {selectedGroupHealth.summary.unknownQueueCount > 0
-                              ? `${selectedGroupHealth.summary.unknownQueueCount} 个不可用`
-                              : '均可计算'}
+                              ? t('consumer.health.offsetsUnknown', {
+                                  count: selectedGroupHealth.summary.unknownQueueCount,
+                                })
+                              : t('consumer.health.offsetsOk')}
                           </Text>
                         </Space>
                         <Space size={4}>
@@ -2064,7 +2138,9 @@ const ConsumerPageContent = ({
                           </Text>
                         </Space>
                         <Space size={4}>
-                          <Text type="secondary">心跳:</Text>
+                          <Tooltip title={t('consumer.health.heartbeatHint')}>
+                            <Text type="secondary">{t('consumer.health.heartbeatLabel')}</Text>
+                          </Tooltip>
                           <Text strong>
                             {selectedGroupHealth.summary.onlineInstances < 0
                               ? '连接信息不可用'
@@ -2224,7 +2300,27 @@ const ConsumerPageContent = ({
                 disabled: isCloudInstance,
                 children: (
                   <Spin spinning={settingsLoading}>
-                    <Form form={settingsForm} layout="vertical">
+                    {settingsFailed && (
+                      <Alert
+                        type="error"
+                        showIcon
+                        message={t('consumer.settingsLoadFailed')}
+                        style={{ marginBottom: 16 }}
+                        action={
+                          <Button
+                            size="small"
+                            onClick={() => void loadGroupSettings(selectedGroup)}
+                          >
+                            {t('common.retry')}
+                          </Button>
+                        }
+                      />
+                    )}
+                    <Form
+                      form={settingsForm}
+                      layout="vertical"
+                      disabled={!settingsReady || settingsLoading}
+                    >
                       <Row gutter={16}>
                         <Col span={8}>
                           <Form.Item label="Group 名称">
@@ -2279,6 +2375,7 @@ const ConsumerPageContent = ({
                         <Button
                           type="primary"
                           loading={settingsSubmitting}
+                          disabled={!settingsReady || settingsLoading}
                           onClick={() => void saveSettings()}
                         >
                           保存
@@ -2469,7 +2566,12 @@ const ConsumerPageContent = ({
           }}
         >
           <Form.Item
-            label="Group 名称"
+            label={
+              <Space size={4}>
+                Group 名称
+                <ResourceRuleHelp />
+              </Space>
+            }
             name="name"
             rules={[
               { required: true, message: '请输入 Group 名称' },
@@ -2789,7 +2891,9 @@ const ConsumerPageContent = ({
                     {formatOffsetValue(resetPreview.projectedTotalLag)}
                   </Descriptions.Item>
                   <Descriptions.Item label="位点净变化">
-                    {formatOffsetDelta(resetPreview.totalOffsetDelta)}
+                    {hasUnavailableCurrentOffset(resetPreviewQueues)
+                      ? '-'
+                      : formatOffsetDelta(resetPreview.totalOffsetDelta)}
                   </Descriptions.Item>
                   <Descriptions.Item label="回放 Queue">
                     {resetPreview.rewindQueueCount}

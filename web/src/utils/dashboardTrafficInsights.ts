@@ -115,10 +115,12 @@ const round = (value: number, precision = 1): number => {
   return Math.round(value * factor) / factor;
 };
 
-const percent = (value: number, total: number): number => {
+const unroundedPercent = (value: number, total: number): number => {
   if (total <= 0) return 0;
-  return round((value / total) * 100);
+  return (value / total) * 100;
 };
+
+const percent = (value: number, total: number): number => round(unroundedPercent(value, total));
 
 const average = (values: number[]): number => {
   if (values.length === 0) return 0;
@@ -137,29 +139,31 @@ const compareTrend = (
 ): {
   direction: TrafficTrendDirection;
   deltaPercent: number | null;
+  unroundedDeltaPercent: number | null;
 } => {
   if (series.length < 4) {
-    return { direction: 'unknown', deltaPercent: null };
+    return { direction: 'unknown', deltaPercent: null, unroundedDeltaPercent: null };
   }
 
   const midpoint = Math.floor(series.length / 2);
   const earlyAverage = average(series.slice(0, midpoint));
   const lateAverage = average(series.slice(midpoint));
   if (earlyAverage <= 0 && lateAverage <= 0) {
-    return { direction: 'stable', deltaPercent: 0 };
+    return { direction: 'stable', deltaPercent: 0, unroundedDeltaPercent: 0 };
   }
   if (earlyAverage <= 0) {
-    return { direction: 'rising', deltaPercent: 100 };
+    return { direction: 'rising', deltaPercent: 100, unroundedDeltaPercent: 100 };
   }
 
-  const deltaPercent = round(((lateAverage - earlyAverage) / earlyAverage) * 100);
-  if (deltaPercent >= TREND_THRESHOLD_PERCENT) {
-    return { direction: 'rising', deltaPercent };
+  const unroundedDeltaPercent = ((lateAverage - earlyAverage) / earlyAverage) * 100;
+  const deltaPercent = round(unroundedDeltaPercent);
+  if (unroundedDeltaPercent >= TREND_THRESHOLD_PERCENT) {
+    return { direction: 'rising', deltaPercent, unroundedDeltaPercent };
   }
-  if (deltaPercent <= -TREND_THRESHOLD_PERCENT) {
-    return { direction: 'falling', deltaPercent };
+  if (unroundedDeltaPercent <= -TREND_THRESHOLD_PERCENT) {
+    return { direction: 'falling', deltaPercent, unroundedDeltaPercent };
   }
-  return { direction: 'stable', deltaPercent };
+  return { direction: 'stable', deltaPercent, unroundedDeltaPercent };
 };
 
 const aggregateThroughput = (clusters: ClusterOverview[]): number[] => {
@@ -200,7 +204,7 @@ const buildClusterIssues = (
     issues.push({
       code: 'UNHEALTHY_TRAFFIC',
       level:
-        percent(clusterTps, totalTps) >= UNHEALTHY_TRAFFIC_CRITICAL_PERCENT
+        unroundedPercent(clusterTps, totalTps) >= UNHEALTHY_TRAFFIC_CRITICAL_PERCENT
           ? 'critical'
           : 'warning',
       clusterId: cluster.id,
@@ -259,13 +263,16 @@ const buildRows = (
 
 const findBrokerSkewIssue = (
   rows: DashboardTrafficClusterInsight[],
-  averagePerBrokerTps: number,
+  totalTps: number,
+  totalBrokers: number,
 ): DashboardTrafficIssue | null => {
+  const averagePerBrokerTps = totalBrokers > 0 ? totalTps / totalBrokers : 0;
   if (averagePerBrokerTps <= 0) return null;
   const skewed = rows.find(
     (row) =>
+      row.brokers > 0 &&
       row.totalTps >= MIN_TRAFFIC_FOR_SKEW &&
-      row.perBrokerTps >= averagePerBrokerTps * BROKER_SKEW_MULTIPLIER,
+      row.totalTps / row.brokers >= averagePerBrokerTps * BROKER_SKEW_MULTIPLIER,
   );
   if (!skewed) return null;
   return {
@@ -281,25 +288,24 @@ const findBrokerSkewIssue = (
 const buildGlobalIssues = (
   rows: DashboardTrafficClusterInsight[],
   topCluster: DashboardTrafficClusterInsight | null,
+  totalTps: number,
   unhealthyTrafficPercent: number,
+  unroundedUnhealthyTrafficPercent: number,
   trend: ReturnType<typeof compareTrend>,
-  averagePerBrokerTps: number,
+  totalBrokers: number,
 ): DashboardTrafficIssue[] => {
   const issues: DashboardTrafficIssue[] = [];
   const activeRows = rows.filter((row) => row.totalTps > 0);
+  const topClusterShare = topCluster ? unroundedPercent(topCluster.totalTps, totalTps) : 0;
 
   if (activeRows.length === 0) {
     issues.push({ code: 'NO_ACTIVE_TRAFFIC', level: 'notice' });
   }
 
-  if (
-    topCluster &&
-    activeRows.length > 1 &&
-    topCluster.sharePercent >= CONCENTRATION_WARNING_PERCENT
-  ) {
+  if (topCluster && activeRows.length > 1 && topClusterShare >= CONCENTRATION_WARNING_PERCENT) {
     issues.push({
       code: 'TRAFFIC_CONCENTRATION',
-      level: topCluster.sharePercent >= CONCENTRATION_CRITICAL_PERCENT ? 'critical' : 'warning',
+      level: topClusterShare >= CONCENTRATION_CRITICAL_PERCENT ? 'critical' : 'warning',
       clusterId: topCluster.id,
       clusterName: topCluster.name,
       value: topCluster.sharePercent,
@@ -307,22 +313,26 @@ const buildGlobalIssues = (
     });
   }
 
-  if (unhealthyTrafficPercent >= UNHEALTHY_TRAFFIC_WARNING_PERCENT) {
+  if (unroundedUnhealthyTrafficPercent >= UNHEALTHY_TRAFFIC_WARNING_PERCENT) {
     issues.push({
       code: 'UNHEALTHY_TRAFFIC',
-      level: unhealthyTrafficPercent >= UNHEALTHY_TRAFFIC_CRITICAL_PERCENT ? 'critical' : 'warning',
+      level:
+        unroundedUnhealthyTrafficPercent >= UNHEALTHY_TRAFFIC_CRITICAL_PERCENT
+          ? 'critical'
+          : 'warning',
       value: unhealthyTrafficPercent,
       threshold: UNHEALTHY_TRAFFIC_WARNING_PERCENT,
     });
   }
 
-  const skewIssue = findBrokerSkewIssue(rows, averagePerBrokerTps);
+  const skewIssue = findBrokerSkewIssue(rows, totalTps, totalBrokers);
   if (skewIssue) issues.push(skewIssue);
 
   if (
     trend.direction === 'falling' &&
     trend.deltaPercent != null &&
-    trend.deltaPercent <= TRAFFIC_DROP_WARNING_PERCENT
+    trend.unroundedDeltaPercent != null &&
+    trend.unroundedDeltaPercent <= TRAFFIC_DROP_WARNING_PERCENT
   ) {
     issues.push({
       code: 'RECENT_TRAFFIC_DROP',
@@ -335,7 +345,8 @@ const buildGlobalIssues = (
   if (
     trend.direction === 'rising' &&
     trend.deltaPercent != null &&
-    trend.deltaPercent >= TRAFFIC_SPIKE_NOTICE_PERCENT
+    trend.unroundedDeltaPercent != null &&
+    trend.unroundedDeltaPercent >= TRAFFIC_SPIKE_NOTICE_PERCENT
   ) {
     issues.push({
       code: 'RECENT_TRAFFIC_SPIKE',
@@ -368,8 +379,17 @@ export function buildDashboardTrafficInsights(
   const aggregateSeries = aggregateThroughput(clusters);
   const trend = compareTrend(aggregateSeries);
   const unhealthyTrafficPercent = percent(unhealthyTrafficTps, totalTps);
+  const unroundedUnhealthyTrafficPercent = unroundedPercent(unhealthyTrafficTps, totalTps);
   const issues = [
-    ...buildGlobalIssues(rows, topCluster, unhealthyTrafficPercent, trend, averagePerBrokerTps),
+    ...buildGlobalIssues(
+      rows,
+      topCluster,
+      totalTps,
+      unhealthyTrafficPercent,
+      unroundedUnhealthyTrafficPercent,
+      trend,
+      totalBrokers,
+    ),
     ...rows.flatMap((row) => row.issues),
   ];
 

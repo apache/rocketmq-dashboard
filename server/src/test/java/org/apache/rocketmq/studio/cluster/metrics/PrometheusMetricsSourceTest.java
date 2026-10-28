@@ -22,6 +22,9 @@ import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.client.RestClient;
 
@@ -164,6 +167,23 @@ class PrometheusMetricsSourceTest {
         assertThat(series.getHistograms().get(0).getHistogram().path("count").asText()).isEqualTo("2");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"", "?tenant=a%2Fb+%26", "?route=/", "?tenant=a%2Fb#settings"})
+    void queryShouldAppendEndpointToPathAndPreserveRawQueryTest(String suffix) {
+        AtomicReference<String> requestUri = new AtomicReference<>();
+        server.createContext("/", exchange -> {
+            requestUri.set(exchange.getRequestURI().toString());
+            respond(exchange, 200, successResponse());
+        });
+        PrometheusProperties properties = properties(Duration.ofSeconds(2));
+        properties.setBaseUrl(baseUrl + "/tenant%20one/" + suffix);
+
+        source(properties).query(query());
+
+        String transmittedSuffix = suffix.split("#", 2)[0];
+        assertThat(requestUri.get()).isEqualTo("/tenant%20one/api/v1/query_range" + transmittedSuffix);
+    }
+
     @Test
     void queryShouldApplyBasicAuthentication() {
         AtomicReference<String> authorization = new AtomicReference<>();
@@ -179,6 +199,28 @@ class PrometheusMetricsSourceTest {
 
         String credentials = Base64.getEncoder().encodeToString("studio:secret".getBytes(StandardCharsets.UTF_8));
         assertThat(authorization.get()).isEqualTo("Basic " + credentials);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"op\u00e9rator, p\u00e4ssword", "\u7528\u6237, \u5bc6\u7801", "studio, secret\ud83d\udd12"})
+    void queryShouldEncodeBasicCredentialsAsUtf8Test(String username, String password) {
+        String expectedAuthorization = "Basic " + Base64.getEncoder()
+                .encodeToString((username + ":" + password).getBytes(StandardCharsets.UTF_8));
+        AtomicReference<String> authorization = new AtomicReference<>();
+        server.createContext("/api/v1/query_range", exchange -> {
+            authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            if (expectedAuthorization.equals(authorization.get())) {
+                respond(exchange, 200, successResponse());
+            } else {
+                respond(exchange, 401, "Unauthorized");
+            }
+        });
+        PrometheusProperties properties = properties(Duration.ofSeconds(2));
+        properties.setUsername(username);
+        properties.setPassword(password);
+
+        assertThat(source(properties).query(query()).getResultType()).isEqualTo("matrix");
+        assertThat(authorization.get()).isEqualTo(expectedAuthorization);
     }
 
     @Test

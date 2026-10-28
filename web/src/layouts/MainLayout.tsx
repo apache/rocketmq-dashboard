@@ -16,11 +16,21 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Layout, Menu, Breadcrumb, Avatar, Drawer, Dropdown, Empty, Modal, message } from 'antd';
+import {
+  Layout,
+  Menu,
+  Breadcrumb,
+  Avatar,
+  Dropdown,
+  Empty,
+  Modal,
+  Drawer,
+  Grid,
+  message,
+} from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   House,
-  List,
   Database,
   Monitor,
   Sparkle,
@@ -41,6 +51,7 @@ import {
   PaperPlaneTilt,
   Notebook,
   Warning,
+  List,
 } from '@phosphor-icons/react';
 import { useLang } from '../i18n/LangContext';
 import { useTheme } from '../theme/useTheme';
@@ -54,7 +65,6 @@ import {
 import { useDataModeStore } from '../stores/dataModeStore';
 import { getInstanceCapabilities } from '../services/instanceService';
 import type { InstanceCapability } from '../api/instance';
-import './MainLayout.css';
 
 const { Sider, Content } = Layout;
 
@@ -75,7 +85,19 @@ const MainLayout = () => {
   const [searchText, setSearchText] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const screens = Grid.useBreakpoint();
+  // Below the md breakpoint a 220px permanent sider leaves no room for content: the navigation
+  // moves into a drawer behind a hamburger, which is also the only way a touch device can reach it.
+  // `=== false`, not `!screens.md`: before the first matchMedia resolution the map is empty, and
+  // treating "unknown" as mobile flashed the drawer layout (and broke jsdom, which has no
+  // matchMedia at all).
+  const isMobile = screens.md === false;
+
+  // A drawer opened on mobile must not reopen after a desktop round trip.
+  if (!isMobile && drawerOpen) {
+    setDrawerOpen(false);
+  }
   const searchInputRef = useRef<HTMLInputElement>(null);
   const { lang, setLang, t } = useLang();
   const clearAuth = useAuthStore((state) => state.logout);
@@ -127,15 +149,6 @@ const MainLayout = () => {
     };
     window.addEventListener('keydown', openSearchWithShortcut);
     return () => window.removeEventListener('keydown', openSearchWithShortcut);
-  }, []);
-
-  useEffect(() => {
-    const desktopViewport = window.matchMedia('(min-width: 768px)');
-    const closeMobileNavigation = (event: MediaQueryListEvent) => {
-      if (event.matches) setMobileNavOpen(false);
-    };
-    desktopViewport.addEventListener('change', closeMobileNavigation);
-    return () => desktopViewport.removeEventListener('change', closeMobileNavigation);
   }, []);
 
   const instanceScopedMatch = useMemo(
@@ -424,14 +437,42 @@ const MainLayout = () => {
     [resultSections],
   );
   const isAiRoute = location.pathname === '/ai';
-  const navigationMenu = (onSelect: (key: string) => void) => (
+
+  // Shared between the permanent sider and the mobile drawer so the two cannot drift apart.
+  const logoBlock = (showTitle: boolean) => (
+    <div
+      style={{
+        height: 48,
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        borderBottom: `1px solid ${borderColor}`,
+        fontSize: 15,
+        fontWeight: 600,
+        color: logoColor,
+        letterSpacing: '-0.01em',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+      }}
+    >
+      <span style={{ fontSize: 20 }}>🚀</span>
+      {showTitle && <span>RocketMQ Studio</span>}
+    </div>
+  );
+
+  const navMenu = (closeOnNavigate: boolean) => (
     <Menu
       theme={darkMode ? 'dark' : 'light'}
       mode="inline"
       selectedKeys={[selectedMenuKey]}
       defaultOpenKeys={['instance-group', 'cluster-ops-group']}
       items={menuItems}
-      onClick={({ key }) => onSelect(key)}
+      onClick={({ key }) => {
+        navigate(key);
+        if (closeOnNavigate) setDrawerOpen(false);
+      }}
       style={{ borderRight: 'none', background: 'transparent' }}
     />
   );
@@ -461,96 +502,115 @@ const MainLayout = () => {
         {t('layout.skipToMain')}
       </a>
       <Layout style={{ height: '100vh', minHeight: 0, overflow: 'hidden' }}>
-        <Sider
-          className="studio-desktop-sidebar"
-          theme={darkMode ? 'dark' : 'light'}
-          collapsible
-          collapsed={collapsed}
-          onCollapse={setCollapsed}
-          width={220}
-          collapsedWidth={64}
-          style={{
-            background: siderBg,
-            borderRight: `1px solid ${borderColor}`,
-            boxShadow: darkMode ? '2px 0 8px rgba(0,0,0,0.2)' : '2px 0 8px rgba(0,0,0,0.03)',
-            height: '100vh',
-            overflow: 'hidden',
-          }}
-        >
-          {/* Logo */}
-          <div
+        {isMobile ? (
+          <Drawer
+            placement="left"
+            open={drawerOpen}
+            onClose={() => setDrawerOpen(false)}
+            width={240}
+            closable={false}
+            styles={{
+              body: {
+                padding: 0,
+                background: siderBg,
+                display: 'flex',
+                flexDirection: 'column',
+                minHeight: 0,
+              },
+            }}
+          >
+            {logoBlock(true)}
+            <div className="sider-menu-scroll">{navMenu(true)}</div>
+          </Drawer>
+        ) : (
+          <Sider
+            theme={darkMode ? 'dark' : 'light'}
+            collapsible
+            collapsed={collapsed}
+            onCollapse={setCollapsed}
+            width={220}
+            collapsedWidth={64}
             style={{
-              height: 48,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              borderBottom: `1px solid ${borderColor}`,
-              fontSize: 15,
-              fontWeight: 600,
-              color: logoColor,
-              letterSpacing: '-0.01em',
-              whiteSpace: 'nowrap',
+              background: siderBg,
+              borderRight: `1px solid ${borderColor}`,
+              boxShadow: darkMode ? '2px 0 8px rgba(0,0,0,0.2)' : '2px 0 8px rgba(0,0,0,0.03)',
+              height: '100vh',
               overflow: 'hidden',
             }}
           >
-            <span style={{ fontSize: 20 }}>🚀</span>
-            {!collapsed && <span>RocketMQ Studio</span>}
-          </div>
+            {logoBlock(!collapsed)}
+            {/* The menu scrolls on short viewports: antd's sider children do not scroll by
+                default, so with the sider's overflow hidden the lower entries were unreachable. */}
+            <div className="sider-menu-scroll">{navMenu(false)}</div>
+          </Sider>
+        )}
 
-          {/* Navigation Menu */}
-          {navigationMenu(navigate)}
-        </Sider>
-
-        <Layout
-          className="studio-main-column"
-          style={{ background: 'transparent', height: '100vh', overflow: 'hidden' }}
-        >
+        <Layout style={{ background: 'transparent', height: '100vh', overflow: 'hidden' }}>
           {/* Top bar */}
           <div
-            className="studio-topbar"
             style={{
               height: 48,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
+              gap: 12,
+              padding: isMobile ? '0 12px' : '0 24px',
               background: topBarBg,
               backdropFilter: 'blur(8px)',
               borderBottom: `1px solid ${borderColor}`,
             }}
           >
-            <button
-              type="button"
-              className="studio-mobile-menu-button"
-              aria-label={t('layout.openNavigation')}
-              aria-expanded={mobileNavOpen}
-              onClick={() => setMobileNavOpen(true)}
-              style={{ color: logoColor }}
+            {/* Left: hamburger (mobile only) + Breadcrumb */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                flex: 1,
+                minWidth: 0,
+                overflow: 'hidden',
+              }}
             >
-              <List size={22} />
-            </button>
-            {/* Left: Breadcrumb */}
-            <Breadcrumb
-              className="studio-breadcrumb"
-              items={breadcrumbItems}
-              style={{ fontSize: 14 }}
-            />
+              {isMobile && (
+                <button
+                  type="button"
+                  aria-label={t('layout.openMenu')}
+                  onClick={() => setDrawerOpen(true)}
+                  style={{
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 32,
+                    height: 32,
+                    flexShrink: 0,
+                    borderRadius: 6,
+                    border: 0,
+                    padding: 0,
+                    background: 'transparent',
+                    color: darkMode ? '#a1a1aa' : '#52525b',
+                  }}
+                >
+                  <List size={18} />
+                </button>
+              )}
+              <Breadcrumb items={breadcrumbItems} style={{ fontSize: 14, minWidth: 0 }} />
+            </div>
 
             {/* Right: Search + Lang + Theme + User */}
-            <div
-              className="studio-topbar-actions"
-              style={{ display: 'flex', alignItems: 'center' }}
-            >
+            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16 }}>
               {/* Search button */}
               <button
                 type="button"
-                className="studio-search-button"
                 aria-label={t('layout.openSearch')}
                 onClick={() => setSearchOpen(true)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
+                  justifyContent: isMobile ? 'center' : undefined,
                   gap: 8,
+                  width: isMobile ? 32 : 280,
+                  padding: isMobile ? 6 : '6px 8px 6px 14px',
                   borderRadius: 999,
                   border: `1px solid ${borderColor}`,
                   cursor: 'pointer',
@@ -562,12 +622,10 @@ const MainLayout = () => {
                 }}
               >
                 <MagnifyingGlass size={15} />
-                <span className="studio-search-label" style={{ flex: 1, textAlign: 'left' }}>
-                  {t('common.search')}
-                </span>
-                <kbd className="studio-search-shortcut" style={kbdStyle}>
-                  ⌘K
-                </kbd>
+                {!isMobile && (
+                  <span style={{ flex: 1, textAlign: 'left' }}>{t('common.search')}</span>
+                )}
+                {!isMobile && <kbd style={kbdStyle}>⌘K</kbd>}
               </button>
 
               {/* Language toggle */}
@@ -675,28 +733,6 @@ const MainLayout = () => {
         </Layout>
       </Layout>
 
-      <Drawer
-        title="🚀 RocketMQ Studio"
-        placement="left"
-        width="min(280px, 85vw)"
-        open={mobileNavOpen}
-        onClose={() => setMobileNavOpen(false)}
-        destroyOnHidden
-        styles={{
-          header: {
-            background: siderBg,
-            color: logoColor,
-            borderBottom: `1px solid ${borderColor}`,
-          },
-          body: { padding: 0, background: siderBg },
-        }}
-      >
-        {navigationMenu((key) => {
-          setMobileNavOpen(false);
-          navigate(key);
-        })}
-      </Drawer>
-
       {/* Search Modal (command palette) */}
       <Modal
         open={searchOpen}
@@ -717,7 +753,7 @@ const MainLayout = () => {
             boxShadow: '0 24px 80px -24px rgba(0, 0, 0, 0.35)',
           },
         }}
-        width={640}
+        width={isMobile ? 'calc(100vw - 32px)' : 640}
         style={{ top: '14vh' }}
         afterOpenChange={(open) => {
           if (open) searchInputRef.current?.focus();
@@ -789,7 +825,7 @@ const MainLayout = () => {
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
                     gap: 8,
                   }}
                 >

@@ -27,6 +27,16 @@ const consumerGroupsState = mockConsumerGroups as unknown as (ConsumerGroup & {
   consumeMessageOrderly?: boolean;
   consumeBroadcastEnable?: boolean;
 })[];
+const fixtureGroupsByName = new Map(mockConsumerGroups.map((group) => [group.name, group]));
+
+function hasActiveFixtureGroup(name: string, instanceId?: string): boolean {
+  const fixture = fixtureGroupsByName.get(name);
+  return (
+    fixture !== undefined &&
+    mockConsumerGroups.includes(fixture) &&
+    (!instanceId || fixture.instanceId === instanceId)
+  );
+}
 const EXPORT_PAGE_SIZE = 100;
 const MAX_EXPORT_PAGES = 100;
 const GROUP_EXPORT_COLUMNS: CsvColumn<ConsumerGroup>[] = [
@@ -43,7 +53,13 @@ const GROUP_EXPORT_COLUMNS: CsvColumn<ConsumerGroup>[] = [
     header: 'Total Lag',
     value: (group) => (isLagAvailable(group.totalLag) ? group.totalLag : 'unknown'),
   },
-  { header: 'Delay Seconds', value: (group) => group.delaySeconds },
+  {
+    header: 'Delay Seconds',
+    // The same placeholder zero as behind the table column: an unmeasured delay must not be
+    // exported as "0", which reads as caught up.
+    value: (group) =>
+      group.consumptionTimestampAvailable === false ? 'unknown' : group.delaySeconds,
+  },
   { header: 'Subscription Data Type', value: (group) => group.subscriptionDataType },
   { header: 'Delivery Order Type', value: (group) => group.deliveryOrderType },
   { header: 'Retry Max Times', value: (group) => group.retryMaxTimes },
@@ -102,6 +118,9 @@ function filterConsumerGroups(params?: ConsumerGroupQuery): ConsumerGroup[] {
     const kw = params.search.trim().toLowerCase();
     if (kw) result = result.filter((group) => group.name.toLowerCase().includes(kw));
   }
+  if (params?.subscriptionMode && params.subscriptionMode !== 'ALL') {
+    result = result.filter((group) => group.subscriptionMode === params.subscriptionMode);
+  }
   return result;
 }
 
@@ -110,9 +129,6 @@ function visibleConsumerGroups(groups: ConsumerGroup[], params?: ConsumerGroupEx
   if (params?.names?.length) {
     const selectedNames = new Set(params.names);
     result = result.filter((group) => selectedNames.has(group.name));
-  }
-  if (params?.subscriptionMode && params.subscriptionMode !== 'ALL') {
-    result = result.filter((group) => group.subscriptionMode === params.subscriptionMode);
   }
   return [...result].sort((left, right) => left.name.localeCompare(right.name));
 }
@@ -182,6 +198,7 @@ export async function getConsumerProgress(
   instanceId?: string,
 ): Promise<QueueProgress[]> {
   if (isMockMode()) {
+    if (!hasActiveFixtureGroup(name, instanceId)) return [];
     return ((mockQueueProgress[name] as unknown as QueueProgress[]) ?? []).map(copyQueueProgress);
   }
   return metadataApi.getConsumerProgress(name, instanceId);
@@ -267,6 +284,7 @@ export async function getConsumerSubscriptions(
   instanceId?: string,
 ): Promise<SubscriptionEntry[]> {
   if (isMockMode()) {
+    if (!hasActiveFixtureGroup(name, instanceId)) return [];
     return ((mockSubscriptions[name] as unknown as SubscriptionEntry[]) ?? []).map(
       copySubscription,
     );
@@ -382,9 +400,11 @@ export async function previewConsumerOffsetReset(
 }
 
 function buildMockResetOffsetPreview(data: ResetConsumerOffsetRequest): ResetConsumerOffsetPreview {
-  const progressRows = ((mockQueueProgress[data.name] as unknown as QueueProgress[]) ?? []).filter(
-    (progress) => !progress.topic || progress.topic === data.topic,
-  );
+  const progressRows = hasActiveFixtureGroup(data.name, data.instanceId)
+    ? ((mockQueueProgress[data.name] as unknown as QueueProgress[]) ?? []).filter(
+        (progress) => !progress.topic || progress.topic === data.topic,
+      )
+    : [];
   const queues = progressRows.map((progress) =>
     buildMockResetOffsetQueuePreview(data.topic, progress),
   );

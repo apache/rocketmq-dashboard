@@ -305,7 +305,8 @@ public class RmqctlWorkspace {
             throw new BusinessException(500,
                     "studio.ai.conversation.workspace-dir must not be blank");
         }
-        return Path.of(configured.trim());
+        // The agent changes cwd to its conversation directory before reading these paths.
+        return Path.of(configured.trim()).toAbsolutePath().normalize();
     }
 
     /** The directory one conversation runs in, also its child process working directory. */

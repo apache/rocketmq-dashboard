@@ -98,6 +98,7 @@ type fieldExplanation struct {
 	Global    bool     `json:"global,omitempty"     yaml:"global,omitempty"`
 	Enum      []string `json:"enum,omitempty"       yaml:"enum,omitempty"`
 	Minimum   *float64 `json:"minimum,omitempty"    yaml:"minimum,omitempty"`
+	Maximum   *float64 `json:"maximum,omitempty"    yaml:"maximum,omitempty"`
 	MinLength int      `json:"minLength,omitempty"  yaml:"minLength,omitempty"`
 }
 
@@ -162,6 +163,9 @@ func explainSchemaFields(schema toolcatalog.InputSchema, prefix string) []fieldE
 		if field.HasMinimum {
 			explained.Minimum = new(field.Minimum)
 		}
+		if field.HasMaximum {
+			explained.Maximum = new(field.Maximum)
+		}
 		fields = append(fields, explained)
 	}
 	return fields
@@ -204,6 +208,9 @@ func renderResourceExplanation(out interface{ Write([]byte) (int, error) }, expl
 			}
 			if field.Minimum != nil {
 				constraints = append(constraints, fmt.Sprintf("minimum=%g", *field.Minimum))
+			}
+			if field.Maximum != nil {
+				constraints = append(constraints, fmt.Sprintf("maximum=%g", *field.Maximum))
 			}
 			if field.MinLength > 0 {
 				constraints = append(constraints, fmt.Sprintf("minLength=%d", field.MinLength))

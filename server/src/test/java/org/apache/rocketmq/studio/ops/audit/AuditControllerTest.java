@@ -50,6 +50,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(LegacyJackson2Config.class)
 class AuditControllerTest extends WebMvcAuthTestSupport {
 
+    private static AuditCleanupResultVO cleanupResult(int deleted, boolean truncated) {
+        return AuditCleanupResultVO.builder().deleted(deleted).truncated(truncated).build();
+    }
     @Autowired
     private MockMvc mockMvc;
 
@@ -67,15 +70,15 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
                 .target("topic-a")
                 .result("SUCCESS")
                 .build();
-        when(auditService.queryLogs(eq(2), eq(10), eq("topic"), eq("DELETE"),
-                eq("TOPIC"), eq("topic-a"), eq("prod-cn"), eq(false), eq("2026-07-01"),
-                eq("2026-07-24"), eq("SUCCESS")))
+        when(auditService.queryLogs(eq(2), eq(10), eq("topic"), eq("admin"), eq("DELETE"),
+                eq("TOPIC"), eq("topic-a"), eq("prod-cn"), eq(false), eq("2026-07-01"), eq("2026-07-24"), eq("SUCCESS")))
                 .thenReturn(PageResult.of(List.of(record), 1, 2, 10));
 
         mockMvc.perform(get("/api/audit-logs")
                         .param("page", "2")
                         .param("pageSize", "10")
                         .param("search", "topic")
+                        .param("operator", "admin")
                         .param("operationType", "DELETE")
                         .param("resourceType", "TOPIC")
                         .param("target", "topic-a")
@@ -89,14 +92,13 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data.items[0].operationType").value("DELETE"))
                 .andExpect(jsonPath("$.data.total").value(1));
 
-        verify(auditService).queryLogs(eq(2), eq(10), eq("topic"), eq("DELETE"),
-                eq("TOPIC"), eq("topic-a"), eq("prod-cn"), eq(false), eq("2026-07-01"),
-                eq("2026-07-24"), eq("SUCCESS"));
+        verify(auditService).queryLogs(eq(2), eq(10), eq("topic"), eq("admin"), eq("DELETE"),
+                eq("TOPIC"), eq("topic-a"), eq("prod-cn"), eq(false), eq("2026-07-01"), eq("2026-07-24"), eq("SUCCESS"));
     }
 
     @Test
     void cleanupLogsShouldUseProvidedRetention() throws Exception {
-        when(auditService.cleanupLogs(90)).thenReturn(7);
+        when(auditService.cleanupLogs(90)).thenReturn(cleanupResult(7, false));
 
         mockMvc.perform(post("/api/audit-logs/cleanup")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -109,8 +111,19 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void cleanupLogsShouldDiscloseASweepThatHitItsCeilingTest() throws Exception {
+        when(auditService.cleanupLogs(90)).thenReturn(cleanupResult(10_000, true));
+
+        mockMvc.perform(post("/api/audit-logs/cleanup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("beforeDays", 90))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.deleted").value(10_000))
+                .andExpect(jsonPath("$.data.truncated").value(true));
+    }
+    @Test
     void cleanupLogsShouldDefaultRetentionWhenBodyIsEmpty() throws Exception {
-        when(auditService.cleanupLogs(30)).thenReturn(3);
+        when(auditService.cleanupLogs(30)).thenReturn(cleanupResult(3, false));
 
         mockMvc.perform(post("/api/audit-logs/cleanup"))
                 .andExpect(status().isOk())
@@ -121,7 +134,7 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
 
     @Test
     void cleanupLogsShouldDefaultRetentionWhenBeforeDaysIsMissing() throws Exception {
-        when(auditService.cleanupLogs(30)).thenReturn(3);
+        when(auditService.cleanupLogs(30)).thenReturn(cleanupResult(3, false));
 
         mockMvc.perform(post("/api/audit-logs/cleanup")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -170,7 +183,7 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
 
     @Test
     void queryLogsShouldUseDefaultPagination() throws Exception {
-        when(auditService.queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(),
+        when(auditService.queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(), isNull(),
                 isNull(), eq(false), isNull(), isNull(), isNull()))
                 .thenReturn(PageResult.of(List.of(), 0, 1, 20));
 
@@ -180,13 +193,13 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data.page").value(1))
                 .andExpect(jsonPath("$.data.size").value(20));
 
-        verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(),
+        verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(), isNull(),
                 isNull(), eq(false), isNull(), isNull(), isNull());
     }
 
     @Test
     void queryLogsShouldForwardAnExplicitMissingClusterScopeTest() throws Exception {
-        when(auditService.queryLogs(eq(1), eq(20), isNull(), isNull(), eq("SETTINGS"),
+        when(auditService.queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), eq("SETTINGS"),
                 eq("general"), isNull(), eq(true), isNull(), isNull(), isNull()))
                 .thenReturn(PageResult.of(List.of(), 0, 1, 20));
 
@@ -196,19 +209,20 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
                         .param("clusterIdMissing", "true"))
                 .andExpect(status().isOk());
 
-        verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), eq("SETTINGS"),
+        verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), eq("SETTINGS"),
                 eq("general"), isNull(), eq(true), isNull(), isNull(), isNull());
     }
 
     @Test
     void exportLogsShouldForwardFilters() throws Exception {
         String csv = "\uFEFFtimestamp,operator\r\n\"2026-08-01T09:30\",\"admin\"\r\n";
-        when(auditService.exportLogs(eq("topic"), eq("DELETE"), eq("TOPIC"), eq("topic-a"),
+        when(auditService.exportLogs(eq("topic"), eq("admin"), eq("DELETE"), eq("TOPIC"), eq("topic-a"),
                 eq("prod-cn"), eq(false), eq("2026-08-01"), eq("2026-08-02"),
                 eq("SUCCESS"))).thenReturn(csv);
 
         mockMvc.perform(get("/api/audit-logs/export")
                         .param("search", "topic")
+                        .param("operator", "admin")
                         .param("operationType", "DELETE")
                         .param("resourceType", "TOPIC")
                         .param("target", "topic-a")
@@ -220,13 +234,14 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data").value(csv));
 
-        verify(auditService).exportLogs(eq("topic"), eq("DELETE"), eq("TOPIC"), eq("topic-a"),
+        verify(auditService).exportLogs(eq("topic"), eq("admin"), eq("DELETE"), eq("TOPIC"), eq("topic-a"),
                 eq("prod-cn"), eq(false), eq("2026-08-01"), eq("2026-08-02"), eq("SUCCESS"));
     }
 
     @Test
     void getFilterOptionsShouldReturnPersistedFacets() throws Exception {
         AuditFilterOptionsVO options = AuditFilterOptionsVO.builder()
+                .operators(List.of("admin", "ops-user"))
                 .operationTypes(List.of("CREATE_TOPIC", "DELETE_TOPIC"))
                 .resourceTypes(List.of("TOPIC"))
                 .clusterIds(List.of("prod-cn"))
@@ -236,6 +251,7 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
 
         mockMvc.perform(get("/api/audit-logs/filter-options"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.operators[0]").value("admin"))
                 .andExpect(jsonPath("$.data.operationTypes[0]").value("CREATE_TOPIC"))
                 .andExpect(jsonPath("$.data.resourceTypes[0]").value("TOPIC"))
                 .andExpect(jsonPath("$.data.clusterIds[0]").value("prod-cn"))
@@ -252,11 +268,12 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
                 .byOperation(List.of(new AuditSummaryBucketVO("DELETE_TOPIC", 5)))
                 .byResourceType(List.of(new AuditSummaryBucketVO("TOPIC", 8)))
                 .build();
-        when(auditService.summarize(eq("topic"), eq("DELETE_TOPIC"), eq("TOPIC"), eq("prod-cn"),
+        when(auditService.summarize(eq("topic"), eq("admin"), eq("DELETE_TOPIC"), eq("TOPIC"), eq("prod-cn"),
                 eq("2026-08-01"), eq("2026-08-12"), eq("SUCCESS"))).thenReturn(summary);
 
         mockMvc.perform(get("/api/audit-logs/summary")
                         .param("search", "topic")
+                        .param("operator", "admin")
                         .param("operationType", "DELETE_TOPIC")
                         .param("resourceType", "TOPIC")
                         .param("clusterId", "prod-cn")
@@ -269,7 +286,7 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data.uniqueOperators").value(3))
                 .andExpect(jsonPath("$.data.byOperation[0].name").value("DELETE_TOPIC"));
 
-        verify(auditService).summarize(eq("topic"), eq("DELETE_TOPIC"), eq("TOPIC"), eq("prod-cn"),
+        verify(auditService).summarize(eq("topic"), eq("admin"), eq("DELETE_TOPIC"), eq("TOPIC"), eq("prod-cn"),
                 eq("2026-08-01"), eq("2026-08-12"), eq("SUCCESS"));
     }
 }

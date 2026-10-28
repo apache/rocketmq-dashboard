@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.ops.ai;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -141,16 +142,51 @@ public class OpenAiCompatibleLlmClient {
     }
 
     public void stream(LlmConfigVO config, String prompt, String modelOverride, Consumer<String> tokenConsumer) {
+        streamConversation(config, List.of(), prompt, modelOverride, tokenConsumer);
+    }
+
+    /** Prior conversational content never acquires the authority of the formatting system message. */
+    public record ChatMessage(String role, String content) {
+        public ChatMessage {
+            if (!("user".equals(role) || "assistant".equals(role)) || content == null) {
+                throw new IllegalArgumentException("History messages require a user/assistant role and content");
+            }
+        }
+    }
+
+    public void streamConversation(LlmConfigVO config, List<ChatMessage> history, String prompt,
+                                   String modelOverride, Consumer<String> tokenConsumer) {
         validate(config);
         AiPayloadGuard.validateOutboundPrompt(prompt, effectiveModel(config, modelOverride));
         Map<String, Object> requestBody = requestBody(config, prompt, modelOverride, true);
+        if (history.size() > 64) {
+            throw new BusinessException(400, "LLM history must not exceed 64 messages");
+        }
+        List<Object> messages = new ArrayList<>();
+        messages.add(Map.of("role", "system", "content", MARKDOWN_SYSTEM_PROMPT));
+        int historyBytes = 0;
+        StringBuilder combined = new StringBuilder(prompt == null ? "" : prompt);
+        for (ChatMessage message : history) {
+            AiPayloadGuard.validateOutboundPrompt(message.content(), effectiveModel(config, modelOverride));
+            historyBytes += message.content().getBytes(StandardCharsets.UTF_8).length;
+            if (historyBytes > AiPayloadGuard.MAX_CONTEXT_BYTES) {
+                throw new BusinessException(400, "LLM history must not exceed "
+                        + AiPayloadGuard.MAX_CONTEXT_BYTES + " UTF-8 bytes");
+            }
+            messages.add(message);
+            combined.append(message.content());
+        }
+        AiPayloadGuard.validateOutboundPrompt(combined.toString(), effectiveModel(config, modelOverride));
+        messages.add(Map.of("role", "user", "content", StringUtils.hasText(prompt) ? prompt.trim() : ""));
+        requestBody.put("messages", messages);
         HttpRequest request = request(config, "text/event-stream", requestBody);
+        long startedAtNanos = System.nanoTime();
         try {
             HttpResponse<StreamBody> response = httpClient.send(request, streamBodyHandler());
             if (response.statusCode() >= 400) {
                 throw upstreamException(response.statusCode(), checkedBody(response.body().errorBody()));
             }
-            parseStreamWithTimeout(response.body().stream(), tokenConsumer);
+            parseStreamWithTimeout(response.body().stream(), tokenConsumer, startedAtNanos);
         } catch (ResponseLimitException exception) {
             throw new LlmGatewayException(502, "llm.provider.response_too_large",
                     "LLM provider stream exceeded the maximum of " + exception.limitBytes() + " bytes",
@@ -170,7 +206,7 @@ public class OpenAiCompatibleLlmClient {
         }
     }
 
-    private void parseStreamWithTimeout(InputStream input, Consumer<String> tokenConsumer)
+    private void parseStreamWithTimeout(InputStream input, Consumer<String> tokenConsumer, long startedAtNanos)
             throws IOException, InterruptedException {
         FutureTask<Void> readerTask = new FutureTask<>(() -> {
             parseStream(input, tokenConsumer);
@@ -178,7 +214,10 @@ public class OpenAiCompatibleLlmClient {
         });
         Thread.ofVirtual().name("openai-sse-reader").start(readerTask);
         try {
-            readerTask.get(requestTimeout.toNanos(), TimeUnit.NANOSECONDS);
+            // The input-stream body handler returns after headers; their wait has already
+            // consumed part of the same request budget.
+            long remainingNanos = requestTimeout.toNanos() - (System.nanoTime() - startedAtNanos);
+            readerTask.get(remainingNanos, TimeUnit.NANOSECONDS);
         } catch (TimeoutException exception) {
             throw new HttpTimeoutException("LLM provider stream timed out");
         } catch (ExecutionException exception) {
@@ -214,8 +253,16 @@ public class OpenAiCompatibleLlmClient {
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(input, StandardCharsets.UTF_8))) {
             List<String> dataLines = new ArrayList<>();
+            boolean firstLine = true;
             String line;
             while ((line = reader.readLine()) != null) {
+                if (firstLine) {
+                    // SSE permits one UTF-8 BOM at the start of the stream, before any field name.
+                    if (line.startsWith("\uFEFF")) {
+                        line = line.substring(1);
+                    }
+                    firstLine = false;
+                }
                 if (line.isEmpty()) {
                     if (emitStreamEvent(dataLines, tokenConsumer)) {
                         return;
@@ -328,22 +375,7 @@ public class OpenAiCompatibleLlmClient {
     }
 
     private URI providerUri(LlmConfigVO config, String path) {
-        String baseUrl = normalizeApiBase(config.getApiBase());
-        return URI.create(baseUrl + path);
-    }
-
-    private String normalizeApiBase(String apiBase) {
-        String baseUrl = apiBase.trim();
-        while (baseUrl.endsWith("/")) {
-            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
-        }
-        if (baseUrl.endsWith(CHAT_COMPLETIONS_PATH)) {
-            baseUrl = baseUrl.substring(0, baseUrl.length() - CHAT_COMPLETIONS_PATH.length());
-            while (baseUrl.endsWith("/")) {
-                baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
-            }
-        }
-        return baseUrl;
+        return LlmApiBase.endpoint(config.getApiBase(), path);
     }
 
     private void validate(LlmConfigVO config) {
@@ -380,7 +412,7 @@ public class OpenAiCompatibleLlmClient {
 
     private boolean isValidApiBase(String apiBase) {
         try {
-            URI uri = new URI(normalizeApiBase(apiBase));
+            URI uri = new URI(LlmApiBase.normalize(apiBase));
             String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
             return ("http".equals(scheme) || "https".equals(scheme)) && StringUtils.hasText(uri.getHost());
         } catch (IllegalArgumentException | URISyntaxException exception) {

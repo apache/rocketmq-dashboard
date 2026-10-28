@@ -43,22 +43,28 @@ public class AuditService {
     private static final int MAX_EXPORT_RECORDS = 10_000;
     private static final int CLEANUP_BATCH_SIZE = 500;
     private static final int CLEANUP_MAX_BATCHES = 20;
+    /**
+     * Most rows one cleanup call can delete: {@code CLEANUP_BATCH_SIZE} rows in each of
+     * {@code CLEANUP_MAX_BATCHES} batches. Reaching it means the sweep ran out of budget, not that
+     * the retention window was applied.
+     */
+    private static final int CLEANUP_ROW_CEILING = CLEANUP_BATCH_SIZE * CLEANUP_MAX_BATCHES;
     private static final String CSV_COLUMNS =
             "operator,operationType,resourceType,target,clusterId,detail,result,errorMessage";
 
     private final AuditRepository auditRepository;
 
 
-    public PageResult<AuditRecordVO> queryLogs(int page, int pageSize, String search,
+    public PageResult<AuditRecordVO> queryLogs(int page, int pageSize, String search, String operator,
                                              String operationType, String resourceType,
                                              String target, String clusterId, boolean clusterIdMissing,
                                              String startDate,
                                              String endDate, String result) {
         validatePagination(page, pageSize);
-        log.info("Querying audit logs, page={}, pageSize={}, search={}, operationType={}, result={}",
-                page, pageSize, search, operationType, result);
+        log.info("Querying audit logs, page={}, pageSize={}, search={}, operator={}, operationType={}, result={}",
+                page, pageSize, search, operator, operationType, result);
 
-        PageResult<AuditRecordVO> stored = findPage(search, operationType, resourceType, target,
+        PageResult<AuditRecordVO> stored = findPage(search, operator, operationType, resourceType, target,
                 clusterId, clusterIdMissing, startDate, endDate, result, page, pageSize);
         if (stored == null || stored.getItems() == null) {
             return stored;
@@ -77,11 +83,11 @@ public class AuditService {
         return auditRepository.findFilterOptions();
     }
 
-    public AuditSummaryVO summarize(String search, String operationType, String resourceType,
+    public AuditSummaryVO summarize(String search, String operator, String operationType, String resourceType,
                                     String clusterId, String startDate, String endDate, String result) {
         DateRange range = parseDateRange(startDate, endDate);
         String normalizedSearch = normalizeSearch(search);
-        AuditSummaryVO summary = auditRepository.summarize(normalizedSearch, operationType,
+        AuditSummaryVO summary = auditRepository.summarize(normalizedSearch, operator, operationType,
                 resourceType, clusterId, range.start(), range.end(), result);
         // latestAt rides the same wire as the page rows: zone-less server-local in storage,
         // UTC for every JSON consumer, while the audit CSV keeps naming the server offset.
@@ -92,11 +98,11 @@ public class AuditService {
         return summary;
     }
 
-    public String exportLogs(String search, String operationType, String resourceType,
+    public String exportLogs(String search, String operator, String operationType, String resourceType,
                              String target, String clusterId, boolean clusterIdMissing, String startDate,
                              String endDate, String result) {
         PageResult<AuditRecordVO> page = findPage(
-                search, operationType, resourceType, target, clusterId, clusterIdMissing,
+                search, operator, operationType, resourceType, target, clusterId, clusterIdMissing,
                 startDate, endDate, result, 1, MAX_EXPORT_RECORDS);
         if (page.getTotal() > MAX_EXPORT_RECORDS) {
             throw new BusinessException(400,
@@ -181,7 +187,7 @@ public class AuditService {
         log.info("Audit recorded: {} on {} -> {}", operationType, target, result);
     }
 
-    public int cleanupLogs(int beforeDays) {
+    public AuditCleanupResultVO cleanupLogs(int beforeDays) {
         if (beforeDays <= 0) {
             throw new BusinessException(400, "beforeDays must be greater than 0");
         }
@@ -190,7 +196,15 @@ public class AuditService {
         }
         log.info("Cleaning up audit logs older than {} days", beforeDays);
         LocalDateTime cutoff = LocalDateTime.now().minusDays(beforeDays);
-        return auditRepository.deleteBefore(cutoff, CLEANUP_BATCH_SIZE, CLEANUP_MAX_BATCHES);
+        int deleted = auditRepository.deleteBefore(cutoff, CLEANUP_BATCH_SIZE, CLEANUP_MAX_BATCHES);
+        // Equal to the ceiling means the delete loop stopped because it ran out of batches, so rows
+        // older than the cutoff may still be stored. Reporting the count alone hid that.
+        boolean truncated = deleted >= CLEANUP_ROW_CEILING;
+        if (truncated) {
+            log.warn("Audit cleanup older than {} days stopped at the {}-row ceiling after deleting {} rows; "
+                    + "older rows may remain", beforeDays, CLEANUP_ROW_CEILING, deleted);
+        }
+        return AuditCleanupResultVO.builder().deleted(deleted).truncated(truncated).build();
     }
 
     private void validatePagination(int page, int pageSize) {
@@ -202,15 +216,15 @@ public class AuditService {
         }
     }
 
-    private PageResult<AuditRecordVO> findPage(String search, String operationType,
+    private PageResult<AuditRecordVO> findPage(String search, String operator, String operationType,
                                                String resourceType, String target, String clusterId,
                                                boolean clusterIdMissing,
                                                String startDate, String endDate,
                                                String result, int page, int pageSize) {
         DateRange range = parseDateRange(startDate, endDate);
         String normalizedSearch = normalizeSearch(search);
-        return auditRepository.findPage(normalizedSearch, operationType, resourceType, target, clusterId,
-                clusterIdMissing,
+        return auditRepository.findPage(normalizedSearch, operator, operationType, resourceType, target,
+                clusterId, clusterIdMissing,
                 range.start(), range.end(), result, page, pageSize);
     }
 

@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.ops.audit;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.apache.rocketmq.studio.common.util.LikePatterns;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.util.JdbcRowValues;
 import org.apache.rocketmq.studio.persistence.entity.RmqOperationAudit;
@@ -53,14 +54,14 @@ public class MybatisPlusAuditRepository implements AuditRepository {
     private volatile CachedFilterOptions cachedFilterOptions;
 
     @Override
-    public PageResult<AuditRecordVO> findPage(String search, String operationType,
+    public PageResult<AuditRecordVO> findPage(String search, String operator, String operationType,
                                               String resourceType, String target, String clusterId,
                                               boolean clusterIdMissing,
                                               LocalDateTime startDate, LocalDateTime endDate,
                                               String result, int page, int pageSize) {
         QueryWrapper<RmqOperationAudit> query = new QueryWrapper<>();
-        applyFilters(query, search, operationType, resourceType, target, clusterId, clusterIdMissing,
-                startDate, endDate, result);
+        applyFilters(query, search, operator, operationType, resourceType, target, clusterId,
+                clusterIdMissing, startDate, endDate, result);
         query.orderByDesc("gmt_create", "id");
         Page<RmqOperationAudit> resultPage = auditMapper.selectPage(
                 new Page<>(page, pageSize), query);
@@ -91,9 +92,10 @@ public class MybatisPlusAuditRepository implements AuditRepository {
     private AuditFilterOptionsVO loadFilterOptions() {
         List<Map<String, Object>> values = auditMapper.selectMaps(
                 new QueryWrapper<RmqOperationAudit>()
-                        .select("operation", "resource_type", "cluster_id", "result")
-                        .groupBy("operation", "resource_type", "cluster_id", "result"));
+                        .select("operation", "resource_type", "cluster_id", "result", "operator")
+                        .groupBy("operation", "resource_type", "cluster_id", "result", "operator"));
         return AuditFilterOptionsVO.builder()
+                .operators(findDistinctValues(values, "operator"))
                 .operationTypes(findDistinctValues(values, "operation"))
                 .resourceTypes(findDistinctValues(values, "resource_type"))
                 .clusterIds(findDistinctValues(values, "cluster_id"))
@@ -102,11 +104,12 @@ public class MybatisPlusAuditRepository implements AuditRepository {
     }
 
     @Override
-    public AuditSummaryVO summarize(String search, String operationType, String resourceType,
-                                    String clusterId, LocalDateTime startDate, LocalDateTime endDate,
+    public AuditSummaryVO summarize(String search, String operator, String operationType,
+                                    String resourceType, String clusterId,
+                                    LocalDateTime startDate, LocalDateTime endDate,
                                     String result) {
         Consumer<QueryWrapper<RmqOperationAudit>> filters = query -> applyFilters(query, search,
-                operationType, resourceType, null, clusterId, false, startDate, endDate, result);
+                operator, operationType, resourceType, null, clusterId, false, startDate, endDate, result);
 
         // One GROUP BY result query computes total / SUCCESS / FAILED / PARTIAL in a single
         // round trip instead of four separate COUNT(*) statements. Note that when the caller
@@ -187,28 +190,6 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                 .toList();
     }
 
-    /**
-     * Single source of truth for the audit filters, shared by the paged list, the summary and the
-     * hotspot queries so a card can never disagree with the rows it describes.
-     */
-    private void applyFilters(QueryWrapper<RmqOperationAudit> query, String search,
-                              String operationType, String resourceType, String target,
-                              String clusterId, boolean clusterIdMissing,
-                              LocalDateTime startDate, LocalDateTime endDate, String result) {
-        query.and(StringUtils.hasText(search), w -> w
-                        .like("operator", search)
-                        .or().like("resource_name", search)
-                        .or().like("detail", search))
-                .eq(StringUtils.hasText(operationType), "operation", operationType)
-                .eq(StringUtils.hasText(resourceType), "resource_type", resourceType)
-                .eq(StringUtils.hasText(target), "resource_name", target)
-                .eq(!clusterIdMissing && StringUtils.hasText(clusterId), "cluster_id", clusterId)
-                .and(clusterIdMissing, scope -> scope.isNull("cluster_id").or().eq("cluster_id", ""))
-                .ge(startDate != null, "gmt_create", startDate)
-                .le(endDate != null, "gmt_create", endDate)
-                .eq(StringUtils.hasText(result), "result", result);
-    }
-
     @Override
     public void save(AuditRecordVO record) {
         RmqOperationAudit entity = new RmqOperationAudit();
@@ -260,6 +241,30 @@ public class MybatisPlusAuditRepository implements AuditRepository {
             }
         }
         return totalDeleted;
+    }
+
+    /**
+     * Single source of truth for the audit filters, shared by the paged list, the summary and the
+     * hotspot queries so a card can never disagree with the rows it describes.
+     */
+    private void applyFilters(QueryWrapper<RmqOperationAudit> query, String search,
+                              String operator, String operationType, String resourceType,
+                              String target, String clusterId, boolean clusterIdMissing,
+                              LocalDateTime startDate, LocalDateTime endDate, String result) {
+        String searchPattern = StringUtils.hasText(search) ? LikePatterns.escape(search) : null;
+        query.and(searchPattern != null, w -> w
+                        .like("operator", searchPattern)
+                        .or().like("resource_name", searchPattern)
+                        .or().like("detail", searchPattern))
+                .eq(StringUtils.hasText(operator), "operator", operator)
+                .eq(StringUtils.hasText(operationType), "operation", operationType)
+                .eq(StringUtils.hasText(resourceType), "resource_type", resourceType)
+                .eq(StringUtils.hasText(target), "resource_name", target)
+                .eq(!clusterIdMissing && StringUtils.hasText(clusterId), "cluster_id", clusterId)
+                .and(clusterIdMissing, scope -> scope.isNull("cluster_id").or().eq("cluster_id", ""))
+                .ge(startDate != null, "gmt_create", startDate)
+                .le(endDate != null, "gmt_create", endDate)
+                .eq(StringUtils.hasText(result), "result", result);
     }
 
     private List<String> findDistinctValues(List<Map<String, Object>> rows, String column) {

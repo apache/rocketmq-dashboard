@@ -24,6 +24,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
@@ -118,6 +119,36 @@ class OpenAiCompatibleLlmClientTest {
         assertThat(requestPath.get()).isEqualTo("/v1/chat/completions");
     }
 
+    @ParameterizedTest
+    @CsvSource({"'',''", "'/chat/completions/',''", "'','#gateway'", "'/chat/completions/','#gateway'"})
+    void providerRequestsShouldKeepQueryParametersAfterEndpointPathTest(String endpoint, String fragment) {
+        List<String> requestUris = new ArrayList<>();
+        server.createContext("/", exchange -> {
+            requestUris.add(exchange.getRequestURI().toString());
+            if ("GET".equals(exchange.getRequestMethod())) {
+                respond(exchange, 200, "{\"data\":[{\"id\":\"gpt-test\"}]}", "application/json");
+            } else if (objectMapper.readTree(exchange.getRequestBody()).path("stream").asBoolean()) {
+                respond(exchange, 200,
+                        "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\ndata: [DONE]\n\n",
+                        "text/event-stream");
+            } else {
+                respond(exchange, 200, "{\"choices\":[{\"message\":{\"content\":\"hello\"}}]}", "application/json");
+            }
+        });
+        String query = "?tenant=a%2Fb+%26&route=/chat/completions/";
+        LlmConfigVO config = config("openai", "sk-test");
+        config.setApiBase(baseUrl + endpoint + query + fragment);
+
+        client.listModels(config);
+        client.complete(config, "hello", null);
+        List<String> tokens = new ArrayList<>();
+        client.stream(config, "hello", null, tokens::add);
+
+        assertThat(requestUris).containsExactly("/v1/models" + query,
+                "/v1/chat/completions" + query, "/v1/chat/completions" + query);
+        assertThat(tokens).containsExactly("hello");
+    }
+
     @Test
     void completeShouldRejectInvalidApiBaseBeforeCallingUpstream() {
         LlmConfigVO config = config("openai", "sk-test");
@@ -132,6 +163,51 @@ class OpenAiCompatibleLlmClientTest {
                     assertThat(gatewayException.getCode()).isEqualTo("llm.config.invalid_api_base");
                     assertThat(gatewayException.getHint()).contains("https://api.openai.com/v1");
                 });
+    }
+
+    @Test
+    void conversationStreamShouldSendHistoryAsSeparateRolesTest() {
+        AtomicReference<JsonNode> body = new AtomicReference<>();
+        server.createContext("/v1/chat/completions", exchange -> {
+            body.set(objectMapper.readTree(exchange.getRequestBody()));
+            respond(exchange, 200, "data: [DONE]\n\n", "text/event-stream");
+        });
+        client.streamConversation(config("openai", "sk-test"), List.of(
+                new OpenAiCompatibleLlmClient.ChatMessage("user", "previous question"),
+                new OpenAiCompatibleLlmClient.ChatMessage("assistant", "previous answer")),
+                "follow-up", "selected-model", ignored -> { });
+
+        assertThat(body.get().path("model").asText()).isEqualTo("selected-model");
+        JsonNode messages = body.get().path("messages");
+        assertThat(messages.size()).isEqualTo(4);
+        assertThat(messages.get(0).path("role").asText()).isEqualTo("system");
+        assertThat(messages.get(1).path("content").asText()).isEqualTo("previous question");
+        assertThat(messages.get(2).path("role").asText()).isEqualTo("assistant");
+        assertThat(messages.get(3).path("content").asText()).isEqualTo("follow-up");
+        assertThatThrownBy(() -> new OpenAiCompatibleLlmClient.ChatMessage("system", "untrusted"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void conversationContextMustFitTheCombinedOutboundBudgetTest() {
+        assertThatThrownBy(() -> client.streamConversation(config("openai", "sk-test"),
+                List.of(new OpenAiCompatibleLlmClient.ChatMessage("user", "x".repeat(200_000))),
+                "y".repeat(200_000), null, ignored -> { }))
+                .isInstanceOf(LlmGatewayException.class)
+                .hasMessageContaining("UTF-8 bytes");
+    }
+
+    @Test
+    void streamShouldIgnoreOnlyTheLeadingUtf8BomTest() {
+        server.createContext("/v1/chat/completions", exchange -> respond(exchange, 200,
+                "\uFEFFdata: {\"choices\":[{\"delta\":{\"content\":\"first\"}}]}\n\n"
+                        + "data: {\"choices\":[{\"delta\":{\"content\":\"inner\uFEFFtext\"}}]}\n\n"
+                        + "data: [DONE]\n\n", "text/event-stream"));
+        List<String> tokens = new ArrayList<>();
+
+        client.stream(config("openai", "sk-test"), "hello", null, tokens::add);
+
+        assertThat(tokens).containsExactly("first", "inner\uFEFFtext");
     }
 
     @Test
@@ -262,6 +338,39 @@ class OpenAiCompatibleLlmClientTest {
                     assertThat(gatewayException.getCode()).isEqualTo("llm.provider.timeout");
                 });
         assertThat(tokens).containsExactly("first");
+    }
+
+    @Test
+    void streamTimeoutIncludesTimeSpentWaitingForHeadersTest() {
+        OpenAiCompatibleLlmClient timeoutClient = new OpenAiCompatibleLlmClient(
+                objectMapper, HttpClient.newHttpClient(), Duration.ofSeconds(1));
+        server.createContext("/v1/chat/completions", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            try {
+                Thread.sleep(600);
+                exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+                exchange.sendResponseHeaders(200, 0);
+                exchange.getResponseBody().flush();
+                Thread.sleep(600);
+                exchange.getResponseBody().write("""
+                        data: {"choices":[{"delta":{"content":"late answer"}}]}
+
+                        data: [DONE]
+
+                        """.getBytes(StandardCharsets.UTF_8));
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            } finally {
+                exchange.close();
+            }
+        });
+
+        assertThatThrownBy(() -> timeoutClient.stream(
+                config("openai", "sk-test"), "hello", null, token -> { }))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(504);
+                    assertThat(exception.getCode()).isEqualTo("llm.provider.timeout");
+                });
     }
 
     @Test

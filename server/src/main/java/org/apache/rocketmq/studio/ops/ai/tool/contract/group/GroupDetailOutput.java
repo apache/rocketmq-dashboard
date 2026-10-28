@@ -47,7 +47,12 @@ public record GroupDetailOutput(
         String subscriptionDataType,
         String deliveryOrderType,
         Integer retryMaxTimes,
-        int delaySeconds,
+        /**
+         * Seconds since the group last consumed a message; null when the broker reported no
+         * consumed-message timestamp, so no delay can be measured. Never a zero the caller could
+         * read as "caught up".
+         */
+        Integer delaySeconds,
         List<Subscription> subscriptions,
         List<Instance> instances,
         Health health,
@@ -82,7 +87,7 @@ public record GroupDetailOutput(
                 source.getSubscriptionDataType(),
                 source.getDeliveryOrderType(),
                 configurations.size() == 1 ? source.getRetryMaxTimes() : null,
-                source.getDelaySeconds(),
+                source.isConsumptionTimestampAvailable() ? source.getDelaySeconds() : null,
                 entries.stream()
                         .filter(Objects::nonNull)
                         .map(Subscription::from)

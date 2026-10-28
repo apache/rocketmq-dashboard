@@ -22,6 +22,7 @@ import org.springframework.util.StringUtils;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.Optional;
 
 /** Enforces the scope required to safely evaluate Studio-native metric rules. */
 final class NativeAlertRulePolicy {
@@ -48,6 +49,14 @@ final class NativeAlertRulePolicy {
     static final Set<String> NATIVE_OPERATORS = Set.of(">", ">=", "<", "<=", "==", "!=", "UNAVAILABLE");
 
     private NativeAlertRulePolicy() {
+    }
+
+    /** Lock before writing, then reject the old collection snapshot if its rule no longer applies. */
+    static Optional<AlertRuleVO> lockMatchingRule(AlertRepository repository, AlertRuleVO snapshot) {
+        return repository.findRuleByIdForUpdate(snapshot.getId())
+                .filter(AlertRuleVO::isEnabled)
+                .filter(current -> AlertRuleSemanticFingerprint.evaluationIdentity(current)
+                        .equals(AlertRuleSemanticFingerprint.evaluationIdentity(snapshot)));
     }
 
     static boolean isNativeMetric(String metric) {
