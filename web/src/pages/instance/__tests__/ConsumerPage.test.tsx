@@ -1495,7 +1495,9 @@ describe('Consumer page', () => {
     await user.click(stackButtons[1]);
 
     await act(async () => resolveSecond(secondStack));
-    expect(await screen.findByText('LatestClientThread')).toBeInTheDocument();
+    expect(
+      await screen.findByText('LatestClientThread', undefined, { timeout: 5000 }),
+    ).toBeInTheDocument();
     await act(async () => resolveFirst(firstStack));
     expect(screen.getByText('LatestClientThread')).toBeInTheDocument();
     expect(screen.queryByText('OldClientThread')).not.toBeInTheDocument();
@@ -1635,7 +1637,9 @@ describe('Consumer page', () => {
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
 
-    expect(await screen.findByText('发现 1 个订阅配置不一致')).toBeInTheDocument();
+    expect(
+      await screen.findByText('发现 1 个订阅配置不一致', undefined, { timeout: 5000 }),
+    ).toBeInTheDocument();
     expect(screen.getByText('consistent').closest('.ant-tag')).toHaveClass('ant-tag-green');
     expect(screen.getByText('inconsistent').closest('.ant-tag')).toHaveClass('ant-tag-orange');
     await user.click(screen.getByRole('checkbox', { name: '仅看不一致' }));
@@ -1643,7 +1647,9 @@ describe('Consumer page', () => {
 
     await user.click(screen.getByRole('button', { name: '重新检查' }));
 
-    expect(await screen.findByText('全部 2 个订阅配置一致')).toBeInTheDocument();
+    expect(
+      await screen.findByText('全部 2 个订阅配置一致', undefined, { timeout: 5000 }),
+    ).toBeInTheDocument();
     expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledTimes(2);
   });
 

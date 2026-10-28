@@ -575,7 +575,7 @@ const InstancePage = () => {
       title: t('instance.region'),
       dataIndex: 'regionId',
       key: 'regionId',
-      width: 130,
+      width: 100,
       ellipsis: true,
       onHeaderCell: () => ({ style: { textAlign: 'left' } }),
       sorter: (a, b) => (a.regionId ?? '').localeCompare(b.regionId ?? ''),
@@ -591,6 +591,7 @@ const InstancePage = () => {
       title: t('instance.instanceName'),
       dataIndex: 'name',
       key: 'name',
+      width: 140,
       ellipsis: true,
       onHeaderCell: () => ({ style: { textAlign: 'left' } }),
       sorter: (a, b) => a.name.localeCompare(b.name),
@@ -608,6 +609,7 @@ const InstancePage = () => {
       title: t('instance.remark'),
       dataIndex: 'remark',
       key: 'remark',
+      width: 90,
       ellipsis: { showTitle: false },
       onHeaderCell: () => ({ style: { textAlign: 'left' } }),
       sorter: (a, b) => (a.remark ?? '').localeCompare(b.remark ?? ''),
@@ -628,7 +630,7 @@ const InstancePage = () => {
       title: t('instance.vendor'),
       dataIndex: 'vendor',
       key: 'vendor',
-      width: 100,
+      width: 84,
       align: 'center' as const,
       render: (value?: string) => {
         const option = VENDOR_OPTIONS.find((item) => item.key === (value || 'APACHE'));
@@ -647,7 +649,7 @@ const InstancePage = () => {
       title: t('common.type'),
       dataIndex: 'type',
       key: 'type',
-      width: 110,
+      width: 136,
       align: 'center' as const,
       sorter: (a, b) => a.type.localeCompare(b.type),
       render: (type: string) => {
@@ -711,7 +713,7 @@ const InstancePage = () => {
     {
       title: t('common.actions'),
       key: 'actions',
-      width: 150,
+      width: 140,
       render: (_: unknown, record: Instance) => (
         <Flex gap={6} justify="flex-end" onClick={(e) => e.stopPropagation()}>
           <Button
