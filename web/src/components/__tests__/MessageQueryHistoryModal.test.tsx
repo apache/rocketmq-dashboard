@@ -343,10 +343,30 @@ describe('MessageQueryHistoryModal', () => {
     expect(await screen.findByText('order-1')).toBeInTheDocument();
     expect(screen.getByText('Server Query History')).toBeInTheDocument();
     expect(screen.getAllByText('Message Queries').length).toBeGreaterThan(1);
+    expect(screen.getByText('Query by Message Key')).toBeInTheDocument();
     expect(
       screen.getByPlaceholderText('Search Topic, trace Topic, Message ID, Key or operator'),
     ).toBeInTheDocument();
     expect(screen.queryByText('服务端查询历史')).not.toBeInTheDocument();
+  });
+
+  it('names the recorded query mode instead of printing its wire code', async () => {
+    render(
+      <App>
+        <LangProvider>
+          <MessageQueryHistoryModal open clusterId="instance-a" onClose={vi.fn()} />
+        </LangProvider>
+      </App>,
+    );
+
+    // The search bar above names the same mode; the history row must not fall back to `KEY`.
+    expect(await screen.findByText('order-1')).toBeInTheDocument();
+    expect(screen.getByText('按 Message Key')).toBeInTheDocument();
+    expect(screen.queryByText('KEY')).not.toBeInTheDocument();
+
+    // The column declares room for the longest label ("Query by Message Key"): a narrower one wraps
+    // inside the tag and grows the row height of the small table.
+    expect(document.querySelector('.ant-table colgroup col')).toHaveStyle({ width: '160px' });
   });
 
   it('keeps the applied search visible in the input after the modal is closed and reopened', async () => {

@@ -41,6 +41,17 @@ const PAGE_SIZE = 20;
 // formatUtcDateTime appends Z so the viewer's timezone is applied correctly.
 const formatTime = (value?: string) => formatUtcDateTime(value);
 
+/**
+ * The stored query mode (`TOPIC`, `KEY`, `MSG_ID`) is the same value the search bar's mode selector
+ * carries, so the type column names it with the selector's wording instead of printing the wire
+ * code. A mode without a mapping is shown unchanged rather than hidden.
+ */
+const QUERY_TYPE_LABEL_KEYS: Record<string, string> = {
+  TOPIC: 'messagePage.queryMode.topic',
+  KEY: 'messagePage.queryMode.key',
+  MSG_ID: 'messagePage.queryMode.msgid',
+};
+
 const MessageQueryHistoryModal = ({
   open,
   clusterId,
@@ -145,8 +156,13 @@ const MessageQueryHistoryModal = ({
     {
       title: t('common.type'),
       dataIndex: 'queryType',
-      width: 90,
-      render: (value) => <Tag>{value}</Tag>,
+      // Wide enough for the longest label ("Query by Message Key"); a narrower column wraps it in
+      // the tag and grows the row.
+      width: 160,
+      render: (value: string) => {
+        const labelKey = QUERY_TYPE_LABEL_KEYS[value];
+        return <Tag>{labelKey ? t(labelKey) : value}</Tag>;
+      },
     },
     { title: 'Topic', dataIndex: 'topic', ellipsis: true },
     { title: 'Message ID / Key', render: (_, row) => row.msgId || row.messageKey || '-' },
