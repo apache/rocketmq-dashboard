@@ -189,6 +189,20 @@ describe('InstancePage', () => {
     expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledTimes(Math.ceil(count / 100));
   });
 
+  it('keeps the instance table within the 1600px viewport containerTest', async () => {
+    renderPage();
+    await screen.findByText('production-proxy');
+
+    // 2026-10-28 实测：1600 视口下卡片内容宽 1330，实例表曾溢出 40px（备注列无声明宽、
+    // 操作列删除按钮被裁）。列宽合计须 <=1330，长文本列靠 ellipsis 收口。
+    const cols = Array.from(document.querySelectorAll('.ant-table-content colgroup col'));
+    const total = cols.reduce(
+      (sum, col) => sum + (parseInt((col as HTMLElement).style.width, 10) || 0),
+      0,
+    );
+    expect(total).toBeLessThanOrEqual(1330);
+  });
+
   it('discardsLaterCredentialPagesAfterTheVendorChangesTest', async () => {
     const oldPage = deferred<CloudCredentialPage>();
     const first = {

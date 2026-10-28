@@ -343,7 +343,7 @@ const AuditPage: React.FC = () => {
     {
       title: t('audit.time'),
       dataIndex: 'timestamp',
-      width: 180,
+      width: 170,
       // The wire carries a UTC wall clock; parsing it as browser-local would shift the render
       // by the server-viewer offset. The sorter is left to #6687's removal direction.
       defaultSortOrder: 'descend',
@@ -352,14 +352,14 @@ const AuditPage: React.FC = () => {
     {
       title: t('audit.operator'),
       dataIndex: 'operator',
-      width: 130,
+      width: 90,
       align: 'center',
       sorter: (a, b) => (a.operator ?? '').localeCompare(b.operator ?? ''),
     },
     {
       title: t('audit.opType'),
       dataIndex: 'operationType',
-      width: 190,
+      width: 140,
       align: 'center',
       sorter: (a, b) => (a.operationType ?? '').localeCompare(b.operationType ?? ''),
       render: renderOperationType,
@@ -367,7 +367,7 @@ const AuditPage: React.FC = () => {
     {
       title: t('audit.resourceType'),
       dataIndex: 'resourceType',
-      width: 150,
+      width: 110,
       ellipsis: true,
       align: 'right',
       sorter: (a, b) => (a.resourceType ?? '').localeCompare(b.resourceType ?? ''),
@@ -376,14 +376,14 @@ const AuditPage: React.FC = () => {
     {
       title: t('audit.cluster'),
       dataIndex: 'clusterId',
-      width: 140,
+      width: 110,
       ellipsis: true,
       sorter: (a, b) => (a.clusterId ?? '').localeCompare(b.clusterId ?? ''),
     },
     {
       title: t('audit.target'),
       dataIndex: 'target',
-      width: 200,
+      width: 170,
       ellipsis: true,
       align: 'center',
       render: (_: string, record) => {
@@ -427,14 +427,14 @@ const AuditPage: React.FC = () => {
       // （实测各 290），配合 TagList 的 nowrap 会把标签压窄到逐个带省略号。
       // 450 = 190(tagMaxWidth 上限) + 123 + 104 + gap 8 + 单元格内边距 16，留 9px 余量；
       // 全表合计 1640，1920 视口下容器 1650，不会引出横向滚动条。
-      width: 450,
+      width: 330,
       ellipsis: true,
       render: renderDetail,
     },
     {
       title: t('audit.result'),
       dataIndex: 'result',
-      width: 80,
+      width: 70,
       align: 'center',
       sorter: (a, b) => (a.result ?? '').localeCompare(b.result ?? ''),
       render: renderResult,
@@ -442,6 +442,7 @@ const AuditPage: React.FC = () => {
     {
       title: t('audit.error'),
       dataIndex: 'errorMessage',
+      width: 140,
       ellipsis: true,
     },
   ];

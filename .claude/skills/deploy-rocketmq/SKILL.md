@@ -37,7 +37,8 @@ description: 部署 RocketMQ Studio 与开源 RocketMQ。当用户说 部署 stu
 
 ### 测试集群可直接操作（用户授权 2026-10-14）
 
-为验证 studio 功能，**测试环境（ECS 47.98.43.243 + ACK `rocketmq1` 命名空间）可以直接操作，无需先问**：
+为验证 studio 功能，**测试环境（ECS + ACK `rocketmq1` 命名空间；地址一律从本地 `export` 的
+`SSH_TARGET` / `STUDIO_URL` 环境变量取，仓库不存真实 IP）可以直接操作，无需先问**：
 含改 broker 配置、重启 broker / Pod、重启 ECS 上的 `rmq-loadgen` 容器、开 ACL、建演示 topic/group 等
 破坏性动作。前提是操作后**恢复原状**，或在 `rocketmq-studio-docs/progress/` 当日文档里记录留存状态。
 生产/预发集群不在此授权内。
@@ -385,9 +386,9 @@ proxy SLB（proxy 会把自己应答为 broker 地址）；nameserver SLB 适合
 
 | Service | namespace | 内网 IP | 端口 |
 |---------|-----------|---------|------|
-| rocketmq1-proxy-slb | rocketmq1 | 10.0.2.11 | 8080 remoting / 8081 gRPC |
-| rocketmq1-nameserver-slb | rocketmq1 | 10.0.1.31 | 9876 |
-| rocketmq2-nameserver-slb | rocketmq2 | 10.0.1.32 | 9876 |
+| rocketmq1-proxy-slb | rocketmq1 | `<kubectl get svc -n rocketmq1 查询>` | 8080 remoting / 8081 gRPC |
+| rocketmq1-nameserver-slb | rocketmq1 | `<kubectl get svc -n rocketmq1 查询>` | 9876 |
+| rocketmq2-nameserver-slb | rocketmq2 | `<kubectl get svc -n rocketmq2 查询>` | 9876 |
 
 ### 2. 创建四种类型的 topic
 
