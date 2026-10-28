@@ -55,7 +55,7 @@ const statusColors: Record<NotificationDeliveryRecord['status'], string> = {
   FAILED: 'error',
 };
 
-const NotificationDeliveriesPage = () => {
+const NotificationDeliveriesPage = ({ embedded = false }: { embedded?: boolean } = {}) => {
   const { t } = useLang();
   const [items, setItems] = useState<NotificationDeliveryRecord[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
@@ -317,8 +317,10 @@ const NotificationDeliveriesPage = () => {
 
   return (
     <>
-      <div style={{ padding: 24 }}>
-        <PageHeader title={t('deliveries.title')} subtitle={t('deliveries.subtitle')} />
+      <div style={{ padding: embedded ? 0 : 24 }}>
+        {!embedded && (
+          <PageHeader title={t('deliveries.title')} subtitle={t('deliveries.subtitle')} />
+        )}
         <Card bodyStyle={{ padding: 20 }}>
           <Flex gap={12} wrap="wrap" style={{ marginBottom: 20 }}>
             <Button
