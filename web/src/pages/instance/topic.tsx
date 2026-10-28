@@ -386,6 +386,8 @@ const TopicPageContent = ({
   useEffect(
     () => () => {
       syncRequestIdRef.current += 1;
+      detailRequestIdRef.current += 1;
+      consumersRequestIdRef.current += 1;
     },
     [],
   );
@@ -487,6 +489,20 @@ const TopicPageContent = ({
     },
     [selectedInstanceId],
   );
+
+  const changeConsumerPage = (topic: Topic, page: number, pageSize: number) => {
+    const detailRequestId = detailRequestIdRef.current;
+    const request = loadTopicConsumers(topic, page, pageSize);
+    const consumersRequestId = consumersRequestIdRef.current;
+    void request.catch(() => {
+      if (
+        detailRequestId === detailRequestIdRef.current &&
+        consumersRequestId === consumersRequestIdRef.current
+      ) {
+        message.error('Topic 详情加载失败，请稍后重试');
+      }
+    });
+  };
 
   // ─── Open detail modal ────────────────────────────────────────
   const openDetail = useCallback(
@@ -1463,7 +1479,11 @@ const TopicPageContent = ({
       <Modal
         title={selectedTopic?.name}
         open={detailModalOpen}
-        onCancel={() => setDetailModalOpen(false)}
+        onCancel={() => {
+          detailRequestIdRef.current += 1;
+          consumersRequestIdRef.current += 1;
+          setDetailModalOpen(false);
+        }}
         width={1080}
         destroyOnHidden
         footer={null}
@@ -1509,7 +1529,7 @@ const TopicPageContent = ({
                 showSizeChanger: true,
                 pageSizeOptions: [10, 20, 50, 100],
                 onChange: (page, pageSize) => {
-                  void loadTopicConsumers(selectedTopic, page, pageSize);
+                  changeConsumerPage(selectedTopic, page, pageSize);
                 },
               }}
               size="small"
