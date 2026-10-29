@@ -13,14 +13,15 @@
 #  * See the License for the specific language governing permissions and
 #  * limitations under the License.
 #
-# 从源码构建 Apache RocketMQ 开源镜像（默认 develop 分支）
+# 从源码构建 Apache RocketMQ 开源镜像（默认钉已发布 tag rocketmq-all-5.5.0）
 # 用法: ./build.sh（自动判断地理位置，国内走阿里源）
-#       或 docker compose build，可用 --build-arg ROCKETMQ_BRANCH=rocketmq-all-5.5.0 指定分支/tag
+#       或 docker compose build，可用 --build-arg ROCKETMQ_BRANCH=rocketmq-all-5.5.1 换版本、
+#       ROCKETMQ_BRANCH=develop 跟未发布分支
 
 FROM maven:3.9-eclipse-temurin-17 AS builder
 
 ARG ROCKETMQ_REPO=https://github.com/apache/rocketmq.git
-ARG ROCKETMQ_BRANCH=develop
+ARG ROCKETMQ_BRANCH=rocketmq-all-5.5.0
 # true 时 apt / Maven 走阿里镜像源（国内网络加速），由 build.sh 自动探测
 ARG USE_CN_MIRROR=false
 

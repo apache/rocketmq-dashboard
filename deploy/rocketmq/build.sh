@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# 构建 apache-rocketmq:develop 镜像
+# 构建 apache-rocketmq:5.5.0 镜像（源码钉已发布 tag rocketmq-all-5.5.0）
 # 自动判断地理位置：国内走阿里源（apt / Maven），国外用默认源
 set -e
 cd "$(dirname "$0")"
