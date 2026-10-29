@@ -33,6 +33,7 @@ export interface AlertRule {
   enabled: boolean;
   lastTriggered: string | null;
   description: string;
+  severity?: 'critical' | 'warning' | 'info' | null;
   instanceId?: string;
   consumerGroup?: string;
   topic?: string;

@@ -750,6 +750,22 @@ const AlertsPageContent = ({ domain = 'CLUSTER', embedded = false }: AlertsPageP
       render: (metric: string) => metricLabel(metric),
     },
     {
+      title: t('alerts.severity'),
+      dataIndex: 'severity',
+      width: 90,
+      render: (severity: AlertRule['severity']) => {
+        const value = severity ?? 'info';
+        const color = value === 'critical' ? 'red' : value === 'warning' ? 'orange' : 'blue';
+        const label =
+          value === 'critical'
+            ? t('alerts.severityCritical')
+            : value === 'warning'
+              ? t('alerts.severityWarning')
+              : t('alerts.severityInfo');
+        return <Tag color={color}>{label}</Tag>;
+      },
+    },
+    {
       title: t('alerts.threshold'),
       width: 96,
       ellipsis: { showTitle: true },
@@ -1223,6 +1239,21 @@ const AlertsPageContent = ({ domain = 'CLUSTER', embedded = false }: AlertsPageP
               rules={[{ required: true, message: t('alerts.ruleNameRequired') }]}
             >
               <Input placeholder={t('alerts.ruleNamePlaceholder')} />
+            </Form.Item>
+
+            <Form.Item
+              name="severity"
+              label={t('alerts.severity')}
+              initialValue="info"
+              tooltip={t('alerts.severityHelp')}
+            >
+              <Select
+                options={[
+                  { value: 'critical', label: t('alerts.severityCritical') },
+                  { value: 'warning', label: t('alerts.severityWarning') },
+                  { value: 'info', label: t('alerts.severityInfo') },
+                ]}
+              />
             </Form.Item>
 
             <Form.Item
