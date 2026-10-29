@@ -79,14 +79,14 @@ const AuditSummaryCards = ({ summary, loading }: Props) => {
   // 成功率配色按阈值走，不再写死绿色（用户约定 2026-10-16）：47% 曾照样显示绿色，读起来像健康。
   const successColor = successRate >= 95 ? '#52c41a' : successRate >= 80 ? '#faad14' : '#cf1322';
   return (
-    <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+    <Row gutter={[12, 12]} align="stretch" style={{ marginBottom: 16 }}>
       <Col xs={12} lg={6}>
-        <Card size="small">
+        <Card size="small" style={{ height: '100%' }}>
           <Statistic title={t('audit.summaryMatched')} value={data.total} />
         </Card>
       </Col>
       <Col xs={12} lg={6}>
-        <Card size="small">
+        <Card size="small" style={{ height: '100%' }}>
           <Statistic
             title={t('audit.summarySuccessRate')}
             value={successRate}
@@ -104,7 +104,7 @@ const AuditSummaryCards = ({ summary, loading }: Props) => {
         </Card>
       </Col>
       <Col xs={12} lg={6}>
-        <Card size="small">
+        <Card size="small" style={{ height: '100%' }}>
           <Statistic
             title={t('auditInsights.failPartial')}
             value={`${data.failed} / ${data.partial}`}
@@ -113,17 +113,17 @@ const AuditSummaryCards = ({ summary, loading }: Props) => {
         </Card>
       </Col>
       <Col xs={12} lg={6}>
-        <Card size="small">
+        <Card size="small" style={{ height: '100%' }}>
           <Statistic title={t('audit.summaryOperators')} value={data.uniqueOperators} />
         </Card>
       </Col>
       <Col xs={24} lg={12}>
-        <Card size="small" title={t('audit.summaryTopOperations')}>
+        <Card size="small" title={t('audit.summaryTopOperations')} style={{ height: '100%' }}>
           <BucketList items={data.byOperation} total={data.total} kind="operation" />
         </Card>
       </Col>
       <Col xs={24} lg={12}>
-        <Card size="small" title={t('audit.summaryResourceTypes')}>
+        <Card size="small" title={t('audit.summaryResourceTypes')} style={{ height: '100%' }}>
           <BucketList items={data.byResourceType} total={data.total} kind="resource" />
         </Card>
       </Col>
