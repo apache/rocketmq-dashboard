@@ -139,8 +139,7 @@ public class RocketMQMessageProvider implements MessageProvider {
             if (begin >= 0 && end >= 0 && end - begin > MAX_TOPIC_QUERY_WINDOW_MILLIS) {
                 throw new BusinessException(400, "Topic message query time range must not exceed 7 days");
             }
-            return MessageQueryResult.complete(
-                    queryByTopic(instanceId, topic, tag, begin, end, DEFAULT_TOPIC_LIMIT));
+            return queryByTopic(instanceId, topic, tag, begin, end, DEFAULT_TOPIC_LIMIT);
         }
 
         log.warn("queryMessages requires at least one of msgId/topic, returning empty list");
@@ -365,105 +364,121 @@ public class RocketMQMessageProvider implements MessageProvider {
      * Scan a topic within a time range on the pooled long-lived pull consumer, mirroring the
      * approach used by the RocketMQ dashboard for time-range topic queries.
      */
-    private List<MessageRecordVO> queryByTopic(String instanceId, String topic, String tag,
-                                                long begin, long end, int limit) {
+    private MessageQueryResult queryByTopic(String instanceId, String topic, String tag,
+                                            long begin, long end, int limit) {
         int resultLimit = Math.min(limit, TOPIC_QUERY_HARD_CAP);
-        return runtimeAdminClientResolver.executePullConsumer(instanceId, consumer -> {
-            PriorityQueue<MessageRecordVO> newestMessages = new PriorityQueue<>(TOPIC_QUERY_ORDER);
-            try {
-                Set<MessageQueue> queues = consumer.fetchSubscribeMessageQueues(topic);
-                if (queues == null || queues.isEmpty()) {
-                    return Collections.emptyList();
+        return runtimeAdminClientResolver.executePullConsumer(instanceId,
+                consumer -> scanTopicMessages(consumer, topic, tag, begin, end, resultLimit));
+    }
+
+    private MessageQueryResult scanTopicMessages(DefaultMQPullConsumer consumer, String topic, String tag,
+                                                 long begin, long end, int resultLimit) {
+        PriorityQueue<MessageRecordVO> newestMessages = new PriorityQueue<>(TOPIC_QUERY_ORDER);
+        boolean mayBeTruncated = false;
+        try {
+            Set<MessageQueue> queues = consumer.fetchSubscribeMessageQueues(topic);
+            if (queues == null || queues.isEmpty()) {
+                return MessageQueryResult.complete(Collections.emptyList());
+            }
+            for (MessageQueue queue : queues) {
+                TopicQueueScanPlan scanPlan = buildTopicQueueScanPlan(consumer, queue, begin, end);
+                if (scanPlan.isEmpty()) {
+                    continue;
                 }
-                for (MessageQueue queue : queues) {
-                    TopicQueueScanPlan scanPlan = buildTopicQueueScanPlan(consumer, queue, begin, end);
-                    if (scanPlan.isEmpty()) {
+                if (scanPlan.truncated()) {
+                    log.info("Truncate topic query for {} queue {} to offsets [{}..{}) within the guarded tail budget",
+                            topic, queue, scanPlan.startOffset(), scanPlan.endOffsetExclusive());
+                    mayBeTruncated = true;
+                }
+                int consecutiveIllegalOffsets = 0;
+                int pullAttempts = 0;
+                long offset = scanPlan.startOffset();
+                while (offset < scanPlan.endOffsetExclusive()) {
+                    if (++pullAttempts > MAX_PULL_ATTEMPTS_PER_QUEUE) {
+                        log.warn("Stop topic query for {} because queue {} exhausted the guarded pull budget at offset {}",
+                                topic, queue, offset);
+                        break;
+                    }
+                    PullResult pullResult = consumer.pull(queue, "*", offset, TOPIC_PULL_BATCH_SIZE);
+                    if (pullResult == null) {
+                        log.warn("Stop topic query for {} because queue {} returned no pull result", topic, queue);
+                        break;
+                    }
+                    long nextOffset = pullResult.getNextBeginOffset();
+                    if (nextOffset <= offset) {
+                        log.warn("Stop topic query for {} because queue {} did not advance offset {}", topic, queue, offset);
+                        break;
+                    }
+                    offset = Math.min(nextOffset, scanPlan.endOffsetExclusive());
+                    if (pullResult.getPullStatus() == PullStatus.OFFSET_ILLEGAL) {
+                        // The broker returned a corrected offset in nextBeginOffset because
+                        // the requested offset is no longer valid (expired, compacted, or
+                        // before the queue's minimum offset). Retry from the corrected
+                        // position instead of abandoning the queue -- otherwise messages
+                        // that still exist after the corrected offset are silently dropped.
+                        if (++consecutiveIllegalOffsets > MAX_CONSECUTIVE_OFFSET_ILLEGAL) {
+                            log.warn("Stop topic query for {} because queue {} returned OFFSET_ILLEGAL "
+                                    + "{} times consecutively, giving up at offset {}", topic, queue,
+                                    consecutiveIllegalOffsets, offset);
+                            break;
+                        }
+                        log.debug("Offset was illegal for queue {} in topic {}, retrying from {}",
+                                queue, topic, offset);
                         continue;
                     }
-                    if (scanPlan.truncated()) {
-                        log.info("Truncate topic query for {} queue {} to offsets [{}..{}) within the guarded tail budget",
-                                topic, queue, scanPlan.startOffset(), scanPlan.endOffsetExclusive());
-                    }
-                    int consecutiveIllegalOffsets = 0;
-                    int pullAttempts = 0;
-                    for (long offset = scanPlan.startOffset(); offset < scanPlan.endOffsetExclusive(); ) {
-                        if (++pullAttempts > MAX_PULL_ATTEMPTS_PER_QUEUE) {
-                            log.warn("Stop topic query for {} because queue {} exhausted the guarded pull budget at offset {}",
-                                    topic, queue, offset);
-                            break;
-                        }
-                        PullResult pullResult = consumer.pull(queue, "*", offset, TOPIC_PULL_BATCH_SIZE);
-                        if (pullResult == null) {
-                            log.warn("Stop topic query for {} because queue {} returned no pull result", topic, queue);
-                            break;
-                        }
-                        long nextOffset = pullResult.getNextBeginOffset();
-                        if (nextOffset <= offset) {
-                            log.warn("Stop topic query for {} because queue {} did not advance offset {}", topic, queue, offset);
-                            break;
-                        }
-                        offset = Math.min(nextOffset, scanPlan.endOffsetExclusive());
-                        if (pullResult.getPullStatus() == PullStatus.OFFSET_ILLEGAL) {
-                            // The broker returned a corrected offset in nextBeginOffset because
-                            // the requested offset is no longer valid (expired, compacted, or
-                            // before the queue's minimum offset). Retry from the corrected
-                            // position instead of abandoning the queue -- otherwise messages
-                            // that still exist after the corrected offset are silently dropped.
-                            if (++consecutiveIllegalOffsets > MAX_CONSECUTIVE_OFFSET_ILLEGAL) {
-                                log.warn("Stop topic query for {} because queue {} returned OFFSET_ILLEGAL "
-                                        + "{} times consecutively, giving up at offset {}", topic, queue,
-                                        consecutiveIllegalOffsets, offset);
-                                break;
-                            }
-                            log.debug("Offset was illegal for queue {} in topic {}, retrying from {}",
-                                    queue, topic, offset);
-                            continue;
-                        }
-                        if (pullResult.getPullStatus() == PullStatus.NO_MATCHED_MSG) {
-                            // The broker can skip removed messages even for a wildcard pull.
-                            // An advancing empty batch is not the end of the queue.
-                            consecutiveIllegalOffsets = 0;
-                            continue;
-                        }
-                        if (pullResult.getPullStatus() != PullStatus.FOUND
-                                || pullResult.getMsgFoundList() == null) {
-                            break;
-                        }
+                    if (pullResult.getPullStatus() == PullStatus.NO_MATCHED_MSG) {
+                        // The broker can skip removed messages even for a wildcard pull.
+                        // An advancing empty batch is not the end of the queue.
                         consecutiveIllegalOffsets = 0;
-                        for (MessageExt messageExt : pullResult.getMsgFoundList()) {
-                            if (messageExt.getStoreTimestamp() < begin
-                                    || messageExt.getStoreTimestamp() > end) {
-                                continue;
-                            }
-                            if (!matchesTag(messageExt, tag)) {
-                                continue;
-                            }
-                            addTopicQueryCandidate(newestMessages, toRecordVO(messageExt, queue.getBrokerName()), resultLimit);
+                        continue;
+                    }
+                    if (pullResult.getPullStatus() != PullStatus.FOUND
+                            || pullResult.getMsgFoundList() == null) {
+                        break;
+                    }
+                    consecutiveIllegalOffsets = 0;
+                    for (MessageExt messageExt : pullResult.getMsgFoundList()) {
+                        if (messageExt.getStoreTimestamp() < begin
+                                || messageExt.getStoreTimestamp() > end) {
+                            continue;
                         }
+                        if (!matchesTag(messageExt, tag)) {
+                            continue;
+                        }
+                        addTopicQueryCandidate(newestMessages, toRecordVO(messageExt, queue.getBrokerName()), resultLimit);
                     }
                 }
-            } catch (Exception e) {
-                if (isRetryTopicReadBlocked(topic, e)) {
-                    // Reading a %RETRY%<group> topic through the shared pooled pull consumer is
-                    // rejected by broker ACL (the pull consumer group must equal the retry topic's
-                    // group). We deliberately do NOT spin up a group-matched pull consumer: it would
-                    // register as a member of that real group and take part in its push-consumer
-                    // rebalance, stalling queues. Degrade to an empty result instead of failing.
-                    log.warn("queryByTopic(topic={}) skipped: reading a %RETRY% topic requires a "
-                            + "group-matched pull consumer; returning empty. cause={}", topic, e.getMessage());
-                    return Collections.emptyList();
+                // Every give-up above stops with the rest of the planned window unread; only a
+                // scan that consumed offsets up to the planned end is known to be exhaustive.
+                if (offset < scanPlan.endOffsetExclusive()) {
+                    mayBeTruncated = true;
                 }
-                if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST, ResponseCode.NO_MESSAGE)) {
-                    log.info("queryByTopic(topic={}) matched nothing ({}), returning empty list", topic, e.getMessage());
-                    return Collections.emptyList();
-                }
-                log.warn("queryByTopic(topic={}) failed: {}", topic, e.getMessage());
-                throw new BusinessException(502, "Failed to query messages by topic: " + e.getMessage());
             }
-            return newestMessages.stream()
-                    .sorted(TOPIC_QUERY_ORDER.reversed())
-                    .toList();
-        });
+        } catch (Exception e) {
+            if (isRetryTopicReadBlocked(topic, e)) {
+                // Reading a %RETRY%<group> topic through the shared pooled pull consumer is
+                // rejected by broker ACL (the pull consumer group must equal the retry topic's
+                // group). We deliberately do NOT spin up a group-matched pull consumer: it would
+                // register as a member of that real group and take part in its push-consumer
+                // rebalance, stalling queues. Degrade to an empty result instead of failing.
+                log.warn("queryByTopic(topic={}) skipped: reading a %RETRY% topic requires a "
+                        + "group-matched pull consumer; returning empty. cause={}", topic, e.getMessage());
+                return MessageQueryResult.complete(Collections.emptyList());
+            }
+            if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST, ResponseCode.NO_MESSAGE)) {
+                log.info("queryByTopic(topic={}) matched nothing ({}), returning empty list", topic, e.getMessage());
+                return MessageQueryResult.complete(Collections.emptyList());
+            }
+            log.warn("queryByTopic(topic={}) failed: {}", topic, e.getMessage());
+            throw new BusinessException(502, "Failed to query messages by topic: " + e.getMessage());
+        }
+        List<MessageRecordVO> result = newestMessages.stream()
+                .sorted(TOPIC_QUERY_ORDER.reversed())
+                .toList();
+        // Mirrors queryByKey: once the newest-N budget is full, older candidates may have been
+        // dropped, so the scan is not known to be exhaustive.
+        return mayBeTruncated || newestMessages.size() >= resultLimit
+                ? MessageQueryResult.truncated(result) : MessageQueryResult.complete(result);
     }
 
     /**
