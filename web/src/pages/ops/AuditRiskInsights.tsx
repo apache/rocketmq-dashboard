@@ -235,9 +235,9 @@ const AuditRiskInsights = ({ summary, records, loading }: Props) => {
       }
       style={{ marginBottom: 16 }}
     >
-      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+      <Row gutter={[12, 12]} align="stretch" style={{ marginBottom: 16 }}>
         <Col xs={12} lg={12}>
-          <Card size="small">
+          <Card size="small" style={{ height: '100%' }}>
             <Statistic
               title={t('auditInsights.controlPlaneFailures')}
               value={insights.controlPlaneFailureCount}
@@ -251,7 +251,7 @@ const AuditRiskInsights = ({ summary, records, loading }: Props) => {
           </Card>
         </Col>
         <Col xs={12} lg={12}>
-          <Card size="small">
+          <Card size="small" style={{ height: '100%' }}>
             <Statistic
               title={t('auditInsights.topOperator')}
               value={insights.topOperator?.name ?? '-'}
