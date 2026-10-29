@@ -202,6 +202,22 @@ class MybatisPlusAuditRepositoryTest {
     }
 
     @Test
+    void deleteBeforeContinuesAfterConcurrentDeletionOfSelectedIdsTest() {
+        when(auditMapper.selectList(any()))
+                .thenReturn(List.of(auditRecord(1L), auditRecord(2L)))
+                .thenReturn(List.of(auditRecord(3L)));
+        // Another worker removed id 2 after the first select. Id 3 is still expired.
+        when(auditMapper.deleteByIds(List.of(1L, 2L))).thenReturn(1);
+        when(auditMapper.deleteByIds(List.of(3L))).thenReturn(1);
+
+        int deleted = repository.deleteBefore(LocalDateTime.of(2026, 8, 1, 0, 0), 2, 5);
+
+        verify(auditMapper, times(2)).selectList(any());
+        verify(auditMapper).deleteByIds(List.of(3L));
+        assertThat(deleted).isEqualTo(2);
+    }
+
+    @Test
     void deleteBeforeShouldStopAfterConfiguredMaxBatchesTest() {
         when(auditMapper.selectList(any()))
                 .thenReturn(List.of(auditRecord(1L), auditRecord(2L)))

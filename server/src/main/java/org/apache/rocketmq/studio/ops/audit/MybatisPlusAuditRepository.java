@@ -238,7 +238,9 @@ public class MybatisPlusAuditRepository implements AuditRepository {
             }
             int deleted = auditMapper.deleteByIds(ids);
             totalDeleted += deleted;
-            if (deleted < batchSize) {
+            // A concurrent cleanup may have deleted some selected ids. The number affected
+            // does not tell us whether later expired rows are still waiting in the table.
+            if (expired.size() < batchSize) {
                 break;
             }
         }
