@@ -217,14 +217,16 @@ $SSH 'cd /opt/rocketmq/rocketmq && ./build.sh'
 ```
 
 - `build.sh` 自动判断地理位置：国内切阿里 apt/Maven 源，国外用默认源。
-- Dockerfile 为多阶段构建：builder 阶段 `git clone --depth 1 -b develop
+- Dockerfile 为多阶段构建：builder 阶段 `git clone --depth 1 -b rocketmq-all-5.5.0
   https://github.com/apache/rocketmq.git` 后执行
   `mvn -Prelease-all -DskipTests clean install`，运行阶段仅保留
   `bin/ conf/ lib/` 产物，基础镜像 `alibabadragonwell/dragonwell:17-anolis`（yum 系，国内拉取快）。
 - 构建阶段需访问 github.com，国内机器若 clone 慢或失败，用
   `--build-arg ROCKETMQ_REPO=<镜像仓库地址>` 换源。
-- 首次构建需 10-20 分钟；如需指定其他分支或 tag：
-  `./build.sh --build-arg ROCKETMQ_BRANCH=rocketmq-all-5.5.0`
+- 首次构建需 10-20 分钟；默认钉已发布 tag（与 `server/pom.xml` 的 `rocketmq.version` 对齐），
+  换版本用 `./build.sh --build-arg ROCKETMQ_BRANCH=rocketmq-all-5.5.1` 并同步改
+  `docker-compose.yml` 的 image tag；跟未发布分支用 `ROCKETMQ_BRANCH=develop`（仅限本地排查，
+  不要把 develop 钉回仓库）。
 
 ### 3. 启动（仅核心服务）
 
@@ -599,5 +601,5 @@ docker compose exec nameserver sh bin/mqadmin queryMsgByKey \
 - **Maven 分发包下载慢**：`archive.apache.org` 国内常只有几 KB/s；改从
   `https://mirrors.aliyun.com/apache/maven/maven-3/<版本>/binaries/apache-maven-<版本>-bin.tar.gz`
   下载（阿里源实测 10MB/s+；如 3.9.16 即 `maven-3/3.9.16/binaries/apache-maven-3.9.16-bin.tar.gz`）。
-- **目标机已有同名镜像**（如上次部署遗留的 `apache-rocketmq:develop`、`mysql:8.0`）：
+- **目标机已有同名镜像**（如上次部署遗留的 `apache-rocketmq:5.5.0`、`mysql:8.0`）：
   可跳过构建直接 `docker compose up -d`，先 `docker images` 确认。

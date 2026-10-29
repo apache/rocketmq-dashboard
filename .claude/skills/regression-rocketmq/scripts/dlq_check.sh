@@ -16,7 +16,7 @@
 
 # 死信全链路回归：建 topic/group → Studio 发 3 条 → 必失败消费者重试进 DLQ →
 # Studio DLQ 接口可见 → 重投 → 清理。命名带时间戳，trap 保证收尾清理。
-# 依赖：目标机已有 deploy-rocketmq 模式 B/C 集群（容器网络 rocketmq_net + 镜像 apache-rocketmq:develop）。
+# 依赖：目标机已有 deploy-rocketmq 模式 B/C 集群（容器网络 rocketmq_net + 镜像 apache-rocketmq:5.5.0）。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,7 +25,7 @@ E2E_DIR="${E2E_DIR:-$SCRIPT_DIR/../../../../../../project/rocketmq-studio-docs/e
 : "${SSH_TARGET:?need: export SSH_TARGET=<user>@<host> before running}"
 SSH="ssh -o BatchMode=yes $SSH_TARGET"
 NAMESRV="${NAMESRV:-rmq-nameserver:9876}"
-RMQ_IMAGE="${RMQ_IMAGE:-apache-rocketmq:develop}"
+RMQ_IMAGE="${RMQ_IMAGE:-apache-rocketmq:5.5.0}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/e2e-dlq}"
 
 cd "$E2E_DIR"
