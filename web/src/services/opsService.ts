@@ -63,6 +63,16 @@ const alertRulesState: Record<AlertRuleDomain, AlertRule[]> = {
 };
 let alertSilencesState: AlertSilence[] = [];
 
+// Mock alert-rule ids must stay unique even when several rules are created or
+// imported within the same millisecond, so each id is one past the largest
+// id currently in use (never below the clock).
+function nextAlertRuleId(): number {
+  const existingIds = [...alertRulesState.CLUSTER, ...alertRulesState.BUSINESS].map(
+    (rule) => rule.id,
+  );
+  return Math.max(Date.now(), ...existingIds) + 1;
+}
+
 function copyAlertRule(rule: AlertRule): AlertRule {
   return {
     ...rule,
@@ -196,7 +206,7 @@ export async function importAlertRulesTransfer(
   domain: AlertRuleDomain = 'CLUSTER',
 ): Promise<AlertRule[]> {
   if (!isMockMode()) return opsApi.importAlertRulesTransfer(data, domain);
-  const startId = Date.now();
+  const startId = nextAlertRuleId();
   const imported = data.rules.map((rule, index) => ({
     ...copyAlertRule(rule as AlertRule),
     id: startId + index,
@@ -308,7 +318,7 @@ export async function createAlertRule(
 ): Promise<AlertRule> {
   if (isMockMode()) {
     const rule: AlertRule = {
-      id: Date.now(),
+      id: nextAlertRuleId(),
       name: '',
       metric: '',
       operator: '>',
