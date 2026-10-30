@@ -34,6 +34,23 @@ describe('parseMessageProperties', () => {
     });
   });
 
+  it('treats CR-only and mixed line endings as record separators', () => {
+    const result = parseMessageProperties(
+      'traceId=one\rtenant=demo\nregion=cn\rsignature=a=1\r\nenv=prod',
+    );
+
+    expect(result).toEqual({
+      properties: {
+        traceId: 'one',
+        tenant: 'demo',
+        region: 'cn',
+        signature: 'a=1',
+        env: 'prod',
+      },
+      errors: [],
+    });
+  });
+
   it('supports Windows line endings and reports duplicate keys', () => {
     const result = parseMessageProperties('traceId=first\r\ntenant=demo\r\ntraceId=second');
 
