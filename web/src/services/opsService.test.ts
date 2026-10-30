@@ -261,8 +261,8 @@ describe('ops service mock data', () => {
   it('assigns unique ids to rules created or imported in the same millisecond', async () => {
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_750_000_000_000);
     try {
-      const first = await createAlertRule({ name: 'same-tick-first', channels: ['email'] });
-      const second = await createAlertRule({ name: 'same-tick-second', channels: ['email'] });
+      const first = await createAlertRule({ metric: 'broker.tps', threshold: 100, name: 'same-tick-first', channels: ['email'] });
+      const second = await createAlertRule({ metric: 'broker.tps', threshold: 200, name: 'same-tick-second', channels: ['email'] });
       const imported = await importAlertRulesTransfer(
         {
           version: 1,
@@ -292,7 +292,7 @@ describe('ops service mock data', () => {
         },
         'CLUSTER',
       );
-      const afterImport = await createAlertRule({ name: 'same-tick-third', channels: ['email'] });
+      const afterImport = await createAlertRule({ metric: 'broker.tps', threshold: 300, name: 'same-tick-third', channels: ['email'] });
 
       const ids = [first.id, second.id, afterImport.id, ...imported.map((rule) => rule.id)];
       expect(new Set(ids).size).toBe(ids.length);
