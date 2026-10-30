@@ -116,6 +116,7 @@ PY
     fi
 else
     archive="${package_dir}/${archive_name}.tar.gz"
+    [ ! -e "$archive" ] || { echo "Target archive already exists: $archive" >&2; exit 1; }
     tar czf "$archive" .
 fi
 
