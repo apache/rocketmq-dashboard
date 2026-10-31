@@ -1,11 +1,26 @@
 #!/usr/bin/env bash
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # 回归环境体检：studio 可达且能登录、docker 开源集群、k8s 开源集群（有证书才查）、e2e 依赖。
 # 只读不改；缺失项只报告，修复动作见 SKILL.md。
 set -uo pipefail
 
-SSH_TARGET="${SSH_TARGET:-root@47.98.43.243}"
+: "${SSH_TARGET:?need: export SSH_TARGET=<user>@<host> before running}"
 SSH="ssh -o BatchMode=yes -o ConnectTimeout=8 $SSH_TARGET"
-STUDIO_URL="${STUDIO_URL:-http://47.98.43.243:6789}"
+: "${STUDIO_URL:?need: export STUDIO_URL=http://<host>:6789 before running}"
 K8S_NS="${K8S_NS:-rocketmq1}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 E2E_DIR="${E2E_DIR:-$SCRIPT_DIR/../../../../../../project/rocketmq-studio-docs/e2e-tests}"

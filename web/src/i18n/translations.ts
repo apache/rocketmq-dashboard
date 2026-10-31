@@ -34,6 +34,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'nav.clients': { zh: '客户端连接', en: 'Client Connections' },
   'nav.alertEvents': { zh: '告警事件', en: 'Alert Events' },
   'nav.alertDeliveries': { zh: '告警投递', en: 'Alert Deliveries' },
+  'nav.clusterEvents': { zh: '集群事件', en: 'Cluster Events' },
   'nav.alertRules': { zh: '集群告警', en: 'Cluster Alerts' },
   'nav.alertRuleAssets': { zh: '业务告警', en: 'Business Alerts' },
   'nav.audit': { zh: '审计日志', en: 'Audit Log' },
@@ -41,7 +42,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'nav.ai': { zh: 'AI 交互', en: 'AI Chat' },
   'nav.settings': { zh: '设置', en: 'Settings' },
 
-  // ─── Common ───
+  // ─── Common ──
   'common.search': { zh: '搜索...', en: 'Search...' },
   'common.searchPlaceholder': { zh: '搜索页面、功能...', en: 'Search pages, features...' },
   'common.create': { zh: '新建', en: 'Create' },
@@ -286,7 +287,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'cluster.warning': { zh: '告警', en: 'Warning' },
   'cluster.error': { zh: '异常', en: 'Error' },
   'cluster.offline': { zh: '离线', en: 'Offline' },
-  'cluster.heartbeat': { zh: '心跳时间', en: 'Heartbeat' },
   'cluster.restartNotSupported': {
     zh: '暂不支持在线重启，请通过运维平台操作',
     en: 'Online restart not supported, please use ops platform',
@@ -303,6 +303,9 @@ const translations: Record<string, Record<Lang, string>> = {
   'instance.count': { zh: '共 {n} 个实例', en: '{n} instances' },
   'instance.searchPlaceholder': { zh: '搜索实例 ID 或地址', en: 'Search instance ID or endpoint' },
   'instance.allTypes': { zh: '全部架构', en: 'All Types' },
+  'instance.allRegions': { zh: '全部地域', en: 'All Regions' },
+  'instance.filterByRegion': { zh: '按地域筛选', en: 'Filter by region' },
+  'instance.filterByType': { zh: '按架构筛选', en: 'Filter by architecture' },
   'instance.cloudType': { zh: '云服务', en: 'Cloud Service' },
   'instance.proxyLocalMode': { zh: 'Proxy Local 模式', en: 'Proxy Local Mode' },
   'instance.proxyClusterMode': { zh: 'Proxy Cluster 模式', en: 'Proxy Cluster Mode' },
@@ -463,6 +466,23 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'No {vendor} credentials. ',
   },
   'instance.addInSettings': { zh: '去设置中添加', en: 'Add in settings' },
+  'instance.nameserver': { zh: 'nameserver 集群', en: 'NameServer cluster' },
+  'instance.nameserverRequired': {
+    zh: '请选择 nameserver 集群',
+    en: 'Select a NameServer cluster',
+  },
+  'instance.nameserverExtra': {
+    zh: '实例的名字唯一性以该集群为边界，创建后不可更改',
+    en: 'Name uniqueness is scoped to this cluster and the binding cannot change later',
+  },
+  'instance.nameserverImmutable': {
+    zh: '创建时绑定，不可更改',
+    en: 'Bound at creation, cannot be changed',
+  },
+  'instance.selectNameserver': { zh: '选择 nameserver 集群', en: 'Select a NameServer cluster' },
+  'instance.noNameserver': { zh: '还没有注册 nameserver，', en: 'No NameServer registered yet, ' },
+  'instance.addInClusterPage': { zh: '去集群管理注册', en: 'register one in Cluster Management' },
+  'instance.nameserverColumn': { zh: 'nameserver 集群', en: 'NameServer cluster' },
   'instance.regionRequired': { zh: '请选择地域', en: 'Select a region' },
   'instance.selectRegion': { zh: '选择地域', en: 'Select a region' },
   'instance.cloudInstance': { zh: '云上实例', en: 'Cloud Instance' },
@@ -1351,6 +1371,16 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'settings.sessionTimeoutRequired': { zh: '请输入会话超时时长', en: 'Enter a session timeout.' },
   'settings.sessionTimeoutUnit': { zh: '会话超时单位', en: 'Session timeout unit' },
+  'settings.sessionIdleTimeout': { zh: '会话空闲超时', en: 'Session idle timeout' },
+  'settings.sessionIdleTimeoutHelp': {
+    zh: '令牌连续未使用的时长超过该值后会话即失效；0 表示仅按绝对超时判定，低于 10 分钟按 10 分钟生效。',
+    en: 'A session whose token stays unused longer than this is revoked; 0 keeps only the absolute timeout, and values below 10 minutes apply as 10.',
+  },
+  'settings.sessionIdleTimeoutRequired': {
+    zh: '请输入会话空闲超时时长',
+    en: 'Enter a session idle timeout.',
+  },
+  'settings.sessionIdleTimeoutUnit': { zh: '会话空闲超时单位', en: 'Session idle timeout unit' },
   'settings.minutes': { zh: '分钟', en: 'minutes' },
   'settings.saveSettings': { zh: '保存设置', en: 'Save settings' },
   'settings.loginRequiredHelp': {
@@ -1402,6 +1432,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'alerts.bulkDeletePartial': {
     zh: '删除完成：成功 {success}，失败 {failed}',
     en: 'Delete completed: {success} succeeded, {failed} failed',
+  },
+  'alerts.bulkDeleteFailed': {
+    zh: '{count} 条告警规则删除失败',
+    en: '{count} alert rules failed to delete',
   },
   'alerts.bulkEnableSuccess': {
     zh: '已启用 {count} 条告警规则',
@@ -1507,6 +1541,24 @@ const translations: Record<string, Record<Lang, string>> = {
   'sysAlerts.suppressionFilter': { zh: '通知抑制筛选', en: 'Filter by notification suppression' },
   'sysAlerts.allDeliveryStatuses': { zh: '全部投递状态', en: 'All delivery statuses' },
   'sysAlerts.notificationSuppressed': { zh: '通知已抑制', en: 'Notifications suppressed' },
+  'sysAlerts.labelCount': { zh: '标签 {count}', en: '{count} labels' },
+  'sysAlerts.colTitle': { zh: '告警标题', en: 'Alert' },
+  'sysAlerts.level': { zh: '级别', en: 'Level' },
+  'sysAlerts.status': { zh: '状态', en: 'Status' },
+  'sysAlerts.description': { zh: '描述', en: 'Description' },
+  'sysAlerts.labels': { zh: '标签', en: 'Labels' },
+  'sysAlerts.time': { zh: '时间', en: 'Time' },
+  'sysAlerts.batchAck': { zh: '批量确认（{count}）', en: 'Acknowledge {count}' },
+  'sysAlerts.batchHint': {
+    zh: '勾选后可批量确认；展开行查看确认信息、抑制原因、标签与投递/关联明细',
+    en: 'Select rows to acknowledge in batch; expand a row for ack info, suppression reason, labels and delivery/related details',
+  },
+  'sysAlerts.levelCountHint': {
+    zh: '当前页中该级别的告警条数（不是全库总数）',
+    en: 'Alerts of this level on the current page, not the server-wide total',
+  },
+  'queueBrowser.pulledTitle': { zh: '已拉取消息（{count}）', en: 'Pulled messages ({count})' },
+  'queueBrowser.closeEntry': { zh: '移除该条', en: 'Remove this entry' },
   'sysAlerts.notificationNotSuppressed': { zh: '未被抑制', en: 'Not suppressed' },
   'sysAlerts.collectorImplementations': {
     zh: '采集器组件：集群 {cluster}，业务 {business}',
@@ -1637,6 +1689,33 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.op.ACKNOWLEDGE_SYSTEM_ALERT': { zh: '确认系统告警', en: 'Acknowledge System Alert' },
   'audit.op.CREATE_ALERT_SILENCE': { zh: '创建告警静默', en: 'Create Alert Silence' },
   'audit.op.DELETE_ALERT_SILENCE': { zh: '删除告警静默', en: 'Delete Alert Silence' },
+  'audit.op.DELIVER_ALERT_NOTIFICATION': { zh: '投递告警通知', en: 'Deliver Alert Notification' },
+  'audit.op.RETRY_ALERT_NOTIFICATION': { zh: '重试投递告警', en: 'Retry Alert Notification' },
+  'audit.op.RETRY_ALERT_NOTIFICATION_MANUALLY': {
+    zh: '手动重试投递告警',
+    en: 'Retry Alert Notification Manually',
+  },
+  'audit.op.FAIL_ALERT_NOTIFICATION': { zh: '告警投递失败', en: 'Fail Alert Notification' },
+  'audit.op.SUMMARY_DASHBOARD': { zh: '查看监控面板', en: 'View Summary Dashboard' },
+
+  'clusterAlerts.subtitle': {
+    zh: '告警规则、告警事件、投递记录与集群事件',
+    en: 'Alert rules, alert events, delivery records and cluster events',
+  },
+  'clusterEvents.time': { zh: '时间', en: 'Time' },
+  'clusterEvents.event': { zh: '事件', en: 'Event' },
+  'clusterEvents.target': { zh: '对象', en: 'Target' },
+  'clusterEvents.cluster': { zh: '集群', en: 'Cluster' },
+  'clusterEvents.operator': { zh: '操作人', en: 'Operator' },
+  'clusterEvents.result': { zh: '结果', en: 'Result' },
+  'clusterEvents.detail': { zh: '详情', en: 'Detail' },
+  'clusterEvents.total': { zh: '共 {count} 条事件', en: '{count} events in total' },
+  'clusterEvents.loadFailed': { zh: '加载集群事件失败', en: 'Failed to load cluster events' },
+  'clusterEvents.bannerTitle': { zh: '集群事件来源', en: 'Where cluster events come from' },
+  'clusterEvents.bannerDescription': {
+    zh: '集群事件取自运维审计中记录的控制面变更：Broker / 集群配置修改、Broker 重启、Proxy 配置重载与地址增删。',
+    en: 'Cluster events are the control-plane changes recorded in the ops audit: broker / cluster config updates, broker restarts, proxy config reloads and proxy address changes.',
+  },
   'audit.op.IMPORT_CLOUD_INSTANCES': { zh: '导入云端实例', en: 'Import Cloud Instances' },
   'audit.op.UPDATE_GROUP_SETTINGS': { zh: '更新消费组设置', en: 'Update Group Settings' },
   'audit.op.CLEAR_ACKNOWLEDGED_SYSTEM_ALERTS': {
@@ -1666,6 +1745,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.res.ALERT_SILENCE': { zh: '告警静默', en: 'Alert Silence' },
   'audit.res.ALERT_RULE': { zh: '告警规则', en: 'Alert Rule' },
   'audit.res.SYSTEM_ALERT': { zh: '系统告警', en: 'System Alert' },
+  'audit.res.ALERT_NOTIFICATION': { zh: '告警通知', en: 'Alert Notification' },
   'audit.res.K8S_CERTIFICATE': { zh: 'K8s 证书', en: 'K8s Certificate' },
   'audit.result.SUCCESS': { zh: '成功', en: 'Success' },
   'audit.result.PARTIAL': { zh: '部分成功', en: 'Partial' },
@@ -1795,6 +1875,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '切换到真实数据模式并配置 LLM Provider 后，才会加载模型、工具目录和对话能力。',
     en: 'Models, the tool catalog and chat capabilities are loaded only after you switch to real data mode and configure an LLM provider.',
   },
+  'ai.mockConversationsUnavailable': {
+    zh: 'Mock 模式不加载或修改已保存的 AI 会话，请切换到真实数据模式后使用。',
+    en: 'Saved AI conversations are not loaded or changed in mock mode; switch to real data mode to use them.',
+  },
   'ai.mockToolsUnavailable': {
     zh: 'Mock 模式不加载 AI 工具目录，请切换到真实数据模式后使用。',
     en: 'The AI tool catalog is not loaded in mock mode; switch to real data mode to use it.',
@@ -1883,8 +1967,17 @@ const translations: Record<string, Record<Lang, string>> = {
   'ai.composer.modelLabel': { zh: '模型', en: 'Model' },
   'ai.composer.agentLabel': { zh: 'Agent', en: 'Agent' },
   'ai.composer.contextUsage': {
-    zh: '上下文约 {used} / {total} tokens（{percent}%）',
-    en: 'Context ≈ {used} / {total} tokens ({percent}%)',
+    zh: '上下文约 {used} / {total} tokens（{percent}%），剩余约 {remaining}；{source}',
+    en: 'Context ≈ {used} / {total} tokens ({percent}%), ≈ {remaining} left; {source}',
+  },
+  'ai.composer.contextRemaining': { zh: '剩 {remaining}', en: '{remaining} left' },
+  'ai.composer.contextSourceUsage': {
+    zh: '数字来自模型上报的 usage',
+    en: 'measured from the provider usage',
+  },
+  'ai.composer.contextSourceEstimate': {
+    zh: '按正文估算（模型未上报 usage）',
+    en: 'estimated from the transcript (the engine reported no usage)',
   },
   'ai.providerNotReady': { zh: 'AI 助手未启用', en: 'AI assistant is not enabled' },
   'ai.goToSettings': { zh: '去配置', en: 'Configure' },
@@ -1963,6 +2056,23 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'The tool input is outside the loaded event window',
   },
   'ai.tool.outputPending': { zh: '工具执行中，暂无结果', en: 'The tool is still running' },
+  'ai.tool.elapsedHint': {
+    zh: '本次工具调用的经过时间；重连到一个仍在执行的调用时从重连时刻起算',
+    en: 'Elapsed time of this tool call; counts from the reconnect when rejoining a call already in flight',
+  },
+  'ai.tool.mayTimeout': { zh: '可能超时', en: 'May be timing out' },
+  'ai.tool.outputRaw': { zh: '原文', en: 'Raw text' },
+  'ai.tool.outputStructured': { zh: '结构化视图', en: 'Structured view' },
+  'ai.queue.title': {
+    zh: '排队中 {count} 条（当前回答结束后按顺序发送）',
+    en: '{count} queued (sent in order when the current answer finishes)',
+  },
+  'ai.queue.first': { zh: '下一个发', en: 'Send next' },
+  'ai.queue.edit': { zh: '编辑', en: 'Edit' },
+  'ai.queue.remove': { zh: '删除', en: 'Remove' },
+  'ai.followups.title': { zh: '推荐追问', en: 'Suggested follow-ups' },
+  'ai.minimap.jump': { zh: '跳到第 {n} 条消息', en: 'Jump to message {n}' },
+  'layout.openMenu': { zh: '打开导航', en: 'Open navigation' },
   'ai.notice.warn': { zh: '注意', en: 'Notice' },
 
   // ─── AI page shell ───
@@ -2420,6 +2530,42 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Manage consumer-group subscriptions and progress, {count} groups in total',
   },
   'consumer.totalGroups': { zh: '共 {count} 个 Group', en: '{count} groups in total' },
+  'consumer.health.scoreLabel': { zh: '健康分:', en: 'Health score:' },
+  'consumer.health.scoreHint': {
+    zh: '100 起扣：每个 critical 问题 -25、warning -12，下限 0；扣分项见下方问题清单',
+    en: 'Starts at 100; each critical issue costs 25 and each warning 12, floored at 0. The deductions are the issues listed below',
+  },
+  'consumer.health.knownLagLabel': { zh: '已知堆积:', en: 'Known lag:' },
+  'consumer.health.knownLagHint': {
+    zh: '逐 Queue 位点差中可计算部分之和；不含不可用 Queue，与报告堆积口径不同',
+    en: 'Sum of per-queue lag over the queues whose offsets are computable; excludes unavailable queues, so its caliber differs from the reported lag',
+  },
+  'consumer.health.reportedLagLabel': { zh: '报告堆积:', en: 'Reported lag:' },
+  'consumer.health.reportedLagHint': {
+    zh: '消费组/Provider 上报的组维度总堆积；与已知堆积可能因不可用 Queue 或重试队列而不一致',
+    en: 'Group-level lag reported by the group or provider; may disagree with the known lag when some queues are unavailable or retry queues exist',
+  },
+  'consumer.health.queueProgressLabel': { zh: 'Queue 进度:', en: 'Queue progress:' },
+  'consumer.health.queueProgressValue': {
+    zh: '{queues} 个 Queue / {topics} 个 Topic',
+    en: '{queues} queues / {topics} topics',
+  },
+  'consumer.health.queueProgressHint': {
+    zh: '分子是诊断拿到的队列进度行数（观测到的 Queue 数），分母是订阅 Topic 去重数；不是完成率。核对覆盖是否完整请对照各 Topic 读队列数之和',
+    en: 'Numerator is the number of queue-progress rows observed, denominator the distinct subscribed topic count; it is not a completion ratio. Compare against the sum of read queues per topic to judge completeness',
+  },
+  'consumer.health.queueOffsetLabel': { zh: 'Queue 位点:', en: 'Queue offsets:' },
+  'consumer.health.queueOffsetHint': {
+    zh: '逐 Queue 堆积是否可计算；不可用通常因组离线或云端不提供 per-queue 位点',
+    en: 'Whether per-queue lag is computable; unavailable usually means the group is offline or the cloud exposes no per-queue offsets',
+  },
+  'consumer.health.offsetsOk': { zh: '均可计算', en: 'all computable' },
+  'consumer.health.offsetsUnknown': { zh: '{count} 个不可用', en: '{count} unavailable' },
+  'consumer.health.heartbeatLabel': { zh: '心跳:', en: 'Heartbeat:' },
+  'consumer.health.heartbeatHint': {
+    zh: '超过心跳阈值未上报的客户端数；阈值内显示正常',
+    en: 'Clients whose heartbeat exceeded the stale threshold; 正常 means none did',
+  },
   'consumer.importDone': { zh: '已导入 {created} 个 Group', en: 'Imported {created} groups' },
   'consumer.importDoneSkipped': {
     zh: '已导入 {created} 个 Group，{invalid} 行无效已跳过',
@@ -2453,6 +2599,10 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'All configurations and progress will be removed. This cannot be undone.',
   },
   'consumer.deleted': { zh: '消费组 {name} 已删除', en: 'Consumer group {name} deleted' },
+  'consumer.deleteFailed': {
+    zh: '删除消费组失败，请稍后重试',
+    en: 'Failed to delete consumer group. Please try again later.',
+  },
   'consumer.searchPlaceholder': { zh: '搜索 Group 名称或 Topic', en: 'Search group name or topic' },
   'consumer.allModes': { zh: '全部模式', en: 'All Modes' },
   'consumer.push': { zh: 'Push', en: 'Push' },
@@ -2473,6 +2623,15 @@ const translations: Record<string, Record<Lang, string>> = {
   'consumer.viewDistribution': { zh: '查看分布', en: 'View Distribution' },
   'consumer.resetToTime': { zh: '重置到指定时间', en: 'Reset to Time' },
   'consumer.resetSuccess': { zh: '位点重置成功', en: 'Offset reset successfully' },
+  'consumer.resetPreview.previewFailed': { zh: '预览失败', en: 'Preview failed' },
+  'consumer.resetPreview.targetOffsetUnavailable': {
+    zh: '目标位点不可用',
+    en: 'Target offset unavailable',
+  },
+  'consumer.resetPreview.currentOffsetUnavailable': {
+    zh: '消费组离线，当前位点不可用；重置将按目标时间定位',
+    en: 'Group offline, current offset unavailable; the reset targets the searched offset',
+  },
   'consumer.fetchListFailed': {
     zh: '消费组列表加载失败，请稍后重试',
     en: 'Failed to load consumer groups. Please try again later.',
@@ -2486,6 +2645,10 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Failed to load consume progress for consumer group {name}',
   },
   'consumer.createFailed': { zh: '消费组创建失败', en: 'Failed to create consumer group' },
+  'consumer.settingsLoadFailed': {
+    zh: '加载消费组配置失败，请稍后重试',
+    en: 'Failed to load consumer group settings. Please retry.',
+  },
   'consumer.resetFailed': { zh: '消费位点重置失败', en: 'Failed to reset consume offset' },
 
   // ─── Home Page (additional) ───
@@ -2872,6 +3035,18 @@ const translations: Record<string, Record<Lang, string>> = {
   'cluster.flushDiskType': { zh: '刷盘方式', en: 'Flush Disk Type' },
   'cluster.syncFlush': { zh: '同步刷盘', en: 'Sync Flush' },
   'cluster.asyncFlush': { zh: '异步刷盘', en: 'Async Flush' },
+  'cluster.flushDiskRestartWarning': {
+    zh: '刷盘类型已修改：该配置需要重启 Broker 后才生效，下发后请安排滚动重启',
+    en: 'Flush disk type changed: it only takes effect after the Broker restarts, so plan a rolling restart after applying',
+  },
+  'cluster.flushDiskRestartConfirmTitle': {
+    zh: '刷盘类型修改需重启生效',
+    en: 'The flush disk change needs a restart',
+  },
+  'cluster.flushDiskRestartConfirmContent': {
+    zh: '本次修改包含 flushDiskType（{from} → {to}）。运行中的 Broker 会忽略该变更直到重启，确认继续下发？',
+    en: 'This update includes flushDiskType ({from} → {to}). A running Broker ignores it until restarted. Apply anyway?',
+  },
   'cluster.autoCreateTopic': { zh: '自动创建 Topic', en: 'Auto Create Topic' },
   'cluster.autoCreateSubGroup': { zh: '自动创建订阅组', en: 'Auto Create Subscription Group' },
   'cluster.maxMessageSize': { zh: '最大消息大小 (MB)', en: 'Max Message Size (MB)' },
@@ -2898,6 +3073,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'cluster.restartProxySubmitted': {
     zh: 'Proxy 重启已提交: {addr}',
     en: 'Proxy restart submitted: {addr}',
+  },
+  'cluster.restartProxyFailed': {
+    zh: '重启 Proxy "{addr}" 失败，请稍后重试',
+    en: 'Failed to restart Proxy "{addr}". Please try again later.',
   },
   'cluster.restartBrokerConfirm': {
     zh: '确定要重启 Broker "{name}" 吗？',
@@ -2959,6 +3138,18 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.queueExtra': {
     zh: '每个 Broker 节点写 {write} / 读 {read} 个队列；读写队列数一般情况下需保持一致',
     en: '{write} write / {read} read queues per Broker node; keep them equal in general',
+  },
+  'topic.liteTtl': { zh: 'TTL（分钟）', en: 'TTL (minutes)' },
+  'topic.liteTtlUnit': { zh: '分钟', en: 'min' },
+  'topic.liteTtlRequired': { zh: '请输入 TTL', en: 'Please enter the TTL' },
+  'topic.liteTtlExtra': {
+    zh:
+      '子 LiteTopic 超过 TTL 未发送新消息即自动过期回收；范围 1-43200（30 天）。创建后在 LiteTopic ' +
+      '页「延长 TTL」调整，那里以毫秒为单位（60000 毫秒 = 1 分钟）',
+    en:
+      'Lite topics under this parent expire and are reclaimed after this many minutes without new ' +
+      'messages; range 1-43200 (30 days). Adjust it later from the LiteTopic page, where Extend TTL ' +
+      'takes milliseconds (60000 ms = 1 minute)',
   },
   'topic.remarkPlaceholder': {
     zh: '可选，描述 Topic 用途',
@@ -3029,9 +3220,8 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '你可以修改自己的密码；用户列表和账号状态仅对管理员开放。',
     en: 'You can change your own password; the user list and account status are only available to administrators.',
   },
-  'userMgmt.myAccount': { zh: '我的账号', en: 'My Account' },
   'userMgmt.changeMyPassword': { zh: '修改我的密码', en: 'Change My Password' },
-  'userMgmt.sessionOverview': { zh: '会话概览', en: 'Session Overview' },
+  'userMgmt.viewSessionsOf': { zh: '查看 {username} 的会话', en: 'View sessions of {username}' },
   'userMgmt.sessionOverviewLoadFailed': {
     zh: '加载会话概览失败',
     en: 'Failed to load session overview',
@@ -3048,6 +3238,24 @@ const translations: Record<string, Record<Lang, string>> = {
   'userMgmt.allRoles': { zh: '全部权限', en: 'All roles' },
   'userMgmt.roleAdmin': { zh: '管理员', en: 'Administrator' },
   'userMgmt.roleUser': { zh: '普通用户', en: 'Regular user' },
+  'userMgmt.roleGranted': { zh: '已授予管理员权限', en: 'Administrator role granted' },
+  'userMgmt.roleRevoked': { zh: '已撤销管理员权限', en: 'Administrator role revoked' },
+  'userMgmt.updateRoleFailed': {
+    zh: '修改权限失败，请稍后重试',
+    en: 'Failed to change the role. Please try again later.',
+  },
+  'userMgmt.grantRoleConfirmTitle': {
+    zh: '将「{username}」提升为管理员？',
+    en: 'Grant the administrator role to "{username}"?',
+  },
+  'userMgmt.revokeRoleConfirmTitle': {
+    zh: '撤销「{username}」的管理员权限？',
+    en: 'Revoke the administrator role from "{username}"?',
+  },
+  'userMgmt.roleChangeConfirmBody': {
+    zh: '该用户的所有会话将被注销，需要重新登录后新权限才会生效。',
+    en: "All of this user's sessions will be signed out; the new role takes effect after they sign in again.",
+  },
   'userMgmt.filterByStatus': { zh: '按状态筛选', en: 'Filter by status' },
   'userMgmt.allStatuses': { zh: '全部状态', en: 'All statuses' },
   'userMgmt.totalUsers': { zh: '共 {count} 个用户', en: '{count} users in total' },
@@ -3077,8 +3285,29 @@ const translations: Record<string, Record<Lang, string>> = {
   'userMgmt.userSessions': { zh: '用户会话', en: 'User Sessions' },
   'userMgmt.sessionsOf': { zh: '{username} 的会话', en: 'Sessions of {username}' },
   'userMgmt.revokeAll': { zh: '注销全部', en: 'Revoke All' },
+  'userMgmt.revokeSession': { zh: '注销会话', en: 'Revoke session' },
+  'userMgmt.revokeSessionConfirm': {
+    zh: '注销会话 #{id}？该用户的其他会话不受影响。',
+    en: 'Revoke session #{id}? Other sessions of this user stay active.',
+  },
+  'userMgmt.sessionRevoked': { zh: '已注销会话 #{id}', en: 'Revoked session #{id}' },
   'userMgmt.accountStatus': { zh: '账号状态', en: 'Account Status' },
   'userMgmt.passwordChangedAt': { zh: '密码修改时间', en: 'Password Changed At' },
+  'userMgmt.loginLockouts': { zh: '登录锁定', en: 'Login lockouts' },
+  'userMgmt.loginLockoutRemaining': {
+    zh: '{seconds} 秒后自动解锁',
+    en: 'unlocks in {seconds}s',
+  },
+  'userMgmt.loginLockoutHelp': {
+    zh: '该用户名连续登录失败达到上限被临时锁定，锁定期满自动解除，无需人工干预。',
+    en: 'This username exhausted its failed-login budget and is temporarily locked; the lock lifts by itself when it expires.',
+  },
+  'userMgmt.passwordMustChange': { zh: '待改密', en: 'Rotation due' },
+  'userMgmt.passwordMustChangeHelp': {
+    zh: '该账号的当前密码由他人设定（创建或管理员重置），所有者下次登录时必须修改。',
+    en: 'The current password was chosen by someone else (creation or admin reset); its owner must replace it at the next login.',
+  },
+  'userMgmt.clientOrigin': { zh: '来源', en: 'Origin' },
   'userMgmt.noActiveSessions': { zh: '暂无活跃会话', en: 'No active sessions' },
   'userMgmt.createTitle': { zh: '新建 Studio 用户', en: 'Create Studio User' },
   'userMgmt.initialPassword': { zh: '初始密码', en: 'Initial Password' },
@@ -3121,6 +3350,33 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'userMgmt.nothingToRevoke': { zh: '没有可注销的活跃会话', en: 'No active sessions to revoke' },
   'userMgmt.revokeFailed': { zh: '注销用户会话失败', en: 'Failed to revoke user sessions' },
+  'userMgmt.deleteConfirm': {
+    zh: '删除用户 {username}？',
+    en: 'Delete user {username}?',
+  },
+  'userMgmt.deleteDescription': {
+    zh: '该账号及其全部会话将被永久删除，此操作不可恢复。',
+    en: 'The account and all of its sessions are removed permanently; this cannot be undone.',
+  },
+  'userMgmt.deleted': { zh: '已删除用户 {username}', en: 'Deleted user {username}' },
+  'userMgmt.deleteFailed': { zh: '删除用户失败', en: 'Failed to delete user' },
+  'userMgmt.revokeAllSessions': { zh: '注销全部会话', en: 'Revoke all sessions' },
+  'userMgmt.revokeAllConfirmTitle': {
+    zh: '注销其他全部用户的活跃会话？',
+    en: 'Revoke all other active sessions?',
+  },
+  'userMgmt.revokeAllConfirmDescription': {
+    zh: '所有用户（你自己除外）都会被退出登录并需要重新登录。此操作用于疑似凭据泄露时的事件响应。',
+    en: 'Every user except you is signed out and must log in again. Use this to respond to a suspected credential leak.',
+  },
+  'userMgmt.revokedAllCount': {
+    zh: '已注销 {count} 个活跃会话（不含你自己的）',
+    en: 'Revoked {count} active sessions (your own were kept)',
+  },
+  'userMgmt.revokeAllFailed': {
+    zh: '注销全部会话失败',
+    en: 'Failed to revoke all sessions',
+  },
   'userMgmt.exportedCount': { zh: '已导出 {count} 个用户', en: 'Exported {count} users' },
   'userMgmt.exportFailed': {
     zh: '导出用户列表失败，请稍后重试',
@@ -3137,6 +3393,23 @@ const translations: Record<string, Record<Lang, string>> = {
   'login.passwordRequired': { zh: '密码为必填项', en: 'Password is required' },
   'login.success': { zh: '登录成功', en: 'Login successful' },
   'login.failed': { zh: '登录失败', en: 'Login failed' },
+  'login.changeFailed': { zh: '修改密码失败', en: 'Failed to change password' },
+  'login.mustChangePrompt': {
+    zh: '当前密码由管理员设定，请先修改密码',
+    en: 'This password was set by an administrator; change it to continue',
+  },
+  'login.rotationDescription': {
+    zh: '账号 {username} 的当前密码由他人设定，请设置新密码后进入控制台。',
+    en: 'The current password of {username} was chosen by someone else. Set a new one to enter the console.',
+  },
+  'login.newPassword': { zh: '新密码', en: 'New password' },
+  'login.newPasswordPlaceholder': { zh: '请输入新密码', en: 'Enter the new password' },
+  'login.newPasswordRequired': { zh: '请输入新密码', en: 'Enter the new password' },
+  'login.confirmNewPassword': { zh: '确认新密码', en: 'Confirm new password' },
+  'login.confirmNewPasswordPlaceholder': { zh: '请再次输入新密码', en: 'Repeat the new password' },
+  'login.confirmNewPasswordRequired': { zh: '请再次输入新密码', en: 'Repeat the new password' },
+  'login.passwordMismatch': { zh: '两次输入的密码不一致', en: 'The passwords do not match' },
+  'login.rotationSubmit': { zh: '修改密码并进入', en: 'Change password and continue' },
   'login.brandEyebrow': { zh: '控制台', en: 'Control plane' },
   'login.brandTitle': {
     zh: '统一管理每一条消息链路',
@@ -3748,6 +4021,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'liteTopic.status': { zh: '状态', en: 'Status' },
   'liteTopic.actions': { zh: '操作', en: 'Actions' },
   'liteTopic.extendTtl': { zh: '延长 TTL', en: 'Extend TTL' },
+  'liteTopic.createParent': { zh: '创建 Lite 父主题', en: 'Create Lite parent' },
   'liteTopic.viewSessions': { zh: '查看会话', en: 'View Sessions' },
   'liteTopic.sessionDetail': { zh: '会话详情', en: 'Session Detail' },
   'liteTopic.sessionId': { zh: '会话 ID', en: 'Session ID' },
@@ -3980,6 +4254,92 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  // ─── ResourceModel（资源命名与归属：创建表单问号弹窗内的说明）───
+  'resourceModel.svgTopologyAria': {
+    zh: '生产与预发两套 nameserver 环境下 Topic 名字的归属示意',
+    en: 'Topic ownership across the production and staging NameServer environments',
+  },
+  'resourceModel.svgDomainProd': {
+    zh: 'nameserver 集群「生产」',
+    en: 'NameServer cluster "production"',
+  },
+  'resourceModel.svgDomainStaging': {
+    zh: 'nameserver 集群「预发」',
+    en: 'NameServer cluster "staging"',
+  },
+  'resourceModel.svgChipOrdersTrade': { zh: 'orders · 交易', en: 'orders · trade' },
+  'resourceModel.svgChipPaymentsTrade': { zh: 'payments · 交易', en: 'payments · trade' },
+  'resourceModel.svgChipOrdersLogistics': { zh: 'orders · 物流', en: 'orders · logistics' },
+  'resourceModel.svgChipOrdersStaging': { zh: 'orders · 预发', en: 'orders · staging' },
+  'resourceModel.svgMergeNote1': {
+    zh: '同一个名字用在生产的两个 broker 集群上时，路由会合并：',
+    en: 'One name on both production clusters merges routes:',
+  },
+  'resourceModel.svgMergeNote2': {
+    zh: '客户端的消息会在两个 broker 集群之间负载均衡',
+    en: 'clients load-balance messages across both clusters',
+  },
+  'resourceModel.svgInstTrade': { zh: '实例「交易」', en: 'Instance "trade"' },
+  'resourceModel.svgInstLogistics': { zh: '实例「物流」', en: 'Instance "logistics"' },
+  'resourceModel.svgInstStaging': { zh: '实例「预发」', en: 'Instance "staging"' },
+  'resourceModel.svgBoundNote': { zh: '创建时绑定，不可更改', en: 'fixed at creation' },
+  'resourceModel.svgConflictLine1': {
+    zh: '实例「物流」在 broker-a 上创建 orders',
+    en: 'Instance "logistics" creates orders on broker-a',
+  },
+  'resourceModel.svgConflictLine2': {
+    zh: 'Studio 会提示这个名字已经属于实例「交易」',
+    en: 'Studio reports the name belongs to Instance "trade"',
+  },
+  'resourceModel.svgCrossDomainNote': {
+    zh: '另一套环境，名字可以重复',
+    en: 'Names may repeat here',
+  },
+  'resourceModel.svgCrossDomainNote2': {
+    zh: '路由各自独立，不会合并',
+    en: 'routes stay separate, never merged',
+  },
+  'resourceModel.svgCrossLine1': {
+    zh: '预发的 orders 与生产的 orders 同名',
+    en: 'staging orders shares the name',
+  },
+  'resourceModel.svgCrossLine2': { zh: '两者各自独立，互不影响', en: 'The two stay independent' },
+
+  'resourceModel.rulesTitle': { zh: '归属规则', en: 'Ownership rules' },
+  'resourceModel.rule1': {
+    zh: '· 一个名字在同一个 broker 集群上只属于一个实例。如果它已经属于别的实例，创建时会告诉你它属于谁。',
+    en: '· A name belongs to one instance per broker cluster. If another instance already uses it, the create form tells you which one.',
+  },
+  'resourceModel.rule2': {
+    zh: '· 同一个实例再次创建同名资源，相当于按这次填写的队列数等参数更新它。',
+    en: '· Creating the same name again from the owning instance updates it with the queue counts and other settings you submit.',
+  },
+  'resourceModel.rule3': {
+    zh: '· 实例在创建时选定 nameserver 集群，之后不能更改；直连模式的接入地址必须始终指向该集群。',
+    en: '· An instance picks its NameServer cluster at creation and keeps it forever; a direct endpoint must always address that same cluster.',
+  },
+  'resourceModel.rule4': {
+    zh: '· 云实例（阿里云、腾讯云）各自是一套独立的环境，与开源实例之间不会出现名字冲突。',
+    en: '· Cloud instances (Alibaba Cloud, Tencent Cloud) are each an environment of their own and never collide with open-source instances.',
+  },
+
+  'resourceModel.helpAria': {
+    zh: '查看资源命名与归属规则',
+    en: 'Show the naming and ownership rules',
+  },
+  'resourceModel.modalTitle': {
+    zh: '资源命名与归属规则',
+    en: 'Naming and ownership rules',
+  },
+  'resourceModel.modalIntro': {
+    zh:
+      '一个名字在「nameserver 集群 + broker 集群」这个范围内唯一。实例在创建时选定 nameserver ' +
+      '集群，之后不能更改；云实例各自是一套独立的环境。',
+    en:
+      'A name is unique within one NameServer cluster plus one broker cluster. An instance picks its ' +
+      'NameServer cluster at creation and keeps it forever; each cloud instance is an environment of its own.',
+  },
+
   // ─── BrokerCluster ───
 };
 

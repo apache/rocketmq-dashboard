@@ -56,13 +56,13 @@ It does not load `deploy/.env` automatically. Existing database users remain aut
 changing bootstrap values does not reset their passwords.
 
 For local development without MySQL, use the existing `dev` profile and include the test
-classpath, which contains the test-scoped H2 driver:
+classpath, which contains the test-scoped H2 driver. Run from the repository root;
+the subshell preserves that working directory for the next command:
 
 ```bash
-cd server
-mvn -B -ntp spring-boot:run \
+(cd server && mvn -B -ntp spring-boot:run \
   -Dspring-boot.run.profiles=dev \
-  -Dspring-boot.run.useTestClasspath=true
+  -Dspring-boot.run.useTestClasspath=true)
 ```
 
 The backend listens on <http://localhost:8888>; <http://localhost:8888/readyz> reports
@@ -71,28 +71,32 @@ the schema in an **in-memory H2 database**: its data is lost when the backend pr
 Use this profile only for local development. For a persistent MySQL-backed setup, follow
 the full-stack instructions above and [`deploy/README.md`](deploy/README.md).
 
-To build the backend without starting it, run this from `server/` instead:
+To build the backend without starting it, run this from the repository root:
 
 ```bash
-mvn -B -ntp package -DskipTests
+(cd server && mvn -B -ntp package -DskipTests)
 ```
 
 ### Run the frontend only
 
+Run this command from the repository root. The subshell preserves that working directory
+for the next command.
+
 ```bash
-cd web
-npm ci
-npm run dev                          # Vite dev server with hot reload
+(cd web && npm ci && npm run dev)    # Vite dev server with hot reload
 ```
 
 ## Tests
 
+Run these commands from the repository root. Each subshell preserves that working directory
+for the next command.
+
 ```bash
 # Backend unit + integration tests (also runs the ArchUnit architecture checks)
-cd server && mvn -B -ntp test
+(cd server && mvn -B -ntp test)
 
 # Frontend tests (vitest), lint and production build
-cd web && npm test && npm run lint && npm run build
+(cd web && npm test && npm run lint && npm run build)
 ```
 
 The backend integration tests (`@SpringBootTest`) talk to a real datasource, so they need a
@@ -101,7 +105,7 @@ is to start the bundled one, which loads `server/src/main/resources/db/schema.sq
 automatically:
 
 ```bash
-cd deploy && docker compose up -d mysql
+(cd deploy && docker compose up -d mysql)
 ```
 
 Non-trivial changes need tests. Name test methods `somethingHappensTest` (suffix `Test`),
@@ -203,6 +207,16 @@ The rules below are enforced by review or by the build; details and rationale li
   `tableLayout="fixed"` unsized columns share the whole `scroll.x` evenly and push the
   action column past the viewport. Verify in a real browser after adding or resizing
   columns.
+- **Row density**: a list row — table row or card-list row — renders on ONE line by default,
+  because every extra line costs a row of the page's visible budget. Long text gets
+  `ellipsis` plus a `Tooltip` with the full value; secondary facts (ids, timestamps, counts,
+  reasons) share the same line as bounded ellipsized segments or move into a Tooltip / an
+  on-demand expansion, never into stacked lines of their own. Multi-line detail belongs
+  behind an explicit user action (expand, modal, drawer). Row padding stays tight
+  (`size="small"` tables or ≤8px vertical padding on card rows). Reference implementations:
+  the alert deliveries table (`web/src/pages/ops/notificationDeliveries.tsx`) and the alert
+  events list (`web/src/pages/ops/systemAlerts.tsx`). Anything that must stay multi-line
+  (stacked tool output, code blocks, transcripts) is an exception, not a pattern.
 - **Configuration**: `server/src/main/resources/application.yml` keeps environment-variable
   overrides minimal. Only genuinely deployment-specific values — datasource coordinates,
   credentials and secrets, external endpoints (Prometheus, NameServer, LLM), and deployment

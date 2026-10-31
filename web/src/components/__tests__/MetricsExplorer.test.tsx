@@ -32,8 +32,10 @@ import { LangProvider, useLang } from '../../i18n/LangContext';
 import { downloadCsv } from '../../utils/download';
 import {
   METRICS_QUERY_HISTORY_STORAGE_KEY,
+  metricsQueryHistoryStorageKey,
   type MetricsQueryHistoryEntry,
 } from '../../utils/metricsExplorerDiagnostics';
+import useAuthStore from '../../stores/authStore';
 import MetricsExplorer from '../MetricsExplorer';
 
 vi.mock('../../api/settings', () => ({
@@ -1878,5 +1880,42 @@ describe('custom PromQL keyboard submission', () => {
     await user.click(screen.getByRole('button', { name: '查询' }));
     await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(queryCount + 2));
     expect(queryMetrics).toHaveBeenLastCalledWith(expect.objectContaining({ metric: 'sum(up)' }));
+  });
+
+  it('showsOnlyTheSignedInAccountsQueryHistoryTest', async () => {
+    // Two accounts, one entry each, under their own storage keys: a history panel that is not
+    // owner-scoped would list both, and one that hardcodes the legacy global key would list none.
+    // Clear first: an earlier case's legacy-key entry would be migrated into this account's key.
+    localStorage.clear();
+    localStorage.setItem(
+      metricsQueryHistoryStorageKey({ userId: 1, username: 'alice' }),
+      JSON.stringify([createHistoryEntry({ id: 'alice-entry', metricName: 'Alice Lag Metrics' })]),
+    );
+    localStorage.setItem(
+      metricsQueryHistoryStorageKey({ userId: 2, username: 'bob' }),
+      JSON.stringify([
+        createHistoryEntry({
+          id: 'bob-entry',
+          metricName: 'Bob Lag Metrics',
+          queriedAt: 1_800_000_000_001,
+        }),
+      ]),
+    );
+    useAuthStore.getState().login('alice', 1, false);
+    try {
+      const user = userEvent.setup();
+      renderWithProviders(<MetricsExplorer />);
+      await user.click(screen.getByRole('button', { name: '查询历史' }));
+      const drawer = (await screen.findByText('指标查询历史')).closest(
+        '[role="dialog"]',
+      ) as HTMLElement;
+
+      // Counting items would also count the entry the mount-time query appends; the point here
+      // is whose history is visible, so assert on the two accounts' own entries.
+      expect(within(drawer).getByText('Alice Lag Metrics')).toBeInTheDocument();
+      expect(within(drawer).queryByText('Bob Lag Metrics')).not.toBeInTheDocument();
+    } finally {
+      useAuthStore.getState().logout();
+    }
   });
 });

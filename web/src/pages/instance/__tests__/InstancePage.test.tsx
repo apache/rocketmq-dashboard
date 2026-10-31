@@ -21,6 +21,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as aliyunCatalogApi from '../../../api/aliyunCatalog';
+import * as clusterApi from '../../../api/cluster';
 import * as cloudCredentialApi from '../../../api/cloudCredential';
 import * as tencentCatalogApi from '../../../api/tencentCatalog';
 import type { CloudCredential, CloudCredentialPage } from '../../../api/cloudCredential';
@@ -39,6 +40,9 @@ vi.mock('../../../api/cloudCredential', () => ({
   listCloudCredentials: vi.fn(),
 }));
 
+vi.mock('../../../api/cluster', () => ({
+  listNameserverRegistry: vi.fn(),
+}));
 vi.mock('../../../api/tencentCatalog', () => ({
   listTencentInstances: vi.fn(),
   listTencentRegions: vi.fn(),
@@ -123,10 +127,54 @@ describe('InstancePage', () => {
     vi.mocked(aliyunCatalogApi.listAliyunInstances).mockResolvedValue([]);
     vi.mocked(tencentCatalogApi.listTencentRegions).mockResolvedValue([]);
     vi.mocked(tencentCatalogApi.listTencentInstances).mockResolvedValue([]);
+    vi.mocked(clusterApi.listNameserverRegistry).mockResolvedValue([
+      {
+        id: 7,
+        name: 'ns-test',
+        namesrvAddr: 'ns-test:9876',
+        k8sNamespace: null,
+        k8sId: null,
+        status: 'healthy',
+        description: null,
+        gmtCreate: null,
+        gmtModified: null,
+      },
+    ]);
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       instance(1, 'production-proxy'),
       instance(2, 'development-direct', 'DIRECT'),
     ]);
+  });
+
+  it('filters the inventory by region on the clientTest', async () => {
+    const user = userEvent.setup();
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      {
+        ...instance(1, 'hangzhou-cloud', 'CLOUD'),
+        vendor: 'ALIYUN',
+        regionId: 'cn-hangzhou',
+        regionName: '华东 1（杭州）',
+      },
+      {
+        ...instance(2, 'shanghai-cloud', 'CLOUD'),
+        vendor: 'ALIYUN',
+        regionId: 'cn-shanghai',
+        regionName: '华东 2（上海）',
+      },
+    ]);
+    renderPage();
+    await screen.findByText('hangzhou-cloud');
+    expect(screen.getByText('shanghai-cloud')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: '按地域筛选' }));
+    await user.click(
+      await screen.findByText('华东 2（上海）', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() => expect(screen.queryByText('hangzhou-cloud')).not.toBeInTheDocument());
+    expect(screen.getByText('shanghai-cloud')).toBeInTheDocument();
+    // 列表一次全量返回、不分页，地域筛选是纯前端过滤，不触发新的列表请求。
+    expect(instanceService.listInstances).toHaveBeenCalledTimes(1);
   });
 
   it.each([20, 21, 201])('offersEveryCloudCredentialForInventoryOf%sTest', async (count) => {
@@ -170,6 +218,20 @@ describe('InstancePage', () => {
     );
     await waitFor(() => expect(aliyunCatalogApi.listAliyunRegions).toHaveBeenCalledWith(count));
     expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledTimes(Math.ceil(count / 100));
+  });
+
+  it('keeps the instance table within the 1600px viewport containerTest', async () => {
+    renderPage();
+    await screen.findByText('production-proxy');
+
+    // 2026-10-28 实测：1600 视口下卡片内容宽 1330，实例表曾溢出 40px（备注列无声明宽、
+    // 操作列删除按钮被裁）。列宽合计须 <=1330，长文本列靠 ellipsis 收口。
+    const cols = Array.from(document.querySelectorAll('.ant-table-content colgroup col'));
+    const total = cols.reduce(
+      (sum, col) => sum + (parseInt((col as HTMLElement).style.width, 10) || 0),
+      0,
+    );
+    expect(total).toBeLessThanOrEqual(1330);
   });
 
   it('discardsLaterCredentialPagesAfterTheVendorChangesTest', async () => {
@@ -351,6 +413,19 @@ describe('InstancePage', () => {
     expect(await screen.findByText('云凭据列表加载失败')).toBeInTheDocument();
     expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledTimes(1);
   });
+
+  // 创建规则从「资源模型」页的判定流程图搬到了创建表单上的问号弹窗（用户约定 2026-10-26）。
+  it('offersTheNamingRuleFromTheCreateInstanceFormTest', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('production-proxy');
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+
+    await user.click(within(dialog).getByRole('button', { name: '查看资源命名与归属规则' }));
+    expect(await screen.findByText('资源命名与归属规则')).toBeInTheDocument();
+  });
+
   it('loads server-filtered results when the search or type changes', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
@@ -380,7 +455,7 @@ describe('InstancePage', () => {
       },
     );
 
-    const typeSelect = screen.getByRole('combobox');
+    const typeSelect = screen.getByRole('combobox', { name: '按架构筛选' });
     fireEvent.mouseDown(typeSelect.parentElement!);
     await user.click(
       await screen.findByText('Direct 模式', { selector: '.ant-select-item-option-content' }),
@@ -496,7 +571,7 @@ describe('InstancePage', () => {
     await user.click(screen.getByRole('button', { name: /添加实例/ }));
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText('实例 ID'), 'new-proxy');
-    const createTypeSelect = within(dialog).getByRole('combobox');
+    const createTypeSelect = within(dialog).getAllByRole('combobox')[1];
     fireEvent.mouseDown(createTypeSelect.parentElement!);
     const proxyOptions = await screen.findAllByText('Proxy Cluster 模式', {
       selector: '.ant-select-item-option-content',
@@ -517,7 +592,7 @@ describe('InstancePage', () => {
     renderPage();
 
     expect(await screen.findByText('production-proxy')).toBeInTheDocument();
-    const typeSelect = screen.getByRole('combobox');
+    const typeSelect = screen.getByRole('combobox', { name: '按架构筛选' });
     fireEvent.mouseDown(typeSelect.parentElement!);
     await user.click(
       await screen.findByText('Direct 模式', { selector: '.ant-select-item-option-content' }),
@@ -532,7 +607,7 @@ describe('InstancePage', () => {
     await user.click(screen.getByRole('button', { name: /添加实例/ }));
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText('实例 ID'), 'new-proxy');
-    const createTypeSelect = within(dialog).getByRole('combobox');
+    const createTypeSelect = within(dialog).getAllByRole('combobox')[1];
     fireEvent.mouseDown(createTypeSelect.parentElement!);
     const proxyOptions = await screen.findAllByText('Proxy Cluster 模式', {
       selector: '.ant-select-item-option-content',
@@ -546,6 +621,7 @@ describe('InstancePage', () => {
         name: 'new-proxy',
         type: 'PROXY_CLUSTER',
         endpoint: 'proxy-new:8080',
+        nameserverId: 7,
       }),
     );
     expect(instanceService.listInstances).toHaveBeenLastCalledWith({
@@ -565,7 +641,7 @@ describe('InstancePage', () => {
     await user.click(screen.getByRole('button', { name: /添加实例/ }));
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText('实例 ID'), 'local-proxy');
-    const createTypeSelect = within(dialog).getByRole('combobox');
+    const createTypeSelect = within(dialog).getAllByRole('combobox')[1];
     fireEvent.mouseDown(createTypeSelect.parentElement!);
     await user.click(
       await screen.findByText('Proxy Local 模式', {
@@ -580,6 +656,7 @@ describe('InstancePage', () => {
         name: 'local-proxy',
         type: 'PROXY_LOCAL',
         endpoint: 'broker-proxy:8080',
+        nameserverId: 7,
       }),
     );
   });
@@ -697,7 +774,7 @@ describe('InstancePage', () => {
     await user.click(screen.getByRole('button', { name: /添加实例/ }));
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText('实例 ID'), 'new-proxy');
-    const createTypeSelect = within(dialog).getByRole('combobox');
+    const createTypeSelect = within(dialog).getAllByRole('combobox')[1];
     fireEvent.mouseDown(createTypeSelect.parentElement!);
     const proxyOptions = await screen.findAllByText('Proxy Cluster 模式', {
       selector: '.ant-select-item-option-content',
@@ -747,7 +824,7 @@ describe('InstancePage', () => {
       expect(instanceService.deleteInstance).toHaveBeenCalledWith('production-proxy'),
     );
 
-    const typeSelect = screen.getByRole('combobox');
+    const typeSelect = screen.getByRole('combobox', { name: '按架构筛选' });
     fireEvent.mouseDown(typeSelect.parentElement!);
     await user.click(
       await screen.findByText('Direct 模式', { selector: '.ant-select-item-option-content' }),
@@ -1340,7 +1417,7 @@ describe('InstancePage', () => {
     const deleteButton = screen.getAllByRole('button', { name: /删除/ })[0];
     expect(deleteButton).toBeEnabled();
 
-    const typeSelect = screen.getByRole('combobox');
+    const typeSelect = screen.getByRole('combobox', { name: '按架构筛选' });
     fireEvent.mouseDown(typeSelect.parentElement!);
     await user.click(
       await screen.findByText('Direct 模式', { selector: '.ant-select-item-option-content' }),

@@ -397,6 +397,48 @@ describe('AI API', () => {
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
+    it.each([
+      ['heartbeat', ':hb\n\n'],
+      ['agent', agentFrame({ type: 'text_delta', content: 'hi' })],
+    ])('rejectsOversizedRemainderAfter%sBeforeReadingAgainTest', async (_name, prefix) => {
+      vi.useFakeTimers();
+      const onCancel = vi.fn();
+      const response = eventStreamResponse(
+        [`${prefix}event: agent\ndata: ${'x'.repeat(1024 * 1024)}`],
+        onCancel,
+      );
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+      const failure = vi.fn();
+      const stream = openRunStream(7, body, { onEvent: vi.fn() }).catch(failure);
+
+      await vi.advanceTimersByTimeAsync(0);
+      const failedImmediately = failure.mock.calls.length === 1;
+      // Also settle the unfixed reader so a failed assertion cannot leave a pending stream.
+      await vi.advanceTimersByTimeAsync(31_000);
+      await stream;
+
+      expect(failedImmediately).toBe(true);
+      expect(failure).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'llm.stream.event_too_large' }),
+      );
+      expect(onCancel).toHaveBeenCalledOnce();
+    });
+
+    it('acceptsLargeChunksContainingIndividuallyBoundedFramesTest', async () => {
+      const content = 'x'.repeat(600 * 1024);
+      const frame = agentFrame({ type: 'text_delta', content });
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(eventStreamResponse([frame + frame + doneFrame()])),
+      );
+      const onEvent = vi.fn();
+
+      await openRunStream(7, body, { onEvent });
+
+      expect(onEvent).toHaveBeenCalledTimes(2);
+      expect(onEvent).toHaveBeenLastCalledWith({ type: 'text_delta', content });
+    });
+
     it('throwsStructuredErrorsFromErrorFramesTest', async () => {
       vi.stubGlobal(
         'fetch',
@@ -470,6 +512,40 @@ describe('AI API', () => {
       await expect(openRunStream(7, body, { onEvent: vi.fn() })).rejects.toThrow(
         /text\/html;charset=utf-8/,
       );
+    });
+
+    it.each(['open', 'attach'] as const)(
+      'cancelsRejectedContentTypeResponseFor%sTest',
+      async (entryPoint) => {
+        const onCancel = vi.fn();
+        const response = new Response(new ReadableStream({ cancel: onCancel }), {
+          headers: { 'content-type': 'text/html' },
+        });
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+
+        const stream =
+          entryPoint === 'open'
+            ? openRunStream(7, body, { onEvent: vi.fn() })
+            : attachRunStream(41, 0, { onEvent: vi.fn() });
+
+        await expect(stream).rejects.toMatchObject({
+          code: 'llm.stream.unexpected_content_type',
+        });
+        expect(onCancel).toHaveBeenCalledOnce();
+      },
+    );
+
+    it('preservesContentTypeErrorWhenCancellingTheBodyFailsTest', async () => {
+      const onCancel = vi.fn().mockRejectedValue(new Error('cancel failed'));
+      const response = new Response(new ReadableStream({ cancel: onCancel }), {
+        headers: { 'content-type': 'text/html' },
+      });
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+
+      await expect(attachRunStream(41, 0, { onEvent: vi.fn() })).rejects.toMatchObject({
+        code: 'llm.stream.unexpected_content_type',
+      });
+      expect(onCancel).toHaveBeenCalledOnce();
     });
 
     it('rejectsAResponseWithoutAnyContentTypeTest', async () => {

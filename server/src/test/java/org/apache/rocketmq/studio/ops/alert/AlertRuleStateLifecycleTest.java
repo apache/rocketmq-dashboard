@@ -45,12 +45,14 @@ class AlertRuleStateLifecycleTest {
     @BeforeEach
     void setUpTest() {
         service = new AlertService(rules, states, new AlertRuleAssetService(),
-                mock(OperationAuditService.class), new MetricProfileService(new PrometheusProperties()));
+                mock(OperationAuditService.class), new MetricProfileService(new PrometheusProperties()),
+                org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class));
         storedRule.set(rule(true, 100, "Lag"));
         runtime.set(AlertRuleRuntimeVO.builder().ruleId(4L).fingerprint("active-episode")
                 .status(AlertStateStatus.FIRING).lastNotifiedAt(LocalDateTime.of(2026, 9, 1, 12, 0))
                 .nextReminderAt(LocalDateTime.of(2026, 9, 1, 12, 5)).build());
         when(rules.findRuleById(4L)).thenAnswer(invocation -> Optional.ofNullable(storedRule.get()));
+        when(rules.findRuleByIdForUpdate(4L)).thenAnswer(invocation -> Optional.ofNullable(storedRule.get()));
         when(rules.findRulesByIds(List.of(4L))).thenAnswer(invocation -> List.of(storedRule.get()));
         when(rules.findAllRules()).thenAnswer(invocation -> storedRule.get() == null
                 ? List.of() : List.of(storedRule.get()));

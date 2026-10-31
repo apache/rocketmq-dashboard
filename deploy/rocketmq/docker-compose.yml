@@ -1,11 +1,29 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 name: rocketmq
 
 services:
   nameserver:
-    image: apache-rocketmq:develop
+    image: apache-rocketmq:5.5.0
     build:
       context: .
       args:
+        # 默认钉已发布的 RocketMQ 版本，与 server/pom.xml 的 rocketmq.version 对齐；
+        # 需要跟未发布分支时用 ROCKETMQ_BRANCH=develop ./build.sh 覆盖
+        ROCKETMQ_BRANCH: ${ROCKETMQ_BRANCH:-rocketmq-all-5.5.0}
         USE_CN_MIRROR: ${USE_CN_MIRROR:-false}
     container_name: rmq-nameserver
     command: sh bin/mqnamesrv
@@ -15,7 +33,7 @@ services:
       - "9876:9876"
 
   broker-0:
-    image: apache-rocketmq:develop
+    image: apache-rocketmq:5.5.0
     container_name: rmq-broker-0
     command: sh bin/mqbroker -c /etc/rocketmq/broker-0.conf
     cpus: 1
@@ -35,7 +53,7 @@ services:
       - nameserver
 
   broker-1:
-    image: apache-rocketmq:develop
+    image: apache-rocketmq:5.5.0
     container_name: rmq-broker-1
     command: sh bin/mqbroker -c /etc/rocketmq/broker-1.conf
     cpus: 1
@@ -56,7 +74,7 @@ services:
       - nameserver
 
   proxy:
-    image: apache-rocketmq:develop
+    image: apache-rocketmq:5.5.0
     container_name: rmq-proxy
     command: sh bin/mqproxy -pc /etc/rocketmq/rmq-proxy.json
     cpus: 1
@@ -74,7 +92,7 @@ services:
     restart: on-failure
 
   producer:
-    image: apache-rocketmq:develop
+    image: apache-rocketmq:5.5.0
     container_name: rmq-producer
     command: >
       sh -c "javac -encoding UTF-8 -cp 'lib/*' -d /tmp/classes /clients/TraceProducer.java
@@ -92,7 +110,7 @@ services:
     restart: on-failure
 
   consumer:
-    image: apache-rocketmq:develop
+    image: apache-rocketmq:5.5.0
     container_name: rmq-consumer
     command: >
       sh -c "javac -encoding UTF-8 -cp 'lib/*' -d /tmp/classes /clients/TraceConsumer.java
