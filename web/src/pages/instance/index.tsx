@@ -799,6 +799,7 @@ const InstancePage = () => {
       >
         <Space size={12} wrap>
           <Input
+            aria-label={t('instance.searchPlaceholder')}
             placeholder={t('instance.searchPlaceholder')}
             prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
             value={search}

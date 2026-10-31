@@ -194,6 +194,7 @@ export const QueueBrowserControls = ({
         showSearch
         allowClear
         placeholder={t('messagePage.topicPlaceholder')}
+        aria-label={t('messagePage.topicPlaceholder')}
         value={state.topic}
         onChange={state.setTopic}
         options={topicOptions}
@@ -257,6 +258,10 @@ export const QueueBrowserResults = ({ state, onOpenMessage }: QueueBrowserResult
               {record.minOffset}
             </Text>
             <Slider
+              ariaLabelForHandle={t('queueBrowser.queueOffsetLabel', {
+                broker: record.brokerName,
+                queue: record.queueId,
+              })}
               style={{ flex: 1, margin: 0 }}
               min={record.minOffset}
               max={record.maxOffset > record.minOffset ? record.maxOffset - 1 : record.minOffset}
@@ -396,7 +401,7 @@ export const QueueBrowserResults = ({ state, onOpenMessage }: QueueBrowserResult
               type="text"
               size="small"
               icon={<CloseOutlined />}
-              aria-label={t('queueBrowser.closeEntry')}
+              aria-label={t('queueBrowser.removeQueueEntry', { queue: entry.key })}
               onClick={() => state.closeEntry(entry.key)}
             />
           </Tooltip>
