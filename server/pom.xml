@@ -27,7 +27,7 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.rocketmq</groupId>
+    <groupId>org.apache.rocketmq</groupId>
     <artifactId>rocketmq-studio</artifactId>
     <version>3.0.0</version>
     <name>RocketMQ Studio</name>
@@ -158,6 +158,14 @@
                     <groupId>ch.qos.logback</groupId>
                     <artifactId>logback-core</artifactId>
                 </exclusion>
+                <!-- fastjson 1.x arrives as an unused transitive declaration of
+                     rocketmq-common 5.5.0 (no class in any shipped RocketMQ jar
+                     references com.alibaba.fastjson); RocketMQ's own JSON path is
+                     fastjson2, which stays on the classpath. -->
+                <exclusion>
+                    <groupId>com.alibaba</groupId>
+                    <artifactId>fastjson</artifactId>
+                </exclusion>
             </exclusions>
         </dependency>
         <!-- Used by PlainAclRemoteAddressValidator for IP address grammar checks;
@@ -196,6 +204,52 @@
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.rat</groupId>
+                <artifactId>apache-rat-plugin</artifactId>
+                <version>0.18</version>
+                <configuration>
+                    <!-- License-header gate over the whole repository, not just this module. -->
+                    <basedir>${project.basedir}/..</basedir>
+                    <excludes>
+                        <exclude>**/target/**</exclude>
+                        <exclude>**/node_modules/**</exclude>
+                        <exclude>**/dist/**</exclude>
+                        <exclude>**/bin/**</exclude>
+                        <exclude>**/.git/**</exclude>
+                        <exclude>**/__pycache__/**</exclude>
+                        <exclude>**/.pytest_cache/**</exclude>
+                        <exclude>**/.husky/_/**</exclude>
+                        <exclude>deploy/.env</exclude>
+                        <exclude>docs/generated/**</exclude>
+                        <exclude>**/*.md</exclude>
+                        <exclude>**/*.json</exclude>
+                        <exclude>**/*.png</exclude>
+                        <exclude>**/*.svg</exclude>
+                        <exclude>**/*.log</exclude>
+                        <exclude>**/go.mod</exclude>
+                        <exclude>**/go.sum</exclude>
+                        <exclude>**/.gitignore</exclude>
+                        <exclude>**/.dockerignore</exclude>
+                        <exclude>server/legal/licenses/**</exclude>
+                        <exclude>web/licenses/**</exclude>
+                        <exclude>web/src/assets/model-logos/**</exclude>
+                        <exclude>server/src/test/resources/**</exclude>
+                        <!-- Runtime text resources: a header would leak into the banner and AI prompts. -->
+                        <exclude>server/src/main/resources/banner.txt</exclude>
+                        <exclude>server/src/main/resources/prompts/**</exclude>
+                        <exclude>web/.prettierignore</exclude>
+                        <exclude>web/.prettierrc</exclude>
+                    </excludes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>rat-check</id>
+                        <phase>validate</phase>
+                        <goals><goal>check</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
@@ -276,6 +330,26 @@
                         <goals>
                             <goal>check</goal>
                         </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>3.7.1</version>
+                <executions>
+                    <execution>
+                        <id>source-release</id>
+                        <phase>package</phase>
+                        <goals><goal>single</goal></goals>
+                        <configuration>
+                            <descriptors>
+                                <descriptor>src/main/assembly/source-release.xml</descriptor>
+                            </descriptors>
+                            <finalName>${project.artifactId}-${project.version}-source-release</finalName>
+                            <appendAssemblyId>false</appendAssemblyId>
+                            <tarLongFileMode>gnu</tarLongFileMode>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>

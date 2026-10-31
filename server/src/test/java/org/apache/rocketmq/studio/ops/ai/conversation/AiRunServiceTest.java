@@ -43,6 +43,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
@@ -60,6 +61,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -250,13 +252,27 @@ class AiRunServiceTest {
     }
 
     @Test
+    void resumeFalseShouldKeepAnHttpTurnIndependentOfPriorHistoryTest() {
+        when(eventRepository.maxSeq(CONVERSATION_ID)).thenReturn(10);
+        when(llmClient.supports(any())).thenReturn(true);
+        service.sendMessage(CONVERSATION_ID, new AiRunService.RunRequest(
+                "fresh question", null, LlmConfigVO.ENGINE_HTTP, null, false, false));
+
+        verify(eventRepository, never()).findRecentBeforeSeq(anyLong(), anyInt(), anyInt());
+        verify(llmClient).streamConversation(any(), org.mockito.ArgumentMatchers.eq(List.of()),
+                org.mockito.ArgumentMatchers.eq("fresh question"), any(), any());
+        assertThat(runUpdates.get(runUpdates.size() - 1).getStatus())
+                .isEqualTo(RunStatus.COMPLETED.name());
+    }
+
+    @Test
     void anHttpTurnShouldNotPrepareAnAgentWorkspaceItCannotUseTest() {
         when(llmClient.supports(any())).thenReturn(true);
         doAnswer(invocation -> {
-            Consumer<String> tokens = invocation.getArgument(3);
+            Consumer<String> tokens = invocation.getArgument(4);
             tokens.accept("pong");
             return null;
-        }).when(llmClient).stream(any(), any(), any(), any());
+        }).when(llmClient).streamConversation(any(), any(), any(), any(), any());
         when(workspace.prepare(anyLong(), any()))
                 .thenThrow(new BusinessException(500, "the workspace directory is unusable"));
 
@@ -439,12 +455,15 @@ class AiRunServiceTest {
     }
 
     @Test
-    void reportSpeedShouldTouchOnlyTheSpeedColumnTest() {
+    void reportSpeedShouldStampGmtModifiedWithoutTouchingFinalizeColumnsTest() {
         // The client reports the speed as its stream closes, which also happens mid-run when the
         // connection drops while the run keeps executing. A full-row write read before the worker
         // finalises would race finalizeRun's terminal update and write the stale RUNNING state back
         // over it, resurrecting the run as active and locking the conversation with 409s until the
-        // orphan sweep reaps the row. The update must therefore carry only the id and the speed.
+        // orphan sweep reaps the row. The update must therefore carry only the id, the speed and
+        // the bookkeeping timestamp, stamped from the service clock — an unstamped partial update
+        // lets the DDL's ON UPDATE CURRENT_TIMESTAMP rewrite gmt_modified in the database session's
+        // timezone, which is not the clock the orphan cutoff is compared against.
         RmqAiRun running = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.RUNNING);
         when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(running));
 
@@ -462,7 +481,7 @@ class AiRunServiceTest {
         assertThat(update.getEndSeq()).isNull();
         assertThat(update.getInputTokens()).isNull();
         assertThat(update.getOutputTokens()).isNull();
-        assertThat(update.getGmtModified()).isNull();
+        assertThat(update.getGmtModified()).isEqualTo(LocalDateTime.parse("2026-09-18T10:00:00"));
     }
 
     @Test
@@ -546,7 +565,7 @@ class AiRunServiceTest {
         AiRunExecutor.RunContext context = new AiRunExecutor.RunContext(conversation,
                 AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.RUNNING), sink,
                 new AgentRunHandle(RUN_ID, Duration.ofMillis(1)), null, provider.engine(), "hello",
-                null, false, Duration.ofSeconds(300), null);
+                null, false, Duration.ofSeconds(300), null, true);
 
         // A stop, a provider failure, the worker's own safety net and a shutdown drain can all reach
         // finalisation for the same run; the compareAndSet is what makes exactly one of them write.

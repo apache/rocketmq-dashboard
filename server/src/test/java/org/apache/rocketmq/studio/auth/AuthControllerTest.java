@@ -37,6 +37,7 @@ import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -171,7 +172,7 @@ class AuthControllerTest {
                         .build())
                 .build();
 
-        when(authService.login(any(LoginDTO.class))).thenReturn(mockResponse);
+        when(authService.login(any(LoginDTO.class), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(mockResponse);
 
         LoginDTO request = new LoginDTO();
         request.setUsername("testuser");
@@ -205,7 +206,7 @@ class AuthControllerTest {
                         .build())
                 .build();
 
-        when(authService.login(any(LoginDTO.class))).thenReturn(mockResponse);
+        when(authService.login(any(LoginDTO.class), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(mockResponse);
 
         LoginDTO request = new LoginDTO();
         request.setUsername("admin");
@@ -226,7 +227,7 @@ class AuthControllerTest {
                 .expiresIn(86400)
                 .user(LoginVO.UserInfo.builder().username("automation").build())
                 .build();
-        when(authService.login(any(LoginDTO.class))).thenReturn(mockResponse);
+        when(authService.login(any(LoginDTO.class), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(mockResponse);
 
         LoginDTO request = new LoginDTO();
         request.setUsername("automation");
@@ -249,7 +250,8 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value("Login request is required"));
 
-        verify(authService, never()).login(any(LoginDTO.class));
+        verify(authService, never()).login(any(LoginDTO.class), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -269,5 +271,50 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.message").value("success"));
 
         verify(authService).logout(eq("Bearer token-1"));
+    }
+
+    @Test
+    void loginShouldForwardTheFirstForwardedHopAndUserAgentTest() throws Exception {
+        LoginVO mockResponse = LoginVO.builder()
+                .token("mock-jwt-attributed")
+                .expiresIn(86400)
+                .user(LoginVO.UserInfo.builder().username("testuser").build())
+                .build();
+        when(authService.login(any(LoginDTO.class), eq("198.51.100.9"), eq("StudioTestAgent/1.0")))
+                .thenReturn(mockResponse);
+        LoginDTO request = new LoginDTO();
+        request.setUsername("testuser");
+        request.setPassword("testpass");
+
+        mockMvc.perform(post("/api/auth/login")
+                        .header("X-Forwarded-For", "198.51.100.9, 10.0.0.1")
+                        .header(HttpHeaders.USER_AGENT, "StudioTestAgent/1.0")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+
+        // The socket address is the proxy's; the first forwarded hop is the client's.
+        verify(authService).login(any(LoginDTO.class), eq("198.51.100.9"), eq("StudioTestAgent/1.0"));
+    }
+
+    @Test
+    void loginShouldFallBackToTheSocketAddressWithoutAProxyHeaderTest() throws Exception {
+        LoginVO mockResponse = LoginVO.builder()
+                .token("mock-jwt-direct")
+                .expiresIn(86400)
+                .user(LoginVO.UserInfo.builder().username("testuser").build())
+                .build();
+        when(authService.login(any(LoginDTO.class), eq("127.0.0.1"), isNull()))
+                .thenReturn(mockResponse);
+        LoginDTO request = new LoginDTO();
+        request.setUsername("testuser");
+        request.setPassword("testpass");
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+
+        verify(authService).login(any(LoginDTO.class), eq("127.0.0.1"), isNull());
     }
 }

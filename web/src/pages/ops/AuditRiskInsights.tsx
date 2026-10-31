@@ -178,19 +178,22 @@ const AuditRiskInsights = ({ summary, records, loading }: Props) => {
       title: t('audit.time'),
       dataIndex: 'timestamp',
       key: 'timestamp',
-      width: 180,
+      width: 160,
       render: (timestamp: string) => formatUtcDateTime(timestamp),
     },
     {
       title: t('audit.operator'),
       dataIndex: 'operator',
       key: 'operator',
-      width: 130,
+      width: 100,
+      ellipsis: true,
     },
     {
       title: t('audit.opType'),
       dataIndex: 'operationType',
       key: 'operationType',
+      width: 125,
+      ellipsis: true,
       render: (operationType: string) => {
         const presentation = getAuditOperationPresentation(operationType);
         return <Tag color={presentation.color}>{formatOperationLabel(operationType, t)}</Tag>;
@@ -200,13 +203,14 @@ const AuditRiskInsights = ({ summary, records, loading }: Props) => {
       title: t('audit.target'),
       dataIndex: 'target',
       key: 'target',
+      width: 140,
       ellipsis: true,
     },
     {
       title: t('audit.result'),
       dataIndex: 'result',
       key: 'result',
-      width: 100,
+      width: 80,
       align: 'center',
       render: (result: string) => {
         const presentation = getAuditResultPresentation(result);
@@ -231,9 +235,9 @@ const AuditRiskInsights = ({ summary, records, loading }: Props) => {
       }
       style={{ marginBottom: 16 }}
     >
-      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+      <Row gutter={[12, 12]} align="stretch" style={{ marginBottom: 16 }}>
         <Col xs={12} lg={12}>
-          <Card size="small">
+          <Card size="small" style={{ height: '100%' }}>
             <Statistic
               title={t('auditInsights.controlPlaneFailures')}
               value={insights.controlPlaneFailureCount}
@@ -247,7 +251,7 @@ const AuditRiskInsights = ({ summary, records, loading }: Props) => {
           </Card>
         </Col>
         <Col xs={12} lg={12}>
-          <Card size="small">
+          <Card size="small" style={{ height: '100%' }}>
             <Statistic
               title={t('auditInsights.topOperator')}
               value={insights.topOperator?.name ?? '-'}

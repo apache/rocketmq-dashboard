@@ -143,7 +143,7 @@ function QueueBrowserResultsProbe() {
       <button type="button" onClick={() => firstQueue && void state.handlePull(firstQueue)}>
         pull
       </button>
-      <QueueBrowserResults state={state} />
+      <QueueBrowserResults state={state} onOpenMessage={() => undefined} />
     </div>
   );
 }
@@ -327,7 +327,7 @@ describe('QueueBrowser request ownership', () => {
     await screen.findByText('initial-message');
     await user.click(screen.getByRole('button', { name: 'pull' }));
     await waitFor(() => expect(pullMessageAtOffset).toHaveBeenCalledTimes(2));
-    await user.click(screen.getByRole('button', { name: '关闭 broker-a-0 的消息详情' }));
+    await user.click(screen.getByRole('button', { name: '移除 broker-a-0 的消息记录' }));
 
     await act(async () => replacement.resolve(messageRecord('late-message')));
 
@@ -486,7 +486,7 @@ describe('QueueBrowser request ownership', () => {
     expect(screen.getByLabelText('pulling')).toHaveTextContent('false');
   });
 
-  it('shows the properties of a pulled queue message', async () => {
+  it('leavesMessagePropertiesToTheDetailModalInsteadOfInliningThemTest', async () => {
     vi.mocked(getQueueOffsets).mockResolvedValue([queue('broker-a')]);
     vi.mocked(pullMessageAtOffset).mockResolvedValue({
       ...messageRecord('message-with-properties'),
@@ -505,18 +505,18 @@ describe('QueueBrowser request ownership', () => {
     await screen.findByText('broker-a');
     await user.click(screen.getByRole('button', { name: 'pull' }));
 
-    const properties = await screen.findByRole('region', { name: '消息属性' });
-    expect(within(properties).getByText('queue-trace-123')).toBeInTheDocument();
-    expect(
-      within(properties).getByText('属性过多或单值过长，服务端已截断展示'),
-    ).toBeInTheDocument();
+    // The pulled message is a row; its properties and body belong to the page-level detail modal
+    // reached through onOpenMessage, so inlining them here again would duplicate that surface.
+    await screen.findByText('message-with-properties');
+    expect(screen.queryByRole('region', { name: '消息属性' })).not.toBeInTheDocument();
+    expect(screen.queryByText('queue-trace-123')).not.toBeInTheDocument();
   });
 });
 
 describe('QueueBrowser localization', () => {
   it.each([
-    ['zh', '选择 Topic', 'broker-a 队列 0 的 Offset', '关闭 broker-a-0 的消息详情'],
-    ['en', 'Select a topic', 'Offset for broker-a queue 0', 'Close message details for broker-a-0'],
+    ['zh', '选择 Topic', 'broker-a 队列 0 的 Offset', '移除 broker-a-0 的消息记录'],
+    ['en', 'Select a topic', 'Offset for broker-a queue 0', 'Remove message entry for broker-a-0'],
   ])(
     'namesQueueControlsAndKeepsKeyboardActionsWorkingTest (%s)',
     async (language, topicLabel, offsetLabel, closeLabel) => {
@@ -534,7 +534,7 @@ describe('QueueBrowser localization', () => {
             />
             <button onClick={() => state.setTopic('topic-a')}>select-test-topic</button>
             <button onClick={() => void state.loadQueues()}>load-test-queues</button>
-            <QueueBrowserResults state={state} />
+            <QueueBrowserResults state={state} onOpenMessage={() => undefined} />
           </>
         );
       };
@@ -587,7 +587,7 @@ describe('QueueBrowser localization', () => {
             topicOptions={[]}
             topicLoading={false}
           />
-          <QueueBrowserResults state={state} />
+          <QueueBrowserResults state={state} onOpenMessage={() => undefined} />
         </>
       );
     };
@@ -633,7 +633,7 @@ describe('QueueBrowser localization', () => {
           >
             pull
           </button>
-          <QueueBrowserResults state={state} />
+          <QueueBrowserResults state={state} onOpenMessage={() => undefined} />
         </div>
       );
     };
@@ -660,7 +660,8 @@ describe('QueueBrowser localization', () => {
 
     await loadTopic();
 
-    expect(screen.getByText('Offset Range')).toBeInTheDocument();
+    // tableLayout fixed renders a hidden measure row, so header texts appear twice.
+    expect(screen.getAllByText('Offset Range').length).toBeGreaterThan(0);
     // The summary interpolates both counters, so assert the substituted numbers: a key missing
     // from the dictionary would render the raw `{queues} queues, {messages} messages in total`.
     expect(screen.getByText('2 queues, 10 messages in total')).toBeInTheDocument();
@@ -723,5 +724,55 @@ describe('QueueBrowser localization', () => {
     // than a raw byte count.
     expect(screen.getByText('1.0 KB')).toBeInTheDocument();
     expect(screen.queryByText('1024 bytes')).not.toBeInTheDocument();
+  });
+
+  it('listsPulledMessagesAsSingleColumnRowsAndDelegatesDetailToTheCallbackTest', async () => {
+    const onOpenMessage = vi.fn();
+    vi.mocked(getQueueOffsets).mockResolvedValue([queue('broker-a')]);
+    vi.mocked(pullMessageAtOffset).mockResolvedValue(messageRecord('row-message'));
+
+    const Inner = () => {
+      const state = useQueueBrowser('instance-a');
+      const firstQueue = state.queues[0];
+      return (
+        <div>
+          <button type="button" onClick={() => state.setTopic('topic-a')}>
+            topic-a
+          </button>
+          <button type="button" onClick={() => void state.loadQueues()}>
+            load
+          </button>
+          <button
+            type="button"
+            disabled={!firstQueue}
+            onClick={() => firstQueue && void state.handlePull(firstQueue)}
+          >
+            pull
+          </button>
+          <QueueBrowserResults state={state} onOpenMessage={onOpenMessage} />
+        </div>
+      );
+    };
+    render(
+      <LangProvider>
+        <Inner />
+      </LangProvider>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'topic-a' }));
+    await user.click(screen.getByRole('button', { name: 'load' }));
+    await screen.findByText('broker-a');
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+    await screen.findByText('row-message');
+
+    // One row per pulled message in ONE table — the old 2-up card grid is gone.
+    const entries = screen.getByTestId('queue-browser-entries');
+    expect(within(entries).getAllByRole('row')).toHaveLength(2); // header + the single entry
+    expect(document.querySelector('[style*="1fr 1fr"]')).toBeNull();
+
+    // Two 查看 buttons: the queue row's pull action and the entry row's detail action.
+    await user.click(within(entries).getByRole('button', { name: '查看' }));
+    expect(onOpenMessage).toHaveBeenCalledTimes(1);
+    expect(onOpenMessage).toHaveBeenCalledWith(expect.objectContaining({ msgId: 'row-message' }));
   });
 });

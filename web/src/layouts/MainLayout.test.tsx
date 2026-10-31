@@ -45,6 +45,11 @@ vi.mock('antd', async () => {
 
   return {
     Layout,
+    // The real Grid reads matchMedia, which jsdom lacks; a fixed desktop breakpoint keeps the
+    // permanent-sider layout under test. The drawer branch is covered in the browser instead.
+    Grid: { useBreakpoint: () => ({ md: true }) },
+    Drawer: ({ children, open }: { children?: React.ReactNode; open?: boolean }) =>
+      open ? React.createElement(React.Fragment, null, children) : null,
     Menu: ({
       items,
       selectedKeys,

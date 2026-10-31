@@ -147,6 +147,19 @@ describe('messagePayloadPreview', () => {
     });
   });
 
+  it('preserves nonblank form property values verbatim without trimming whitespace', () => {
+    const result = buildMessagePropertiesFromRows([
+      { key: 'tenant', value: '  tenant-blue  ' },
+      { key: 'env', value: '　prod　' },
+    ]);
+
+    expect(result.entries.map((entry) => [entry.key, entry.value])).toEqual([
+      ['tenant', '  tenant-blue  '],
+      ['env', '　prod　'],
+    ]);
+    expect(result.issues).toEqual([]);
+  });
+
   it('ignores sparse form property rows emitted by dynamic form lists', () => {
     const result = buildMessagePropertiesFromRows([
       undefined as unknown as { key?: string; value?: string },

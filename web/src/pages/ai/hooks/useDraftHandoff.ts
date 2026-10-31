@@ -41,6 +41,8 @@ import type { StartRunOptions } from './useAiSend';
  */
 
 export interface UseDraftHandoffOptions {
+  /** False consumes drafts locally without creating a conversation or sending to the backend. */
+  sendEnabled?: boolean;
   /** Write the draft into the composer state (text, model, engine, mode, enhance). */
   applyDraft: (draft: ChatDraft) => void;
   /** The message request the draft auto-sends once its conversation is resolved. */
@@ -92,13 +94,20 @@ export function useDraftHandoff(
     consumedDraftRef.current = true;
 
     void (async () => {
-      const { applyDraft, buildDraftRequest, openHistory, startRun } = optionsRef.current;
+      const { applyDraft, buildDraftRequest, openHistory, sendEnabled, startRun } =
+        optionsRef.current;
       if (wantsHistory) openHistory();
       if (!draft) {
         navigate(location.pathname, { replace: true, state: null });
         return;
       }
       applyDraft(draft);
+      if (sendEnabled === false) {
+        // Mock handoffs still open the composer, but must neither mutate real conversations nor
+        // clear the unsent draft. Strip the intent so switching to Real cannot auto-submit it.
+        navigate(location.pathname, { replace: true, state: null });
+        return;
+      }
       const start: StartRunOptions = {
         createBody: { instanceId: draft.instanceId ?? null, mode: draft.mode ?? 'chat' },
         request: buildDraftRequest(draft),

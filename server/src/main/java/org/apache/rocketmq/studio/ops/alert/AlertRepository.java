@@ -32,6 +32,9 @@ public interface AlertRepository {
 
     Optional<AlertRuleVO> findRuleById(Long id);
 
+    /** Current locking read; the caller must hold a transaction through all lifecycle writes. */
+    Optional<AlertRuleVO> findRuleByIdForUpdate(Long id);
+
     List<AlertRuleVO> findRulesByIds(List<Long> ids);
 
     AlertRuleVO insertRule(AlertRuleVO rule);
@@ -41,8 +44,6 @@ public interface AlertRepository {
     void markRuleTriggered(Long id, String triggeredAt);
 
     boolean deleteRule(Long id);
-
-    List<SystemAlertVO> findAlerts(String level);
 
     PageResult<SystemAlertVO> findAlerts(String level, int page, int pageSize);
 

@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.persistence.entity.RmqInstance;
 import org.apache.rocketmq.studio.persistence.entity.RmqTopic;
 import org.apache.rocketmq.studio.persistence.mapper.RmqGroupMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqInstanceMapper;
+import org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryService;
 import org.apache.rocketmq.studio.persistence.mapper.RmqTopicMapper;
 import org.springframework.stereotype.Repository;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +43,7 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
     private final RmqInstanceMapper instanceMapper;
     private final RmqTopicMapper topicMapper;
     private final RmqGroupMapper groupMapper;
+    private final NameserverRegistryService nameserverRegistry;
 
     @Override
     public List<InstanceVO> findAll() {
@@ -176,7 +178,9 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
                 .credentialId(entity.getCredentialId())
                 .adminCredentialRef(entity.getAdminCredentialRef())
                 .regionId(entity.getRegionId())
+                .nameserverId(entity.getNameserverId())
                 .build();
+        vo.setNameserverName(nameserverRegistry.nameOf(entity.getNameserverId()));
         vo.setId(entity.getId());
         vo.setGmtCreate(entity.getGmtCreate());
         vo.setGmtModified(entity.getGmtModified());
@@ -223,6 +227,7 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
         entity.setCredentialId(vo.getCredentialId());
         entity.setAdminCredentialRef(vo.getAdminCredentialRef());
         entity.setRegionId(vo.getRegionId());
+        entity.setNameserverId(vo.getNameserverId());
         entity.setGmtCreate(vo.getGmtCreate());
         entity.setGmtModified(vo.getGmtModified());
         return entity;

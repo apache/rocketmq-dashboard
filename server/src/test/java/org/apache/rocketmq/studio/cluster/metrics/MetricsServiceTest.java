@@ -196,6 +196,45 @@ class MetricsServiceTest {
     }
 
     @Test
+    void queryShouldAcceptPrometheusDecimalAndExponentStepFormsTest() {
+        // Prometheus accepts a float literal for step — a sign, a decimal point on either side
+        // of the digits, an exponent — and the source receives the step text unchanged, so the
+        // service must not reject equivalent numeric forms a real backend would take.
+        MetricDataVO data = emptyMetricData();
+        when(metricsSource.query(any(MetricQueryDTO.class))).thenReturn(data);
+        for (String step : List.of(".5", "1.", "+1", "1e1", "5E-1", "1e0")) {
+            MetricQueryDTO query = MetricQueryDTO.builder()
+                    .metric("vector(1)")
+                    .start(1_700_000_000L)
+                    .end(1_700_000_020L)
+                    .step(step)
+                    .build();
+
+            MetricDataVO result = metricsService.query(query);
+
+            assertThat(result).isNotNull();
+            verify(metricsSource).query(query);
+        }
+    }
+
+    @Test
+    void queryShouldStillRejectSubBudgetStepsInExponentNotationTest() {
+        // Widened syntax must not widen semantics: a 20-second range with a millisecond step
+        // stays over the sample budget whatever notation names it.
+        for (String step : List.of("0.001", ".001", "1e-3")) {
+            MetricQueryDTO query = MetricQueryDTO.builder()
+                    .metric("vector(1)")
+                    .start(1_700_000_000L)
+                    .end(1_700_000_020L)
+                    .step(step)
+                    .build();
+
+            assertBadRequest(query, "Metric query returns too many samples; increase step or reduce range");
+        }
+        verifyNoInteractions(metricsSource);
+    }
+
+    @Test
     void queryShouldReturnMultipleDataPoints() {
         MetricQueryDTO query = MetricQueryDTO.builder()
                 .metric("memory_usage")

@@ -61,6 +61,7 @@ public record MessageQueryOutput(
             String body,
             String bodyEncoding,
             Boolean bodyTruncated,
+            /** Body size in bytes, or -1 when the vendor API reports none (unknown, not zero). */
             int size) {
 
         static Item from(MessageRecordVO message, boolean includeBody) {
