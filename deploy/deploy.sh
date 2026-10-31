@@ -1,4 +1,19 @@
 #!/usr/bin/env bash
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 set -euo pipefail
 
 # ─── RocketMQ Studio 一键部署脚本（模式 A：部署 Studio 到目标机器）───
@@ -104,11 +119,15 @@ build_server() {
   else
     warn "目标机无 ~/.m2/settings.xml（国内机器请先配置 Maven 阿里源，见 SKILL.md 步骤 2）"
   fi
+  # This container mounts only server/ at /app, so the repo-root-relative gates
+  # (RAT header check, source-release assembly) would scan/pack the container
+  # filesystem. They run in CI and in local builds where the root exists.
   run_remote "cd $REMOTE_PATH_QUOTED && docker run --rm -e HOME=/tmp \
     --user \$(id -u):\$(id -g) \
     -v \"\$PWD/server:/app\" -v \"\$HOME/.m2:/maven-cache\" -w /app \
     $MAVEN_IMAGE \
-    mvn -B -ntp $settings_flag $MAVEN_ARGS -Dmaven.repo.local=/maven-cache/repository package -DskipTests"
+    mvn -B -ntp $settings_flag $MAVEN_ARGS -Dmaven.repo.local=/maven-cache/repository \
+    -Drat.skip=true -Dassembly.skipAssembly=true package -DskipTests"
   info "🏗️  构建 rocketmq-server 镜像（runtime-prebuilt）..."
   # 构建上下文由 server/ 扩到仓库根目录：Dockerfile 的 rmqctl Go 阶段需要 COPY rmqctl/，
   # 让镜像自带 /usr/local/bin/rmqctl（AI 后端以 `rmqctl mcp stdio` 拉起 MCP server）。

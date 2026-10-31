@@ -16,6 +16,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Card,
   DatePicker,
@@ -144,7 +145,7 @@ const ALERT_EXPORT_COLUMNS: CsvColumn<SystemAlert>[] = [
   { header: 'Description', value: (alert) => alert.description },
 ];
 
-const SystemAlertsPage = () => {
+const SystemAlertsPage = ({ embedded = false }: { embedded?: boolean } = {}) => {
   const { t } = useLang();
   const userId = useAuthStore((state) => state.userId);
   const admin = useAuthStore((state) => state.admin);
@@ -662,7 +663,7 @@ const SystemAlertsPage = () => {
     {
       title: t('sysAlerts.level'),
       key: 'level',
-      width: 110,
+      width: 100,
       render: (_: unknown, alert: SystemAlert) => {
         const normalizedLevel = normalizeAlertLevel(alert.level);
         const cfg = alertLevelConfig[normalizedLevel] ?? {
@@ -729,7 +730,7 @@ const SystemAlertsPage = () => {
     {
       title: t('sysAlerts.status'),
       key: 'transition',
-      width: 80,
+      width: 100,
       render: (_: unknown, alert: SystemAlert) =>
         alert.transition ? (
           <Tag style={{ marginInlineEnd: 0 }}>
@@ -746,7 +747,7 @@ const SystemAlertsPage = () => {
     {
       title: t('sysAlerts.description'),
       dataIndex: 'description',
-      width: 180,
+      width: 140,
       ellipsis: { showTitle: false },
       render: (description: string) => (
         <Tooltip title={description}>
@@ -759,7 +760,7 @@ const SystemAlertsPage = () => {
     {
       title: t('sysAlerts.instanceId'),
       key: 'instance',
-      width: 140,
+      width: 120,
       ellipsis: { showTitle: false },
       render: (_: unknown, alert: SystemAlert) => {
         const text = instanceTextOf(alert);
@@ -776,7 +777,7 @@ const SystemAlertsPage = () => {
     {
       title: t('sysAlerts.labels'),
       key: 'labels',
-      width: 80,
+      width: 72,
       align: 'center',
       render: (_: unknown, alert: SystemAlert) => {
         const entries = labelEntriesOf(alert);
@@ -806,7 +807,8 @@ const SystemAlertsPage = () => {
     {
       title: t('common.actions'),
       key: 'actions',
-      width: 190,
+      // 三个 link 按钮实测 218px，右对齐列宽小于它 + 16px padding 时会向左溢出压到时间列。
+      width: 240,
       align: 'right',
       render: (_: unknown, alert: SystemAlert) => (
         <Flex gap={4} justify="flex-end">
@@ -845,64 +847,97 @@ const SystemAlertsPage = () => {
       ),
     },
   ];
+  const headerExtra = (
+    <Flex gap={8} align="center">
+      {collectorStatus && (
+        // 与筛选控件同高同边框的状态片：Tag 的 success 配色只有 22px 高、绿底绿字，
+        // 夹在一排 32px 白底控件里既矮又跳。放在页头而不是筛选条，是因为 1600 视口下
+        // 筛选条放下 8 个控件后只剩 40px，容不下它。
+        <Flex
+          align="center"
+          gap={6}
+          style={{
+            height: 32,
+            padding: '0 12px',
+            border: `1px solid ${token.colorBorder}`,
+            borderRadius: token.borderRadius,
+            background: token.colorBgContainer,
+          }}
+        >
+          <Info size={14} color={token.colorTextSecondary} aria-hidden="true" />
+          <Text style={{ fontSize: 14 }}>
+            {t('sysAlerts.collectorImplementations', {
+              cluster: collectorStatus.clusterCollectorCount,
+              business: collectorStatus.businessCollectorCount,
+            })}
+          </Text>
+        </Flex>
+      )}
+      <Button
+        icon={<DownloadSimple size={14} />}
+        onClick={() => void exportAlerts()}
+        loading={exporting}
+      >
+        {t('sysAlerts.exportCsv')}
+      </Button>
+      <Button onClick={openSilences}>{t('sysAlerts.maintenanceWindows')}</Button>
+      <Popconfirm
+        title={t('sysAlerts.clearAckedConfirm')}
+        description={t('sysAlerts.clearAckedConfirmDesc')}
+        onConfirm={() => void handleClearAcked()}
+        okText={t('common.confirm')}
+        cancelText={t('common.cancel')}
+      >
+        <Button
+          icon={<Trash size={14} />}
+          danger
+          disabled={!alerts.some((a) => a.acknowledged)}
+          loading={clearing}
+        >
+          {t('sysAlerts.clearAcked')}
+        </Button>
+      </Popconfirm>
+    </Flex>
+  );
+  const batchAckButton = (
+    <Button
+      disabled={selectedIds.length === 0}
+      loading={acknowledgingIds.size > 0}
+      onClick={() => void handleAckMany(selectedIds)}
+    >
+      {t('sysAlerts.batchAck', { count: selectedIds.length })}
+    </Button>
+  );
+
+  // embedded：页头操作区经 portal 挂到枢纽页 Tab 栏右侧，与页签同一行，不单独占一行。
+  // setState 用定时器 defer：目标容器首帧 render 时还不存在，且规避 set-state-in-effect。
+  const [tabExtraTarget, setTabExtraTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!embedded) return undefined;
+    const timer = window.setTimeout(() => {
+      setTabExtraTarget(document.getElementById('cluster-alerts-tab-extra'));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [embedded]);
+
   return (
-    <div style={{ padding: 24 }}>
-      <PageHeader
-        title={t('sysAlerts.title')}
-        subtitle={t('sysAlerts.subtitle', { n: loadFailed ? '-' : unackCount })}
-        extra={
-          <Flex gap={8} align="center">
-            {collectorStatus && (
-              // 与筛选控件同高同边框的状态片：Tag 的 success 配色只有 22px 高、绿底绿字，
-              // 夹在一排 32px 白底控件里既矮又跳。放在页头而不是筛选条，是因为 1600 视口下
-              // 筛选条放下 8 个控件后只剩 40px，容不下它。
-              <Flex
-                align="center"
-                gap={6}
-                style={{
-                  height: 32,
-                  padding: '0 12px',
-                  border: `1px solid ${token.colorBorder}`,
-                  borderRadius: token.borderRadius,
-                  background: token.colorBgContainer,
-                }}
-              >
-                <Info size={14} color={token.colorTextSecondary} aria-hidden="true" />
-                <Text style={{ fontSize: 14 }}>
-                  {t('sysAlerts.collectorImplementations', {
-                    cluster: collectorStatus.clusterCollectorCount,
-                    business: collectorStatus.businessCollectorCount,
-                  })}
-                </Text>
-              </Flex>
-            )}
-            <Button
-              icon={<DownloadSimple size={14} />}
-              onClick={() => void exportAlerts()}
-              loading={exporting}
-            >
-              {t('sysAlerts.exportCsv')}
-            </Button>
-            <Button onClick={openSilences}>{t('sysAlerts.maintenanceWindows')}</Button>
-            <Popconfirm
-              title={t('sysAlerts.clearAckedConfirm')}
-              description={t('sysAlerts.clearAckedConfirmDesc')}
-              onConfirm={() => void handleClearAcked()}
-              okText={t('common.confirm')}
-              cancelText={t('common.cancel')}
-            >
-              <Button
-                icon={<Trash size={14} />}
-                danger
-                disabled={!alerts.some((a) => a.acknowledged)}
-                loading={clearing}
-              >
-                {t('sysAlerts.clearAcked')}
-              </Button>
-            </Popconfirm>
-          </Flex>
-        }
-      />
+    <div style={{ padding: embedded ? 0 : 24 }}>
+      {embedded ? (
+        tabExtraTarget &&
+        createPortal(
+          <Flex gap={12} align="center">
+            {headerExtra}
+            {batchAckButton}
+          </Flex>,
+          tabExtraTarget,
+        )
+      ) : (
+        <PageHeader
+          title={t('sysAlerts.title')}
+          subtitle={t('sysAlerts.subtitle', { n: loadFailed ? '-' : unackCount })}
+          extra={headerExtra}
+        />
+      )}
 
       {loadFailed && (
         <Alert
@@ -1047,14 +1082,8 @@ const SystemAlertsPage = () => {
               <Text type="secondary" style={{ fontSize: 14 }}>
                 {t('sysAlerts.batchHint')}
               </Text>
-              <Button
-                size="small"
-                disabled={selectedIds.length === 0}
-                loading={acknowledgingIds.size > 0}
-                onClick={() => void handleAckMany(selectedIds)}
-              >
-                {t('sysAlerts.batchAck', { count: selectedIds.length })}
-              </Button>
+              {/* embedded 态批量确认跟其余操作一起进 Tab 栏右侧，不单独占一行。 */}
+              {!embedded && batchAckButton}
             </Flex>
             {/* A table, not a card per alert: one row each, secondary facts behind the expand
                 control, and a checkbox column so acknowledging a batch is one click instead of N. */}

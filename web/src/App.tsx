@@ -42,8 +42,7 @@ const K8sCertsPage = lazy(() => import('./pages/cluster/certs'));
 const ClientsPage = lazy(() => import('./pages/cluster/clients'));
 const DashboardOpsPage = lazy(() => import('./pages/home/dashboard'));
 const AlertsPage = lazy(() => import('./pages/ops/alerts'));
-const SystemAlertsPage = lazy(() => import('./pages/ops/systemAlerts'));
-const NotificationDeliveriesPage = lazy(() => import('./pages/ops/notificationDeliveries'));
+const ClusterAlertsHub = lazy(() => import('./pages/ops/clusterAlertsHub'));
 const AuditPage = lazy(() => import('./pages/ops/audit'));
 const AiPage = lazy(() => import('./pages/ai'));
 const SettingsPage = lazy(() => import('./pages/settings'));
@@ -210,10 +209,13 @@ function App() {
             <Route path="cluster/clients" element={<ClientsPage />} />
             <Route path="ops/dashboard" element={<DashboardOpsPage />} />
             <Route path="ops/grafana" element={<GrafanaDashboardsPage />} />
-            <Route path="ops/alerts" element={<AlertsPage />} />
+            <Route path="ops/alerts" element={<ClusterAlertsHub initialTab="rules" />} />
             <Route path="ops/business-alerts" element={<AlertsPage domain="BUSINESS" />} />
-            <Route path="ops/system-alerts" element={<SystemAlertsPage />} />
-            <Route path="ops/alert-deliveries" element={<NotificationDeliveriesPage />} />
+            <Route path="ops/system-alerts" element={<ClusterAlertsHub initialTab="events" />} />
+            <Route
+              path="ops/alert-deliveries"
+              element={<ClusterAlertsHub initialTab="deliveries" />}
+            />
             <Route path="ops/audit" element={<AuditPage />} />
             <Route path="ai" element={<AiPage />} />
             <Route path="ai/c/:conversationId" element={<AiPage />} />

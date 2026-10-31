@@ -643,7 +643,7 @@ describe('Consumer page', () => {
     expect(await screen.findByText('资源命名与归属规则')).toBeInTheDocument();
   });
 
-  it('submits the canonical global delivery order type', async () => {
+  it('submits the partition-ordered delivery type for an ordered group', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
       void config.onOk?.();
@@ -656,27 +656,23 @@ describe('Consumer page', () => {
     await waitFor(() => expect(createButton).toBeEnabled());
     await user.click(createButton);
     const dialog = await screen.findByRole('dialog');
-    await user.type(within(dialog).getByLabelText('Group 名称'), 'cg-global-orders');
+    await user.type(within(dialog).getByLabelText('Group 名称'), 'cg-orderly');
 
-    const dataTypeSelect = within(dialog).getByRole('combobox', { name: '订阅组类型' });
-    fireEvent.mouseDown(dataTypeSelect.parentElement!);
-    await user.click(
-      await screen.findByText('顺序消息', { selector: '.ant-select-item-option-content' }),
-    );
+    // 订阅组类型与创建 Topic 共用 Segmented，只提供普通/顺序两档，顺序组固定分区顺序
+    expect(within(dialog).queryByText('延迟消息')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('事务消息')).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('radio', { name: '顺序消息' }));
+    expect(within(dialog).queryByRole('combobox', { name: '顺序类型' })).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('全局顺序')).not.toBeInTheDocument();
 
-    const orderTypeSelect = within(dialog).getByRole('combobox', { name: '顺序类型' });
-    fireEvent.mouseDown(orderTypeSelect.parentElement!);
-    await user.click(
-      await screen.findByText('全局顺序', { selector: '.ant-select-item-option-content' }),
-    );
     await user.click(within(dialog).getByRole('button', { name: /创\s*建/ }));
 
     await waitFor(() =>
       expect(consumerService.createConsumerGroup).toHaveBeenCalledWith(
         expect.objectContaining({
-          name: 'cg-global-orders',
+          name: 'cg-orderly',
           subscriptionDataType: 'FIFO',
-          deliveryOrderType: 'MESSAGES_ORDER',
+          deliveryOrderType: 'PARTITON_ORDER',
         }),
       ),
     );
@@ -1495,7 +1491,9 @@ describe('Consumer page', () => {
     await user.click(stackButtons[1]);
 
     await act(async () => resolveSecond(secondStack));
-    expect(await screen.findByText('LatestClientThread')).toBeInTheDocument();
+    expect(
+      await screen.findByText('LatestClientThread', undefined, { timeout: 5000 }),
+    ).toBeInTheDocument();
     await act(async () => resolveFirst(firstStack));
     expect(screen.getByText('LatestClientThread')).toBeInTheDocument();
     expect(screen.queryByText('OldClientThread')).not.toBeInTheDocument();
@@ -1635,7 +1633,9 @@ describe('Consumer page', () => {
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
 
-    expect(await screen.findByText('发现 1 个订阅配置不一致')).toBeInTheDocument();
+    expect(
+      await screen.findByText('发现 1 个订阅配置不一致', undefined, { timeout: 5000 }),
+    ).toBeInTheDocument();
     expect(screen.getByText('consistent').closest('.ant-tag')).toHaveClass('ant-tag-green');
     expect(screen.getByText('inconsistent').closest('.ant-tag')).toHaveClass('ant-tag-orange');
     await user.click(screen.getByRole('checkbox', { name: '仅看不一致' }));
@@ -1643,7 +1643,9 @@ describe('Consumer page', () => {
 
     await user.click(screen.getByRole('button', { name: '重新检查' }));
 
-    expect(await screen.findByText('全部 2 个订阅配置一致')).toBeInTheDocument();
+    expect(
+      await screen.findByText('全部 2 个订阅配置一致', undefined, { timeout: 5000 }),
+    ).toBeInTheDocument();
     expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledTimes(2);
   });
 

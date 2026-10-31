@@ -727,6 +727,44 @@ describe('UserManagementPage', () => {
     expect(deleteStudioUser).not.toHaveBeenCalled();
   });
 
+  it('centers the role, status and session columns and right-aligns the time columns', async () => {
+    renderPage();
+    const row = (await screen.findByText('operator')).closest('tr') as HTMLElement;
+
+    // 列表列对齐规则（用户约定 2026-10-16）：权限 / 状态 / 活跃会话是标签型短列居中，
+    // 三个时间列是读数型靠右，别改回默认左对齐。
+    const headers = Array.from(row.closest('table')!.querySelectorAll('thead th')).map((th) =>
+      th.textContent?.trim(),
+    );
+    const cells = within(row).getAllByRole('cell');
+    const alignOf = (title: string) => {
+      const index = headers.indexOf(title);
+      expect(index).toBeGreaterThan(-1);
+      return cells[index].style.textAlign;
+    };
+    expect(alignOf('权限')).toBe('center');
+    expect(alignOf('状态')).toBe('center');
+    expect(alignOf('活跃会话')).toBe('center');
+    expect(alignOf('最近活跃')).toBe('right');
+    expect(alignOf('最近过期')).toBe('right');
+    expect(alignOf('创建时间')).toBe('right');
+  });
+
+  it('keeps the user table within the 1600px viewport container', async () => {
+    renderPage();
+    await screen.findByText('operator');
+
+    // 操作列曾声明 299px、九列合计超出表格可用宽，表格横向滚动且启用开关被裁在右缘外。
+    // 表格套在 Card 里，1600 视口下可用宽 = Card body 1330 − 两侧 24px padding = 1282，
+    // 去掉用户 ID 列并把开关归位到状态列后合计 1266，默认不出横向滚动条。
+    const cols = Array.from(document.querySelectorAll('.ant-table-content colgroup col'));
+    const total = cols.reduce(
+      (sum, col) => sum + (parseInt((col as HTMLElement).style.width, 10) || 0),
+      0,
+    );
+    expect(total).toBeLessThanOrEqual(1282);
+  });
+
   it('renders the page in English when the stored language preference is en', async () => {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
     try {

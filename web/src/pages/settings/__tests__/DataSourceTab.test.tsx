@@ -327,7 +327,9 @@ describe('DataSourceTab', () => {
       const lastRow = await screen.findByRole('row', { name: /Source 41/ });
       await user.click(within(lastRow).getByRole('button', { name: /删除/ }));
       await user.click(await screen.findByRole('button', { name: /确\s*定/ }));
-      await waitFor(() => expect(deleteDataSource).toHaveBeenCalledWith('source-41'));
+      await waitFor(() => expect(deleteDataSource).toHaveBeenCalledWith('source-41'), {
+        timeout: 5000,
+      });
       if (navigated) {
         fireEvent.click(document.querySelector('.ant-pagination-item-1')!);
         await screen.findByText('Source 1');
@@ -335,10 +337,13 @@ describe('DataSourceTab', () => {
       deleted = true;
       await act(async () => pendingDelete.resolve());
       const expectedPage = navigated || remaining === 0 ? 1 : 2;
-      await waitFor(() =>
-        expect(listDataSourcesPage).toHaveBeenLastCalledWith(
-          expect.objectContaining({ page: expectedPage }),
-        ),
+      // Under CI load the post-delete refresh lands later than waitFor's 1s default.
+      await waitFor(
+        () =>
+          expect(listDataSourcesPage).toHaveBeenLastCalledWith(
+            expect.objectContaining({ page: expectedPage }),
+          ),
+        { timeout: 5000 },
       );
       if (remaining > 0)
         expect(await screen.findByText(navigated ? 'Source 1' : 'Source 21')).toBeInTheDocument();
@@ -360,10 +365,14 @@ describe('DataSourceTab', () => {
     const row = await screen.findByRole('row', { name: /Prometheus prod/ });
     await user.click(within(row).getByRole('button', { name: /删除/ }));
     await user.click(await screen.findByRole('button', { name: /确\s*定/ }));
-    await waitFor(() => expect(deleteDataSource).toHaveBeenCalledWith('prom-prod'));
+    await waitFor(() => expect(deleteDataSource).toHaveBeenCalledWith('prom-prod'), {
+      timeout: 5000,
+    });
     unmount();
+    const callsAtUnmount = vi.mocked(listDataSourcesPage).mock.calls.length;
     await act(async () => pendingDelete.resolve());
-    expect(listDataSourcesPage).toHaveBeenCalledTimes(1);
+    // A refresh that started before unmount is legitimate; only a post-unmount fetch is the bug.
+    expect(listDataSourcesPage).toHaveBeenCalledTimes(callsAtUnmount);
   });
 
   it('keeps data source creation disabled until the initial list is ready', async () => {

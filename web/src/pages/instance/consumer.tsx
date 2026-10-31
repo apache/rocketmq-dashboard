@@ -34,6 +34,7 @@ import {
   Descriptions,
   Statistic,
   Radio,
+  Segmented,
   InputNumber,
   Typography,
   Row,
@@ -121,6 +122,13 @@ const { Text } = Typography;
 
 const UNKNOWN_LAG_COLOR = '#8c8c8c';
 const UNAVAILABLE_LAG_LABEL = '不可用';
+
+// 消费组只区分普通/顺序：延迟与事务是 Topic 的消息类型；顺序组固定分区顺序（云 OpenAPI 只有 Orderly）
+const GROUP_TYPE_CARDS = [
+  { value: 'NORMAL', label: '普通消息', desc: '并发消费，吞吐优先，适用于绝大多数场景。' },
+  { value: 'FIFO', label: '顺序消息', desc: '按分区顺序消费，需搭配顺序 Topic 使用。' },
+];
+const ORDERED_DELIVERY_TYPE = 'PARTITON_ORDER'; // 拼写与后端 normalizeDeliveryOrderType、CSV 导入词表一致
 
 /**
  * The provider leaves delaySeconds at zero when the broker consume stats carried no
@@ -304,7 +312,7 @@ const ConsumerPageContent = ({
   }>();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [form] = Form.useForm();
-  const [dataTypeValue, setDataTypeValue] = useState<string | undefined>(undefined);
+  const createDataType = Form.useWatch('dataType', form);
   const [resetModalOpen, setResetModalOpen] = useState(false);
   const [resetGroup, setResetGroup] = useState<ConsumerGroup | null>(null);
   const [resetTopic, setResetTopic] = useState<string>();
@@ -2502,7 +2510,6 @@ const ConsumerPageContent = ({
         onCancel={() => {
           setCreateModalOpen(false);
           form.resetFields();
-          setDataTypeValue(undefined);
         }}
         onOk={() => {
           form
@@ -2525,8 +2532,9 @@ const ConsumerPageContent = ({
                       subscriptionMode: values.subscriptionMode,
                       consumeType: values.consumeType,
                       retryMaxTimes: values.retryMaxTimes,
-                      subscriptionDataType: values.dataType || 'NORMAL',
-                      deliveryOrderType: values.deliveryOrderType,
+                      subscriptionDataType: values.dataType,
+                      deliveryOrderType:
+                        values.dataType === 'FIFO' ? ORDERED_DELIVERY_TYPE : undefined,
                       subscribedTopics: [],
                       instanceId: selectedInstanceId,
                     });
@@ -2537,7 +2545,6 @@ const ConsumerPageContent = ({
                     message.success(`消费组 ${values.name} 创建成功`);
                     setCreateModalOpen(false);
                     form.resetFields();
-                    setDataTypeValue(undefined);
                   } catch {
                     message.error(t('consumer.createFailed'));
                     throw new Error(t('consumer.createFailed'));
@@ -2563,6 +2570,7 @@ const ConsumerPageContent = ({
             subscriptionMode: 'Push',
             consumeType: 'CLUSTERING',
             retryMaxTimes: 16,
+            dataType: 'NORMAL',
           }}
         >
           <Form.Item
@@ -2610,35 +2618,13 @@ const ConsumerPageContent = ({
             <InputNumber min={0} max={128} style={{ width: '100%' }} />
           </Form.Item>
 
-          <Form.Item label="订阅组类型" name="dataType">
-            <Select
-              placeholder="选择消息类型"
-              options={[
-                { value: 'NORMAL', label: '普通消息' },
-                { value: 'FIFO', label: '顺序消息' },
-                { value: 'DELAY', label: '延迟消息' },
-                { value: 'TRANSACTION', label: '事务消息' },
-              ]}
-              onChange={(val) => setDataTypeValue(val)}
-            />
+          <Form.Item
+            label="订阅组类型"
+            name="dataType"
+            extra={GROUP_TYPE_CARDS.find((c) => c.value === createDataType)?.desc}
+          >
+            <Segmented options={GROUP_TYPE_CARDS.map(({ value, label }) => ({ value, label }))} />
           </Form.Item>
-
-          {dataTypeValue === 'FIFO' && (
-            <Form.Item label="顺序类型" name="deliveryOrderType" initialValue="PARTITON_ORDER">
-              <Select
-                options={[
-                  {
-                    value: 'PARTITON_ORDER',
-                    label: '分区顺序',
-                  },
-                  {
-                    value: 'MESSAGES_ORDER',
-                    label: '全局顺序',
-                  },
-                ]}
-              />
-            </Form.Item>
-          )}
         </Form>
       </Modal>
 

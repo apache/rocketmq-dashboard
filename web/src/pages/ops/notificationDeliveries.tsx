@@ -2,7 +2,17 @@
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -45,7 +55,7 @@ const statusColors: Record<NotificationDeliveryRecord['status'], string> = {
   FAILED: 'error',
 };
 
-const NotificationDeliveriesPage = () => {
+const NotificationDeliveriesPage = ({ embedded = false }: { embedded?: boolean } = {}) => {
   const { t } = useLang();
   const [items, setItems] = useState<NotificationDeliveryRecord[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
@@ -307,8 +317,10 @@ const NotificationDeliveriesPage = () => {
 
   return (
     <>
-      <div style={{ padding: 24 }}>
-        <PageHeader title={t('deliveries.title')} subtitle={t('deliveries.subtitle')} />
+      <div style={{ padding: embedded ? 0 : 24 }}>
+        {!embedded && (
+          <PageHeader title={t('deliveries.title')} subtitle={t('deliveries.subtitle')} />
+        )}
         <Card bodyStyle={{ padding: 20 }}>
           <Flex gap={12} wrap="wrap" style={{ marginBottom: 20 }}>
             <Button
