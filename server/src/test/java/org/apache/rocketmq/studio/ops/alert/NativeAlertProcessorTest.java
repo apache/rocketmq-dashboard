@@ -172,7 +172,7 @@ class NativeAlertProcessorTest {
         processor.process(List.of(sample("orders")));
         assertThat(saved.values()).singleElement().extracting(AlertRuleState::status)
                 .isEqualTo(AlertStateStatus.PENDING);
-        verifyNoInteractions(alerts);
+        verify(alerts, never()).saveAlert(any(SystemAlertVO.class));
 
         processor.process(List.of(sample("orders")));
         assertThat(saved.values()).singleElement().extracting(AlertRuleState::status)
@@ -271,7 +271,7 @@ class NativeAlertProcessorTest {
 
         processor(service, states, alerts).process(List.of(sample("orders")));
 
-        verifyNoInteractions(alerts);
+        verify(alerts, never()).saveAlert(any(SystemAlertVO.class));
     }
 
     @Test
@@ -432,9 +432,18 @@ class NativeAlertProcessorTest {
                 org.mockito.ArgumentMatchers.anyMap());
     }
 
+    private static void stubCurrentRules(AlertService service, AlertRepository repository) {
+        when(repository.findRuleByIdForUpdate(any(Long.class))).thenAnswer(invocation ->
+                java.util.stream.Stream.concat(service.listRules(AlertDomain.BUSINESS).stream(),
+                                service.listRules(AlertDomain.CLUSTER).stream())
+                        .filter(rule -> java.util.Objects.equals(rule.getId(), invocation.getArgument(0)))
+                        .findFirst());
+    }
+
     private static NativeAlertProcessor processor(AlertService service, AlertStateRepository states,
             MetricSnapshotRepository snapshots, AlertRepository alerts, NotificationOutboxService outbox,
             AlertNotificationSuppressionService suppression) {
+        stubCurrentRules(service, alerts);
         NativeAlertEvaluationService evaluationService = new NativeAlertEvaluationService(new AlertRuleEvaluator(),
                 new AlertStateMachine(), states, snapshots, alerts, outbox, suppression);
         return new NativeAlertProcessor(service, evaluationService, new AlertStateMachine(), states, alerts, outbox,
@@ -512,6 +521,7 @@ class NativeAlertProcessorTest {
         when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule)))).thenReturn(List.of(active));
         when(states.save(eq(oldKey), any(AlertRuleState.class))).thenReturn(true);
         AlertRepository alerts = mock(AlertRepository.class);
+        stubCurrentRules(service, alerts);
         when(alerts.saveAlert(any(SystemAlertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
         NotificationOutboxService outbox = mock(NotificationOutboxService.class);
 
@@ -553,6 +563,7 @@ class NativeAlertProcessorTest {
         when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule)))).thenReturn(List.of(active));
         when(states.save(eq(oldKey), any(AlertRuleState.class))).thenReturn(true);
         AlertRepository alerts = mock(AlertRepository.class);
+        stubCurrentRules(service, alerts);
         when(alerts.saveAlert(any(SystemAlertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
         NotificationOutboxService outbox = mock(NotificationOutboxService.class);
 
@@ -593,6 +604,7 @@ class NativeAlertProcessorTest {
         when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule)))).thenReturn(List.of(active));
         when(states.save(eq(oldKey), any(AlertRuleState.class))).thenReturn(true);
         AlertRepository alerts = mock(AlertRepository.class);
+        stubCurrentRules(service, alerts);
         when(alerts.saveAlert(any(SystemAlertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
         NotificationOutboxService outbox = mock(NotificationOutboxService.class);
 
@@ -626,6 +638,7 @@ class NativeAlertProcessorTest {
         when(states.save(eq(key), any(AlertRuleState.class))).thenReturn(true);
         when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule)))).thenReturn(List.of(active));
         AlertRepository alerts = mock(AlertRepository.class);
+        stubCurrentRules(service, alerts);
 
         NativeAlertProcessor processor = new NativeAlertProcessor(service,
                 new NativeAlertEvaluationService(new AlertRuleEvaluator(), new AlertStateMachine(), states,
@@ -659,6 +672,7 @@ class NativeAlertProcessorTest {
         when(states.save(eq(key), any(AlertRuleState.class))).thenReturn(true);
         when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule)))).thenReturn(List.of(active));
         AlertRepository alerts = mock(AlertRepository.class);
+        stubCurrentRules(service, alerts);
         NotificationOutboxService outbox = mock(NotificationOutboxService.class);
 
         NativeAlertProcessor processor = new NativeAlertProcessor(service,
@@ -692,6 +706,7 @@ class NativeAlertProcessorTest {
         when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule)))).thenReturn(List.of(active));
         when(states.save(eq(key), any(AlertRuleState.class))).thenReturn(true);
         AlertRepository alerts = mock(AlertRepository.class);
+        stubCurrentRules(service, alerts);
         when(alerts.saveAlert(any(SystemAlertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
         NotificationOutboxService outbox = mock(NotificationOutboxService.class);
 
@@ -730,6 +745,7 @@ class NativeAlertProcessorTest {
         AlertStateRepository states = mock(AlertStateRepository.class);
         when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule)))).thenReturn(List.of(active));
         AlertRepository alerts = mock(AlertRepository.class);
+        stubCurrentRules(service, alerts);
 
         NativeAlertProcessor processor = new NativeAlertProcessor(service,
                 new NativeAlertEvaluationService(new AlertRuleEvaluator(), new AlertStateMachine(), states,
@@ -899,6 +915,7 @@ class NativeAlertProcessorTest {
                 "local", paymentsSample.labels());
         when(states.findActive(any(MetricCollectionScope.class), any())).thenReturn(List.of(active1, active2));
         AlertRepository alerts = mock(AlertRepository.class);
+        stubCurrentRules(service, alerts);
         when(alerts.saveAlert(any(SystemAlertVO.class)))
                 .thenThrow(new IllegalStateException("db write failed"))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -932,6 +949,7 @@ class NativeAlertProcessorTest {
         when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule)))).thenReturn(List.of(active));
         when(states.save(eq(oldKey), any(AlertRuleState.class))).thenReturn(true);
         AlertRepository alerts = mock(AlertRepository.class);
+        stubCurrentRules(service, alerts);
         when(alerts.saveAlert(any(SystemAlertVO.class)))
                 .thenThrow(new IllegalStateException("event persist failed"));
         NotificationOutboxService outbox = mock(NotificationOutboxService.class);
@@ -970,6 +988,7 @@ class NativeAlertProcessorTest {
         // optimistic race and returns false
         when(states.save(eq(oldKey), any(AlertRuleState.class))).thenReturn(false);
         AlertRepository alerts = mock(AlertRepository.class);
+        stubCurrentRules(service, alerts);
         NotificationOutboxService outbox = mock(NotificationOutboxService.class);
 
         NativeAlertProcessor processor = new NativeAlertProcessor(service,

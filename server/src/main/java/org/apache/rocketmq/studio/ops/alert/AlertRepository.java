@@ -32,6 +32,9 @@ public interface AlertRepository {
 
     Optional<AlertRuleVO> findRuleById(Long id);
 
+    /** Current locking read; the caller must hold a transaction through all lifecycle writes. */
+    Optional<AlertRuleVO> findRuleByIdForUpdate(Long id);
+
     List<AlertRuleVO> findRulesByIds(List<Long> ids);
 
     AlertRuleVO insertRule(AlertRuleVO rule);

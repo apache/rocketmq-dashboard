@@ -41,6 +41,7 @@ public class AuditController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String operator,
             @RequestParam(required = false) String operationType,
+            @RequestParam(required = false) String operationTypes,
             @RequestParam(required = false) String resourceType,
             @RequestParam(required = false) String target,
             @RequestParam(required = false) String clusterId,
@@ -49,7 +50,8 @@ public class AuditController {
             @RequestParam(required = false) String endDate,
             @RequestParam(required = false) String result) {
         return Result.ok(auditService.queryLogs(page, pageSize, search, operator, operationType,
-                resourceType, target, clusterId, clusterIdMissing, startDate, endDate, result));
+                operationTypes, resourceType, target, clusterId, clusterIdMissing, startDate,
+                endDate, result));
     }
 
     @GetMapping("/filter-options")

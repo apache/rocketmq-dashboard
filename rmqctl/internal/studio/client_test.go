@@ -43,7 +43,7 @@ func TestValidateServerSchemeAdaptiveHTTP(t *testing.T) {
 		{"http private 172.16/12", "http://172.16.5.10:6789", false},
 		{"http private 192.168/16", "http://192.168.1.20:6789", false},
 		{"http link-local 169.254/16", "http://169.254.1.5:6789", false},
-		{"http public ipv4 rejected", "http://47.98.43.243:6789", true},
+		{"http public ipv4 rejected", "http://203.0.113.7:6789", true},
 		{"http public domain rejected", "http://studio.example.com", true},
 	}
 	for _, tt := range tests {
@@ -75,7 +75,7 @@ func TestIsPrivateHost(t *testing.T) {
 		}
 	}
 	public := []string{
-		"studio.example.com", "47.98.43.243", "8.8.8.8",
+		"studio.example.com", "203.0.113.7", "198.51.100.9",
 		"172.15.0.1", "172.32.0.1", "11.0.0.1",
 	}
 	for _, host := range public {

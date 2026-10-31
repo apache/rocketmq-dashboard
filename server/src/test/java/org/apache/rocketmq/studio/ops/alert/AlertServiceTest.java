@@ -185,7 +185,7 @@ class AlertServiceTest {
     @Test
     void clusterRuleOperationsShouldRejectBusinessRulesTest() {
         AlertRuleVO business = AlertRuleVO.builder().id(1L).name("Consumer lag").build();
-        when(alertRepository.findRuleById(1L)).thenReturn(Optional.of(business));
+        when(alertRepository.findRuleByIdForUpdate(1L)).thenReturn(Optional.of(business));
 
         assertThatThrownBy(() -> alertService.toggleRule(AlertDomain.CLUSTER, 1L, false))
                 .isInstanceOf(BusinessException.class)
@@ -200,7 +200,7 @@ class AlertServiceTest {
     void clusterRuleOperationsShouldUpdateClusterRulesOnlyTest() {
         AlertRuleVO cluster = AlertRuleVO.builder().id(2L).name("Broker unavailable")
                 .domain(AlertDomain.CLUSTER).enabled(false).build();
-        when(alertRepository.findRuleById(2L)).thenReturn(Optional.of(cluster));
+        when(alertRepository.findRuleByIdForUpdate(2L)).thenReturn(Optional.of(cluster));
         when(alertRepository.replaceRule(cluster)).thenReturn(true);
 
         AlertRuleVO updated = alertService.toggleRule(AlertDomain.CLUSTER, 2L, true);

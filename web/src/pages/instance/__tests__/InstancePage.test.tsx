@@ -146,6 +146,37 @@ describe('InstancePage', () => {
     ]);
   });
 
+  it('filters the inventory by region on the clientTest', async () => {
+    const user = userEvent.setup();
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      {
+        ...instance(1, 'hangzhou-cloud', 'CLOUD'),
+        vendor: 'ALIYUN',
+        regionId: 'cn-hangzhou',
+        regionName: '华东 1（杭州）',
+      },
+      {
+        ...instance(2, 'shanghai-cloud', 'CLOUD'),
+        vendor: 'ALIYUN',
+        regionId: 'cn-shanghai',
+        regionName: '华东 2（上海）',
+      },
+    ]);
+    renderPage();
+    await screen.findByText('hangzhou-cloud');
+    expect(screen.getByText('shanghai-cloud')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: '按地域筛选' }));
+    await user.click(
+      await screen.findByText('华东 2（上海）', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() => expect(screen.queryByText('hangzhou-cloud')).not.toBeInTheDocument());
+    expect(screen.getByText('shanghai-cloud')).toBeInTheDocument();
+    // 列表一次全量返回、不分页，地域筛选是纯前端过滤，不触发新的列表请求。
+    expect(instanceService.listInstances).toHaveBeenCalledTimes(1);
+  });
+
   it.each([20, 21, 201])('offersEveryCloudCredentialForInventoryOf%sTest', async (count) => {
     const user = userEvent.setup();
     const allCredentials: CloudCredential[] = Array.from({ length: count }, (_, index) => ({
@@ -187,6 +218,20 @@ describe('InstancePage', () => {
     );
     await waitFor(() => expect(aliyunCatalogApi.listAliyunRegions).toHaveBeenCalledWith(count));
     expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledTimes(Math.ceil(count / 100));
+  });
+
+  it('keeps the instance table within the 1600px viewport containerTest', async () => {
+    renderPage();
+    await screen.findByText('production-proxy');
+
+    // 2026-10-28 实测：1600 视口下卡片内容宽 1330，实例表曾溢出 40px（备注列无声明宽、
+    // 操作列删除按钮被裁）。列宽合计须 <=1330，长文本列靠 ellipsis 收口。
+    const cols = Array.from(document.querySelectorAll('.ant-table-content colgroup col'));
+    const total = cols.reduce(
+      (sum, col) => sum + (parseInt((col as HTMLElement).style.width, 10) || 0),
+      0,
+    );
+    expect(total).toBeLessThanOrEqual(1330);
   });
 
   it('discardsLaterCredentialPagesAfterTheVendorChangesTest', async () => {
@@ -410,7 +455,7 @@ describe('InstancePage', () => {
       },
     );
 
-    const typeSelect = screen.getByRole('combobox');
+    const typeSelect = screen.getByRole('combobox', { name: '按架构筛选' });
     fireEvent.mouseDown(typeSelect.parentElement!);
     await user.click(
       await screen.findByText('Direct 模式', { selector: '.ant-select-item-option-content' }),
@@ -547,7 +592,7 @@ describe('InstancePage', () => {
     renderPage();
 
     expect(await screen.findByText('production-proxy')).toBeInTheDocument();
-    const typeSelect = screen.getByRole('combobox');
+    const typeSelect = screen.getByRole('combobox', { name: '按架构筛选' });
     fireEvent.mouseDown(typeSelect.parentElement!);
     await user.click(
       await screen.findByText('Direct 模式', { selector: '.ant-select-item-option-content' }),
@@ -779,7 +824,7 @@ describe('InstancePage', () => {
       expect(instanceService.deleteInstance).toHaveBeenCalledWith('production-proxy'),
     );
 
-    const typeSelect = screen.getByRole('combobox');
+    const typeSelect = screen.getByRole('combobox', { name: '按架构筛选' });
     fireEvent.mouseDown(typeSelect.parentElement!);
     await user.click(
       await screen.findByText('Direct 模式', { selector: '.ant-select-item-option-content' }),
@@ -1372,7 +1417,7 @@ describe('InstancePage', () => {
     const deleteButton = screen.getAllByRole('button', { name: /删除/ })[0];
     expect(deleteButton).toBeEnabled();
 
-    const typeSelect = screen.getByRole('combobox');
+    const typeSelect = screen.getByRole('combobox', { name: '按架构筛选' });
     fireEvent.mouseDown(typeSelect.parentElement!);
     await user.click(
       await screen.findByText('Direct 模式', { selector: '.ant-select-item-option-content' }),

@@ -173,7 +173,7 @@ describe('consumer group diagnostics', () => {
 
     expect(diagnostics.status).toBe('warning');
     expect(diagnostics.summary).toMatchObject({
-      reportedLag: 0,
+      reportedLag: null,
       unknownQueueCount: 1,
       maxQueueLag: null,
       maxHeartbeatAgeSeconds: 660,
@@ -182,5 +182,103 @@ describe('consumer group diagnostics', () => {
     expect(diagnostics.issues.map((item) => item.code)).toEqual(
       expect.arrayContaining(['SUBSCRIPTION_UNKNOWN', 'UNKNOWN_QUEUE_LAG', 'STALE_HEARTBEAT']),
     );
+  });
+
+  it('reports an unmeasurable consume delay as unknown instead of a healthy zero', () => {
+    const diagnostics = analyzeConsumerGroupHealth(
+      group({ delaySeconds: 0, consumptionTimestampAvailable: false, totalLag: 0 }),
+      [subscription({})],
+      [queue({ diffTotal: 0 })],
+      { now: '2026-08-31T12:01:00Z' },
+    );
+
+    // The provider leaves delaySeconds at zero when the broker stats carried no consumed-message
+    // timestamp; judging that zero reported the group as caught up rather than unmeasurable.
+    expect(diagnostics.issues.map((item) => item.code)).toContain('CONSUME_DELAY_UNKNOWN');
+    expect(diagnostics.issues.map((item) => item.code)).not.toContain('HIGH_CONSUME_DELAY');
+    expect(diagnostics.status).toBe('warning');
+    expect(diagnostics.recommendations).toContain(
+      '消费延迟不可用时，确认 Broker 消费统计可读且消费端仍在提交 offset。',
+    );
+  });
+
+  it('keeps judging a measured delay', () => {
+    const diagnostics = analyzeConsumerGroupHealth(
+      group({ delaySeconds: 1_900, consumptionTimestampAvailable: true, totalLag: 0 }),
+      [subscription({})],
+      [queue({ diffTotal: 0 })],
+      { now: '2026-08-31T12:01:00Z' },
+    );
+
+    expect(diagnostics.issues.map((item) => item.code)).toContain('HIGH_CONSUME_DELAY');
+    expect(diagnostics.issues.map((item) => item.code)).not.toContain('CONSUME_DELAY_UNKNOWN');
+  });
+
+  it('keeps the reported lag unknown when only some queue lags are available', () => {
+    const diagnostics = analyzeConsumerGroupHealth(
+      group({ totalLag: -1 }),
+      [subscription()],
+      [queue({ diffTotal: 17 }), queue({ broker: 'broker-b', queueId: 1, diffTotal: -1 })],
+      { now: '2026-08-31T12:01:00Z' },
+    );
+
+    expect(diagnostics.summary).toMatchObject({
+      totalKnownLag: 17,
+      reportedLag: null,
+      unknownQueueCount: 1,
+    });
+  });
+
+  it('falls back to the queue subtotal only when every queue lag is available', () => {
+    const diagnostics = analyzeConsumerGroupHealth(
+      group({ totalLag: -1 }),
+      [subscription()],
+      [queue({ diffTotal: 10 }), queue({ broker: 'broker-b', queueId: 1, diffTotal: 7 })],
+      { now: '2026-08-31T12:01:00Z' },
+    );
+
+    expect(diagnostics.summary).toMatchObject({
+      totalKnownLag: 17,
+      reportedLag: 17,
+      unknownQueueCount: 0,
+    });
+  });
+
+  it('preserves an independently measured zero total lag', () => {
+    const diagnostics = analyzeConsumerGroupHealth(
+      group({ totalLag: 0 }),
+      [subscription()],
+      [queue({ diffTotal: -1 })],
+      { now: '2026-08-31T12:01:00Z' },
+    );
+
+    expect(diagnostics.summary).toMatchObject({
+      totalKnownLag: 0,
+      reportedLag: 0,
+      unknownQueueCount: 1,
+    });
+  });
+
+  it('keeps the reported lag unknown without queue observations', () => {
+    const diagnostics = analyzeConsumerGroupHealth(group({ totalLag: -1 }), [subscription()], [], {
+      now: '2026-08-31T12:01:00Z',
+    });
+
+    expect(diagnostics.summary).toMatchObject({
+      totalKnownLag: 0,
+      reportedLag: null,
+    });
+  });
+
+  it('still warns about missing clients when only the known subtotal is positive', () => {
+    const diagnostics = analyzeConsumerGroupHealth(
+      group({ onlineInstances: 0, totalLag: -1, instances: [] }),
+      [subscription()],
+      [queue({ diffTotal: 17 }), queue({ broker: 'broker-b', queueId: 1, diffTotal: -1 })],
+      { now: '2026-08-31T12:01:00Z' },
+    );
+
+    expect(diagnostics.summary.reportedLag).toBeNull();
+    expect(diagnostics.issues.map((item) => item.code)).toContain('NO_ACTIVE_CLIENTS_WITH_LAG');
   });
 });

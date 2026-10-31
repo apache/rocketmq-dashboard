@@ -1357,7 +1357,7 @@ POST /api/topics/send
 | `topic` | `string` | 是 | Topic 名称 |
 | `tag` | `string` | 否 | 消息 Tag |
 | `key` | `string` | 否 | 消息 Key（用于消息查询） |
-| `body` | `string` | 是 | 消息体内容 |
+| `body` | `string` | 是 | 非空消息体；缺失、`null` 或空字符串返回 `400`，消息体按原文发送（包括空白字符） |
 | `properties` | `Record<string, string>` | 否 | 消息自定义属性键值对 |
 
 **Response `data`:**
@@ -1833,7 +1833,7 @@ POST /api/groups/reset-offset/preview
 ### 7.1 获取 ACL 规则列表
 
 ```
-GET /api/acl/rules?principal={principal}&resource={resource}&scope={scope}&decision={decision}&instanceId={instanceId}&page={page}&pageSize={pageSize}
+GET /api/acl/rules?principal={principal}&resource={resource}&scope={scope}&decision={decision}&aclVersion={aclVersion}&instanceId={instanceId}&page={page}&pageSize={pageSize}
 ```
 
 **Query Parameters:**
@@ -1844,6 +1844,7 @@ GET /api/acl/rules?principal={principal}&resource={resource}&scope={scope}&decis
 | `resource` | `string` | 否 | 按资源过滤 |
 | `scope` | `string` | 否 | 按作用域过滤 |
 | `decision` | `string` | 否 | 按决策过滤 |
+| `aclVersion` | `string` | 否 | 按 ACL 版本过滤（`1.0` / `2.0`），省略时返回全部版本 |
 | `instanceId` | `string` | 否 | 按所属实例过滤 |
 | `page` | `number` | 否 | 页码，默认 `1` |
 | `pageSize` | `number` | 否 | 每页条数，默认 `20` |
@@ -2084,7 +2085,7 @@ GET /api/messages
 | `storeHost` | `string` | 存储 Broker 地址 |
 | `properties` | `Record<string, string>` | 消息属性键值对 |
 | `propertiesTruncated` | `boolean` | 消息属性是否被截断 |
-| `size` | `number` | 消息大小（字节） |
+| `size` | `number` | 消息大小（字节）；`-1` 表示云厂商 API 未返回大小（未知，不是 0 字节），前端渲染为 `-` |
 
 ### 8.2 分页查询消息
 

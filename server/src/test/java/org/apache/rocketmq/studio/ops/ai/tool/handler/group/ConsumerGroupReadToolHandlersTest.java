@@ -288,6 +288,49 @@ class ConsumerGroupReadToolHandlersTest {
         assertThat(output.instances()).isEmpty();
     }
 
+    /**
+     * The provider leaves {@code delaySeconds} at its zero default when it cannot compute a delay and
+     * records that fact in {@code consumptionTimestampAvailable}. Publishing the zero tells the model
+     * the group is fully caught up, so an unmeasurable delay must not carry a number at all - the
+     * sibling lag field publishes its -1 sentinel and the health ladder answers UNKNOWN for the same
+     * class of "unknown collapsed into a measurement".
+     */
+    @Test
+    void detailOmitsTheDelayWhenNoConsumedMessageTimestampIsAvailableTest() {
+        group.setOnlineInstances(1);
+        group.setTotalLag(0L);
+        group.setConsumptionTimestampAvailable(false);
+        group.setDelaySeconds(0);
+        when(metadataService.consumerGroupRuntimeView("instance-a", "group-a")).thenReturn(group);
+        when(metadataService.consumerGroupConfigurations("instance-a", "group-a")).thenReturn(List.of(group));
+        when(metadataService.getGroupSubscriptions("instance-a", "group-a")).thenReturn(List.of());
+        when(metadataService.getGroupProgress("instance-a", "group-a")).thenReturn(List.of());
+
+        GroupDetailOutput output = new GroupDetailToolHandler(metadataService)
+                .execute(new GroupDetailInput("instance-a", "group-a", null), context());
+        JsonNode detail = new LegacyJackson2Config().jackson2ObjectMapper().valueToTree(output);
+
+        assertThat(detail.has("delaySeconds")).isFalse();
+    }
+
+    @Test
+    void detailKeepsTheDelayWhenTheConsumedMessageTimestampIsAvailableTest() {
+        group.setOnlineInstances(1);
+        group.setTotalLag(0L);
+        group.setConsumptionTimestampAvailable(true);
+        group.setDelaySeconds(42);
+        when(metadataService.consumerGroupRuntimeView("instance-a", "group-a")).thenReturn(group);
+        when(metadataService.consumerGroupConfigurations("instance-a", "group-a")).thenReturn(List.of(group));
+        when(metadataService.getGroupSubscriptions("instance-a", "group-a")).thenReturn(List.of());
+        when(metadataService.getGroupProgress("instance-a", "group-a")).thenReturn(List.of());
+
+        GroupDetailOutput output = new GroupDetailToolHandler(metadataService)
+                .execute(new GroupDetailInput("instance-a", "group-a", null), context());
+        JsonNode detail = new LegacyJackson2Config().jackson2ObjectMapper().valueToTree(output);
+
+        assertThat(detail.path("delaySeconds").asInt()).isEqualTo(42);
+    }
+
     private static ToolExecutionContext context() {
         return ToolExecutionContext.of(
                 "instance-a", null, Map.of("instanceId", "instance-a"));

@@ -301,3 +301,15 @@ export function ratioToPercent(value: number): number {
 export function formatOptionalTimeMs(value: number | string | null | undefined): string {
   return value === 0 || value === '0' ? '-' : formatTimeMs(value);
 }
+
+/** The server's sentinel for a message body size the vendor API does not report: unknown, not zero. */
+export const UNKNOWN_MESSAGE_SIZE = -1;
+
+/**
+ * Message records report "no body size" as {@link UNKNOWN_MESSAGE_SIZE}. {@link formatBytes}
+ * deliberately formats negatives as real byte counts, so the message-size call sites map the
+ * sentinel to the placeholder themselves.
+ */
+export function formatOptionalBytes(bytes: number): string {
+  return bytes < 0 ? '-' : formatBytes(bytes);
+}

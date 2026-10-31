@@ -237,10 +237,15 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
                             parent.parentTopic, MAX_LITE_SESSION_SCAN);
                     break;
                 }
+                LocatedClient located = locateClient(admin, masters, parent.parentTopic, group,
+                        connection.getClientId());
+                if (located == null || located.body.getLiteTopicCount() <= 0) {
+                    continue;
+                }
                 consumerCount++;
                 sessionIds.add(encodeSessionId(parent.parentTopic, group, connection.getClientId()));
-                Long active = clientLastAccess(admin, masters, parent.parentTopic, group,
-                        connection.getClientId());
+                Long active = located.body.getLastAccessTime() > 0
+                        ? located.body.getLastAccessTime() : null;
                 if (active != null && (lastActive == null || active > lastActive)) {
                     lastActive = active;
                 }
@@ -595,15 +600,6 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
             }
         }
         return null;
-    }
-
-    private Long clientLastAccess(MQAdminExt admin, List<String> masters, String parentTopic,
-                                  String group, String clientId) {
-        LocatedClient located = locateClient(admin, masters, parentTopic, group, clientId);
-        if (located == null || located.body.getLastAccessTime() <= 0) {
-            return null;
-        }
-        return located.body.getLastAccessTime();
     }
 
     private Set<Connection> consumerConnections(MQAdminExt admin, String group) {
