@@ -1450,6 +1450,34 @@ describe('TopicPage', () => {
     expect(topicServiceMocks.listTopicsPage).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ['padded', '  tenant-blue  '],
+    ['unicode', '\u3000租户一\u3000'],
+    ['plain', 'tenant-blue'],
+  ])('preservesTheExact%sFormPropertyValueWhenSendingTest', async (_label, value) => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    mockTopicsList([buildTopics(1)[0]]);
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /发送/ }));
+    const dialog = await getSendDialog();
+    fireEvent.change(within(dialog).getByLabelText('消息体 Body'), {
+      target: { value: '{"event":"property-fidelity"}' },
+    });
+    await user.click(within(dialog).getByRole('button', { name: /添加属性/ }));
+    fireEvent.change(within(dialog).getByPlaceholderText('属性名'), {
+      target: { value: 'tenant' },
+    });
+    fireEvent.change(within(dialog).getByPlaceholderText('属性值'), { target: { value } });
+    expect(within(dialog).getByPlaceholderText('属性值')).toHaveValue(value);
+    await user.click(within(dialog).getByRole('button', { name: /发\s*送/ }));
+
+    await waitFor(() => expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ properties: { tenant: value } }),
+    );
+  });
+
   it('submits the normalized send payload', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     mockTopicsList([buildTopics(1)[0]]);
