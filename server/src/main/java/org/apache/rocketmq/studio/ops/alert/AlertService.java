@@ -309,7 +309,7 @@ public class AlertService {
     @Transactional
     public AlertRuleVO toggleRule(AlertDomain domain, Long id, boolean enabled) {
         requireDomain(domain);
-        AlertRuleVO rule = findRuleInDomain(domain, id);
+        AlertRuleVO rule = lockRuleInDomain(domain, id);
         rule.setEnabled(enabled);
         if (!alertRepository.replaceRule(rule)) {
             throw ruleNotFound(id);
@@ -336,7 +336,7 @@ public class AlertService {
     @Transactional
     public void deleteRule(AlertDomain domain, Long id) {
         requireDomain(domain);
-        findRuleInDomain(domain, id);
+        lockRuleInDomain(domain, id);
         if (!alertRepository.deleteRule(id)) {
             throw ruleNotFound(id);
         }
@@ -493,9 +493,14 @@ public class AlertService {
         return Boolean.TRUE.equals(transaction.execute(status -> mutation.getAsBoolean()));
     }
 
-    private AlertRuleVO findRuleInDomain(AlertDomain domain, Long id) {
+    /**
+     * Lifecycle writes take the row lock first: an evaluation already holding
+     * {@code SELECT ... FOR UPDATE} then serializes ahead of the write instead of racing it,
+     * and two concurrent management writes cannot lose one another's read-modify-write.
+     */
+    private AlertRuleVO lockRuleInDomain(AlertDomain domain, Long id) {
         validateRuleId(id);
-        return alertRepository.findRuleById(id)
+        return alertRepository.findRuleByIdForUpdate(id)
                 .filter(rule -> resolveDomain(rule) == domain)
                 .orElseThrow(() -> ruleNotFound(id));
     }

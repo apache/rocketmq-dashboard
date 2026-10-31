@@ -16,6 +16,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type Key } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Copy,
   DownloadSimple,
@@ -219,9 +220,11 @@ const previewValueForMetric = (metric?: string, threshold?: string | number | nu
 
 interface AlertsPageProps {
   domain?: AlertRuleDomain;
+  /** Rendered inside the cluster-alerts hub tab: no page header / outer padding. */
+  embedded?: boolean;
 }
 
-const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
+const AlertsPageContent = ({ domain = 'CLUSTER', embedded = false }: AlertsPageProps) => {
   const { t } = useLang();
   const { token } = theme.useToken();
   const [rules, setRules] = useState<AlertRule[]>([]);
@@ -996,63 +999,72 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     notificationTemplateRef.current?.resizableTextArea?.textArea?.focus();
   };
 
-  return (
-    <div style={{ padding: 24 }}>
-      {/* ─── Header ─── */}
-      <PageHeader
-        title={t(domain === 'BUSINESS' ? 'alerts.businessTitle' : 'alerts.title')}
-        subtitle={t(domain === 'BUSINESS' ? 'alerts.businessSubtitle' : 'alerts.subtitle')}
-        extra={
-          <Flex gap={16}>
-            <Flex align="center" gap={4}>
-              <span style={{ fontSize: 14, color: '#999' }}>{t('alerts.totalRules')}</span>
-              <span style={{ fontSize: 18, fontWeight: 600, color: '#3b82f6' }}>{totalRules}</span>
-            </Flex>
-            <Flex align="center" gap={4}>
-              <span style={{ fontSize: 14, color: '#999' }}>{t('alerts.enabledOnPage')}</span>
-              <span style={{ fontSize: 18, fontWeight: 600, color: '#14b8a6' }}>
-                {enabledCount}
-              </span>
-            </Flex>
-            <Flex align="center" gap={4}>
-              <span style={{ fontSize: 14, color: '#999' }}>{t('alerts.triggered24hOnPage')}</span>
-              <span style={{ fontSize: 18, fontWeight: 600, color: '#8b5cf6' }}>
-                {triggered24h}
-              </span>
-            </Flex>
-            <Button
-              icon={<DownloadSimple />}
-              disabled={isActionRunning}
-              loading={transferringRules}
-              onClick={() => void handleExportRules()}
-            >
-              {t('common.export')}
-            </Button>
-            <Button
-              icon={<UploadSimple />}
-              disabled={isActionRunning || transferringRules}
-              onClick={() => importInputRef.current?.click()}
-            >
-              {t('common.import')}
-            </Button>
-            <input
-              ref={importInputRef}
-              type="file"
-              accept="application/json,.json"
-              hidden
-              onChange={(event) => void handleImportRules(event)}
-            />
-            <Button
-              type="primary"
-              icon={<Plus />}
-              disabled={isActionRunning}
-              onClick={openCreateModal}
-            >
-              {t('alerts.newRule')}
-            </Button>
-          </Flex>
-        }
+  const headerExtra = (
+    <Flex gap={16}>
+      <Flex align="center" gap={4}>
+        <span style={{ fontSize: 14, color: '#999' }}>{t('alerts.totalRules')}</span>
+        <span style={{ fontSize: 18, fontWeight: 600, color: '#3b82f6' }}>{totalRules}</span>
+      </Flex>
+      <Flex align="center" gap={4}>
+        <span style={{ fontSize: 14, color: '#999' }}>{t('alerts.enabledOnPage')}</span>
+        <span style={{ fontSize: 18, fontWeight: 600, color: '#14b8a6' }}>{enabledCount}</span>
+      </Flex>
+      <Flex align="center" gap={4}>
+        <span style={{ fontSize: 14, color: '#999' }}>{t('alerts.triggered24hOnPage')}</span>
+        <span style={{ fontSize: 18, fontWeight: 600, color: '#8b5cf6' }}>{triggered24h}</span>
+      </Flex>
+      <Button
+        icon={<DownloadSimple />}
+        disabled={isActionRunning}
+        loading={transferringRules}
+        onClick={() => void handleExportRules()}
+      >
+        {t('common.export')}
+      </Button>
+      <Button
+        icon={<UploadSimple />}
+        disabled={isActionRunning || transferringRules}
+        onClick={() => importInputRef.current?.click()}
+      >
+        {t('common.import')}
+      </Button>
+      <input
+        ref={importInputRef}
+        type="file"
+        accept="application/json,.json"
+        hidden
+        onChange={(event) => void handleImportRules(event)}
       />
+      <Button type="primary" icon={<Plus />} disabled={isActionRunning} onClick={openCreateModal}>
+        {t('alerts.newRule')}
+      </Button>
+    </Flex>
+  );
+
+  // embedded：页头操作区经 portal 挂到枢纽页 Tab 栏右侧，与页签同一行，不单独占一行。
+  // 目标容器由枢纽页在同一次 commit 渲染，首帧 render 时还不存在；setState 用定时器 defer，
+  // 避开 react-hooks/set-state-in-effect（同 UserManagement 的 loading 手法）。
+  const [tabExtraTarget, setTabExtraTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!embedded) return undefined;
+    const timer = window.setTimeout(() => {
+      setTabExtraTarget(document.getElementById('cluster-alerts-tab-extra'));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [embedded]);
+
+  return (
+    <div style={{ padding: embedded ? 0 : 24 }}>
+      {/* ─── Header ─── */}
+      {embedded ? (
+        tabExtraTarget && createPortal(headerExtra, tabExtraTarget)
+      ) : (
+        <PageHeader
+          title={t(domain === 'BUSINESS' ? 'alerts.businessTitle' : 'alerts.title')}
+          subtitle={t(domain === 'BUSINESS' ? 'alerts.businessSubtitle' : 'alerts.subtitle')}
+          extra={headerExtra}
+        />
+      )}
 
       {/* ─── Table ─── */}
       <Card styles={{ body: { padding: 0 } }}>
@@ -1651,8 +1663,8 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
 // Route changes reuse this page component. A domain owns its editor, metric requests,
 // test results and mutation state as well as its list; none may leak into the other domain.
 // The stable key preserves edits during navigation that stays within the same domain.
-const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => (
-  <AlertsPageContent key={domain} domain={domain} />
+const AlertsPage = ({ domain = 'CLUSTER', embedded = false }: AlertsPageProps) => (
+  <AlertsPageContent key={domain} domain={domain} embedded={embedded} />
 );
 
 export default AlertsPage;

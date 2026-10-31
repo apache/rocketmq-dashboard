@@ -131,6 +131,20 @@ describe('AuditRiskInsights', () => {
     expect(screen.getByText(/orders 在当前页出现 2 次失败或部分成功/u)).toBeInTheDocument();
   });
 
+  it('keeps the risky record table within its half-width cardTest', () => {
+    renderPanel();
+    const card = screen.getByText('高风险记录').closest('.ant-card');
+    const cols = Array.from(
+      (card as HTMLElement).querySelectorAll('.ant-table-content colgroup col'),
+    );
+    const total = cols.reduce(
+      (sum, col) => sum + (parseInt((col as HTMLElement).style.width, 10) || 0),
+      0,
+    );
+    // 2026-10-28 实测：风险洞察卡片内容宽 609，该表曾溢出 41px（操作类型/操作对象无声明宽）。
+    expect(total).toBeLessThanOrEqual(609);
+  });
+
   it('renders repeated target and risky record tables', () => {
     renderPanel();
 

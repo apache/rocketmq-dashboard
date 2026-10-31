@@ -68,7 +68,7 @@ class MybatisPlusAuditRepositoryTest {
         when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
 
         PageResult<AuditRecordVO> result = repository.findPage(
-                "orders", "admin", "DELETE_TOPIC", "TOPIC", null, "prod-cn", false, null, null, "FAILED", 2, 25);
+                "orders", "admin", "DELETE_TOPIC", null, "TOPIC", null, "prod-cn", false, null, null, "FAILED", 2, 25);
 
         ArgumentCaptor<IPage<RmqOperationAudit>> pageCaptor = ArgumentCaptor.forClass(IPage.class);
         ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
@@ -91,7 +91,7 @@ class MybatisPlusAuditRepositoryTest {
         when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
                 .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
 
-        repository.findPage(null, null, null, "TOPIC", "orders", "prod-cn", false,
+        repository.findPage(null, null, null, null, "TOPIC", "orders", "prod-cn", false,
                 null, null, null, 1, 20);
 
         ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
@@ -106,7 +106,7 @@ class MybatisPlusAuditRepositoryTest {
         when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
                 .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
 
-        repository.findPage(null, "ops-zhang", null, null, null, null, false,
+        repository.findPage(null, "ops-zhang", null, null, null, null, null, false,
                 null, null, null, 1, 20);
 
         ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
@@ -126,7 +126,7 @@ class MybatisPlusAuditRepositoryTest {
         when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
                 .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
 
-        repository.findPage(null, null, null, "SETTINGS", "general", null, true,
+        repository.findPage(null, null, null, null, "SETTINGS", "general", null, true,
                 null, null, null, 1, 20);
 
         ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
@@ -140,7 +140,7 @@ class MybatisPlusAuditRepositoryTest {
         when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
                 .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
 
-        repository.findPage(null, null, null, "SETTINGS", "general", "ignored-cluster", true,
+        repository.findPage(null, null, null, null, "SETTINGS", "general", "ignored-cluster", true,
                 null, null, null, 1, 20);
 
         ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
@@ -377,7 +377,7 @@ class MybatisPlusAuditRepositoryTest {
         when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
                 .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
 
-        repository.findPage("topic_%", null, null, null, null, null, false,
+        repository.findPage("topic_%", null, null, null, null, null, null, false,
                 null, null, null, 1, 20);
 
         ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);

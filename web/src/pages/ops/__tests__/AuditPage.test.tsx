@@ -126,6 +126,21 @@ describe('Audit page', () => {
     vi.clearAllMocks();
   });
 
+  it('keeps the audit table within the 1600px viewport containerTest', async () => {
+    renderWithProviders(<AuditPage />);
+    await screen.findAllByText('topic-a');
+
+    // 2026-10-28 实测：审计主表列宽合计曾 1520（溢出 310px），且「失败原因」列漏声明宽。
+    // 只量主表：风险洞察卡片里的表另有 609 预算的守护用例。
+    const table = document.querySelector('.ant-table-content');
+    const cols = Array.from(table?.querySelectorAll('colgroup col') ?? []);
+    const total = cols.reduce(
+      (sum, col) => sum + (parseInt((col as HTMLElement).style.width, 10) || 0),
+      0,
+    );
+    expect(total).toBeLessThanOrEqual(1330);
+  });
+
   it('exports all audit records matching the current filters', async () => {
     const user = userEvent.setup();
     renderWithProviders(<AuditPage />);
@@ -310,7 +325,7 @@ describe('Audit page', () => {
 
     expect(await screen.findByText('匹配记录')).toBeInTheDocument();
     expect(screen.getByText('80')).toBeInTheDocument();
-    expect(screen.getAllByText('DELETE TOPIC').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('删除 Topic').length).toBeGreaterThan(0);
     await user.type(screen.getByPlaceholderText('搜索操作人或操作对象'), 'topic-a');
 
     await waitFor(
