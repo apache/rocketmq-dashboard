@@ -107,6 +107,22 @@ class AuthServiceDatabaseTest {
     }
 
     @Test
+    void listUsersShouldTreatSearchWildcardsAsLiteralCharactersTest() {
+        Page<RmqStudioUser> databasePage = new Page<>(1, 20, 0);
+        databasePage.setRecords(List.of());
+        when(userMapper.selectPage(any(Page.class), any(Wrapper.class))).thenReturn(databasePage);
+
+        authService.listUsers(" ops_% ", null, null, 1, 20);
+
+        org.mockito.ArgumentCaptor<QueryWrapper<RmqStudioUser>> queryCaptor =
+                org.mockito.ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(userMapper).selectPage(any(Page.class), queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getSqlSegment()).contains("username LIKE");
+        assertThat(queryCaptor.getValue().getParamNameValuePairs().values())
+                .containsExactly("%ops\\_\\%%");
+    }
+
+    @Test
     void listUsersRejectsInvalidPaginationBeforeDatabaseAccess() {
         assertThatThrownBy(() -> authService.listUsers(null, null, null, 0, 20))
                 .isInstanceOf(BusinessException.class)

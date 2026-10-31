@@ -218,13 +218,17 @@ public class AuthService {
                     "search must not exceed " + MAX_USER_SEARCH_LENGTH + " characters");
         }
         QueryWrapper<RmqStudioUser> query = new QueryWrapper<RmqStudioUser>()
-                .like(!normalizedSearch.isEmpty(), "username", normalizedSearch)
+                .like(!normalizedSearch.isEmpty(), "username", escapeLike(normalizedSearch))
                 .eq(admin != null, "admin", admin)
                 .eq(enabled != null, "enabled", enabled)
                 .orderByAsc("username")
                 .orderByAsc("id");
         Page<RmqStudioUser> result = userMapper.selectPage(new Page<>(page, pageSize), query);
         return PageResult.of(result.getRecords(), result.getTotal(), page, pageSize);
+    }
+
+    private static String escapeLike(String value) {
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     public Map<Long, StudioUserSessionSummaryVO> listActiveSessionSummaries(
