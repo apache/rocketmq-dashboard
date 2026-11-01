@@ -31,6 +31,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  license-headers:
+    name: License Headers (Apache RAT)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 (Dragonwell)
+        uses: actions/setup-java@v4
+        with:
+          distribution: dragonwell
+          java-version: "21"
+          cache: maven
+
+      # Same gate the backend build enforces at the validate phase; a named job
+      # makes a header regression visible without reading the Maven log.
+      - name: Check ASF license headers across the repository
+        run: mvn -B -ntp org.apache.rat:apache-rat-plugin:0.18:check
+
   backend-build:
     name: Backend Build (Java 21)
     runs-on: ubuntu-latest

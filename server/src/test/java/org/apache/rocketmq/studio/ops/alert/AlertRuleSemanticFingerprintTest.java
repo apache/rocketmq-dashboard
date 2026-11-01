@@ -2,6 +2,17 @@
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package org.apache.rocketmq.studio.ops.alert;
 
@@ -12,6 +23,28 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class AlertRuleSemanticFingerprintTest {
+
+    @Test
+    void runtimeDurationEquivalenceKeepsPersistedIdentityFormatTest() {
+        AlertRuleVO seconds = AlertRuleVO.builder().duration("60s").build();
+        AlertRuleVO minutes = AlertRuleVO.builder().duration("1m").build();
+
+        assertThat(AlertRuleSemanticFingerprint.evaluationIdentity(seconds))
+                .isEqualTo(AlertRuleSemanticFingerprint.evaluationIdentity(minutes));
+        assertThat(AlertRuleSemanticFingerprint.of(seconds))
+                .isNotEqualTo(AlertRuleSemanticFingerprint.of(minutes));
+    }
+
+    @Test
+    void runtimeIdentityRetainsMalformedLegacyDurationsTest() {
+        AlertRuleVO first = AlertRuleVO.builder().duration(" invalid ").build();
+        AlertRuleVO same = AlertRuleVO.builder().duration("INVALID").build();
+        AlertRuleVO different = AlertRuleVO.builder().duration("other-invalid").build();
+
+        assertThat(AlertRuleSemanticFingerprint.evaluationIdentity(first))
+                .isEqualTo(AlertRuleSemanticFingerprint.evaluationIdentity(same))
+                .isNotEqualTo(AlertRuleSemanticFingerprint.evaluationIdentity(different));
+    }
 
     @Test
     void ignoresPresentationAndDeliverySettingsTest() {

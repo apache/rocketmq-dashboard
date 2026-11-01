@@ -16,7 +16,7 @@
  */
 
 import { App, ConfigProvider } from 'antd';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -32,8 +32,10 @@ import { LangProvider, useLang } from '../../i18n/LangContext';
 import { downloadCsv } from '../../utils/download';
 import {
   METRICS_QUERY_HISTORY_STORAGE_KEY,
+  metricsQueryHistoryStorageKey,
   type MetricsQueryHistoryEntry,
 } from '../../utils/metricsExplorerDiagnostics';
+import useAuthStore from '../../stores/authStore';
 import MetricsExplorer from '../MetricsExplorer';
 
 vi.mock('../../api/settings', () => ({
@@ -210,6 +212,62 @@ const createDeferred = <T,>() => {
 };
 
 describe('MetricsExplorer', () => {
+  it.each(['unmount', 'return'] as const)(
+    'cancels an obsolete scoped-source fallback on %s Test',
+    async (nextAction) => {
+      const user = userEvent.setup();
+      vi.mocked(listDataSources).mockResolvedValue([
+        {
+          key: 'scoped-a',
+          name: 'Scoped A',
+          type: 'Prometheus',
+          url: '',
+          auth: 'None',
+          status: 'healthy',
+          instanceIds: ['instance-a'],
+        },
+      ]);
+      const scoped = (instanceId: string) => (
+        <App>
+          <LangProvider>
+            <MetricsExplorer instanceId={instanceId} />
+          </LangProvider>
+        </App>
+      );
+      const view = render(scoped('instance-a'));
+      await user.click(await screen.findByRole('combobox', { name: '数据源' }));
+      await user.click(
+        await screen.findByText('Scoped A', { selector: '.ant-select-item-option-content' }),
+      );
+      await waitFor(() =>
+        expect(queryByDataSource).toHaveBeenCalledWith(
+          expect.objectContaining({ key: 'scoped-a', instanceId: 'instance-a' }),
+        ),
+      );
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        view.rerender(scoped('instance-b'));
+        if (nextAction === 'unmount') view.unmount();
+        else view.rerender(scoped('instance-a'));
+        vi.mocked(queryMetrics).mockClear();
+        vi.mocked(queryByDataSource).mockClear();
+        act(() => {
+          vi.runOnlyPendingTimers();
+        });
+        expect(queryMetrics).not.toHaveBeenCalled();
+        expect(queryByDataSource).not.toHaveBeenCalled();
+        if (nextAction === 'unmount') {
+          // Scoped to the render container: antd keeps select-option portals on document.body.
+          expect(view.container).toBeEmptyDOMElement();
+        } else {
+          expect(screen.getAllByTitle('Scoped A').length).toBeGreaterThan(0);
+        }
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it('loads a metric profile and renders its Prometheus series', async () => {
     renderWithProviders(<MetricsExplorer />);
 
@@ -226,6 +284,29 @@ describe('MetricsExplorer', () => {
     expect(screen.getByRole('img', { name: 'Message In TPS time series' })).toBeInTheDocument();
     expect(screen.getByText('cluster=prod / node_id=broker-a')).toBeInTheDocument();
     expect(screen.getByText('42 messages/s')).toBeInTheDocument();
+  });
+
+  it('still loads the profiles when storage access is blocked', async () => {
+    // Safari private mode and hardened cookie policies make localStorage access throw;
+    // utils/browserStorage exists so every other storage consumer survives that. The
+    // explorer must not turn a blocked read into a "profiles failed to load" page.
+    const blocked = () => {
+      throw new DOMException('Access is denied for this document', 'SecurityError');
+    };
+    const getItemSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(blocked);
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(blocked);
+    const removeItemSpy = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(blocked);
+
+    renderWithProviders(<MetricsExplorer />);
+
+    expect(await screen.findByText('RocketMQ 5.x Native')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('img', { name: 'Message In TPS time series' })).toBeInTheDocument(),
+    );
+
+    getItemSpy.mockRestore();
+    setItemSpy.mockRestore();
+    removeItemSpy.mockRestore();
   });
 
   it('sorts provider samples before drawing and selecting the latest value', async () => {
@@ -902,6 +983,7 @@ describe('MetricsExplorer', () => {
       } else {
         await user.click(screen.getByRole('button', { name: '查询历史' }));
         const dialog = await screen.findByRole('dialog', { name: '指标查询历史' });
+        expect(document.querySelector('.ant-drawer')).toBeNull();
         const row = within(dialog).getByText('Consumer Lag Messages').closest('.ant-list-item')!;
         await user.click(within(row as HTMLElement).getByRole('button', { name: '恢复' }));
       }
@@ -1218,11 +1300,114 @@ describe('MetricsExplorer', () => {
     expect(within(detailsDialog).getByText('42')).toBeInTheDocument();
   });
 
+  it.each(['profile', 'custom'] as const)(
+    'doesNotRestoreClearedHistoryWhenAPending%sQueryCompletesTest',
+    async (kind) => {
+      const user = userEvent.setup();
+      renderWithProviders(<MetricsExplorer />);
+      await screen.findByRole('img', { name: 'Message In TPS time series' });
+      const pending = createDeferred<MetricData>();
+      vi.mocked(queryMetrics).mockReturnValueOnce(pending.promise);
+
+      if (kind === 'profile') {
+        await user.click(screen.getByRole('button', { name: '刷新全部面板' }));
+      } else {
+        await user.type(screen.getByLabelText('自定义查询'), 'sum(rocketmq_topic_number)');
+        await user.click(screen.getByRole('button', { name: '查询' }));
+      }
+      await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(2));
+      await user.click(screen.getByRole('button', { name: '查询历史' }));
+      const drawer = (await screen.findByText('指标查询历史')).closest(
+        '[role="dialog"]',
+      ) as HTMLElement;
+      await user.click(within(drawer).getByRole('button', { name: '清空历史' }));
+      expect(localStorage.getItem(METRICS_QUERY_HISTORY_STORAGE_KEY)).toBeNull();
+
+      await act(async () => pending.resolve(metricData));
+      expect(
+        screen.getByRole('img', {
+          name: kind === 'profile' ? 'Message In TPS time series' : '自定义查询 time series',
+        }),
+      ).toBeInTheDocument();
+      expect(drawer.querySelectorAll('.ant-list-item')).toHaveLength(0);
+      expect(localStorage.getItem(METRICS_QUERY_HISTORY_STORAGE_KEY)).toBeNull();
+
+      // New queries after clearing remain eligible for history.
+      await user.click(within(drawer).getByRole('button', { name: 'Close' }));
+      await user.click(screen.getByRole('button', { name: '刷新全部面板' }));
+      await waitFor(() => {
+        const stored = JSON.parse(localStorage.getItem(METRICS_QUERY_HISTORY_STORAGE_KEY)!);
+        expect(stored).toHaveLength(kind === 'profile' ? 1 : 2);
+      });
+    },
+  );
+
+  it('keepsPostClearHistoryWhenAnOlderIndependentProfileQueryCompletesTest', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MetricsExplorer />);
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    const pending = createDeferred<MetricData>();
+    vi.mocked(queryMetrics).mockReturnValueOnce(pending.promise);
+    await user.click(screen.getByRole('button', { name: '刷新全部面板' }));
+    await user.click(screen.getByRole('button', { name: '查询历史' }));
+    const drawer = (await screen.findByText('指标查询历史')).closest(
+      '[role="dialog"]',
+    ) as HTMLElement;
+    await user.click(within(drawer).getByRole('button', { name: '清空历史' }));
+    await user.click(within(drawer).getByRole('button', { name: 'Close' }));
+
+    await user.type(screen.getByLabelText('自定义查询'), 'sum(rocketmq_topic_number)');
+    await user.click(screen.getByRole('button', { name: '查询' }));
+    await screen.findByRole('img', { name: '自定义查询 time series' });
+    const stored = localStorage.getItem(METRICS_QUERY_HISTORY_STORAGE_KEY);
+    expect(JSON.parse(stored!)).toHaveLength(1);
+
+    await act(async () => pending.resolve(metricData));
+    expect(screen.getByRole('img', { name: 'Message In TPS time series' })).toBeInTheDocument();
+    expect(localStorage.getItem(METRICS_QUERY_HISTORY_STORAGE_KEY)).toBe(stored);
+    await user.click(screen.getByRole('button', { name: '查询历史' }));
+    const reopened = (await screen.findByText('指标查询历史')).closest(
+      '[role="dialog"]',
+    ) as HTMLElement;
+    expect(reopened.querySelectorAll('.ant-list-item')).toHaveLength(1);
+    expect(reopened.querySelector('.ant-list-item')).toHaveTextContent('自定义查询');
+  });
+
+  it('keepsNewerCustomHistoryAheadOfASlowEarlierProfileQueryTest', async () => {
+    const user = userEvent.setup();
+    const pendingProfile = createDeferred<MetricData>();
+    vi.mocked(queryMetrics).mockReturnValueOnce(pendingProfile.promise);
+    renderWithProviders(<MetricsExplorer />);
+    await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(1));
+
+    vi.mocked(Date.now).mockReturnValue(1_800_000_001_000);
+    await user.type(screen.getByLabelText('自定义查询'), 'sum(rocketmq_topic_number)');
+    await user.click(screen.getByRole('button', { name: '查询' }));
+    await screen.findByRole('img', { name: '自定义查询 time series' });
+
+    await act(async () => pendingProfile.resolve(metricData));
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    await user.click(screen.getByRole('button', { name: '查询历史' }));
+    const dialog = await screen.findByRole('dialog', { name: '指标查询历史' });
+    const rows = dialog.querySelectorAll('.ant-list-item');
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent('自定义查询');
+    expect(rows[1]).toHaveTextContent('Message In TPS');
+    const persisted: MetricsQueryHistoryEntry[] = JSON.parse(
+      localStorage.getItem(METRICS_QUERY_HISTORY_STORAGE_KEY)!,
+    );
+    expect(persisted.map((entry) => entry.queriedAt)).toEqual([
+      1_800_000_001_000, 1_800_000_000_000,
+    ]);
+    expect(persisted[0].promql).toBe('sum(rocketmq_topic_number)');
+  });
+
   it('restores profile, range, and source from query history', async () => {
     const user = userEvent.setup();
     localStorage.setItem(METRICS_QUERY_HISTORY_STORAGE_KEY, JSON.stringify([createHistoryEntry()]));
 
-    renderWithProviders(<MetricsExplorer />);
+    const { container } = renderWithProviders(<MetricsExplorer />);
 
     await screen.findByRole('img', { name: 'Message In TPS time series' });
     await user.click(screen.getByRole('button', { name: '查询历史' }));
@@ -1242,7 +1427,9 @@ describe('MetricsExplorer', () => {
         step: '2m',
       }),
     );
-    expect(screen.getByText('Consumer Lag Messages')).toBeInTheDocument();
+    // The history modal's exit motion keeps its node (and its list text) in the document under
+    // jsdom, so assert the restored metric on the explorer's own tree, not the whole screen.
+    expect(within(container).getByText('Consumer Lag Messages')).toBeInTheDocument();
   });
 
   it('keeps the active query unchanged when history references a removed profile', async () => {
@@ -1516,5 +1703,219 @@ describe('MetricsExplorer', () => {
       }),
     );
     expect(localStorage.getItem(METRICS_QUERY_HISTORY_STORAGE_KEY)).not.toContain('secret-value');
+  });
+});
+
+describe('metrics history source restoration', () => {
+  it.each([
+    { kind: 'profile', availability: 'removed' },
+    { kind: 'custom', availability: 'removed' },
+    { kind: 'profile', availability: 'out-of-scope' },
+    { kind: 'custom', availability: 'out-of-scope' },
+    { kind: 'profile', availability: 'default' },
+    { kind: 'custom', availability: 'default' },
+  ])(
+    'restoresOnlyTheRecordedHistorySourceTest ($kind, $availability)',
+    async ({ kind, availability }) => {
+      const user = userEvent.setup();
+      const sources = [
+        {
+          key: 'active-source',
+          name: 'Active source',
+          type: 'Prometheus',
+          url: '',
+          auth: 'None',
+          status: 'healthy',
+          instanceIds: ['instance-a'],
+        },
+      ];
+      if (availability === 'out-of-scope') {
+        sources.push({
+          key: 'history-source',
+          name: 'History source',
+          type: 'Prometheus',
+          url: '',
+          auth: 'None',
+          status: 'healthy',
+          instanceIds: ['instance-b'],
+        });
+      }
+      vi.mocked(listDataSources).mockResolvedValue(sources);
+      localStorage.setItem(
+        METRICS_QUERY_HISTORY_STORAGE_KEY,
+        JSON.stringify([
+          createHistoryEntry({
+            id: 'source-history',
+            profileId: kind === 'custom' ? '__custom__' : 'rocketmq4-exporter',
+            metricId: kind === 'custom' ? 'custom' : 'consumer_lag_messages',
+            metricName: 'Saved history query',
+            instanceId: 'instance-a',
+            dataSourceKey: availability === 'default' ? '' : 'history-source',
+            dataSourceName: availability === 'default' ? '' : 'History source',
+            promql: 'sum(rocketmq_message_accumulation)',
+          }),
+        ]),
+      );
+      renderWithProviders(<MetricsExplorer instanceId="instance-a" />);
+      await screen.findByRole('img', { name: 'Message In TPS time series' });
+      await user.click(screen.getByRole('combobox', { name: '数据源' }));
+      await user.click(
+        await screen.findByText('Active source', {
+          selector: '.ant-select-item-option-content',
+        }),
+      );
+      await waitFor(() => expect(queryByDataSource).toHaveBeenCalledTimes(1));
+      await screen.findByText('42 messages/s');
+      const input = screen.getByRole('textbox', { name: '自定义查询' });
+      await user.type(input, 'sum(up)');
+      await user.click(screen.getByRole('button', { name: '查询' }));
+      const previousCustomChart = await screen.findByRole('img', {
+        name: '自定义查询 time series',
+      });
+      fireEvent.change(input, { target: { value: 'rate(rocketmq_messages_in_total[5m])' } });
+      const defaultCount = vi.mocked(queryMetrics).mock.calls.length;
+      const sourceCount = vi.mocked(queryByDataSource).mock.calls.length;
+      const storedProfile = localStorage.getItem('rocketmq-studio.metric-profile');
+      await user.click(screen.getByRole('button', { name: '查询历史' }));
+      const dialog = await screen.findByRole('dialog', { name: '指标查询历史' });
+      const item = within(dialog).getByText('Saved history query').closest('.ant-list-item');
+      await user.click(within(item as HTMLElement).getByRole('button', { name: '恢复' }));
+
+      if (availability === 'default') {
+        // A deliberately default-source entry remains valid, for both restoration paths.
+        await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(defaultCount + 2));
+        expect(queryByDataSource).toHaveBeenCalledTimes(sourceCount);
+        expect(
+          screen.getByRole('combobox', { name: '数据源' }).closest('.ant-select'),
+        ).toHaveTextContent('默认数据源');
+        expect(
+          screen.getByLabelText('时间范围').querySelector('.ant-segmented-item-selected'),
+        ).toHaveTextContent('6h');
+        expect(queryMetrics).toHaveBeenCalledWith(
+          expect.objectContaining({
+            metric: kind === 'custom' ? 'sum(rocketmq_message_accumulation)' : 'sum(up)',
+            step: '2m',
+          }),
+        );
+        return;
+      }
+
+      expect(queryMetrics).toHaveBeenCalledTimes(defaultCount);
+      expect(queryByDataSource).toHaveBeenCalledTimes(sourceCount);
+      expect(
+        await screen.findByText('该历史记录中的数据源“History source”已不可用，已保留当前查询。'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('dialog', { name: '指标查询历史' })).toBeInTheDocument();
+      expect(
+        screen.getByRole('combobox', { name: '数据源' }).closest('.ant-select'),
+      ).toHaveTextContent('Active source');
+      expect(
+        screen.getByRole('combobox', { name: '指标模板' }).closest('.ant-select'),
+      ).toHaveTextContent('RocketMQ 5.x Native');
+      expect(
+        screen.getByLabelText('时间范围').querySelector('.ant-segmented-item-selected'),
+      ).toHaveTextContent('1h');
+      expect(input).toHaveValue('rate(rocketmq_messages_in_total[5m])');
+      expect(localStorage.getItem('rocketmq-studio.metric-profile')).toBe(storedProfile);
+      expect(screen.getByRole('img', { name: 'Message In TPS time series' })).toBeInTheDocument();
+      expect(screen.getByRole('img', { name: '自定义查询 time series' })).toBe(previousCustomChart);
+      // The rejected restore must preserve the activated source ref and committed custom query too.
+      await user.click(within(dialog).getByRole('button', { name: 'Close' }));
+      await user.click(screen.getByRole('button', { name: '刷新全部面板' }));
+      await waitFor(() => expect(queryByDataSource).toHaveBeenCalledTimes(sourceCount + 2));
+      expect(queryMetrics).toHaveBeenCalledTimes(defaultCount);
+      expect(queryByDataSource).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          key: 'active-source',
+          query: expect.objectContaining({ metric: 'sum(up)', step: '30s' }),
+        }),
+      );
+    },
+  );
+});
+
+describe('custom PromQL keyboard submission', () => {
+  it.each([
+    { name: 'native composition', isComposing: true, keyCode: 13 },
+    { name: 'WebKit composition confirmation', isComposing: false, keyCode: 229 },
+  ])('keepsImeConfirmationAsEditing ($name) Test', async ({ isComposing, keyCode }) => {
+    renderWithProviders(<MetricsExplorer />);
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    const input = screen.getByRole('textbox', { name: '自定义查询' });
+    const promql = 'sum(rocketmq_messages_in_total{environment="生产"})';
+    fireEvent.change(input, { target: { value: promql } });
+    const queryCount = vi.mocked(queryMetrics).mock.calls.length;
+    fireEvent.compositionStart(input);
+    // WebKit can end composition before dispatching the confirming Enter.
+    if (!isComposing) fireEvent.compositionEnd(input);
+    const notCancelled = fireEvent.keyDown(input, {
+      key: 'Enter',
+      code: 'Enter',
+      isComposing,
+      keyCode,
+    });
+    expect(queryMetrics).toHaveBeenCalledTimes(queryCount);
+    expect(notCancelled).toBe(true);
+    expect(input).toHaveValue(promql);
+    if (isComposing) fireEvent.compositionEnd(input);
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter', isComposing: false, keyCode: 13 });
+    await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(queryCount + 1));
+    expect(queryMetrics).toHaveBeenLastCalledWith(expect.objectContaining({ metric: promql }));
+    await screen.findByRole('img', { name: '自定义查询 time series' });
+  });
+
+  it('preservesNormalEnterShiftEnterAndRunButtonTest', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MetricsExplorer />);
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    const input = screen.getByRole('textbox', { name: '自定义查询' });
+    fireEvent.change(input, { target: { value: 'sum(rocketmq_messages_in_total)' } });
+    const queryCount = vi.mocked(queryMetrics).mock.calls.length;
+    expect(fireEvent.keyDown(input, { key: 'Enter', shiftKey: true })).toBe(true);
+    expect(queryMetrics).toHaveBeenCalledTimes(queryCount);
+    expect(fireEvent.keyDown(input, { key: 'Enter' })).toBe(false);
+    await screen.findByRole('img', { name: '自定义查询 time series' });
+    expect(queryMetrics).toHaveBeenCalledTimes(queryCount + 1);
+    fireEvent.change(input, { target: { value: 'sum(up)' } });
+    await user.click(screen.getByRole('button', { name: '查询' }));
+    await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(queryCount + 2));
+    expect(queryMetrics).toHaveBeenLastCalledWith(expect.objectContaining({ metric: 'sum(up)' }));
+  });
+
+  it('showsOnlyTheSignedInAccountsQueryHistoryTest', async () => {
+    // Two accounts, one entry each, under their own storage keys: a history panel that is not
+    // owner-scoped would list both, and one that hardcodes the legacy global key would list none.
+    // Clear first: an earlier case's legacy-key entry would be migrated into this account's key.
+    localStorage.clear();
+    localStorage.setItem(
+      metricsQueryHistoryStorageKey({ userId: 1, username: 'alice' }),
+      JSON.stringify([createHistoryEntry({ id: 'alice-entry', metricName: 'Alice Lag Metrics' })]),
+    );
+    localStorage.setItem(
+      metricsQueryHistoryStorageKey({ userId: 2, username: 'bob' }),
+      JSON.stringify([
+        createHistoryEntry({
+          id: 'bob-entry',
+          metricName: 'Bob Lag Metrics',
+          queriedAt: 1_800_000_000_001,
+        }),
+      ]),
+    );
+    useAuthStore.getState().login('alice', 1, false);
+    try {
+      const user = userEvent.setup();
+      renderWithProviders(<MetricsExplorer />);
+      await user.click(screen.getByRole('button', { name: '查询历史' }));
+      const drawer = (await screen.findByText('指标查询历史')).closest(
+        '[role="dialog"]',
+      ) as HTMLElement;
+
+      // Counting items would also count the entry the mount-time query appends; the point here
+      // is whose history is visible, so assert on the two accounts' own entries.
+      expect(within(drawer).getByText('Alice Lag Metrics')).toBeInTheDocument();
+      expect(within(drawer).queryByText('Bob Lag Metrics')).not.toBeInTheDocument();
+    } finally {
+      useAuthStore.getState().logout();
+    }
   });
 });

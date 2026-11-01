@@ -21,7 +21,9 @@ import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
 import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.client.impl.producer.TopicPublishInfo;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
+import org.apache.rocketmq.client.producer.MessageQueueSelector;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.MixAll;
@@ -53,9 +55,10 @@ import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -66,6 +69,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
@@ -85,6 +89,7 @@ import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -495,8 +500,10 @@ class RocketMQDLQProviderTest {
                 "instance-a", "group-a", 100L, 200L, "target-topic"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+        // A resend against a missing DLQ topic answers 404: the audit result uses the shared
+        // FAILED word and the detail keeps the dlqTopicMissing marker.
         verify(auditService).record(eq("RESEND_DLQ"), eq("DLQ"), eq("group-a"), isNull(),
-                contains("dlqTopicMissing=true"), eq("NOT_FOUND"));
+                contains("dlqTopicMissing=true"), eq("FAILED"));
         verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
     }
 
@@ -710,13 +717,16 @@ class RocketMQDLQProviderTest {
         TopicList existingTargets = new TopicList();
         existingTargets.setTopicList(Set.of("target-topic"));
         when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
-        provider.resendMessages("instance-a", " group-a ", 100L, 200L, "target-topic");
+        DLQResendResultVO result = provider.resendMessages("instance-a", " group-a ", 100L, 200L, "target-topic");
 
+        // The response keeps its own documented outcome vocabulary; only the audit result maps onto
+        // the summary's buckets, where a no-op resend is not a failure.
+        assertThat(result.getOutcome()).isEqualTo("NO_MESSAGES");
         verify(runtimeAdminClientResolver).executePullConsumer(eq("instance-a"), any());
         verify(pullConsumer).fetchSubscribeMessageQueues(dlqTopic);
         verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
         verify(auditService).record(eq("RESEND_DLQ"), eq("DLQ"), eq("group-a"), eq(null),
-                contains("group=group-a, dlqTopic=%DLQ%group-a"), eq("NO_MESSAGES"));
+                contains("group=group-a, dlqTopic=%DLQ%group-a"), eq("SUCCESS"));
     }
 
     @Test
@@ -726,8 +736,9 @@ class RocketMQDLQProviderTest {
         TopicList existingTargets = new TopicList();
         existingTargets.setTopicList(Set.of("target-topic"));
         when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
-        provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic");
+        DLQResendResultVO result = provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic");
 
+        assertThat(result.getOutcome()).isEqualTo("NO_MESSAGES");
         verify(runtimeAdminClientResolver).executePullConsumer(eq("instance-a"), any());
         verify(pullConsumer).fetchSubscribeMessageQueues(dlqTopic);
         verify(pullConsumer, never()).pull(any(MessageQueue.class), anyString(), anyLong(), anyInt());
@@ -738,7 +749,7 @@ class RocketMQDLQProviderTest {
                 eq("group-a"),
                 isNull(),
                 contains("matched=0, resent=0, failed=0"),
-                eq("NO_MESSAGES"));
+                eq("SUCCESS"));
     }
 
     @Test
@@ -763,8 +774,10 @@ class RocketMQDLQProviderTest {
         assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a", 100L, 200L, null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+        // A resend against a missing DLQ topic answers 404: the audit result uses the shared
+        // FAILED word and the detail keeps the dlqTopicMissing marker.
         verify(auditService).record(eq("RESEND_DLQ"), eq("DLQ"), eq("group-a"), isNull(),
-                contains("dlqTopicMissing=true"), eq("NOT_FOUND"));
+                contains("dlqTopicMissing=true"), eq("FAILED"));
         verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
     }
 
@@ -794,8 +807,10 @@ class RocketMQDLQProviderTest {
         assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a", 100L, 200L, null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+        // A resend against a missing DLQ topic answers 404: the audit result uses the shared
+        // FAILED word and the detail keeps the dlqTopicMissing marker.
         verify(auditService).record(eq("RESEND_DLQ"), eq("DLQ"), eq("group-a"), isNull(),
-                contains("dlqTopicMissing=true"), eq("NOT_FOUND"));
+                contains("dlqTopicMissing=true"), eq("FAILED"));
         verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
     }
 
@@ -1142,6 +1157,154 @@ class RocketMQDLQProviderTest {
                 .doesNotContainEntry(MessageConst.PROPERTY_REAL_TOPIC, "system-topic-should-not-copy");
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void resendMessagesKeepsEachFifoGroupOnOneQueueTest(boolean selected) throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        String destination = selected ? "orders" : "replay-orders";
+        List<String> groups = List.of("order-b", "polygenelubricants", "order-b", "polygenelubricants");
+        List<MessageExt> deadLetters = IntStream.range(0, groups.size()).mapToObj(index -> {
+            MessageExt deadLetter = new MessageExt();
+            deadLetter.setMsgId("fifo-" + index);
+            deadLetter.setTopic(dlqTopic);
+            deadLetter.setBody(new byte[] {(byte) index});
+            deadLetter.setStoreTimestamp(150L);
+            MessageAccessor.putProperty(deadLetter, MessageConst.PROPERTY_SHARDING_KEY, groups.get(index));
+            MessageAccessor.putProperty(deadLetter, MessageConst.PROPERTY_DLQ_ORIGIN_TOPIC, "orders");
+            return deadLetter;
+        }).toList();
+        List<MessageQueue> queues = List.of(new MessageQueue(destination, "broker-a", 0),
+                new MessageQueue(destination, "broker-a", 1), new MessageQueue(destination, "broker-a", 2));
+        TopicPublishInfo publishInfo = new TopicPublishInfo();
+        publishInfo.setMessageQueueList(queues);
+        List<MessageQueue> sentQueues = new ArrayList<>();
+        List<Message> sentMessages = new ArrayList<>();
+        SendResult success = new SendResult();
+        success.setSendStatus(SendStatus.SEND_OK);
+        // Exercise the SDK's ordinary round-robin choice if replay takes the ungrouped path.
+        lenient().when(dlqProducer.send(any(Message.class))).thenAnswer(call -> {
+            sentMessages.add(call.getArgument(0));
+            sentQueues.add(publishInfo.selectOneMessageQueue());
+            return success;
+        });
+        lenient().when(dlqProducer.send(any(Message.class), any(MessageQueueSelector.class), any()))
+                .thenAnswer(call -> {
+                    Message message = call.getArgument(0);
+                    MessageQueueSelector selector = call.getArgument(1);
+                    Object group = call.getArgument(2);
+                    assertThat(group).isEqualTo(message.getProperty(MessageConst.PROPERTY_SHARDING_KEY));
+                    sentMessages.add(message);
+                    sentQueues.add(selector.select(queues, message, group));
+                    return success;
+                });
+        DLQResendResultVO result;
+        if (selected) {
+            for (MessageExt deadLetter : deadLetters) {
+                when(adminExt.viewMessage(dlqTopic, deadLetter.getMsgId())).thenReturn(deadLetter);
+            }
+            result = provider.resendMessages("instance-a", "group-a",
+                    deadLetters.stream().map(MessageExt::getMsgId).toList(), null);
+        } else {
+            MessageQueue sourceQueue = new MessageQueue(dlqTopic, "broker-a", 0);
+            when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(sourceQueue));
+            when(pullConsumer.searchOffset(sourceQueue, 100L)).thenReturn(0L);
+            when(pullConsumer.searchOffset(sourceQueue, 201L)).thenReturn(4L);
+            when(pullConsumer.pull(sourceQueue, "*", 0L, 32))
+                    .thenReturn(new PullResult(PullStatus.FOUND, 4L, 0L, 4L, deadLetters));
+            stubExistingTarget(destination);
+            result = provider.resendMessages("instance-a", "group-a", 100L, 200L, destination);
+        }
+
+        assertThat(result).extracting("matched", "resent", "failed", "outcome")
+                .containsExactly(4, 4, 0, "SUCCESS");
+        assertThat(sentMessages).extracting(message -> message.getProperty(MessageConst.PROPERTY_SHARDING_KEY))
+                .containsExactlyElementsOf(groups);
+        assertThat(sentQueues).hasSize(4);
+        assertThat(sentQueues.get(0)).isEqualTo(sentQueues.get(2));
+        assertThat(sentQueues.get(1)).isEqualTo(sentQueues.get(3));
+        assertThat(sentQueues.get(0)).isNotEqualTo(sentQueues.get(1));
+        for (int index = 0; index < groups.size(); index++) {
+            assertThat(sentQueues.get(index))
+                    .isEqualTo(queues.get(Math.floorMod(groups.get(index).hashCode(), queues.size())));
+            assertThat(sentMessages.get(index).getTopic()).isEqualTo(destination);
+            assertThat(sentMessages.get(index).getBody()).containsExactly((byte) index);
+        }
+        verify(dlqProducer, never()).send(any(Message.class));
+    }
+
+    @Test
+    void resendMessagesWithoutFifoGroupKeepOrdinarySendTest() throws Exception {
+        MessageExt deadLetter = fifoDeadLetter("plain-msg", null);
+        SendResult success = new SendResult();
+        success.setSendStatus(SendStatus.SEND_OK);
+        when(adminExt.viewMessage(deadLetter.getTopic(), deadLetter.getMsgId())).thenReturn(deadLetter);
+        when(dlqProducer.send(any(Message.class))).thenReturn(success);
+
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", List.of(deadLetter.getMsgId()), null);
+
+        assertThat(result).extracting("resent", "failed", "outcome").containsExactly(1, 0, "SUCCESS");
+        verify(dlqProducer).send(any(Message.class));
+        verify(dlqProducer, never()).send(any(Message.class), any(MessageQueueSelector.class), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", " "})
+    void resendMessagesKeepsRejectingBlankGroupPropertiesTest(String group) throws Exception {
+        MessageExt deadLetter = fifoDeadLetter("blank-group", group);
+        when(adminExt.viewMessage(deadLetter.getTopic(), deadLetter.getMsgId())).thenReturn(deadLetter);
+
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", List.of(deadLetter.getMsgId()), null);
+
+        // The SDK's user-property validation already rejects these values before either send path.
+        assertThat(result).extracting("resent", "failed", "outcome").containsExactly(0, 1, "FAILED");
+        assertThat(result.getFailures()).singleElement().satisfies(failure ->
+                assertThat(failure.getReason()).contains("property can not be null or blank"));
+        verifyNoInteractions(dlqProducer);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void failedFifoResendDoesNotFallBackToOrdinarySendTest(boolean throwsException) throws Exception {
+        MessageExt deadLetter = fifoDeadLetter("failed-fifo", "order-42");
+        when(adminExt.viewMessage(deadLetter.getTopic(), deadLetter.getMsgId())).thenReturn(deadLetter);
+        if (throwsException) {
+            when(dlqProducer.send(any(Message.class), any(MessageQueueSelector.class), eq("order-42")))
+                    .thenThrow(new IllegalStateException("broker unavailable"));
+        } else {
+            SendResult rejected = new SendResult();
+            rejected.setSendStatus(SendStatus.FLUSH_DISK_TIMEOUT);
+            when(dlqProducer.send(any(Message.class), any(MessageQueueSelector.class), eq("order-42")))
+                    .thenReturn(rejected);
+        }
+
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", List.of(deadLetter.getMsgId()), null);
+
+        assertThat(result).extracting("matched", "resent", "failed", "outcome")
+                .containsExactly(1, 0, 1, "FAILED");
+        assertThat(result.getFailures()).singleElement().satisfies(failure -> {
+            assertThat(failure.getMsgId()).isEqualTo("failed-fifo");
+            assertThat(failure.getTargetTopic()).isEqualTo("orders");
+            assertThat(failure.getReason())
+                    .contains(throwsException ? "broker unavailable" : "FLUSH_DISK_TIMEOUT");
+        });
+        verify(dlqProducer, never()).send(any(Message.class));
+    }
+
+    private static MessageExt fifoDeadLetter(String messageId, String group) {
+        MessageExt deadLetter = new MessageExt();
+        deadLetter.setMsgId(messageId);
+        deadLetter.setTopic(MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a");
+        deadLetter.setBody(new byte[] {1});
+        MessageAccessor.putProperty(deadLetter, MessageConst.PROPERTY_DLQ_ORIGIN_TOPIC, "orders");
+        if (group != null) {
+            MessageAccessor.putProperty(deadLetter, MessageConst.PROPERTY_SHARDING_KEY, group);
+        }
+        return deadLetter;
+    }
+
     @Test
     void resendSelectedMessagesLooksUpIdsWithoutAStoreTimeWindow() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
@@ -1219,6 +1382,69 @@ class RocketMQDLQProviderTest {
             assertThat(failure.getReason()).contains("broker unavailable");
         });
         assertThat(result.isFailuresTruncated()).isFalse();
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "false, 229, true", "false, 230, false", "false, 231, false",
+        "true, 226, true", "true, 227, false", "true, 228, false"
+    })
+    void resendFailuresPreserveUnicodeAtCutBoundaryTest(boolean sessionFailure, int filler,
+                                                       boolean keepsEmoji) throws Exception {
+        String prefix = sessionFailure ? "Producer session failed: " : "Producer send failed: ";
+        String error = "x".repeat(filler) + "😀" + "y".repeat(40);
+        DLQResendResultVO result = resendWithProducerError(error, sessionFailure);
+
+        assertThat(result).extracting("matched", "resent", "failed", "outcome")
+                .containsExactly(1, 0, 1, "FAILED");
+        assertThat(result.getFailures()).singleElement().satisfies(failure -> {
+            String expected = prefix + "x".repeat(filler) + (keepsEmoji ? "😀" : "") + "...";
+            assertThat(failure.getReason()).isEqualTo(expected).hasSizeLessThanOrEqualTo(256);
+            assertThat(new String(failure.getReason().getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8))
+                    .isEqualTo(failure.getReason());
+            assertThat(failure.getMsgId()).isEqualTo("selected-msg");
+            assertThat(failure.getTargetTopic()).isEqualTo("orders");
+        });
+        assertThat(result.isFailuresTruncated()).isFalse();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"false", "true"})
+    void resendFailuresKeepShortUnicodeAndNormalizeWhitespaceTest(boolean sessionFailure) throws Exception {
+        String prefix = sessionFailure ? "Producer session failed: " : "Producer send failed: ";
+        DLQResendResultVO result = resendWithProducerError("  broker\n  😀 unavailable  ", sessionFailure);
+
+        assertThat(result.getFailures()).singleElement().satisfies(failure ->
+                assertThat(failure.getReason()).isEqualTo(prefix + "broker 😀 unavailable"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"false", "true"})
+    void resendFailuresKeepAsciiReasonBudgetTest(boolean sessionFailure) throws Exception {
+        String prefix = sessionFailure ? "Producer session failed: " : "Producer send failed: ";
+        DLQResendResultVO result = resendWithProducerError("x".repeat(300), sessionFailure);
+
+        assertThat(result.getFailures()).singleElement().satisfies(failure ->
+                assertThat(failure.getReason())
+                        .isEqualTo(prefix + "x".repeat(253 - prefix.length()) + "...")
+                        .hasSize(256));
+    }
+
+    private DLQResendResultVO resendWithProducerError(String error, boolean sessionFailure) throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageExt deadLetter = new MessageExt();
+        deadLetter.setMsgId("selected-msg");
+        deadLetter.setTopic(dlqTopic);
+        deadLetter.setBody(new byte[] {1});
+        MessageAccessor.putProperty(deadLetter, MessageConst.PROPERTY_DLQ_ORIGIN_TOPIC, "orders");
+        when(adminExt.viewMessage(dlqTopic, "selected-msg")).thenReturn(deadLetter);
+        if (sessionFailure) {
+            doThrow(new IllegalStateException(error)).when(runtimeAdminClientResolver)
+                    .executeProducer(anyString(), any());
+        } else {
+            when(dlqProducer.send(any(Message.class))).thenThrow(new IllegalStateException(error));
+        }
+        return provider.resendMessages("instance-a", "group-a", List.of("selected-msg"), null);
     }
 
     @Test

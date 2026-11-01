@@ -204,6 +204,10 @@ body {
   border: none;
   cursor: pointer;
   transition: all 0.15s;
+  /* The toolbar row scrolls horizontally on narrow screens; without these the buttons shrink
+     and their labels wrap into two stacked characters (seen at 390px width). */
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .tool-btn:hover {
   background: #f3f4f6;
@@ -297,16 +301,29 @@ body {
 /* Tool-call cards are <details>: collapsed they stay a single summary line, expanded they
    reveal the arguments and the result. Hide the native disclosure marker and rotate the
    chevron instead so the header reads as one clean row. */
-.ai-tool-card > summary {
-  list-style: none;
+/* The sider's children container does not scroll on its own; with the sider clipping at
+   overflow hidden, menu entries below the fold were unreachable on short viewports. The logo
+   and the collapse trigger stay pinned while only the menu scrolls. */
+.ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
-.ai-tool-card > summary::-webkit-details-marker {
-  display: none;
+.sider-menu-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
+
+/* Acknowledged alert rows read as history: dimmed, but still selectable and expandable. */
+.sys-alert-row-ack td {
+  opacity: 0.6;
+}
+
 .ai-tool-card .ai-tool-chevron {
   transition: transform 0.2s;
 }
-.ai-tool-card[open] .ai-tool-chevron {
+.ai-tool-card[data-expanded='true'] .ai-tool-chevron {
   transform: rotate(90deg);
 }
 
@@ -477,4 +494,11 @@ body {
 /* Instance list: center the table header cells (body alignment stays per-column). */
 .instance-table .ant-table-thead > tr > th {
   text-align: center;
+}
+
+/* Form helper text (Form.Item `extra`) sat flush against the control above it — the type
+   description in the create-topic modal read as part of the radio cards. A small top margin
+   applies to every `extra` in the app, which is the convention for "explanation under a field". */
+.ant-form-item-extra {
+  margin-top: 4px;
 }

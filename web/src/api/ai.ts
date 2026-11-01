@@ -270,15 +270,15 @@ async function consumeEventStream(
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
-      if (buffer.length > MAX_SSE_EVENT_CHARS && !getEventBoundary(buffer)) {
-        throw eventTooLargeError();
-      }
       let boundary = getEventBoundary(buffer);
       while (boundary) {
         const frame = buffer.slice(0, boundary.index);
         buffer = buffer.slice(boundary.index + boundary.length);
         if (dispatch(frame)) return;
         boundary = getEventBoundary(buffer);
+      }
+      if (buffer.length > MAX_SSE_EVENT_CHARS) {
+        throw eventTooLargeError();
       }
     }
 
@@ -358,7 +358,13 @@ async function consumeRunStream(
   if (!response.ok) {
     throw await parseHttpError(response, label);
   }
-  assertEventStream(response);
+  try {
+    assertEventStream(response);
+  } catch (error) {
+    // No reader owns the body yet when the content-type check rejects it.
+    await response.body?.cancel().catch(() => undefined);
+    throw error;
+  }
   await consumeEventStream(
     response,
     (frame) => emitRunFrame(frame, handlers),

@@ -44,6 +44,8 @@ import {
   type LlmTestResult,
 } from '../../api/llm';
 import { fallbackModelOptions } from '../studio/llmModelOptions';
+import { describeThrownMessage } from '../../utils/apiError';
+import { useCanWriteSettings } from '../../hooks/useCanWriteSettings';
 
 const DEFAULT_BASE_URL: Record<string, string> = {
   tongyi: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
@@ -107,6 +109,11 @@ interface TestState {
 export const AiAssistantTab = () => {
   const { t } = useLang();
   const { message } = App.useApp();
+  // The LLM configuration surface is admin-only on both ends (the GET is an admin-only read, the
+  // POST falls through to the admin requirement), so a reader's save, test or key clear could only
+  // ever come back 403. The controls stay disabled instead, the same way the other settings tabs
+  // treat the writes they own.
+  const canWriteSettings = useCanWriteSettings();
   const [form] = Form.useForm();
   const selectedProvider = Form.useWatch('provider', form);
 
@@ -118,6 +125,8 @@ export const AiAssistantTab = () => {
   const [testResult, setTestResult] = useState<TestState | null>(null);
   const testRequestIdRef = useRef(0);
   const configGenerationRef = useRef(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   const buildModelOptions = (
     nextProvider: string,
@@ -157,10 +166,16 @@ export const AiAssistantTab = () => {
     Promise.all([getLlmConfig(), getLlmModels().catch(() => null)])
       .then(([config, models]) => {
         if (cancelled) return;
+        setLoadError(null);
         applyConfig(config, models?.data?.map((m) => m.id || '').filter(Boolean) ?? []);
       })
-      .catch(() => {
-        if (!cancelled) message.error(t('llm.loadFailed'));
+      .catch((error) => {
+        if (cancelled) return;
+        // An unreadable configuration must not be presented as an empty one: the form below would
+        // then claim that no provider, model or API key is configured. The endpoint is admin-only,
+        // so a reader always ends up here, and the server's reason is what says so.
+        setLoadError(describeThrownMessage(error) || t('llm.loadFailed'));
+        message.error(t('llm.loadFailed'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -171,7 +186,7 @@ export const AiAssistantTab = () => {
       configGenerationRef.current += 1;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reloadNonce]);
 
   const invalidateTestRequest = () => {
     testRequestIdRef.current += 1;
@@ -230,6 +245,7 @@ export const AiAssistantTab = () => {
   };
 
   const handleClearApiKey = async () => {
+    if (!canWriteSettings) return;
     const payload = await buildPayload();
     if (!payload) return;
     const confirmed = window.confirm(t('settings.clearApiKeyConfirm'));
@@ -268,6 +284,7 @@ export const AiAssistantTab = () => {
   };
 
   const handleTest = async () => {
+    if (!canWriteSettings) return;
     const payload = await buildPayload();
     if (!payload) return;
     const requestId = testRequestIdRef.current + 1;
@@ -295,6 +312,7 @@ export const AiAssistantTab = () => {
   };
 
   const handleSave = async () => {
+    if (!canWriteSettings) return;
     const payload = await buildPayload();
     if (!payload) return;
     const configGeneration = configGenerationRef.current;
@@ -329,7 +347,25 @@ export const AiAssistantTab = () => {
   };
 
   return (
-    <Flex vertical gap={24} style={{ maxWidth: 860 }}>
+    <Flex vertical gap={24}>
+      {loadError && (
+        <Alert
+          type="error"
+          showIcon
+          message={loadError}
+          action={
+            <Button
+              size="small"
+              onClick={() => {
+                setLoading(true);
+                setReloadNonce((nonce) => nonce + 1);
+              }}
+            >
+              {t('common.retry')}
+            </Button>
+          }
+        />
+      )}
       <Form
         form={form}
         layout="vertical"
@@ -417,6 +453,7 @@ export const AiAssistantTab = () => {
                   size="small"
                   style={{ marginLeft: 8 }}
                   loading={saving}
+                  disabled={!canWriteSettings}
                   onClick={() => void handleClearApiKey()}
                 >
                   {t('settings.clearApiKey')}
@@ -527,12 +564,16 @@ export const AiAssistantTab = () => {
             <Button
               type="primary"
               loading={saving}
-              disabled={loading}
+              disabled={loading || !canWriteSettings}
               onClick={() => void handleSave()}
             >
               {t('common.save')}
             </Button>
-            <Button loading={testing} disabled={loading} onClick={() => void handleTest()}>
+            <Button
+              loading={testing}
+              disabled={loading || !canWriteSettings}
+              onClick={() => void handleTest()}
+            >
               {t('settings.testConnection')}
             </Button>
           </Space>

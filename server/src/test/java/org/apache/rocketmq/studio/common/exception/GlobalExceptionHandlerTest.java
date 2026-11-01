@@ -118,4 +118,12 @@ class GlobalExceptionHandlerTest {
             throw new HttpMediaTypeNotAcceptableException(List.of(MediaType.APPLICATION_JSON));
         }
     }
+    @Test
+    void preservesBusinessRejectionWithoutPromotingItToGatewayFailureTest() throws Exception {
+        mockMvc.perform(get("/test/business/422"))
+                .andExpect(status().is(422))
+                .andExpect(jsonPath("$.code").value(422))
+                .andExpect(jsonPath("$.message").value("failure-422"));
+    }
+
 }

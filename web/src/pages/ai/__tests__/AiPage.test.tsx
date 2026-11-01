@@ -21,6 +21,7 @@ import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { attachRunStream, executeTool, listTools, openRunStream } from '../../../api/ai';
 import {
   createConversation,
@@ -42,6 +43,8 @@ import { listInstances } from '../../../services/instanceService';
 import useAuthStore from '../../../stores/authStore';
 import { useEngineStore } from '../../../stores/engineStore';
 import AiPage from '../index';
+import { COMPOSER_DRAFT_STORAGE_KEY } from '../hooks/useComposerDraft';
+import HomePage from '../../home';
 
 /**
  * The page shell, end to end: route param in, hooks wired, `ChatThread` + `Composer` out.
@@ -74,6 +77,9 @@ vi.mock('../../../api/aiConversations', () => ({
   getConversationTimeline: vi.fn(),
   listConversations: vi.fn(),
   stopRun: vi.fn(),
+  // The page asks for follow-up chips once a transcript tail is idle; the suite never asserts on
+  // them, so the default answer is "nothing to suggest".
+  suggestFollowups: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../../../api/llm', () => ({
@@ -90,7 +96,10 @@ vi.mock('../../../services/instanceService', () => ({
 }));
 
 vi.mock('../../../stores/dataModeStore', () => ({
-  useDataModeStore: (selector: (state: typeof dataModeMocks) => unknown) => selector(dataModeMocks),
+  useDataModeStore: Object.assign(
+    (selector: (state: typeof dataModeMocks) => unknown) => selector(dataModeMocks),
+    { getState: () => dataModeMocks },
+  ),
 }));
 
 beforeAll(() => {
@@ -400,6 +409,47 @@ describe('AiPage', () => {
     expect(attachRunStream).toHaveBeenCalledTimes(1);
   });
 
+  it.each(['unchanged', 'typed', 'cleared', 'template'])(
+    'preservesNewerDraftAfterConversationCreationFailsTest: %s',
+    async (edit) => {
+      let rejectCreation!: (error: Error) => void;
+      vi.mocked(createConversation).mockReturnValueOnce(
+        new Promise<AiConversationVO>((_resolve, reject) => {
+          rejectCreation = reject;
+        }),
+      );
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      renderPage();
+      const input = await typeAndWaitForReady('original question');
+      await user.click(screen.getByTestId('ai-send-stop-button'));
+      await waitFor(() => expect(createConversation).toHaveBeenCalledTimes(1));
+      expect(input).toHaveValue('');
+
+      let expected = 'original question';
+      if (edit === 'typed' || edit === 'cleared') {
+        await user.type(input, 'new unsent draft');
+        expected = 'new unsent draft';
+        if (edit === 'cleared') {
+          await user.clear(input);
+          expected = '';
+        }
+      } else if (edit === 'template') {
+        await user.click(screen.getByRole('button', { name: '模板' }));
+        const dialog = await screen.findByRole('dialog', { name: 'Prompt 模板' });
+        await user.click(within(dialog).getAllByRole('button', { name: /使\s*用/ })[0]);
+        expected = (input as HTMLTextAreaElement).value;
+        expect(expected).toContain('请诊断当前 RocketMQ 实例中的消费延迟问题');
+      }
+
+      await act(async () => rejectCreation(new Error('conversation creation failed')));
+      expect(await screen.findByText('conversation creation failed')).toBeInTheDocument();
+      expect(input).toHaveValue(expected);
+      expect(sessionStorage.getItem(COMPOSER_DRAFT_STORAGE_KEY)).toBe(expected || null);
+      expect(readProbeLocation().pathname).toBe('/ai');
+      expect(openRunStream).not.toHaveBeenCalled();
+    },
+  );
+
   it('surfacesTheServerRejectionOfADoubleSendTest', async () => {
     vi.mocked(openRunStream).mockRejectedValue(
       Object.assign(new Error('该会话已有正在进行的回答'), {
@@ -451,6 +501,100 @@ describe('AiPage', () => {
     // the neutral InfoBanner treatment, never a coloured antd Alert.
     expect(banner.closest('.ant-alert')).toBeNull();
     expect(document.querySelector('.ant-alert-warning')).toBeNull();
+  });
+
+  it('homeModelRemainsSelectableAfterCatalogLoadTest', async () => {
+    vi.mocked(getLlmConfig).mockResolvedValue({
+      provider: 'tongyi',
+      engine: 'http',
+      apiBase: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+      model: 'qwen-plus',
+      maxTokens: 1024,
+      temperature: 0.2,
+      enabled: true,
+      ready: true,
+    });
+    let resolveModels!: (models: Awaited<ReturnType<typeof getLlmModels>>) => void;
+    vi.mocked(getLlmModels).mockReturnValue(
+      new Promise((resolve) => {
+        resolveModels = resolve;
+      }),
+    );
+    vi.mocked(openRunStream).mockResolvedValue(undefined);
+    useEngineStore.setState({ engine: 'http' });
+    const user = userEvent.setup();
+    render(
+      <App>
+        <LangProvider>
+          <MemoryRouter initialEntries={['/']}>
+            <LocationProbe />
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/ai" element={<AiPage />} />
+              <Route path="/ai/c/:conversationId" element={<AiPage />} />
+            </Routes>
+          </MemoryRouter>
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('qwen3.8-max');
+    const homeSelector = screen.getByRole('combobox', { name: '模型名称' });
+    await user.click(homeSelector);
+    // Home appends the configured model after its fixed list; use the real
+    // selector's upward navigation from the selected first option to reach it.
+    fireEvent.keyDown(homeSelector, { key: 'ArrowUp', code: 'ArrowUp', keyCode: 38, which: 38 });
+    await user.click(
+      await screen.findByText('qwen-plus', { selector: '.ant-select-item-option-content span' }),
+    );
+    await waitFor(() => expect(homeSelector.closest('.ant-select')).toHaveTextContent('qwen-plus'));
+    await user.type(
+      screen.getByPlaceholderText('向 RocketMQ Bot 提问，全程加密、安全、可信'),
+      '查看集群状态{Enter}',
+    );
+    await waitFor(() => expect(readProbeLocation().pathname).toBe('/ai/c/7'));
+    await waitFor(() => expect(getLlmModels).toHaveBeenCalled());
+
+    // The saved-provider service test permits qwen-plus, while its actual Tongyi
+    // catalog contains these twelve IDs rather than the configured model.
+    await act(async () =>
+      resolveModels({
+        status: 0,
+        source: 'builtin',
+        data: [
+          'qwen3.8-max',
+          'qwen3.7-max',
+          'qwen3.7-plus',
+          'gpt-5',
+          'gpt-5.1',
+          'claude-fable-5',
+          'claude-opus-5',
+          'claude-sonnet-5',
+          'deepseek-v4-pro',
+          'deepseek-v4-flash',
+          'MiniMax-M2.5',
+          'glm-5.2',
+        ].map((id) => ({ id })),
+      }),
+    );
+    await waitFor(() => expect(openRunStream).toHaveBeenCalledTimes(1));
+    expect(openRunStream).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({ model: 'qwen-plus' }),
+      expect.anything(),
+      expect.anything(),
+    );
+    const selector = screen.getByRole('combobox', { name: '模型名称' });
+    await user.click(selector);
+    await user.click(
+      await screen.findByText('qwen3.8-max', { selector: '.ant-select-item-option-content span' }),
+    );
+    await user.click(selector);
+    await user.click(
+      await screen.findByText('qwen-plus', { selector: '.ant-select-item-option-content span' }),
+    );
+    expect(selector.closest('.ant-select')).toHaveTextContent('qwen-plus');
+    expect(openRunStream).toHaveBeenCalledTimes(1);
   });
 
   it('handsOffTheHomePageDraftIntoANewConversationAndAutoSendsItExactlyOnceTest', async () => {
@@ -571,6 +715,102 @@ describe('AiPage', () => {
       state: { engine: 'qoder' },
     });
     expect(getLlmModels).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { fromHome: false, lang: 'zh', title: 'AI 对话历史' },
+    { fromHome: true, lang: 'zh', title: 'AI 对话历史' },
+    { fromHome: false, lang: 'en', title: 'AI conversation history' },
+    { fromHome: true, lang: 'en', title: 'AI conversation history' },
+  ])(
+    'doesNotLoadRealConversationHistoryInMockModeTest ($lang, route intent: $fromHome)',
+    async ({ fromHome, lang, title }) => {
+      dataModeMocks.useMock = true;
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+      vi.mocked(listConversations).mockResolvedValue({
+        items: [CONVERSATION_7],
+        total: 1,
+        page: 1,
+        size: 20,
+      });
+      renderPage(fromHome ? { historyIntent: 'open' } : undefined);
+      if (!fromHome) {
+        await userEvent.setup().click(screen.getByRole('button', { name: title }));
+      }
+      const dialog = await screen.findByRole('dialog', { name: title });
+      await act(async () => {});
+
+      expect(listConversations).not.toHaveBeenCalled();
+      expect(within(dialog).queryByTestId('ai-conversation-link-7')).not.toBeInTheDocument();
+      expect(within(dialog).queryByTestId('ai-conversation-page-delete')).not.toBeInTheDocument();
+      expect(within(dialog).getByTestId('ai-mock-history-disabled')).toHaveTextContent(
+        lang === 'zh'
+          ? 'Mock 模式不加载或修改已保存的 AI 会话，请切换到真实数据模式后使用。'
+          : 'Saved AI conversations are not loaded or changed in mock mode; switch to real data mode to use them.',
+      );
+    },
+  );
+
+  it('doesNotReadOrAttachARealConversationDeepLinkInMockModeTest', async () => {
+    dataModeMocks.useMock = true;
+    vi.mocked(getConversationTimeline).mockResolvedValue(
+      timelinePage([item(1, { type: 'text', text: 'real conversation content' })], {
+        id: 41,
+        status: 'RUNNING',
+      }),
+    );
+    vi.mocked(attachRunStream).mockReturnValue(new Promise(() => {}));
+    renderRouted('/ai/c/7');
+    await screen.findByTestId('ai-mock-disabled');
+    await act(async () => {});
+
+    expect.soft(getConversationTimeline).not.toHaveBeenCalled();
+    expect.soft(attachRunStream).not.toHaveBeenCalled();
+    expect(screen.queryByText('real conversation content')).not.toBeInTheDocument();
+    expect(screen.getByTestId('ai-send-stop-button')).toHaveAttribute('data-state', 'send');
+    expect(stopRun).not.toHaveBeenCalled();
+  });
+
+  it.each(['/ai', '/ai/c/7'])(
+    'keepsTheHomeDraftWithoutCreatingARealConversationInMockModeTest (%s)',
+    async (path) => {
+      dataModeMocks.useMock = true;
+      renderRouted(path, { prompt: 'Keep this mock draft', mode: 'diagnose', enhance: true });
+      await waitFor(() => expect(readProbeLocation().state).toBeNull());
+
+      expect.soft(createConversation).not.toHaveBeenCalled();
+      expect.soft(listInstances).not.toHaveBeenCalled();
+      expect.soft(openRunStream).not.toHaveBeenCalled();
+      expect.soft(readProbeLocation().pathname).toBe(path);
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toHaveValue('Keep this mock draft');
+      expect(sessionStorage.getItem(COMPOSER_DRAFT_STORAGE_KEY)).toBe('Keep this mock draft');
+    },
+  );
+
+  it('onlySendsTheRetainedMockDraftAfterManualSubmitInRealModeTest', async () => {
+    dataModeMocks.useMock = true;
+    const view = renderPage({ prompt: 'Submit this after switching to real mode' });
+    await waitFor(() => expect(readProbeLocation().state).toBeNull());
+    expect(createConversation).not.toHaveBeenCalled();
+    view.unmount();
+
+    // MainLayout changes modes with a full reload. The draft survives it locally, but its
+    // consumed route state must not silently turn that reload into a live backend operation.
+    dataModeMocks.useMock = false;
+    vi.mocked(openRunStream).mockReturnValue(new Promise(() => {}));
+    renderPage();
+    await waitFor(() => expect(getLlmModels).toHaveBeenCalled());
+    const input = screen.getByPlaceholderText(PLACEHOLDER);
+    expect(input).toHaveValue('Submit this after switching to real mode');
+    expect(createConversation).not.toHaveBeenCalled();
+    expect(openRunStream).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(openRunStream).toHaveBeenCalledTimes(1));
+    expect(createConversation).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(openRunStream).mock.calls[0][1].message).toBe(
+      'Submit this after switching to real mode',
+    );
   });
 
   it('doesNotLoadTheLlmRuntimeInMockModeAndDisablesTheComposerTest', async () => {

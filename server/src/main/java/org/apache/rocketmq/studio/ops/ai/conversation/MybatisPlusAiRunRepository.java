@@ -30,6 +30,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * MySQL-backed AI run repository (rmq_ai_run).
@@ -69,6 +71,28 @@ public class MybatisPlusAiRunRepository implements AiRunRepository {
                 .orderByDesc("id")
                 .last("LIMIT 1"));
         return active.stream().findFirst();
+    }
+
+    @Override
+    public Set<Long> findActiveConversationIds(List<Long> conversationIds) {
+        if (conversationIds == null || conversationIds.isEmpty()) {
+            return Set.of();
+        }
+        List<Long> ids = conversationIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (ids.isEmpty()) {
+            return Set.of();
+        }
+        // One statement for a whole retention page instead of one SELECT per conversation. The
+        // conversation_id predicate is what idx_ai_run_conversation leads with, so the status filter
+        // only narrows rows the index already selected.
+        return runMapper.selectObjs(new QueryWrapper<RmqAiRun>()
+                        .select("DISTINCT conversation_id")
+                        .in("conversation_id", ids)
+                        .in("status", RunStatus.ACTIVE_STATUSES))
+                .stream()
+                .filter(Objects::nonNull)
+                .map(value -> ((Number) value).longValue())
+                .collect(Collectors.toSet());
     }
 
     @Override

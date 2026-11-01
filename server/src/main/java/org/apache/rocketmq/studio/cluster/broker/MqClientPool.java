@@ -122,6 +122,9 @@ public class MqClientPool {
         } catch (BusinessException ex) {
             throw ex;
         } catch (Exception ex) {
+            if (ex instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             log.warn("RocketMQ client action failed against namesrv {}: {}", cacheKey.namesrvAddr(), ex.getMessage());
             throw new BusinessException(502, "RocketMQ client call failed: " + rootMessage(ex));
         } finally {

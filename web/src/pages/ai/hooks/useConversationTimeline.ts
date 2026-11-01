@@ -50,6 +50,23 @@ function collectRunSpeeds(
   }
 }
 
+/** Provider-reported usage per run, for the composer's context meter. Null usage is skipped. */
+export interface RunUsage {
+  input: number;
+  output: number;
+}
+
+function collectRunUsage(
+  target: Map<number, RunUsage>,
+  runs: { id: number; inputTokens: number | null; outputTokens: number | null }[] | undefined,
+): void {
+  for (const run of runs ?? []) {
+    if (run.inputTokens !== null && run.outputTokens !== null) {
+      target.set(run.id, { input: run.inputTokens, output: run.outputTokens });
+    }
+  }
+}
+
 export interface UseConversationTimelineOptions {
   /** Rows per cursor page. The backend caps this at 500. */
   limit?: number;
@@ -90,6 +107,13 @@ export interface UseConversationTimelineResult {
   error: string | null;
   /** True when the bounded forward walk stopped before the tail; `loadMore` continues it. */
   hasMore: boolean;
+  /**
+   * Provider-reported context footprint of the newest run that carried usage (input plus output of
+   * its terminal call), or null when no run reported any — the composer's meter then falls back to
+   * its own transcript estimate. Real usage, not an estimate: a resumed CLI session replays the
+   * whole transcript, so the last call's input is what the next call will actually carry.
+   */
+  contextUsage: number | null;
   /** Reload the whole transcript from `seq > 0`; reject on failure so live blocks are retained. */
   refetch: () => Promise<void>;
   loadMore: () => Promise<void>;
@@ -106,6 +130,7 @@ export function useConversationTimeline(
   const [loadedActiveRun, setLoadedActiveRun] = useState<LoadedActiveRun | null>(null);
   const [nextAfter, setNextAfter] = useState<number | null>(null);
   const [runSpeeds, setRunSpeeds] = useState<Map<number, number>>(new Map());
+  const [runUsage, setRunUsage] = useState<Map<number, RunUsage>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hasCurrentSnapshot = loadedActiveRun?.conversationId === conversationId;
@@ -129,6 +154,7 @@ export function useConversationTimeline(
       setItems([]);
       setLoadedActiveRun(null);
       setNextAfter(null);
+      setRunUsage(new Map());
       setError(null);
       setLoading(false);
       return;
@@ -147,6 +173,7 @@ export function useConversationTimeline(
       let cursor: number | null = null;
       let run: AiActiveRunRef | null = null;
       const speeds = new Map<number, number>();
+      const usage = new Map<number, RunUsage>();
 
       for (let page = 0; page < maxPages; page += 1) {
         const result = await getConversationTimeline(conversationId, { after, limit });
@@ -155,6 +182,7 @@ export function useConversationTimeline(
         run = result.activeRun;
         cursor = result.nextAfter;
         collectRunSpeeds(speeds, result.runs);
+        collectRunUsage(usage, result.runs);
         if (cursor === null) break;
         after = cursor;
       }
@@ -167,6 +195,7 @@ export function useConversationTimeline(
       setLoadedActiveRun({ conversationId, run });
       setNextAfter(cursor);
       setRunSpeeds(speeds);
+      setRunUsage(usage);
     } catch (loadError) {
       if (id !== refetchRequestId.current) return;
       setError(describeThrownMessage(loadError));
@@ -205,6 +234,11 @@ export function useConversationTimeline(
         collectRunSpeeds(merged, result.runs);
         return merged;
       });
+      setRunUsage((previous) => {
+        const merged = new Map(previous);
+        collectRunUsage(merged, result.runs);
+        return merged;
+      });
     } catch (loadError) {
       if (id !== loadMoreRequestId.current || refetchId !== refetchRequestId.current) return;
       setError(describeThrownMessage(loadError));
@@ -241,6 +275,20 @@ export function useConversationTimeline(
       ? loadedActiveRun.run
       : null;
 
+  // The newest run that carried usage wins: run ids ascend within a conversation, and an older
+  // run's footprint is stale the moment a later call replays the transcript.
+  const contextUsage = useMemo(() => {
+    let newestId: number | null = null;
+    let tokens: number | null = null;
+    for (const [id, usage] of runUsage) {
+      if (newestId === null || id > newestId) {
+        newestId = id;
+        tokens = usage.input + usage.output;
+      }
+    }
+    return tokens;
+  }, [runUsage]);
+
   return {
     items: visibleItems,
     bubbles,
@@ -249,6 +297,7 @@ export function useConversationTimeline(
     loading,
     error,
     hasMore: hasCurrentSnapshot && nextAfter !== null,
+    contextUsage,
     refetch,
     loadMore,
   };

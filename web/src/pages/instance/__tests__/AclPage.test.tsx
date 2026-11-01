@@ -38,6 +38,7 @@ vi.mock('../../../services/aclService', () => ({
   listAclRules: vi.fn(),
   listAclUsers: vi.fn(),
   pageAclUsers: vi.fn(),
+  pushAclToBroker: vi.fn(),
   updateAclRule: vi.fn(),
   updateAclUser: vi.fn(),
 }));
@@ -70,6 +71,10 @@ const renderWithProviders = (ui: React.ReactElement, initialEntry = '/') =>
     </App>,
   );
 
+const openRulesTab = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.click(screen.getByText('ACL 规则'));
+};
+
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -84,6 +89,7 @@ describe('ACL page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(instanceService.listInstances).mockResolvedValue([]);
+    vi.mocked(aclService.listAclUsers).mockResolvedValue([]);
 
     vi.mocked(aclService.listAclRules).mockResolvedValue({
       items: [
@@ -120,6 +126,49 @@ describe('ACL page', () => {
       page: 1,
       size: 20,
     });
+    vi.mocked(aclService.pushAclToBroker).mockResolvedValue({
+      instanceId: 'instance-a',
+      brokers: [],
+      pushed: 0,
+      failed: 0,
+      accounts: [],
+    });
+  });
+
+  it('pushes stored accounts to the broker and summarizes every outcome', async () => {
+    vi.mocked(aclService.pushAclToBroker).mockResolvedValue({
+      instanceId: 'instance-a',
+      brokers: ['10.0.0.1:10911'],
+      pushed: 1,
+      failed: 1,
+      accounts: [
+        {
+          username: 'remote-admin',
+          subject: 'User:remote-admin',
+          policyCount: 1,
+          skipped: [],
+          brokers: [{ broker: '10.0.0.1:10911', success: true, error: null }],
+        },
+        {
+          username: 'broken',
+          subject: 'User:broken',
+          policyCount: 0,
+          skipped: ['topic-: PREFIXED pattern has no broker ACL equivalent'],
+          brokers: [{ broker: '10.0.0.1:10911', success: false, error: 'acl disabled' }],
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<AclPage />, '/instance/instance-a/acl');
+    await user.click(await screen.findByText('用户管理'));
+
+    await user.click(screen.getByRole('button', { name: /下发到 Broker/ }));
+
+    await waitFor(() => expect(aclService.pushAclToBroker).toHaveBeenCalledTimes(1));
+    const dialog = await screen.findByRole('dialog', { name: '下发到 Broker 结果' });
+    expect(within(dialog).getByText(/成功 1 个、失败 1 个/)).toBeInTheDocument();
+    expect(within(dialog).getByText('User:broken')).toBeInTheDocument();
+    expect(within(dialog).getByText('acl disabled')).toBeInTheDocument();
   });
 
   it('loads ACL rules and users through the service layer', async () => {
@@ -129,6 +178,115 @@ describe('ACL page', () => {
     expect(screen.getByText('remote-topic')).toBeInTheDocument();
     expect(aclService.listAclRules).toHaveBeenCalledTimes(1);
     expect(aclService.pageAclUsers).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not offer page-local sorting on either server-paginated ACL table', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<AclPage />);
+
+    expect(await screen.findByText('remote-user')).toBeInTheDocument();
+    expect(document.querySelectorAll('th.ant-table-column-has-sorters')).toHaveLength(0);
+
+    await user.click(screen.getByText('用户管理'));
+    expect(await screen.findByText('remote-admin')).toBeInTheDocument();
+    expect(document.querySelectorAll('th.ant-table-column-has-sorters')).toHaveLength(0);
+  });
+
+  it('offers an ACL principal outside the loaded user page and shows its admin badge', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    vi.mocked(aclService.listAclUsers).mockResolvedValue([
+      {
+        id: 11,
+        username: 'remote-admin',
+        accessKey: 'acce****3456',
+        secretKey: 'secr****7654',
+        admin: false,
+        clusters: ['cluster-a'],
+      },
+      {
+        id: 21,
+        username: 'directory-only-user',
+        accessKey: 'dire****1234',
+        secretKey: 'secr****4321',
+        admin: true,
+        clusters: ['cluster-a'],
+      },
+    ]);
+    vi.mocked(aclService.listAclRules).mockResolvedValue({
+      items: [
+        {
+          id: 21,
+          principal: 'directory-only-user',
+          resource: 'orders',
+          resourceType: 'Topic',
+          resourcePattern: 'LITERAL',
+          actions: ['PUB'],
+          decision: 'ALLOW',
+          scope: 'cluster',
+          aclVersion: 2,
+          gmtCreate: '2026-07-23T00:00:00Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    renderWithProviders(<AclPage />);
+
+    await openRulesTab(user);
+    const row = await screen.findByRole('row', { name: /directory-only-user/ });
+    expect(within(row).getByText('管理员')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /添加规则/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByLabelText('主体'));
+    await user.click(
+      await screen.findByText('directory-only-user', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+    expect(
+      within(dialog).getByText('directory-only-user', { selector: '.ant-select-selection-item' }),
+    ).toBeInTheDocument();
+    expect(aclService.listAclUsers).toHaveBeenCalledWith({ instanceId: undefined });
+    expect(aclService.pageAclUsers).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 1, pageSize: 20 }),
+    );
+  });
+
+  it('renders creation times in the viewer timezone from the offset-less UTC wire format', async () => {
+    // gmtCreate arrives as a UTC wall clock without an offset; a plain Date parse would read
+    // the server's clock as the viewer's own and shift every creation time by the difference.
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    try {
+      vi.mocked(aclService.listAclRules).mockResolvedValue({
+        items: [
+          {
+            id: 21,
+            principal: 'remote-user',
+            resource: 'remote-topic',
+            resourceType: 'Topic',
+            resourcePattern: 'LITERAL',
+            actions: ['PUB'],
+            decision: 'ALLOW',
+            scope: 'cluster',
+            aclVersion: 2,
+            gmtCreate: '2026-07-23T02:00:00',
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      });
+
+      renderWithProviders(<AclPage />);
+
+      // The default tab is the users list; the rule creation times live on the rules tab.
+      await openRulesTab(userEvent.setup({ pointerEventsCheck: 0 }));
+
+      expect(await screen.findByText('2026-07-23 10:00')).toBeInTheDocument();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('reloads the server rule page after deleting one ACL rule', async () => {
@@ -165,6 +323,7 @@ describe('ACL page', () => {
         size: 20,
       });
     renderWithProviders(<AclPage />);
+    await openRulesTab(user);
 
     const row = await screen.findByRole('row', { name: /remote-topic/ });
     await user.click(within(row).getByRole('button', { name: /删除/ }));
@@ -274,6 +433,7 @@ describe('ACL page', () => {
     renderWithProviders(<AclPage />, '/instance/1/acl');
 
     expect(await screen.findByText('remote-user')).toBeInTheDocument();
+    await user.click(screen.getByText('ACL 规则'));
     await user.click(screen.getByRole('button', { name: /添加规则/ }));
     const dialog = await screen.findByRole('dialog');
 
@@ -304,8 +464,72 @@ describe('ACL page', () => {
     expect(screen.getByText('cluster-a')).toBeInTheDocument();
   });
 
-  it('explains that ACL records are Studio-local metadata', async () => {
+  it('clears stale user rows and total when a filtered user reload fails', async () => {
     renderWithProviders(<AclPage />);
+    const panel = screen.getByRole('tabpanel', { name: '用户管理' });
+    expect(await within(panel).findByText('remote-admin')).toBeInTheDocument();
+    expect(within(panel).getByText('共 1 个用户')).toBeInTheDocument();
+
+    vi.mocked(aclService.pageAclUsers).mockRejectedValueOnce(new Error('users unavailable'));
+    fireEvent.change(within(panel).getByRole('searchbox'), { target: { value: 'missing' } });
+
+    await waitFor(() => expect(aclService.pageAclUsers).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(within(panel).queryByText('remote-admin')).not.toBeInTheDocument());
+    expect(within(panel).queryByText('共 1 个用户')).not.toBeInTheDocument();
+  });
+
+  it('clears stale rule rows and total when a filtered rule reload fails', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<AclPage />);
+    await openRulesTab(user);
+    const panel = screen.getByRole('tabpanel', { name: 'ACL 规则' });
+    expect(await within(panel).findByText('remote-topic')).toBeInTheDocument();
+    expect(within(panel).getByText('共 1 条规则')).toBeInTheDocument();
+
+    vi.mocked(aclService.listAclRules).mockRejectedValueOnce(new Error('rules unavailable'));
+    fireEvent.change(within(panel).getByPlaceholderText('搜索主体'), {
+      target: { value: 'missing' },
+    });
+
+    await waitFor(() => expect(aclService.listAclRules).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(within(panel).queryByText('remote-topic')).not.toBeInTheDocument());
+    expect(within(panel).queryByText('共 1 条规则')).not.toBeInTheDocument();
+  });
+
+  it('opens on the user tab and lists it before the rule tab', async () => {
+    renderWithProviders(<AclPage />);
+
+    const tabs = await screen.findAllByRole('tab');
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['用户管理', 'ACL 规则', '集群 ACL 配置']);
+    expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
+    // 默认面板就是用户管理，不需要再点一次
+    expect(await screen.findByText('remote-admin')).toBeInTheDocument();
+  });
+
+  it('points Apache instances at the broker push instead of claiming store-only metadata', async () => {
+    renderWithProviders(<AclPage />);
+
+    expect(await screen.findByTestId('acl-local-metadata-notice')).toHaveTextContent(
+      '当前 ACL 规则和用户保存在 Studio，点「下发到 Broker」后写入选中实例',
+    );
+  });
+
+  it('keeps the store-only wording for cloud vendors without a push channel', async () => {
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      {
+        id: 21,
+        name: 'aliyun-rmq',
+        remark: '',
+        type: 'CLOUD',
+        endpoint: 'rmq-cn-x.aliyuncs.com:8080',
+        vendor: 'ALIYUN',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    renderWithProviders(<AclPage />, '/instance/aliyun-rmq/acl');
 
     expect(await screen.findByTestId('acl-local-metadata-notice')).toHaveTextContent(
       '当前 ACL 规则和用户仅保存为 Studio 本地元数据',
@@ -385,6 +609,7 @@ describe('ACL page', () => {
     });
 
     renderWithProviders(<AclPage />, '/instance/tencent-rmq/acl');
+    await openRulesTab(user);
 
     await waitFor(() =>
       expect(screen.getByTestId('acl-local-metadata-notice')).toHaveTextContent(
@@ -481,6 +706,7 @@ describe('ACL page', () => {
       actions: ['PUB'],
     });
     renderWithProviders(<AclPage />, '/instance/tencent-rmq/acl');
+    await openRulesTab(user);
     await waitFor(() =>
       expect(screen.getByTestId('acl-local-metadata-notice')).toHaveTextContent(
         'Tencent Cloud Role',
@@ -490,6 +716,7 @@ describe('ACL page', () => {
       const readerRow = await screen.findByRole('row', { name: /reader-role/ });
       await user.click(within(readerRow).getByRole('button', { name: /编辑/ }));
     } else {
+      await user.click(screen.getByText('ACL 规则'));
       await user.click(screen.getByRole('button', { name: /添加规则/ }));
     }
     const dialog = await screen.findByRole('dialog');
@@ -549,6 +776,7 @@ describe('ACL page', () => {
       aclVersion: 2,
     });
     renderWithProviders(<AclPage />);
+    await openRulesTab(user);
     const row = await screen.findByRole('row', { name: /remote-user/ });
     await user.click(within(row).getByRole('button', { name: /编辑/ }));
     const dialog = await screen.findByRole('dialog');
@@ -620,8 +848,11 @@ describe('ACL page', () => {
     });
     renderWithProviders(<AclPage />);
 
-    expect(await screen.findByText('no-time-rule')).toBeInTheDocument();
-    expect(screen.getByText('-')).toBeInTheDocument();
+    // The rules pane is mounted but hidden until its tab is active, and hidden nodes are not
+    // role-queryable, so activate the tab before asserting on the placeholder dash.
+    await openRulesTab(user);
+    const ruleRow = await screen.findByRole('row', { name: /no-time-rule/ });
+    expect(within(ruleRow).getAllByText('-').length).toBeGreaterThan(0);
 
     await user.click(screen.getByText('用户管理'));
     const userPanel = screen.getByRole('tabpanel', { name: '用户管理' });
@@ -723,8 +954,7 @@ describe('ACL page', () => {
     renderWithProviders(<AclPage />);
 
     await user.click(await screen.findByText('用户管理'));
-    const userPanel = screen.getByRole('tabpanel', { name: '用户管理' });
-    await user.click(within(userPanel).getByRole('button', { name: /添加用户/ }));
+    await user.click(screen.getByRole('button', { name: /添加用户/ }));
     const dialog = await screen.findByRole('dialog');
 
     await user.type(
@@ -758,8 +988,7 @@ describe('ACL page', () => {
     renderWithProviders(<AclPage />);
 
     await user.click(await screen.findByText('用户管理'));
-    const userPanel = screen.getByRole('tabpanel', { name: '用户管理' });
-    await user.click(within(userPanel).getByRole('button', { name: /添加用户/ }));
+    await user.click(screen.getByRole('button', { name: /添加用户/ }));
     const dialog = await screen.findByRole('dialog');
 
     await user.type(
@@ -863,6 +1092,47 @@ describe('ACL page', () => {
     expect(await screen.findAllByText('rocketmq-admin')).not.toHaveLength(0);
     expect(screen.getByText('ACL 2.0')).toBeInTheDocument();
     expect(aclService.examineBrokerClusterAclConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it('removes a prior cluster result when a different cluster examine fails', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    vi.mocked(aclService.examineBrokerClusterAclConfig)
+      .mockResolvedValueOnce({
+        clusterId: 'cluster-a',
+        aclEnabled: true,
+        aclVersion: 'ACL 2.0',
+        globalWhiteRemoteAddresses: [],
+        accounts: [
+          {
+            accessKey: 'cluster-a-account',
+            admin: false,
+            defaultTopicPerm: 'DENY',
+            defaultGroupPerm: 'DENY',
+            topicPerms: [],
+            groupPerms: [],
+          },
+        ],
+        accountCount: 1,
+      })
+      .mockRejectedValueOnce(new Error('cluster-b unavailable'));
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('集群 ACL 配置'));
+    const clusterInput = screen.getByPlaceholderText('请输入集群 ID');
+    const examineButton = screen.getByRole('button', { name: /检\s*查\s*配\s*置/ });
+    await user.type(clusterInput, 'cluster-a');
+    await user.click(examineButton);
+    expect(await screen.findAllByText('cluster-a-account')).not.toHaveLength(0);
+    expect(screen.getByText('集群: cluster-a')).toBeInTheDocument();
+
+    await user.clear(clusterInput);
+    await user.type(clusterInput, 'cluster-b');
+    await user.click(examineButton);
+    await waitFor(() => expect(aclService.examineBrokerClusterAclConfig).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(examineButton).not.toHaveClass('ant-btn-loading'));
+
+    expect(screen.queryAllByText('cluster-a-account')).toHaveLength(0);
+    expect(screen.queryByText('集群: cluster-a')).not.toBeInTheDocument();
   });
 
   it('keeps cluster config ownership with the latest examine request', async () => {

@@ -93,7 +93,7 @@ const defaultContext: Required<AlertTemplatePreviewContext> = {
   transition: 'FIRING',
   metric: 'broker.disk.usage_ratio',
   instanceId: 'rocketmq-prod',
-  value: '91%',
+  value: '91',
   threshold: '85',
   thresholdUnit: '%',
   level: 'CRITICAL',
@@ -107,6 +107,12 @@ const defaultContext: Required<AlertTemplatePreviewContext> = {
 
 const uniqueSorted = (values: string[]) =>
   Array.from(new Set(values.filter(Boolean))).sort((left, right) => left.localeCompare(right));
+
+// Mirrors the server-side fallback (AlertNotificationTemplate.DEFAULT_TEMPLATE):
+// an empty custom configuration still delivers this content, so the preview
+// must show it instead of an empty string.
+export const SERVER_DEFAULT_NOTIFICATION_TEMPLATE =
+  '[${level}] ${title} - ${description}\nLabels: ${labels}';
 
 const normalizeTemplate = (template?: string | null) => template ?? '';
 
@@ -248,7 +254,10 @@ export function previewAlertNotificationTemplate(
   const template = normalizeTemplate(templateInput);
   const maxLength = options.maxLength ?? DEFAULT_MAX_LENGTH;
   const values = buildAlertTemplatePreviewContext(context);
-  const parsed = parseTemplate(template.trim() ? template.trim() : template, values);
+  const parsed = parseTemplate(
+    template.trim() ? template.trim() : SERVER_DEFAULT_NOTIFICATION_TEMPLATE,
+    values,
+  );
   const unusedContextVariables = collectUnusedContextVariables(parsed.usedVariables, values);
   const issues: AlertTemplatePreviewIssue[] = [];
 

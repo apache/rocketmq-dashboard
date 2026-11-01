@@ -128,7 +128,10 @@ describe('message API', () => {
       .onGet('/messages/msg-1/trace', { params: { instanceId: 'instance-1', topic: 'orders' } })
       .reply(200, { code: 200, data: trace });
 
-    await expect(getMessageTrace('msg-1', 'instance-1', 'orders')).resolves.toEqual(trace);
+    await expect(getMessageTrace('msg-1', 'instance-1', 'orders')).resolves.toEqual({
+      ...trace,
+      queryType: 'MSG_ID',
+    });
   });
 
   it('maps backend trace node statuses to Ant Design step statuses', async () => {
@@ -206,6 +209,7 @@ describe('message API', () => {
       .reply(200, { code: 200, data: trace });
 
     const mapped = await getMessageTraceByKey('order-1', 'instance-1');
+    expect(mapped?.queryType).toBe('KEY');
     expect(mapped?.nodes.map((node) => node.status)).toEqual(['error', 'finish', 'wait']);
   });
 
@@ -223,6 +227,7 @@ describe('message API', () => {
     await expect(getMessageTraceByKey('no-nodes', 'instance-1')).resolves.toEqual({
       consumerStatus: [],
       nodes: [],
+      queryType: 'KEY',
     });
   });
 
@@ -237,9 +242,10 @@ describe('message API', () => {
       })
       .reply(200, { code: 200, data: trace });
 
-    await expect(getMessageTrace('AC1E0A64/0000 2A9F:1', 'instance-1', 'orders')).resolves.toEqual(
-      trace,
-    );
+    await expect(getMessageTrace('AC1E0A64/0000 2A9F:1', 'instance-1', 'orders')).resolves.toEqual({
+      ...trace,
+      queryType: 'MSG_ID',
+    });
   });
 
   it('posts direct consumption to the message API', async () => {

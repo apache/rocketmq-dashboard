@@ -22,6 +22,7 @@ import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
 import org.apache.rocketmq.client.trace.TraceConstants;
 import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.message.MessageClientExt;
 import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
@@ -557,12 +558,12 @@ public class RocketMQMessageProvider implements MessageProvider {
         String messageId = ResourceOwnershipGuard.requireText(request.getMsgId(), "msgId");
         Resource topicResource = ownershipGuard.topicResource(topic);
         Resource groupResource = new Resource(Kind.GROUP, group);
-        ownershipGuard.check(instance, topicResource, true);
-        ownershipGuard.check(instance, groupResource, true);
+        ownershipGuard.checkOwnerInDomain(instance, topicResource, true);
+        ownershipGuard.checkOwnerInDomain(instance, groupResource, true);
         return ownershipGuard.withOwned(instance, List.of(topicResource, groupResource), () ->
                 runtimeAdminClientResolver.execute(instance.getName(), admin -> {
-                    var topicOwner = ownershipGuard.check(instance, topicResource, true);
-                    var groupOwner = ownershipGuard.check(instance, groupResource, true);
+                    var topicOwner = ownershipGuard.checkOwnerInDomain(instance, topicResource, true);
+                    var groupOwner = ownershipGuard.checkOwnerInDomain(instance, groupResource, true);
                     if (!topicOwner.clusterId().equals(groupOwner.clusterId())) {
                         throw new BusinessException(409, "Group and topic are not in the same target cluster");
                     }
@@ -574,7 +575,15 @@ public class RocketMQMessageProvider implements MessageProvider {
                     if (message == null || !topic.equals(message.getTopic())) {
                         throw new BusinessException(409, "Message's actual topic does not match the authorized resource");
                     }
-                    requireDirectMessageTarget(target, message.getMsgId(), true);
+                    // The broker locates a message by its offset id (broker address + commitlog offset).
+                    // viewMessage hands back a MessageClientExt, whose getMsgId() prefers the client-side
+                    // UNIQ_KEY — its "port" segment is a process id, so decoding it as a physical location
+                    // fails. Both the ownership guard and the broker call therefore use the offset id, and
+                    // fall back to getMsgId() only for a plain MessageExt, where that is the offset id.
+                    String offsetMessageId = message instanceof MessageClientExt clientMessage
+                            ? clientMessage.getOffsetMsgId()
+                            : message.getMsgId();
+                    requireDirectMessageTarget(target, offsetMessageId, true);
                     if (!(message.getStoreHost() instanceof java.net.InetSocketAddress host)
                             || host.getAddress() == null
                             || !target.masters().contains(host.getAddress().getHostAddress() + ":" + host.getPort())) {
@@ -583,7 +592,7 @@ public class RocketMQMessageProvider implements MessageProvider {
                     org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult result;
                     try {
                         result = ((DefaultMQAdminExt) admin).consumeMessageDirectly(group, client,
-                                topic, message.getMsgId());
+                                topic, offsetMessageId);
                     } catch (Exception exception) {
                         String rootMessage = rootMessage(exception);
                         // The broker answers SYSTEM_ERROR with "The Consumer <group> <client> not online"
@@ -637,7 +646,13 @@ public class RocketMQMessageProvider implements MessageProvider {
         long now = System.currentTimeMillis();
         long begin;
         long end;
-        long messageStoreTimestamp = resolveMessageStoreTimestamp(adminExt, msgId, topic);
+        MessageExt original = resolveTraceMessage(adminExt, msgId, topic);
+        long messageStoreTimestamp = original == null ? 0L : original.getStoreTimestamp();
+        // SDK traces are indexed by the producer's logical ID, not the physical offset ID.
+        // Reuse the already located message for both the trace index and context filtering.
+        String uniqueId = original == null ? null
+                : original.getProperty(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX);
+        String traceMsgId = StringUtils.hasText(uniqueId) ? uniqueId : msgId;
         if (messageStoreTimestamp > 0) {
             // Derive the trace query window from the message's own store timestamp
             // instead of a hardcoded 1-hour lookback. This ensures traces for messages
@@ -658,10 +673,10 @@ public class RocketMQMessageProvider implements MessageProvider {
 
         try {
             QueryResult traceResult =
-                    adminExt.queryMessage(effectiveTraceTopic(traceTopic), msgId, TRACE_QUERY_MAX, begin, end);
+                    adminExt.queryMessage(effectiveTraceTopic(traceTopic), traceMsgId, TRACE_QUERY_MAX, begin, end);
             if (traceResult != null && traceResult.getMessageList() != null) {
                 for (MessageExt traceMessage : traceResult.getMessageList()) {
-                    parseTraceBody(traceMessage.getBody(), msgId, null, nodes, consumerStatus, true);
+                    parseTraceBody(traceMessage.getBody(), traceMsgId, null, nodes, consumerStatus, true);
                 }
             }
         } catch (BusinessException e) {
@@ -735,11 +750,11 @@ public class RocketMQMessageProvider implements MessageProvider {
     }
 
     /**
-     * Attempts to resolve the store timestamp of the original message so the trace
-     * query window can be derived from the message's own timeline rather than the
-     * current time. Returns 0 if the message cannot be located.
+     * Locates the original message for its trace identity and store timestamp. Physical offset
+     * IDs are accepted by message lookup, but SDK trace records use the UNIQ_KEY property.
+     * Returns null when the original cannot be located, retaining the supplied trace ID and window.
      */
-    private long resolveMessageStoreTimestamp(DefaultMQAdminExt adminExt, String msgId, String topic) {
+    private MessageExt resolveTraceMessage(DefaultMQAdminExt adminExt, String msgId, String topic) {
         if (StringUtils.hasText(topic)) {
             try {
                 MessageExt messageExt = null;
@@ -747,7 +762,7 @@ public class RocketMQMessageProvider implements MessageProvider {
                     messageExt = adminExt.viewMessage(topic, msgId);
                 }
                 if (messageExt != null) {
-                    return messageExt.getStoreTimestamp();
+                    return messageExt;
                 }
             } catch (Exception e) {
                 log.debug("Could not view message {} in topic {} for trace timestamp: {}",
@@ -757,12 +772,12 @@ public class RocketMQMessageProvider implements MessageProvider {
         try {
             MessageExt messageExt = viewMessageByOffsetId(adminExt, topic, msgId);
             if (messageExt != null) {
-                return messageExt.getStoreTimestamp();
+                return messageExt;
             }
         } catch (Exception e) {
             log.debug("Could not view message {} for trace timestamp: {}", msgId, e.getMessage());
         }
-        return 0L;
+        return null;
     }
 
     /**
@@ -863,11 +878,18 @@ public class RocketMQMessageProvider implements MessageProvider {
     // Pub layout (RocketMQ 5.5.0 TraceDataEncoder):
     //             type, time, region, group, topic, msgId,
     //             tags, keys, storeHost, bodyLength, costTime, msgType, offsetMsgId, isSuccess
+    // Legacy 13-field records omit offsetMsgId; newer records may append clientHost.
     private TraceNodeVO buildProduceNode(String[] f) {
+        // Match the SDK's split behavior when selecting the layout: trailing empty columns do not count.
+        int fieldCount = f.length;
+        while (fieldCount > 0 && f[fieldCount - 1].isEmpty()) {
+            fieldCount--;
+        }
+        int successIndex = fieldCount == 13 ? 12 : 13;
         return TraceNodeVO.builder()
                 .title("produce")
                 .timestamp(parseLong(field(f, 1)))
-                .status(parseBoolean(field(f, 13)) ? "finish" : "failed")
+                .status(parseBoolean(field(f, successIndex)) ? "finish" : "failed")
                 .costTime(parseLong(field(f, 10)))
                 .description("producer=" + field(f, 3) + ", storeHost=" + field(f, 8))
                 .build();

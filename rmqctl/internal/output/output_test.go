@@ -21,7 +21,40 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
+
+func TestYAMLPreservesNumericLiteralsBeyondMachinePrecisionTest(t *testing.T) {
+	for _, literal := range []string{
+		"18446744073709551615", "-9223372036854775809",
+		"0.1234567890123456789", "1.234567890123456789e+20", "1e400", "1e-400",
+	} {
+		t.Run(literal, func(t *testing.T) {
+			decoder := json.NewDecoder(strings.NewReader(`{"items":[{"value":` + literal + `}]}`))
+			decoder.UseNumber()
+			var payload any
+			if err := decoder.Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			buf := &bytes.Buffer{}
+			if err := YAML(buf, payload); err != nil {
+				t.Fatal(err)
+			}
+			var document yaml.Node
+			if err := yaml.Unmarshal(buf.Bytes(), &document); err != nil {
+				t.Fatal(err)
+			}
+			value := document.Content[0].Content[1].Content[0].Content[1]
+			if value.Value != literal || (value.Tag != "!!int" && value.Tag != "!!float") {
+				t.Fatalf("numeric literal changed: want %s, got %s (%s); YAML: %s", literal, value.Value, value.Tag, buf)
+			}
+			if original := payload.(map[string]any)["items"].([]any)[0].(map[string]any)["value"]; original != json.Number(literal) {
+				t.Fatalf("input was mutated: %v", original)
+			}
+		})
+	}
+}
 
 func TestYAMLRestoresJSONNumbersTest(t *testing.T) {
 	payload := map[string]any{

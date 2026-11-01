@@ -268,8 +268,9 @@ describe('AlertsPage', () => {
 
     expect(screen.getByRole('button', { name: 'Test Run' })).toBeInTheDocument();
     expect(screen.getByText('Window aggregation')).toBeInTheDocument();
+    // The retention help moved from an `extra` line into the field label's tooltip.
     expect(
-      screen.getByText(
+      screen.getByTitle(
         'Aggregation uses only metric snapshots currently retained locally. History outside the current retention period is unavailable; changing retention does not invalidate the rule.',
       ),
     ).toBeInTheDocument();
@@ -284,10 +285,31 @@ describe('AlertsPage', () => {
     await user.click(await screen.findByRole('button', { name: '新建规则' }));
 
     expect(
-      screen.getByText(
+      screen.getByTitle(
         '聚合只使用本地当前保留的指标快照。当前保留周期之外的历史数据不可用；调整保留时间不会使规则失效。',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('names the window aggregations instead of printing the API codes', async () => {
+    const user = userEvent.setup();
+    renderPage('BUSINESS');
+
+    await user.click(await screen.findByRole('button', { name: '新建规则' }));
+
+    // The default value is LAST; the selection already reads as its name.
+    expect(await screen.findByText('最近一次')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: '窗口聚合' }));
+
+    // The visible option list, not the hidden aria mirror that keeps the raw value.
+    await waitFor(() =>
+      expect(
+        Array.from(document.querySelectorAll('.ant-select-item-option-content')).map((option) =>
+          option.textContent?.trim(),
+        ),
+      ).toEqual(['最近一次', '最大值', '最小值', '平均值', '总和']),
+    );
   });
 
   it('formats the last triggered timestamp instead of rendering the raw ISO value', async () => {
@@ -321,14 +343,213 @@ describe('AlertsPage', () => {
   });
 
   it('renders legacy native ratio thresholds as percentages', () => {
-    expect(
+    const render = (threshold: number) =>
       formatThresholdCondition({
         ...cloneRule(alertRules[0]),
         metric: 'broker.disk.usage_ratio',
-        threshold: 0.85,
+        threshold,
         thresholdUnit: null,
+      });
+
+    expect(render(0.85)).toBe('> 85%');
+    // 8 of the 99 whole percents (7, 14, 28, 29, 55, 56, 57, 58) do not survive
+    // `n / 100 * 100` in binary floating point: 0.29 * 100 is 28.999999999999996.
+    expect(render(0.29)).toBe('> 29%');
+    expect(render(0.07)).toBe('> 7%');
+    expect(render(0.58)).toBe('> 58%');
+    expect(render(0.1234)).toBe('> 12.34%');
+  });
+
+  it('opens a legacy ratio rule with a clean percent and saves that value back', async () => {
+    vi.mocked(listAlertRulesPage).mockResolvedValue(
+      pageResult([
+        {
+          ...cloneRule(alertRules[0]),
+          instanceId: 'local',
+          metric: 'broker.disk.usage_ratio',
+          threshold: 0.29,
+          thresholdUnit: null,
+        },
+      ]),
+    );
+    vi.mocked(listNativeAlertMetrics).mockResolvedValue([
+      {
+        key: 'broker.disk.usage_ratio',
+        label: 'Broker disk usage ratio',
+        thresholdUnit: 'ratio',
+        supportsConsumerGroup: false,
+      },
+    ]);
+    vi.mocked(updateAlertRule).mockImplementation(async (data) => ({
+      ...cloneRule(alertRules[0]),
+      ...data,
+    }));
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Broker disk usage');
+    await expectRuleRowInteractive('Broker disk usage');
+    await user.click(within(getRuleRow('Broker disk usage')).getByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog', { name: '编辑' });
+
+    // The editor's percent input renders with `precision={2}`, so the residue stays invisible in
+    // the dialog; it only shows up in the value the form saves back.
+    fireEvent.click(within(dialog).getByRole('button', { name: /编\s*辑/ }));
+    await waitFor(() =>
+      expect(updateAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 1, threshold: 29, thresholdUnit: '%' }),
+      ),
+    );
+  });
+
+  it.each([
+    ['edit', 'pending', 'broker.disk.usage_ratio'],
+    ['edit', 'failed', 'broker.jvm.heap.usage_ratio'],
+    ['duplicate', 'pending', 'broker.send_queue.usage_ratio'],
+    ['duplicate', 'failed', 'broker.disk.usage_ratio'],
+  ] as const)(
+    'preservesLegacyRatioThresholdWith%sAnd%sDiscoveryFor%sTest',
+    async (mode, discovery, metric) => {
+      const legacyRule = {
+        ...cloneRule(alertRules[0]),
+        instanceId: 'local',
+        metric,
+        threshold: 0.29,
+        thresholdUnit: null,
+      };
+      vi.mocked(listAlertRulesPage).mockResolvedValue(pageResult([legacyRule]));
+      let rejectDiscovery!: (error: Error) => void;
+      vi.mocked(listNativeAlertMetrics).mockReturnValue(
+        new Promise<NativeAlertMetricInfo[]>((_resolve, reject) => {
+          rejectDiscovery = reject;
+        }),
+      );
+      vi.mocked(updateAlertRule).mockImplementation(async (data) => ({ ...legacyRule, ...data }));
+      vi.mocked(createAlertRule).mockImplementation(async (data) => ({ ...legacyRule, ...data }));
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByText(legacyRule.name);
+      await expectRuleRowInteractive(legacyRule.name);
+      await user.click(
+        within(getRuleRow(legacyRule.name)).getByRole('button', {
+          name: mode === 'edit' ? '编辑' : '复制',
+        }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      await waitFor(() => expect(listNativeAlertMetrics).toHaveBeenCalledTimes(1));
+      if (discovery === 'failed') {
+        await act(async () => rejectDiscovery(new Error('metric discovery unavailable')));
+      }
+      await user.click(
+        within(dialog).getByRole('button', { name: mode === 'edit' ? /编\s*辑/ : /新\s*建/ }),
+      );
+      await waitFor(() =>
+        expect(mode === 'edit' ? updateAlertRule : createAlertRule).toHaveBeenCalledWith(
+          expect.objectContaining({ threshold: 29, thresholdUnit: '%' }),
+        ),
+      );
+    },
+  );
+
+  it('keepsOperatorThresholdWhenLegacyDiscoveryFinishesLateTest', async () => {
+    const legacyRule = {
+      ...cloneRule(alertRules[0]),
+      instanceId: 'local',
+      metric: 'broker.disk.usage_ratio',
+      threshold: 0.29,
+      thresholdUnit: null,
+    };
+    vi.mocked(listAlertRulesPage).mockResolvedValue(pageResult([legacyRule]));
+    let resolveDiscovery!: (metrics: NativeAlertMetricInfo[]) => void;
+    vi.mocked(listNativeAlertMetrics).mockReturnValue(
+      new Promise<NativeAlertMetricInfo[]>((resolve) => {
+        resolveDiscovery = resolve;
       }),
-    ).toBe('> 85%');
+    );
+    vi.mocked(updateAlertRule).mockImplementation(async (data) => ({ ...legacyRule, ...data }));
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText(legacyRule.name);
+    await expectRuleRowInteractive(legacyRule.name);
+    await user.click(within(getRuleRow(legacyRule.name)).getByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog');
+    const threshold = within(dialog).getByPlaceholderText('阈值');
+    await user.clear(threshold);
+    await user.type(threshold, '40');
+    await act(async () =>
+      resolveDiscovery([
+        {
+          key: legacyRule.metric,
+          label: 'Broker disk usage ratio',
+          thresholdUnit: 'ratio',
+          supportsConsumerGroup: false,
+        },
+      ]),
+    );
+    await user.click(within(dialog).getByRole('button', { name: /编\s*辑/ }));
+    await waitFor(() =>
+      expect(updateAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({ threshold: 40, thresholdUnit: '%' }),
+      ),
+    );
+  });
+
+  it.each([
+    ['broker.disk.usage_ratio', 29, '%'],
+    ['consumer.lag.total', 1200, 'messages'],
+    ['rocketmq_disk_use_ratio', 85, '%'],
+  ] as const)(
+    'preservesExistingUnitsWithoutDiscoveryFor%sTest',
+    async (metric, threshold, thresholdUnit) => {
+      const rule = {
+        ...cloneRule(alertRules[0]),
+        instanceId: 'local',
+        metric,
+        threshold,
+        thresholdUnit,
+      };
+      vi.mocked(listAlertRulesPage).mockResolvedValue(pageResult([rule]));
+      vi.mocked(listNativeAlertMetrics).mockReturnValue(new Promise(() => {}));
+      vi.mocked(updateAlertRule).mockImplementation(async (data) => ({ ...rule, ...data }));
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByText(rule.name);
+      await expectRuleRowInteractive(rule.name);
+      await user.click(within(getRuleRow(rule.name)).getByRole('button', { name: '编辑' }));
+      const dialog = await screen.findByRole('dialog');
+      await user.click(within(dialog).getByRole('button', { name: /编\s*辑/ }));
+      await waitFor(() =>
+        expect(updateAlertRule).toHaveBeenCalledWith(
+          expect.objectContaining({ threshold, thresholdUnit }),
+        ),
+      );
+    },
+  );
+
+  it('testsLegacyRatioInPercentBeforeDiscoveryCompletesTest', async () => {
+    const legacyRule = {
+      ...cloneRule(alertRules[0]),
+      instanceId: 'local',
+      metric: 'broker.disk.usage_ratio',
+      threshold: 0.29,
+      thresholdUnit: null,
+    };
+    vi.mocked(listAlertRulesPage).mockResolvedValue(pageResult([legacyRule]));
+    vi.mocked(listNativeAlertMetrics).mockReturnValue(new Promise(() => {}));
+    vi.mocked(testAlertRule).mockResolvedValue({ samples: [] });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText(legacyRule.name);
+    await expectRuleRowInteractive(legacyRule.name);
+    await user.click(within(getRuleRow(legacyRule.name)).getByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: '试运行' }));
+    await waitFor(() =>
+      expect(testAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({ threshold: 29, thresholdUnit: '%' }),
+      ),
+    );
   });
 
   it('bulk enables selected alert rules and clears the selection after success', async () => {
@@ -554,6 +775,39 @@ describe('AlertsPage', () => {
     expect(screen.getByPlaceholderText('搜索规则名称或指标')).toHaveValue('');
   });
 
+  it('centers reminder interval and runtime and right-aligns duration', async () => {
+    renderPage('BUSINESS');
+    const row = (await screen.findByText('Broker disk usage')).closest('tr') as HTMLElement;
+
+    // 用户约定 2026-10-16：重提醒间隔 / 运行态居中，持续时间靠右，别改回默认左对齐。
+    const headers = Array.from(row.closest('table')!.querySelectorAll('thead th')).map((th) =>
+      th.textContent?.trim(),
+    );
+    const cells = within(row).getAllByRole('cell');
+    const alignOf = (title: string) => {
+      const index = headers.indexOf(title);
+      expect(index).toBeGreaterThan(-1);
+      return cells[index].style.textAlign;
+    };
+    expect(alignOf('重提醒间隔')).toBe('center');
+    expect(alignOf('运行态')).toBe('center');
+    expect(alignOf('持续时间')).toBe('right');
+  });
+
+  it('keeps the rule table within the 1600px viewport container', async () => {
+    renderPage('BUSINESS');
+    await screen.findByText('Broker disk usage');
+
+    // 用户约定 2026-10-16 实测：1600 视口下卡片内容宽 1330，而 tableScrollX 把声明宽累加成
+    // scroll.x——总和 1368 时表格横向滚动、操作列删除按钮被裁。列宽调整见 alerts.tsx 列定义注释。
+    const cols = Array.from(document.querySelectorAll('.ant-table-content colgroup col'));
+    const total = cols.reduce(
+      (sum, col) => sum + (parseInt((col as HTMLElement).style.width, 10) || 0),
+      0,
+    );
+    expect(total).toBeLessThanOrEqual(1330);
+  });
+
   it('uses the business rule API and loads only business metrics for the selected instance', async () => {
     vi.mocked(listNativeAlertMetrics).mockResolvedValue([
       {
@@ -743,6 +997,8 @@ describe('AlertsPage', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: '新建规则' }));
+    // The template editor and its variable chips live in a collapsed panel.
+    await user.click(screen.getByText('通知模板'));
 
     expect(screen.getByText('可用变量')).toBeInTheDocument();
     expect(screen.getByText('${ruleName}')).toBeInTheDocument();
@@ -754,6 +1010,8 @@ describe('AlertsPage', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: '新建规则' }));
+    // The template editor lives in a collapsed panel; its header carries the readiness tag.
+    await user.click(screen.getByText('通知模板'));
     const template = screen.getByRole('textbox', { name: '通知模板' });
     await user.type(template, 'Alert: ');
     await user.click(screen.getByText('${ruleName}'));
@@ -767,6 +1025,7 @@ describe('AlertsPage', () => {
 
     await user.click(await screen.findByRole('button', { name: '新建规则' }));
     await user.type(screen.getByRole('textbox', { name: '规则名称' }), 'Disk hot');
+    await user.click(screen.getByText('通知模板'));
     const template = screen.getByRole('textbox', { name: '通知模板' });
     fireEvent.change(template, { target: { value: '[${level}] ${ruleName} ${owner}' } });
 
@@ -778,7 +1037,8 @@ describe('AlertsPage', () => {
         within(preview as HTMLElement).getByText('[WARNING] Disk hot ${owner}'),
       ).toBeInTheDocument();
     });
-    expect(within(preview as HTMLElement).getByText('需关注')).toBeInTheDocument();
+    // The readiness tag moved to the collapse panel header; the preview card keeps the render.
+    expect(screen.getByText('需关注')).toBeInTheDocument();
     expect(
       within(preview as HTMLElement).getByText('未知变量不会被替换：owner'),
     ).toBeInTheDocument();
@@ -792,6 +1052,7 @@ describe('AlertsPage', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: '新建规则' }));
+    await user.click(screen.getByText('通知模板'));
     const template = screen.getByRole('textbox', { name: '通知模板' });
     await user.click(screen.getByRole('button', { name: '填入默认模板' }));
 
@@ -1036,6 +1297,29 @@ describe('AlertsPage', () => {
     expect(await screen.findByText('所选告警规则已删除')).toBeInTheDocument();
   });
 
+  it('shows a failure message and keeps the selection when the bulk delete request fails', async () => {
+    vi.mocked(bulkDeleteAlertRules).mockRejectedValue(new Error('network error'));
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Broker disk usage');
+    await user.click(within(getRuleRow('Broker disk usage')).getByRole('checkbox'));
+    await user.click(within(getRuleRow('Consumer lag')).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: '批量删除' }));
+    await user.click(await screen.findByRole('button', { name: 'OK' }));
+
+    await waitFor(() => expect(bulkDeleteAlertRules).toHaveBeenCalledWith([1, 2]));
+    expect(await screen.findByText('2 条告警规则删除失败')).toBeInTheDocument();
+    // A request-level failure must not clear the selection: every selected rule still
+    // exists on the server, so the operator can retry without re-checking rows.
+    expect(within(getRuleRow('Broker disk usage')).getByRole('checkbox')).toBeChecked();
+    expect(within(getRuleRow('Consumer lag')).getByRole('checkbox')).toBeChecked();
+    // The confirmation dialog closes once the outcome (even a failed one) is reported,
+    // instead of sitting open with no feedback the way a rejected onOk does.
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'OK' })).not.toBeInTheDocument(),
+    );
+  });
+
   it('stays on the page after a bulk delete clears a full page while more pages remain', async () => {
     // 45 rules in total: page 2 holds a full page of 20 rules (ids 21-40). Deleting that full
     // page leaves 25 rules across 2 pages, so page 2 is still valid and the view must refresh
@@ -1099,6 +1383,29 @@ describe('AlertsPage', () => {
     await screen.findByText('Second page rule 5');
     expect(screen.queryByText('Second page rule 20')).not.toBeInTheDocument();
     expect(screen.queryByText('Page one rule 1')).not.toBeInTheDocument();
+  });
+
+  it('counts the 24h-triggered stat against the UTC timestamp, not the browser zone', async () => {
+    // Pin the viewer zone off UTC so a browser-zone parse is observably wrong, and pin the
+    // clock so the fixture's age is exact. The stat must read the same value the adjacent
+    // Last-Triggered column renders — UTC, per the formatUtcDateTime convention.
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-08-24T12:00:00Z'));
+    try {
+      // 2026-08-23T13:00:00 UTC is 23h before the pinned now. Parsed as Shanghai wall time
+      // it becomes 05:00Z — 31h old — which is what the browser-zone parse wrongly excludes.
+      vi.mocked(listAlertRulesPage).mockResolvedValue(
+        pageResult([{ ...cloneRule(alertRules[0]), lastTriggered: '2026-08-23T13:00:00' }]),
+      );
+
+      renderPage();
+
+      const statLabel = await screen.findByText('本页 24h 触发');
+      expect(statLabel.nextElementSibling).toHaveTextContent('1');
+    } finally {
+      nowSpy.mockRestore();
+      vi.unstubAllEnvs();
+    }
   });
 
   it('clamps to the last valid page when a bulk delete empties the current one', async () => {

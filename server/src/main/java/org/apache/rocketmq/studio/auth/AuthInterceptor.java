@@ -35,6 +35,12 @@ import java.util.Set;
 
 public class AuthInterceptor implements HandlerInterceptor {
 
+    /**
+     * The paths a session with an outstanding password change may still call: rotating the password
+     * is how the flag clears, and signing out must stay available.
+     */
+    private static final Set<String> ROTATION_PATHS = Set.of("/api/auth/password", "/api/auth/logout");
+
     private static final String TOOL_EXECUTION_PREFIX = "/api/ai/tools/";
     private static final String TOOL_EXECUTION_SUFFIX = "/execute";
 
@@ -73,6 +79,16 @@ public class AuthInterceptor implements HandlerInterceptor {
         var authenticatedUser = authService.getAuthenticatedUser(authorization).orElse(null);
         if (authenticatedUser == null) {
             writeError(response, HttpStatus.UNAUTHORIZED, "Unauthorized");
+            return false;
+        }
+
+        // A credential chosen by somebody else — an account's initial password or an administrator's
+        // reset — has to be replaced before the session may do anything else. The login page prompts
+        // for the rotation; this is the gate that makes the prompt mandatory rather than advisory, so
+        // an API client that skips the UI gets no further than the rotation itself.
+        if (authenticatedUser.isMustChangePassword()
+                && !ROTATION_PATHS.contains(normalizePath(requestPath(request)))) {
+            writeError(response, HttpStatus.FORBIDDEN, "Password change required");
             return false;
         }
 

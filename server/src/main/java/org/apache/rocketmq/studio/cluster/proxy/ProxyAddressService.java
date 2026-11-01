@@ -179,7 +179,7 @@ public class ProxyAddressService {
                 log.warn("Skipping malformed proxy address in topology: {}", addr);
                 continue;
             }
-            String host = matcher.group(1);
+            String host = probeHost(matcher.group(1));
             int grpcPort = Integer.parseInt(matcher.group(2));
             Integer remotingPort = deriveRemotingPort(grpcPort);
             tasks.add(new ProbeTask(addr, grpcPort, remotingPort,
@@ -260,6 +260,18 @@ public class ProxyAddressService {
     }
 
     /**
+     * Strips the brackets from a bracketed IPv6 literal before it reaches a socket connect:
+     * {@code new InetSocketAddress("[::1]", port)} leaves the address unresolved because the
+     * bracket form is URI syntax only, so an IPv6 proxy would always be reported DOWN. The
+     * registered address text keeps its brackets; only the probe target loses them.
+     */
+    private String probeHost(String host) {
+        return host.length() > 1 && host.startsWith("[") && host.endsWith("]")
+                ? host.substring(1, host.length() - 1)
+                : host;
+    }
+
+    /**
      * Derives the counterpart port using the RocketMQ 5.0 default layout (remoting
      * {@code 8080} / gRPC {@code 8081}). Non-standard ports yield {@code null} because the
      * pairing cannot be assumed for custom port mappings.
@@ -314,7 +326,7 @@ public class ProxyAddressService {
         String normalized = normalizeProxyAddr(proxy.getAddr(), "addr");
         Matcher matcher = PROXY_ADDR_PATTERN.matcher(normalized);
         matcher.matches();
-        String host = matcher.group(1);
+        String host = probeHost(matcher.group(1));
         int grpcPort = proxy.getGrpcPort() > 0 ? proxy.getGrpcPort() : Integer.parseInt(matcher.group(2));
         Integer remotingPort = proxy.getRemotingPort() > 0
                 ? Integer.valueOf(proxy.getRemotingPort()) : deriveRemotingPort(grpcPort);

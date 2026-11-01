@@ -299,7 +299,7 @@ const collectPhaseIssues = (
   return issues;
 };
 
-const mapPhases = (nodes: TraceNode[]): TraceDiagnosticPhase[] => {
+const mapPhases = (nodes: TraceNode[], singleLifecycle: boolean): TraceDiagnosticPhase[] => {
   const firstTimestamp = nodes
     .map((node) => parseTimestamp(node.timestamp))
     .find((ts) => ts != null);
@@ -308,9 +308,13 @@ const mapPhases = (nodes: TraceNode[]): TraceDiagnosticPhase[] => {
   return nodes.map((node, index) => {
     const timestampMs = parseTimestamp(node.timestamp);
     const latencyFromPreviousMs =
-      timestampMs != null && previousTimestamp != null ? timestampMs - previousTimestamp : null;
+      singleLifecycle && timestampMs != null && previousTimestamp != null
+        ? timestampMs - previousTimestamp
+        : null;
     const latencyFromStartMs =
-      timestampMs != null && firstTimestamp != null ? timestampMs - firstTimestamp : null;
+      singleLifecycle && timestampMs != null && firstTimestamp != null
+        ? timestampMs - firstTimestamp
+        : null;
     if (timestampMs != null) previousTimestamp = timestampMs;
 
     return {
@@ -465,13 +469,14 @@ const maxByValue = <T>(items: T[], extractor: (item: T) => number | null): T | n
 const buildSummary = (
   phases: TraceDiagnosticPhase[],
   deliveries: ConsumerDeliveryDiagnostic[],
+  singleLifecycle: boolean,
 ): TraceDiagnosticSummary => {
   const totalNodeCostMs = phases.reduce((sum, phase) => sum + (phase.costTimeMs ?? 0), 0);
   const validTimestamps = phases
     .map((phase) => phase.timestampMs)
     .filter((value): value is number => value != null);
   const endToEndLatencyMs =
-    validTimestamps.length >= 2
+    singleLifecycle && validTimestamps.length >= 2
       ? Math.max(...validTimestamps) - Math.min(...validTimestamps)
       : null;
   const successCount = deliveries.filter(
@@ -571,11 +576,15 @@ export function analyzeMessageTrace(
   options: TraceDiagnosticOptions = {},
 ): MessageTraceDiagnostics {
   const normalizedOptions = { ...DEFAULT_OPTIONS, ...options };
-  const phases = mapPhases(trace?.nodes ?? []);
-  const traceStartMs =
-    phases.map((phase) => phase.timestampMs).find((value) => value != null) ?? null;
+  // Key results can contain several messages without per-node message IDs.
+  // Their combined timestamps cannot establish a single message lifecycle.
+  const singleLifecycle = trace?.queryType !== 'KEY';
+  const phases = mapPhases(trace?.nodes ?? [], singleLifecycle);
+  const traceStartMs = singleLifecycle
+    ? (phases.map((phase) => phase.timestampMs).find((value) => value != null) ?? null)
+    : null;
   const deliveries = mapDeliveries(trace?.consumerStatus ?? [], traceStartMs);
-  const summary = buildSummary(phases, deliveries);
+  const summary = buildSummary(phases, deliveries, singleLifecycle);
   const issues = [
     ...collectSummaryIssues(summary, normalizedOptions),
     ...phases.flatMap((phase) => collectPhaseIssues(phase, normalizedOptions)),

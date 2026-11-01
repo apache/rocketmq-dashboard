@@ -26,6 +26,9 @@ import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDateTime;
+import java.util.TimeZone;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class AliyunConvertersTest {
@@ -150,5 +153,37 @@ class AliyunConvertersTest {
                 .filterExpressionType("TAG")
                 .consistency(consistency)
                 .build();
+    }
+
+    @Test
+    void parseDateTimeShouldRelabelAliyunWallClockIntoTheServerZoneTest() {
+        TimeZone original = TimeZone.getDefault();
+        try {
+            // 2026-10-08 10:00:00 in Asia/Shanghai is 02:00:00 UTC.
+            TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+            assertThat(AliyunConverters.parseDateTime("2026-10-08 10:00:00"))
+                    .isEqualTo(LocalDateTime.of(2026, 10, 8, 2, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void parseDateTimeShouldKeepAliyunWallClockWhenServerRunsTheAliyunZoneTest() {
+        TimeZone original = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+            assertThat(AliyunConverters.parseDateTime("2026-10-08 10:00:00"))
+                    .isEqualTo(LocalDateTime.of(2026, 10, 8, 10, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void parseDateTimeShouldReturnNullForUnusableValuesTest() {
+        assertThat(AliyunConverters.parseDateTime(null)).isNull();
+        assertThat(AliyunConverters.parseDateTime("   ")).isNull();
+        assertThat(AliyunConverters.parseDateTime("not a date")).isNull();
     }
 }

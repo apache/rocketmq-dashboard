@@ -1,16 +1,38 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from 'vitest';
 import {
+  UNKNOWN_MESSAGE_SIZE,
   formatBytes,
   formatDate,
   formatDateTime,
   formatUtcDateTime,
   formatDelay,
   formatNumber,
+  formatOptionalBytes,
   formatPercent,
   formatRelativeTime,
   formatTimeOfDay,
   formatTimeMs,
+  parseAlertTimestamp,
+  ratioToPercent,
+  roundPercent,
 } from './format';
 
 describe('formatBytes', () => {
@@ -65,6 +87,25 @@ describe('formatBytes', () => {
     expect(formatPercent(12.345, -1)).toBe('12%');
   });
 
+  it('rounds percentages to the tenth the progress bars display', () => {
+    expect(roundPercent(28.999999999999996)).toBe(29);
+    expect(roundPercent(62.5)).toBe(62.5);
+    expect(roundPercent(0)).toBe(0);
+  });
+
+  it('scales a stored ratio to its percent without floating point residue', () => {
+    // The alert pages used to scale with `threshold * 100`, which does not round trip for 8 of
+    // the 99 whole percents: 0.29 * 100 renders as 28.999999999999996.
+    expect(ratioToPercent(0.29)).toBe(29);
+    expect(ratioToPercent(0.07)).toBe(7);
+    expect(ratioToPercent(0.58)).toBe(58);
+    expect(ratioToPercent(0.1234)).toBe(12.34);
+    expect(ratioToPercent(0.295)).toBe(29.5);
+    expect(ratioToPercent(0)).toBe(0);
+    expect(ratioToPercent(1)).toBe(100);
+    expect(ratioToPercent(0.0000001)).toBe(0.00001);
+  });
+
   it('uses a placeholder for invalid dates and numeric values', () => {
     expect(formatDate('not-a-date')).toBe('-');
     expect(formatDateTime(new Date(Number.NaN))).toBe('-');
@@ -79,9 +120,9 @@ describe('formatBytes', () => {
 
   it('treats timezone-less alert timestamps as UTC', () => {
     expect(formatUtcDateTime('2026-08-23T10:35:38.590731', 'America/Los_Angeles')).toBe(
-      '2026-08-23 03:35:38 PDT',
+      '2026-08-23 03:35:38',
     );
-    expect(formatUtcDateTime('2026-08-23T10:35:38Z', 'UTC')).toBe('2026-08-23 10:35:38 UTC');
+    expect(formatUtcDateTime('2026-08-23T10:35:38Z', 'UTC')).toBe('2026-08-23 10:35:38');
   });
 
   it('formats recent timestamps for compact conversation history', () => {
@@ -96,6 +137,44 @@ describe('formatBytes', () => {
     expect(formatRelativeTime(now - 5 * 60_000, 'en', en, now)).toBe('5 min ago');
     expect(formatRelativeTime(now - 2 * 60 * 60_000, 'zh', zh, now)).toBe('13:30');
     expect(formatTimeOfDay(now)).toBe('15:30');
+  });
+});
+
+describe('formatOptionalBytes', () => {
+  it('renders the unknown-size sentinel as the placeholder instead of -1 B', () => {
+    expect(formatOptionalBytes(UNKNOWN_MESSAGE_SIZE)).toBe('-');
+  });
+
+  it('keeps a measured zero as a real byte count', () => {
+    expect(formatOptionalBytes(0)).toBe('0 B');
+    expect(formatOptionalBytes(1536)).toBe('1.5 KB');
+  });
+});
+
+describe('parseAlertTimestamp', () => {
+  it('parses an offset-less alert timestamp as UTC regardless of the browser zone', () => {
+    // Expressed against Date.parse with an explicit Z so the expectation cannot drift with TZ.
+    expect(parseAlertTimestamp('2026-08-23T10:35:38')).toBe(Date.parse('2026-08-23T10:35:38Z'));
+    expect(parseAlertTimestamp('2026-08-23 10:35:38')).toBe(Date.parse('2026-08-23T10:35:38Z'));
+  });
+
+  it('honors an explicit offset instead of assuming UTC', () => {
+    expect(parseAlertTimestamp('2026-08-23T10:35:38Z')).toBe(Date.parse('2026-08-23T10:35:38Z'));
+    expect(parseAlertTimestamp('2026-08-23T10:35:38+08:00')).toBe(
+      Date.parse('2026-08-23T10:35:38+08:00'),
+    );
+    expect(parseAlertTimestamp('2026-08-23T10:35:38-05:00')).toBe(
+      Date.parse('2026-08-23T10:35:38-05:00'),
+    );
+  });
+
+  it('passes Date objects through and reports unusable values as NaN', () => {
+    const date = new Date(Date.parse('2026-08-23T10:35:38Z'));
+    expect(parseAlertTimestamp(date)).toBe(date.getTime());
+    expect(parseAlertTimestamp('not a timestamp')).toBeNaN();
+    expect(parseAlertTimestamp('')).toBeNaN();
+    expect(parseAlertTimestamp(null)).toBeNaN();
+    expect(parseAlertTimestamp(undefined)).toBeNaN();
   });
 });
 

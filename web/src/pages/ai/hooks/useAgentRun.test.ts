@@ -394,6 +394,50 @@ describe('useAgentRun', () => {
     expect(result.current.canStop).toBe(false);
   });
 
+  it.each(['terminal frame', 'closed stream', 'failed stream'] as const)(
+    'ignoresAStopRejectionAfterTheOwnedRunEndsTest (%s)',
+    async (ending) => {
+      const pendingStop = deferred<Awaited<ReturnType<typeof stopRun>>>();
+      vi.mocked(stopRun).mockReturnValue(pendingStop.promise);
+      const onError = vi.fn();
+      const { result } = render({ onError });
+      let sent!: Promise<void>;
+      let stopped!: Promise<void>;
+      await act(async () => {
+        sent = result.current.send(7, { message: 'hi' });
+        openedStreams[0].emit(runStarted());
+        stopped = result.current.stop();
+      });
+      await act(async () => {
+        if (ending === 'terminal frame') openedStreams[0].emit(runFinished());
+        else {
+          if (ending === 'failed stream') openedStreams[0].fail(new Error('stream failed'));
+          else openedStreams[0].finish();
+          await sent;
+        }
+      });
+      const previousError = result.current.error;
+      const previousErrorCalls = onError.mock.calls.length;
+      await act(async () => {
+        pendingStop.reject(new Error('late stop failed'));
+        await stopped;
+      });
+      expect(result.current.error).toBe(previousError);
+      expect(onError).toHaveBeenCalledTimes(previousErrorCalls);
+      // Asserted while the stream is still open in the `terminal frame` case: swallowing the
+      // rejection must leave the button back on `stop`, not stuck on `stopping`.
+      expect(result.current.stopRequested).toBe(false);
+      if (ending === 'terminal frame') {
+        expect(result.current.lastStatus).toBe('COMPLETED');
+        await act(async () => {
+          openedStreams[0].finish();
+          await sent;
+        });
+      }
+      expect(result.current.stopRequested).toBe(false);
+    },
+  );
+
   it('reportsAStaleStopRejectionAndLeavesTheStreamOpenTest', async () => {
     const onError = vi.fn();
     vi.mocked(stopRun).mockRejectedValue(new Error('该会话已有正在进行的回答'));

@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.cluster.broker;
 
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedConstruction;
 
@@ -26,11 +27,70 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 class MqClientPoolTest {
+
+    @Test
+    void interruptedProducerActionShouldRestoreInterruptAndReleaseLeaseTest() {
+        try (MockedConstruction<DefaultMQProducer> construction = mockConstruction(DefaultMQProducer.class)) {
+            MqClientPool pool = new MqClientPool();
+            try {
+                assertThatThrownBy(() -> pool.withProducer("namesrv:9876", null, "credential-a", ignored -> {
+                    Thread.currentThread().interrupt();
+                    Thread.sleep(1);
+                    return null;
+                })).isInstanceOf(BusinessException.class)
+                        .hasMessageContaining("RocketMQ client call failed");
+                assertThat(Thread.currentThread().isInterrupted()).isTrue();
+            } finally {
+                Thread.interrupted();
+                pool.shutdown();
+            }
+            verify(construction.constructed().getFirst()).shutdown();
+        }
+    }
+
+    @Test
+    void interruptedPullActionShouldRestoreInterruptAndReleaseLeaseTest() {
+        try (MockedConstruction<DefaultMQPullConsumer> construction = mockConstruction(DefaultMQPullConsumer.class)) {
+            MqClientPool pool = new MqClientPool();
+            try {
+                assertThatThrownBy(() -> pool.withPullConsumer("namesrv:9876", null, "credential-a", ignored -> {
+                    Thread.currentThread().interrupt();
+                    Thread.sleep(1);
+                    return null;
+                })).isInstanceOf(BusinessException.class)
+                        .hasMessageContaining("RocketMQ client call failed");
+                assertThat(Thread.currentThread().isInterrupted()).isTrue();
+            } finally {
+                Thread.interrupted();
+                pool.shutdown();
+            }
+            verify(construction.constructed().getFirst()).shutdown();
+        }
+    }
+
+    @Test
+    void ordinaryProducerFailureShouldNotSetInterruptTest() {
+        try (MockedConstruction<DefaultMQProducer> construction = mockConstruction(DefaultMQProducer.class)) {
+            MqClientPool pool = new MqClientPool();
+            try {
+                assertThatThrownBy(() -> pool.withProducer("namesrv:9876", null, "credential-a", ignored -> {
+                    throw new IllegalStateException("producer failure");
+                })).isInstanceOf(BusinessException.class)
+                        .hasMessage("RocketMQ client call failed: producer failure");
+                assertThat(Thread.currentThread().isInterrupted()).isFalse();
+            } finally {
+                Thread.interrupted();
+                pool.shutdown();
+            }
+            verify(construction.constructed().getFirst()).shutdown();
+        }
+    }
 
     @Test
     void releaseShouldWaitForInFlightProducerBeforeShutdownTest() throws Exception {

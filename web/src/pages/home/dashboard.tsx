@@ -1,3 +1,20 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -149,11 +166,21 @@ const DashboardPage = () => {
     />
   );
 
+  // Overview reads and Prometheus queries are independent. Preserve the editor across
+  // overview loading/error states, but keep the existing cleanup on instance changes.
+  const metricsExplorer = (
+    <MetricsExplorer
+      key={selectedInstanceId === undefined ? 'unscoped' : `instance:${selectedInstanceId}`}
+      instanceId={selectedInstanceId}
+    />
+  );
+
   if (loading && !visibleDashboard) {
     return (
       <div style={{ padding: 24 }}>
         {dashboardHeader}
         <Skeleton active paragraph={{ rows: 8 }} />
+        {metricsExplorer}
       </div>
     );
   }
@@ -173,6 +200,7 @@ const DashboardPage = () => {
             </Button>
           }
         />
+        {metricsExplorer}
       </div>
     );
   }
@@ -385,7 +413,7 @@ const DashboardPage = () => {
       <Card
         title={t('dashboard.clusterHealth')}
         extra={<a onClick={() => navigate(clusterPagePath)}>{t('common.viewAll')}</a>}
-        styles={{ body: { padding: '0 20px 16px' } }}
+        styles={{ body: { padding: '16px 20px' } }}
       >
         <Table
           dataSource={clusters}
@@ -405,7 +433,7 @@ const DashboardPage = () => {
         />
       </Card>
 
-      <MetricsExplorer instanceId={selectedInstanceId} />
+      {metricsExplorer}
     </div>
   );
 };

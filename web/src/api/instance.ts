@@ -42,6 +42,8 @@ export interface Instance {
   adminCredentialRef?: string;
   regionId?: string;
   regionName?: string;
+  nameserverId?: number | null;
+  nameserverName?: string | null;
   topicCount: number;
   consumerGroupCount: number;
   resourceCountsAvailable?: boolean;
@@ -59,6 +61,7 @@ export interface CreateInstanceRequest {
   credentialId?: number;
   adminCredentialRef?: string;
   regionId?: string;
+  nameserverId?: number;
 }
 
 export interface UpdateInstanceRequest {
@@ -73,6 +76,11 @@ export interface UpdateInstanceRequest {
 export interface InstanceQuery {
   type?: Instance['type'];
   search?: string;
+  /**
+   * Counts cost the backend a remote OpenAPI round trip per cloud instance, so ask for them only
+   * where they are displayed. Without it the response reports `resourceCountsAvailable: false`.
+   */
+  withCounts?: boolean;
 }
 
 /** Whether an instance can use Apache MQAdmin-backed runtime diagnostics. */
@@ -93,6 +101,7 @@ export async function listInstances(query: InstanceQuery = {}) {
   const params = {
     ...(query.type ? { type: query.type } : {}),
     ...(search ? { search } : {}),
+    ...(query.withCounts ? { withCounts: true } : {}),
   };
   const res = await client.get<{ data: Instance[] }>('/instances', { params });
   return res.data.data;

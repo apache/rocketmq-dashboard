@@ -42,6 +42,10 @@ const historyMocks = vi.hoisted(() => ({
   listMessageQueryHistory: vi.fn(),
   listTraceQueryHistory: vi.fn(),
 }));
+const consumerServiceMocks = vi.hoisted(() => ({
+  listAllConsumerGroups: vi.fn(),
+  getConsumerGroup: vi.fn(),
+}));
 
 vi.mock('../../../services/messageService', () => ({
   ...serviceMocks,
@@ -68,6 +72,10 @@ vi.mock('../../../services/instanceService', () => ({
 }));
 vi.mock('../../../services/topicService', () => ({
   listTopics: vi.fn().mockResolvedValue([{ name: 'topic-a' }]),
+}));
+vi.mock('../../../services/consumerService', () => ({
+  listAllConsumerGroups: consumerServiceMocks.listAllConsumerGroups,
+  getConsumerGroup: consumerServiceMocks.getConsumerGroup,
 }));
 
 beforeAll(() => {
@@ -166,6 +174,8 @@ describe('MessagePage async request ownership', () => {
       page: 1,
       size: 20,
     });
+    consumerServiceMocks.listAllConsumerGroups.mockResolvedValue([]);
+    consumerServiceMocks.getConsumerGroup.mockResolvedValue({ instances: [] });
     instanceFilterMocks.useInstanceFilter.mockReturnValue({
       selectedInstanceId: 1,
       selectInstance: vi.fn(),
@@ -358,6 +368,19 @@ describe('MessagePage async request ownership', () => {
 
   it('requiresGroupAndClientBeforeDirectConsumeTest', async () => {
     serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    serviceMocks.consumeMessageDirectly.mockResolvedValue({
+      consumeResult: 'CONSUMED',
+      remark: '',
+      spentTimeMillis: 12,
+    });
+    consumerServiceMocks.listAllConsumerGroups.mockResolvedValue([
+      { name: 'group-online', onlineInstances: 1, instances: [{ clientId: 'client-1' }] },
+      { name: 'group-offline', onlineInstances: 0, instances: [] },
+    ]);
+    consumerServiceMocks.getConsumerGroup.mockResolvedValue({
+      name: 'group-online',
+      instances: [{ clientId: 'client-1', address: '10.0.0.9:40001' }],
+    });
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
     await selectTopic(user);
@@ -367,19 +390,31 @@ describe('MessagePage async request ownership', () => {
     await user.click(within(row).getByRole('button', { name: /详情/ }));
 
     const dialog = await screen.findByRole('dialog', { name: '消息详情' });
-    await user.click(within(dialog).getByRole('button', { name: /直接消费/ }));
-    const consumeDialogTitle = await screen.findByText('直接消费消息');
-    const consumeDialog = consumeDialogTitle.closest('[role="dialog"]');
-    expect(consumeDialog).not.toBeNull();
-    expect(
-      within(consumeDialog as HTMLElement).getByPlaceholderText('目标消费者组'),
-    ).toBeInTheDocument();
-    expect(
-      within(consumeDialog as HTMLElement).getByPlaceholderText('在线客户端 ID'),
-    ).toBeInTheDocument();
+    const consumeButton = within(dialog).getByRole('button', { name: /直接消费/ });
+    // 目标改选在 footer 上，二级弹窗不再存在；没选全时按钮直接禁用而不是弹提示。
+    expect(screen.queryByText('直接消费消息')).not.toBeInTheDocument();
+    expect(consumeButton).toBeDisabled();
 
-    await user.click(within(consumeDialog as HTMLElement).getByRole('button', { name: /执\s*行/ }));
-    expect(serviceMocks.consumeMessageDirectly).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole('combobox', { name: '选择在线消费组' }));
+    const groupOption = await screen.findByText('group-online（1）');
+    expect(screen.queryByText(/group-offline/)).not.toBeInTheDocument();
+    await user.click(groupOption);
+    expect(consumeButton).toBeDisabled();
+
+    await user.click(within(dialog).getByRole('combobox', { name: '选择在线客户端' }));
+    await user.click(await screen.findByText('client-1 · 10.0.0.9:40001'));
+    expect(consumeButton).toBeEnabled();
+
+    await user.click(consumeButton);
+    await waitFor(() =>
+      expect(serviceMocks.consumeMessageDirectly).toHaveBeenCalledWith({
+        instanceId: 1,
+        topic: 'topic-message-a',
+        msgId: 'message-a',
+        consumerGroup: 'group-online',
+        clientId: 'client-1',
+      }),
+    );
   });
 
   it('disablesDirectConsumeWithReasonWhenTheSelectedInstanceDoesNotAdvertiseItTest', async () => {

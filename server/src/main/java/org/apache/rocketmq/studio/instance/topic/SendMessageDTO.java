@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.instance.topic;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -35,6 +36,7 @@ public class SendMessageDTO {
     private String topic;
     private String tag;
     private String key;
+    @NotEmpty(message = "body must not be empty")
     private String body;
     private Map<String, String> properties;
 

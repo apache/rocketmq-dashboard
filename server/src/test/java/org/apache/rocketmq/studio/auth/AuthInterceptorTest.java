@@ -30,6 +30,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.clearInvocations;
@@ -64,6 +65,33 @@ class AuthInterceptorTest {
         assertThat(allowed).isTrue();
         verify(authService).getAuthenticatedUser("Bearer " + token);
         verify(authService, never()).isAuthenticated("Bearer " + token);
+    }
+
+    @Test
+    void shouldRefuseEveryPathButRotationWhileAPasswordChangeIsOutstandingTest() throws Exception {
+        AuthProperties properties = new AuthProperties();
+        properties.setLoginRequired(true);
+        AuthService authService = mock(AuthService.class);
+        when(authService.getAuthenticatedUser("Bearer token-1")).thenReturn(Optional.of(
+                LoginVO.UserInfo.builder()
+                        .userId(7L)
+                        .username("operator")
+                        .admin(true)
+                        .mustChangePassword(true)
+                        .build()));
+        AuthInterceptor interceptor = interceptor(properties, authService, settingsRepository());
+
+        MockHttpServletResponse blocked = new MockHttpServletResponse();
+        boolean allowed = interceptor.preHandle(
+                authenticatedRequest("GET", "/api/clusters", "token-1"), blocked, new Object());
+
+        assertThat(allowed).isFalse();
+        assertThat(blocked.getStatus()).isEqualTo(403);
+        // Rotating the password and signing out stay reachable, or the flag could never clear.
+        for (String path : List.of("/api/auth/password", "/api/auth/logout")) {
+            assertThat(interceptor.preHandle(authenticatedRequest("POST", path, "token-1"),
+                    new MockHttpServletResponse(), new Object())).isTrue();
+        }
     }
 
     @AfterEach

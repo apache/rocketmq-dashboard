@@ -2,7 +2,17 @@
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package org.apache.rocketmq.studio.ops.alert;
 
@@ -38,9 +48,11 @@ public class NativeAlertMetricCatalogService {
             new NativeAlertMetricInfo("consumer.delay.seconds", "Consumer delay", "seconds", true),
             new NativeAlertMetricInfo("topic.backlog.total", "Topic backlog (per consumer group)", "messages", true),
             new NativeAlertMetricInfo("dlq.message.count", "DLQ message count", "messages", true));
+    // No cloud queue maximum: the Aliyun and Tencent progress rows are per-topic aggregates without
+    // queue offsets, so CloudRocketMqBusinessMetricsCollector publishes consumer.lag.max_queue as
+    // UNSUPPORTED only (#6184) - a rule the operator could pick here would never fire.
     private static final List<NativeAlertMetricInfo> BUSINESS_CLOUD = List.of(
             new NativeAlertMetricInfo("consumer.lag.total", "Consumer lag total", "messages", true),
-            new NativeAlertMetricInfo("consumer.lag.max_queue", "Consumer lag max queue", "messages", true),
             new NativeAlertMetricInfo("topic.backlog.total", "Topic backlog (per consumer group)", "messages", true));
     private static final List<NativeAlertMetricInfo> CLUSTER_CLOUD = List.of(
             new NativeAlertMetricInfo("cloud.instance.availability", "Cloud instance availability", "", false));

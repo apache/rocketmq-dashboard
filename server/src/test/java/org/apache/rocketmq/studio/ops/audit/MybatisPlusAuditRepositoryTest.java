@@ -68,8 +68,7 @@ class MybatisPlusAuditRepositoryTest {
         when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
 
         PageResult<AuditRecordVO> result = repository.findPage(
-                "orders", "DELETE_TOPIC", "TOPIC", "orders", "prod-cn", false,
-                null, null, "FAILED", 2, 25);
+                "orders", "admin", "DELETE_TOPIC", null, "TOPIC", null, "prod-cn", false, null, null, "FAILED", 2, 25);
 
         ArgumentCaptor<IPage<RmqOperationAudit>> pageCaptor = ArgumentCaptor.forClass(IPage.class);
         ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
@@ -83,8 +82,8 @@ class MybatisPlusAuditRepositoryTest {
         assertThat(record.getClusterId()).isEqualTo("prod-cn");
         assertThat(record.getErrorMessage()).isEqualTo("denied");
         assertThat(queryCaptor.getValue().getSqlSegment())
-                .contains("operation", "resource_type", "resource_name =", "cluster_id",
-                        "result", "gmt_create", "id");
+                .contains("operator", "operation", "resource_type", "cluster_id", "result",
+                        "gmt_create", "id");
     }
 
     @Test
@@ -92,7 +91,7 @@ class MybatisPlusAuditRepositoryTest {
         when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
                 .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
 
-        repository.findPage(null, null, "TOPIC", "orders", "prod-cn", false,
+        repository.findPage(null, null, null, null, "TOPIC", "orders", "prod-cn", false,
                 null, null, null, 1, 20);
 
         ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
@@ -103,11 +102,31 @@ class MybatisPlusAuditRepositoryTest {
     }
 
     @Test
+    void findPageUsesEqualityForExactOperatorTest() {
+        when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findPage(null, "ops-zhang", null, null, null, null, null, false,
+                null, null, null, 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        // The operator is an identity, not a fragment: a LIKE would also hand back every
+        // "ops-zhang2" row, so one operator's filter would show another's audit trail.
+        assertThat(queryCaptor.getValue().getSqlSegment())
+                .contains("operator =")
+                .doesNotContain("operator LIKE");
+        assertThat(((QueryWrapper<RmqOperationAudit>) queryCaptor.getValue())
+                .getParamNameValuePairs().values())
+                .contains("ops-zhang");
+    }
+
+    @Test
     void findPageCanRestrictTimelineToRecordsWithoutAClusterTest() {
         when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
                 .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
 
-        repository.findPage(null, null, "SETTINGS", "general", null, true,
+        repository.findPage(null, null, null, null, "SETTINGS", "general", null, true,
                 null, null, null, 1, 20);
 
         ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
@@ -121,7 +140,7 @@ class MybatisPlusAuditRepositoryTest {
         when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
                 .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
 
-        repository.findPage(null, null, "SETTINGS", "general", "ignored-cluster", true,
+        repository.findPage(null, null, null, null, "SETTINGS", "general", "ignored-cluster", true,
                 null, null, null, 1, 20);
 
         ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
@@ -137,16 +156,17 @@ class MybatisPlusAuditRepositoryTest {
     void findFilterOptionsPreservesPersistedValuesAndCachesTheResultTest() {
         when(auditMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of(
                 Map.of("operation", "DELETE_TOPIC", "resource_type", "TOPIC",
-                        "cluster_id", "prod-cn", "result", "SUCCESS"),
+                        "cluster_id", "prod-cn", "result", "SUCCESS", "operator", "admin"),
                 Map.of("operation", " CREATE_TOPIC ", "resource_type", "GROUP",
-                        "cluster_id", "prod-sh", "result", "FAILED"),
+                        "cluster_id", "prod-sh", "result", "FAILED", "operator", "ops-user"),
                 Map.of("operation", "DELETE_TOPIC", "resource_type", "TOPIC",
-                        "cluster_id", "", "result", "PARTIAL")));
+                        "cluster_id", "", "result", "PARTIAL", "operator", "admin")));
 
         AuditFilterOptionsVO options = repository.findFilterOptions();
         AuditFilterOptionsVO cachedOptions = repository.findFilterOptions();
 
         assertThat(options.getOperationTypes()).containsExactly(" CREATE_TOPIC ", "DELETE_TOPIC");
+        assertThat(options.getOperators()).containsExactly("admin", "ops-user");
         assertThat(options.getResourceTypes()).containsExactly("GROUP", "TOPIC");
         assertThat(options.getClusterIds()).containsExactly("prod-cn", "prod-sh");
         assertThat(options.getResults()).containsExactly("FAILED", "PARTIAL", "SUCCESS");
@@ -156,7 +176,7 @@ class MybatisPlusAuditRepositoryTest {
         assertThat(((QueryWrapper<RmqOperationAudit>) queryCaptor.getValue()).getSqlSelect())
                 .contains("operation", "resource_type", "cluster_id", "result");
         assertThat(queryCaptor.getValue().getSqlSegment())
-                .contains("GROUP BY operation,resource_type,cluster_id,result");
+                .contains("GROUP BY operation,resource_type,cluster_id,result,operator");
     }
 
     @Test
@@ -234,7 +254,7 @@ class MybatisPlusAuditRepositoryTest {
         when(auditMapper.selectList(any(Wrapper.class))).thenReturn(List.of(latest));
 
         AuditSummaryVO summary = repository.summarize(
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
 
         assertThat(summary.getTotal()).isEqualTo(8);
         assertThat(summary.getSuccessful()).isEqualTo(5);
@@ -284,7 +304,7 @@ class MybatisPlusAuditRepositoryTest {
         when(auditMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
 
         AuditSummaryVO summary = repository.summarize(
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
 
         assertThat(summary.getByOperation()).extracting(AuditSummaryBucketVO::getName)
                 .containsExactly("op-a", "op-b", "op-c", "op-d", "op-e");
@@ -303,7 +323,7 @@ class MybatisPlusAuditRepositoryTest {
         when(auditMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
 
         AuditSummaryVO summary = repository.summarize(
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
 
         assertThat(summary.getSuccessful()).isEqualTo(2);
         assertThat(summary.getUniqueOperators()).isEqualTo(1);
@@ -322,7 +342,7 @@ class MybatisPlusAuditRepositoryTest {
 
         LocalDateTime startDate = LocalDateTime.of(2026, 8, 1, 0, 0);
         LocalDateTime endDate = LocalDateTime.of(2026, 8, 31, 23, 59);
-        repository.summarize("orders", "DELETE_TOPIC", "TOPIC", "prod-cn",
+        repository.summarize("orders", "admin", "DELETE_TOPIC", "TOPIC", "prod-cn",
                 startDate, endDate, "SUCCESS");
 
         List<Wrapper<RmqOperationAudit>> queries = new java.util.ArrayList<>();
@@ -350,6 +370,23 @@ class MybatisPlusAuditRepositoryTest {
             result.put((String) keyValues[i], keyValues[i + 1]);
         }
         return result;
+    }
+
+    @Test
+    void findPageTreatsSearchWildcardsAsLiteralAuditTextTest() {
+        when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findPage("topic_%", null, null, null, null, null, null, false,
+                null, null, null, 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        assertThat(((QueryWrapper<RmqOperationAudit>) queryCaptor.getValue()).getSqlSegment())
+                .contains("operator LIKE", "resource_name LIKE", "detail LIKE");
+        assertThat(((QueryWrapper<RmqOperationAudit>) queryCaptor.getValue())
+                .getParamNameValuePairs().values())
+                .containsExactlyInAnyOrder("%topic\\_\\%%", "%topic\\_\\%%", "%topic\\_\\%%");
     }
 
 }

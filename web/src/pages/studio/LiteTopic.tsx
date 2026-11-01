@@ -16,6 +16,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { formatUtcDateTime } from '../../utils/format';
 import {
   Table,
   Button,
@@ -23,7 +24,6 @@ import {
   Select,
   Tag,
   Modal,
-  Drawer,
   Card,
   Row,
   Col,
@@ -46,7 +46,9 @@ import {
   Gauge,
   Info,
   DownloadSimple,
+  Plus,
 } from '@phosphor-icons/react';
+import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import { useLang } from '../../i18n/LangContext';
@@ -61,7 +63,7 @@ import {
   type LiteTopicSession,
 } from '../../api/liteTopic';
 import { listInstances, supportsApacheRuntime, type Instance } from '../../api/instance';
-import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { buildCsv, downloadCsv, localExportDateStamp, type CsvColumn } from '../../utils/download';
 
 const formatDuration = (ms: number | undefined | null): string => {
   if (ms == null) return '-';
@@ -71,11 +73,26 @@ const formatDuration = (ms: number | undefined | null): string => {
   return `${(ms / 3600000).toFixed(1)}h`;
 };
 
+/* LiteTopic instants (create / last-active) are epoch millis. Render them through the shared
+ * formatter like the other timestamp surfaces: a stable `YYYY-MM-DD HH:mm:ss` in the viewer's
+ * zone, instead of Date.toLocaleString's locale-dependent browser-local string. */
 export const formatTime = (timestamp: number | undefined | null): string => {
   if (timestamp == null || !Number.isFinite(timestamp)) return '-';
   const date = new Date(timestamp);
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? '-' : formatUtcDateTime(date);
 };
+
+/**
+ * Sort key for a column value the provider can leave unset. The cells render `-` in that case
+ * (`formatDuration` / `formatTime`), and neither an absent TTL nor an absent last-active instant
+ * may sort as a measured zero: ascending, that would place the pattern before every measurable one
+ * as if it had expired first or been idle longest. Ant Design negates the comparator for a
+ * descending column, so the unset value has to stay last in both directions.
+ */
+const unmeasuredSortKey = (
+  value: number | undefined,
+  sortOrder?: 'ascend' | 'descend' | null,
+): number => value ?? (sortOrder === 'descend' ? Number.MIN_SAFE_INTEGER : Number.MAX_SAFE_INTEGER);
 
 const getProgressStatus = (percent: number): 'exception' | 'active' | 'normal' => {
   if (percent >= 90) return 'exception';
@@ -125,6 +142,7 @@ const collectNamespaces = (items: LiteTopicItem[]): string[] => {
 const LiteTopicPage: React.FC = () => {
   const { t } = useLang();
   const { message } = App.useApp();
+  const navigate = useNavigate();
   const messageRef = useRef(message);
   const translationRef = useRef(t);
 
@@ -132,6 +150,9 @@ const LiteTopicPage: React.FC = () => {
   const [topicList, setTopicList] = useState<LiteTopicItem[]>([]);
   const [quota, setQuota] = useState<LiteTopicQuota | null>(null);
   const [capabilitySupported, setCapabilitySupported] = useState(true);
+  const [capabilityFailed, setCapabilityFailed] = useState(false);
+  const [capabilityRetrying, setCapabilityRetrying] = useState(false);
+  const [capabilityRetryVersion, setCapabilityRetryVersion] = useState(0);
   const [patternFilter, setPatternFilter] = useState('');
   const [namespaceFilter, setNamespaceFilter] = useState('');
   const [ttlStatusFilter, setTTLStatusFilter] = useState('');
@@ -140,7 +161,7 @@ const LiteTopicPage: React.FC = () => {
   const [pageSize, setPageSize] = useState(10);
 
   // Session drawer
-  const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
+  const [sessionModalOpen, setSessionModalOpen] = useState(false);
   const [sessionData, setSessionData] = useState<LiteTopicSession | null>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [availableSessionIds, setAvailableSessionIds] = useState<string[]>([]);
@@ -162,7 +183,9 @@ const LiteTopicPage: React.FC = () => {
   const mountedRef = useRef(false);
   const bootstrapRequestId = useRef(0);
   const displayRequestId = useRef(0);
+  const displayQueryRef = useRef<{ pattern?: string; namespace?: string }>({});
   const sessionRequestId = useRef(0);
+  const ttlInstanceRequestId = useRef(0);
 
   useEffect(() => {
     messageRef.current = message;
@@ -176,6 +199,7 @@ const LiteTopicPage: React.FC = () => {
       options: { clear?: boolean; collectNamespaceOptions?: boolean } = {},
     ) => {
       const requestId = ++displayRequestId.current;
+      displayQueryRef.current = { pattern, namespace };
 
       if (options.clear) {
         setTopicList([]);
@@ -219,12 +243,23 @@ const LiteTopicPage: React.FC = () => {
     const mountedState = mountedRef;
     const bootstrapCounter = bootstrapRequestId;
     const displayCounter = displayRequestId;
+    const ttlCounter = ttlInstanceRequestId;
     mountedState.current = true;
 
     const bootstrapId = ++bootstrapCounter.current;
     const initialDisplayRequestId = displayCounter.current;
     const bootstrapIsActive = () =>
       mountedState.current && bootstrapId === bootstrapCounter.current;
+
+    const loadNamespaceOptions = async () => {
+      if (!bootstrapIsActive()) return;
+      try {
+        const list = await queryLiteTopicList();
+        if (bootstrapIsActive()) setNamespaceOptions(collectNamespaces(list));
+      } catch {
+        // The active display request owns user-visible error handling.
+      }
+    };
 
     const initialize = async () => {
       try {
@@ -233,6 +268,7 @@ const LiteTopicPage: React.FC = () => {
         if (capability && capability.supported === false) {
           ++displayCounter.current;
           setCapabilitySupported(false);
+          setCapabilityFailed(false);
           setTopicList([]);
           setQuota(null);
           setLoading(false);
@@ -242,34 +278,36 @@ const LiteTopicPage: React.FC = () => {
         if (!bootstrapIsActive()) return;
         ++displayCounter.current;
         setCapabilitySupported(false);
+        setCapabilityFailed(true);
         setTopicList([]);
         setQuota(null);
         setLoading(false);
         return;
       }
 
+      setCapabilitySupported(true);
+      setCapabilityFailed(false);
       if (displayCounter.current === initialDisplayRequestId) {
-        await fetchData(undefined, undefined, { collectNamespaceOptions: true });
+        const query = displayQueryRef.current;
+        const unfiltered = !query.pattern && !query.namespace;
+        await fetchData(query.pattern, query.namespace, { collectNamespaceOptions: unfiltered });
+        if (!unfiltered) await loadNamespaceOptions();
       } else {
-        try {
-          const list = await queryLiteTopicList();
-          if (bootstrapIsActive()) {
-            setNamespaceOptions(collectNamespaces(list));
-          }
-        } catch {
-          // The active display request owns user-visible error handling.
-        }
+        await loadNamespaceOptions();
       }
     };
 
-    void initialize();
+    void initialize().finally(() => {
+      if (bootstrapIsActive()) setCapabilityRetrying(false);
+    });
 
     return () => {
       mountedState.current = false;
       ++bootstrapCounter.current;
       ++displayCounter.current;
+      ++ttlCounter.current;
     };
-  }, [fetchData]);
+  }, [capabilityRetryVersion, fetchData]);
 
   const handleSearch = () => {
     setCurrentPage(1);
@@ -291,7 +329,7 @@ const LiteTopicPage: React.FC = () => {
     const requestId = ++sessionRequestId.current;
     if (sessionIds) setAvailableSessionIds(sessionIds);
     setSelectedSessionId(sessionId);
-    setSessionDrawerOpen(true);
+    setSessionModalOpen(true);
     setSessionLoading(true);
     setSessionData(null);
     try {
@@ -310,18 +348,21 @@ const LiteTopicPage: React.FC = () => {
   };
 
   const handleOpenExtendTTL = (record: LiteTopicItem) => {
+    const requestId = ++ttlInstanceRequestId.current;
     setExtendTTLForm({
       instanceId: '',
       topicPattern: record.topicPattern || '',
       newTTL: null,
     });
     setExtendTTLModalOpen(true);
+    setTtlInstanceOptions([]);
     // The TTL write is ownership-checked against the owning instance, so the
     // modal needs the Apache-vendor instance list; auto-select when only one
     // candidate exists.
     setTtlInstancesLoading(true);
     listInstances()
       .then((instances) => {
+        if (requestId !== ttlInstanceRequestId.current) return;
         const candidates = instances.filter(supportsApacheRuntime);
         setTtlInstanceOptions(candidates);
         setExtendTTLForm((form) =>
@@ -331,11 +372,17 @@ const LiteTopicPage: React.FC = () => {
         );
       })
       .catch(() => {
-        setTtlInstanceOptions([]);
+        if (requestId === ttlInstanceRequestId.current) setTtlInstanceOptions([]);
       })
       .finally(() => {
-        setTtlInstancesLoading(false);
+        if (requestId === ttlInstanceRequestId.current) setTtlInstancesLoading(false);
       });
+  };
+
+  const closeExtendTTL = () => {
+    ++ttlInstanceRequestId.current;
+    setExtendTTLModalOpen(false);
+    setTtlInstancesLoading(false);
   };
 
   const handleExtendTTL = async () => {
@@ -349,7 +396,7 @@ const LiteTopicPage: React.FC = () => {
         extendTTLForm.newTTL,
       );
       message.success(t('liteTopic.extendTtlSuccess'));
-      setExtendTTLModalOpen(false);
+      closeExtendTTL();
       void fetchData(patternFilter || undefined, namespaceFilter || undefined);
     } catch {
       message.error(t('liteTopic.extendTtlFailed'));
@@ -395,7 +442,7 @@ const LiteTopicPage: React.FC = () => {
         ttlStatusLabel: getTTLStatusLabel(item.ttlStatus),
         sessionCount: item.sessionIds?.length ?? 0,
       }));
-      const filename = `rocketmq-lite-topics-${new Date().toISOString().slice(0, 10)}.csv`;
+      const filename = `rocketmq-lite-topics-${localExportDateStamp()}.csv`;
       downloadCsv(filename, buildCsv(LITE_TOPIC_EXPORT_COLUMNS, rows));
       message.success(t('liteTopic.exportSuccess', { total: rows.length }));
     } catch {
@@ -450,7 +497,8 @@ const LiteTopicPage: React.FC = () => {
       dataIndex: 'averageTTL',
       key: 'averageTTL',
       render: (val: number) => formatDuration(val),
-      sorter: (a, b) => (a.averageTTL || 0) - (b.averageTTL || 0),
+      sorter: (a, b, sortOrder?: 'ascend' | 'descend' | null) =>
+        unmeasuredSortKey(a.averageTTL, sortOrder) - unmeasuredSortKey(b.averageTTL, sortOrder),
     },
     {
       title: t('liteTopic.status'),
@@ -463,7 +511,9 @@ const LiteTopicPage: React.FC = () => {
       dataIndex: 'lastActiveTime',
       key: 'lastActiveTime',
       render: (val: number) => formatTime(val),
-      sorter: (a, b) => (a.lastActiveTime || 0) - (b.lastActiveTime || 0),
+      sorter: (a, b, sortOrder?: 'ascend' | 'descend' | null) =>
+        unmeasuredSortKey(a.lastActiveTime, sortOrder) -
+        unmeasuredSortKey(b.lastActiveTime, sortOrder),
     },
     {
       title: t('liteTopic.actions'),
@@ -615,7 +665,7 @@ const LiteTopicPage: React.FC = () => {
     );
   };
 
-  // ─── Session Drawer Content ──────────────────────────────────
+  // ─── Session Modal Content ───────────────────────────────────
 
   const renderSessionContent = () => {
     if (sessionLoading) {
@@ -795,8 +845,24 @@ const LiteTopicPage: React.FC = () => {
       <div style={{ padding: 0 }}>
         <PageHeader title={t('liteTopic.title')} />
         <Alert
-          message={t('liteTopic.notSupported')}
-          type="info"
+          message={t(
+            capabilityFailed ? 'liteTopic.capabilityCheckFailed' : 'liteTopic.notSupported',
+          )}
+          type={capabilityFailed ? 'error' : 'info'}
+          action={
+            capabilityFailed ? (
+              <Button
+                loading={capabilityRetrying}
+                disabled={capabilityRetrying}
+                onClick={() => {
+                  setCapabilityRetrying(true);
+                  setCapabilityRetryVersion((version) => version + 1);
+                }}
+              >
+                {t('common.retry')}
+              </Button>
+            ) : undefined
+          }
           showIcon
           icon={<Info size={16} />}
           style={{ marginTop: 16 }}
@@ -813,6 +879,14 @@ const LiteTopicPage: React.FC = () => {
         title={t('liteTopic.title')}
         extra={
           <Space>
+            <Button
+              type="primary"
+              icon={<Plus size={14} />}
+              size="small"
+              onClick={() => navigate('/instance/topic', { state: { createType: 'LITE' } })}
+            >
+              {t('liteTopic.createParent')}
+            </Button>
             <Button
               icon={<DownloadSimple size={14} />}
               size="small"
@@ -901,26 +975,29 @@ const LiteTopicPage: React.FC = () => {
         />
       </Card>
 
-      {/* Session Detail Drawer */}
-      <Drawer
+      {/* Session Detail Modal */}
+      <Modal
         title={
           <span>
             <ClockCounterClockwise size={16} style={{ marginRight: 8, color: '#1677ff' }} />
             {t('liteTopic.sessionDetail')}
           </span>
         }
-        placement="right"
-        width={680}
-        open={sessionDrawerOpen}
-        onClose={() => {
+        width="min(680px, calc(100vw - 32px))"
+        open={sessionModalOpen}
+        onCancel={() => {
           sessionRequestId.current += 1;
-          setSessionDrawerOpen(false);
+          setSessionModalOpen(false);
           setSessionLoading(false);
           setSessionData(null);
           setAvailableSessionIds([]);
           setSelectedSessionId(undefined);
         }}
+        footer={null}
         destroyOnHidden
+        styles={{
+          body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden' },
+        }}
       >
         {availableSessionIds.length > 1 && (
           <Select
@@ -937,14 +1014,14 @@ const LiteTopicPage: React.FC = () => {
           />
         )}
         {renderSessionContent()}
-      </Drawer>
+      </Modal>
 
       {/* Extend TTL Modal */}
       <Modal
         title={t('liteTopic.extendTtlModalTitle')}
         open={extendTTLModalOpen}
         onOk={handleExtendTTL}
-        onCancel={() => setExtendTTLModalOpen(false)}
+        onCancel={closeExtendTTL}
         confirmLoading={extendTTLLoading}
         okText={t('common.confirm')}
         cancelText={t('common.cancel')}

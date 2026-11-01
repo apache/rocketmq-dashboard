@@ -248,6 +248,19 @@ export async function reportRunSpeed(runId: number, tokensPerSecond: number): Pr
   await client.post(runSpeedPath(runId), { tokensPerSecond });
 }
 
+/**
+ * 9b. POST `/api/ai/conversations/{id}/followups` — follow-up questions for the latest
+ * question/answer pair. An empty list is a valid answer (nothing to suggest, or the suggestion
+ * call failed server-side), so the caller treats it as "show no chips" rather than an error.
+ */
+export async function suggestFollowups(conversationId: number): Promise<string[]> {
+  const res = await client.post<{ data: string[] | null }>(
+    `${AI_CONVERSATIONS_PATH}/${conversationId}/followups`,
+    {},
+  );
+  return res.data.data ?? [];
+}
+
 /** 10. GET `/api/ai/agent-capabilities` */
 export async function getAgentCapabilities(): Promise<AiAgentCapabilitiesVO> {
   const res = await client.get<{ data: AiAgentCapabilitiesVO }>(AI_AGENT_CAPABILITIES_PATH);

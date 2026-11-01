@@ -23,6 +23,7 @@ import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,6 +36,8 @@ public class ApacheAclReadService {
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
 
     public RemoteAclReadResult listRules(String instanceId, String subject, String resource) {
+        String configuredCluster = StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         return runtimeAdminClientResolver.execute(instanceId, admin -> {
             Map<String, List<RemoteAclPolicyVO>> policies = new LinkedHashMap<>();
             Map<String, String> failures = new LinkedHashMap<>();
@@ -42,8 +45,8 @@ public class ApacheAclReadService {
             if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null) {
                 return result(policies, failures);
             }
-            for (BrokerData broker : clusterInfo.getBrokerAddrTable().values()) {
-                String address = masterAddress(broker);
+            for (String brokerName : AclBrokerScope.scopedBrokerNames(clusterInfo, configuredCluster)) {
+                String address = masterAddress(clusterInfo.getBrokerAddrTable().get(brokerName));
                 if (address == null || policies.containsKey(address) || failures.containsKey(address)) {
                     continue;
                 }

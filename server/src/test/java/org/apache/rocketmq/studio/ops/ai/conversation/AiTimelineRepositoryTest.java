@@ -172,6 +172,32 @@ class AiTimelineRepositoryTest {
     // --- the cursor the caller derives -------------------------------------------
 
     @Test
+    void recentHistoryShouldSortOnlyBoundedIndexKeysNotPayloadsTest() {
+        when(eventMapper.<Object>selectObjs(any())).thenReturn(List.of(9, 8));
+        when(eventMapper.selectList(any())).thenReturn(List.of(row(909L, 9), row(908L, 8)));
+
+        assertThat(repository.findRecentBeforeSeq(CONVERSATION_ID, 10, 9999))
+                .extracting(RmqAiEvent::getSeq).containsExactly(8, 9);
+        QueryWrapper<RmqAiEvent> keys = capturedEventAggregate();
+        assertThat(keys.getSqlSelect()).isEqualTo("seq");
+        assertThat(keys.getTargetSql()).contains("conversation_id = ? AND seq < ?")
+                .contains("ORDER BY seq DESC LIMIT 500");
+        assertThat(keys.getParamNameValuePairs().values())
+                .containsExactlyInAnyOrder(CONVERSATION_ID, 10);
+        assertThat(capturedQuery().getTargetSql()).contains("conversation_id = ? AND seq IN (?,?)")
+                .doesNotContain("ORDER BY");
+    }
+
+    @Test
+    void recentHistoryShouldSkipSqlWithoutAConversationRangeTest() {
+        assertThat(repository.findRecentBeforeSeq(null, 10, 10)).isEmpty();
+        assertThat(repository.findRecentBeforeSeq(CONVERSATION_ID, 0, 10)).isEmpty();
+        assertThat(repository.findRecentBeforeSeq(CONVERSATION_ID, 10, 0)).isEmpty();
+        verify(eventMapper, never()).selectObjs(any());
+        verify(eventMapper, never()).selectList(any());
+    }
+
+    @Test
     void theCursorShouldBeTheLastRowOfThePageWithTheProbeRowDroppedTest() {
         AiConversationService service = serviceOverTheRealRepository();
         when(eventMapper.selectList(any())).thenReturn(rows(1, 201));
@@ -485,7 +511,7 @@ class AiTimelineRepositoryTest {
      */
     @Test
     void forgettingTheRuntimeSessionShouldNullTheColumnByNameTest() {
-        conversations.clearRuntimeSessionId(CONVERSATION_ID);
+        conversations.clearRuntimeSessionId(CONVERSATION_ID, LocalDateTime.parse("2026-09-18T10:00:00"));
 
         UpdateWrapper<RmqAiConversation> update = capturedConversationUpdate();
         assertThat(update.getSqlSet()).contains("runtime_session_id");
@@ -496,8 +522,22 @@ class AiTimelineRepositoryTest {
     }
 
     @Test
+    void forgettingTheRuntimeSessionShouldStampGmtModifiedFromTheCallerClockTest() {
+        LocalDateTime now = LocalDateTime.parse("2026-09-18T10:00:00");
+
+        conversations.clearRuntimeSessionId(CONVERSATION_ID, now);
+
+        UpdateWrapper<RmqAiConversation> update = capturedConversationUpdate();
+        // gmt_modified is ON UPDATE CURRENT_TIMESTAMP: leaving it out of the SET clause does not
+        // leave it alone, it hands the write to the database session's timezone — and the list
+        // this table feeds orders by the column as if it carried one clock.
+        assertThat(update.getSqlSet()).contains("gmt_modified");
+        assertThat(update.getParamNameValuePairs()).containsValue(now);
+    }
+
+    @Test
     void forgettingTheRuntimeSessionShouldNeedAnIdTest() {
-        conversations.clearRuntimeSessionId(null);
+        conversations.clearRuntimeSessionId(null, LocalDateTime.parse("2026-09-18T10:00:00"));
 
         verify(conversationMapper, never()).update(any(), any());
     }

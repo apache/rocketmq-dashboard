@@ -93,6 +93,24 @@ describe('data sources API', () => {
     );
   });
 
+  it('rejects a missing data source page while the response still reports unseen rows', async () => {
+    mock.onGet('/settings/datasources/page').reply((config) => [
+      200,
+      {
+        code: 200,
+        data: {
+          items: config.params.page === 1 ? [source] : [],
+          total: 2,
+          page: config.params.page,
+          size: 100,
+        },
+      },
+    ]);
+
+    await expect(listAllDataSources()).rejects.toThrow('Incomplete data source list');
+    expect(mock.history.get).toHaveLength(2);
+  });
+
   it('uses a key query parameter for deletion and sends test auth details', async () => {
     mock.onPost('/settings/datasources/delete').reply((config) => {
       expect(config.params).toEqual({ key: source.key });

@@ -31,6 +31,7 @@ public record MessageItem(
         String body,
         String bodyEncoding,
         boolean bodyTruncated,
+        /** Body size in bytes, or -1 when the vendor API reports none (unknown, not zero). */
         int size) {
 
     public static MessageItem from(MessageRecordVO message) {

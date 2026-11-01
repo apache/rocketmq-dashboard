@@ -416,6 +416,87 @@ class ClaudeCodeStreamParserTest {
     }
 
     /** The content of every event of one type, concatenated in arrival order. */
+    @Test
+    void aggregateTextSurvivesAcrossMessagesTest() {
+        // Message one streams its text; message two only aggregates. The old
+        // run-level flag treated every later aggregate as a duplicate of the
+        // earlier stream and dropped it.
+        ClaudeCodeStreamParser parser = new ClaudeCodeStreamParser();
+        List<AgentEvent> events = new ArrayList<>();
+        for (String frame : new String[] {
+            """
+            {"type":"stream_event","session_id":"s-1","event":{"type":"message_start","message":{"id":"msg_1"}}}""",
+            """
+            {"type":"stream_event","session_id":"s-1","event":{"type":"content_block_delta","index":0,\
+            "delta":{"type":"text_delta","text":"first"}}}""",
+            """
+            {"type":"assistant","session_id":"s-1","message":{"id":"msg_1","role":"assistant",\
+            "content":[{"type":"text","text":"first"}]}}""",
+            """
+            {"type":"stream_event","session_id":"s-1","event":{"type":"message_start","message":{"id":"msg_2"}}}""",
+            """
+            {"type":"assistant","session_id":"s-1","message":{"id":"msg_2","role":"assistant",\
+            "content":[{"type":"text","text":"second"}]}}"""}) {
+            events.addAll(parser.parseLine(frame));
+        }
+        assertThat(joined(events, AgentEvent.TextDelta.class)).isEqualTo("firstsecond");
+    }
+
+    @Test
+    void anEmptyDeltaDoesNotSuppressTheAggregateTest() {
+        ClaudeCodeStreamParser parser = new ClaudeCodeStreamParser();
+        List<AgentEvent> events = new ArrayList<>();
+        for (String frame : new String[] {
+            """
+            {"type":"stream_event","session_id":"s-1","event":{"type":"message_start","message":{"id":"msg_1"}}}""",
+            """
+            {"type":"stream_event","session_id":"s-1","event":{"type":"content_block_delta","index":0,\
+            "delta":{"type":"text_delta","text":""}}}""",
+            """
+            {"type":"assistant","session_id":"s-1","message":{"id":"msg_1","role":"assistant",\
+            "content":[{"type":"text","text":"real aggregate"}]}}"""}) {
+            events.addAll(parser.parseLine(frame));
+        }
+        assertThat(joined(events, AgentEvent.TextDelta.class)).isEqualTo("real aggregate");
+    }
+
+    @Test
+    void sameMessageAggregateIsStillDeduplicatedTest() {
+        ClaudeCodeStreamParser parser = new ClaudeCodeStreamParser();
+        List<AgentEvent> events = new ArrayList<>();
+        for (String frame : new String[] {
+            """
+            {"type":"stream_event","session_id":"s-1","event":{"type":"message_start","message":{"id":"msg_1"}}}""",
+            """
+            {"type":"stream_event","session_id":"s-1","event":{"type":"content_block_delta","index":0,\
+            "delta":{"type":"text_delta","text":"first"}}}""",
+            """
+            {"type":"assistant","session_id":"s-1","message":{"id":"msg_1","role":"assistant",\
+            "content":[{"type":"text","text":"first"}]}}"""}) {
+            events.addAll(parser.parseLine(frame));
+        }
+        assertThat(joined(events, AgentEvent.TextDelta.class)).isEqualTo("first");
+    }
+
+    @Test
+    void idlessCapturesKeepTheRunLevelFallbackTest() {
+        // Captures without message ids cannot discriminate per message: the
+        // aggregate of the streamed text stays suppressed run-wide, exactly
+        // as before.
+        ClaudeCodeStreamParser parser = new ClaudeCodeStreamParser();
+        List<AgentEvent> events = new ArrayList<>();
+        for (String frame : new String[] {
+            """
+            {"type":"stream_event","session_id":"s-1","event":{"type":"content_block_delta","index":0,\
+            "delta":{"type":"text_delta","text":"first"}}}""",
+            """
+            {"type":"assistant","session_id":"s-1","message":{"role":"assistant",\
+            "content":[{"type":"text","text":"first"}]}}"""}) {
+            events.addAll(parser.parseLine(frame));
+        }
+        assertThat(joined(events, AgentEvent.TextDelta.class)).isEqualTo("first");
+    }
+
     private static String joined(List<AgentEvent> events, Class<?> type) {
         StringBuilder joined = new StringBuilder();
         for (AgentEvent event : events) {

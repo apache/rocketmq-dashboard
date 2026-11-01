@@ -1,3 +1,20 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import { isMockMode } from './dataMode';
 import * as metadataApi from '../api/metadata';
 import type {
@@ -97,7 +114,10 @@ export const listAllTopics = async (params: TopicQuery = {}): Promise<Topic[]> =
     const result = await listTopicsPage({ ...params, page, pageSize: EXPORT_PAGE_SIZE });
     topics.push(...result.items);
     const total = result.total ?? topics.length;
-    if (result.items.length === 0 || topics.length >= total) return topics;
+    if (topics.length >= total) return topics;
+    if (result.items.length === 0) {
+      throw new Error(`Incomplete topic list: received ${topics.length} of ${total}`);
+    }
     page += 1;
   }
 

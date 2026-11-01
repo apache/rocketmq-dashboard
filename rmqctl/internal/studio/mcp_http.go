@@ -53,11 +53,11 @@ type MCPClientSession struct {
 	closed        chan struct{}
 	notifications chan json.RawMessage
 
-	// sendMu allows ordinary messages to be concurrent while preventing any
+	// sendGate allows ordinary messages to be concurrent while preventing any
 	// message from entering a replacement session before reinitialization and
 	// its initialized notification have completed.
-	sendMu sync.RWMutex
-	state  struct {
+	sendGate sendGate
+	state    struct {
 		sync.RWMutex
 		initialize       *mcptransport.JSONRPCRequest
 		generation       uint64

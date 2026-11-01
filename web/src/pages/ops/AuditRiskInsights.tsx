@@ -24,7 +24,6 @@ import {
   Progress,
   Row,
   Skeleton,
-  Space,
   Statistic,
   Table,
   Tag,
@@ -34,8 +33,9 @@ import type { ColumnsType } from 'antd/es/table';
 import type { AuditSummary } from '../../api/audit';
 import type { AuditRecord } from '../../api/ops';
 import { useLang } from '../../i18n/LangContext';
-import { formatDateTime, formatNumber } from '../../utils/format';
+import { formatUtcDateTime, formatNumber } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
+import TagList from '../../components/TagList';
 import {
   auditRiskOperationLabel,
   buildAuditRiskInsights,
@@ -151,14 +151,17 @@ const AuditRiskInsights = ({ summary, records, loading }: Props) => {
       title: t('audit.opType'),
       dataIndex: 'operationTypes',
       key: 'operationTypes',
+      width: 240,
+      // 原来 slice(0, 3) 把第 4 个起静默丢掉，换成 TagList 的 +N 至少悬停能看到
       render: (operationTypes: string[]) => (
-        <Space size={[4, 4]} wrap>
-          {operationTypes.slice(0, 3).map((operationType) => (
-            <Tag key={operationType} style={{ marginInlineEnd: 0 }}>
-              {formatOperationLabel(operationType, t)}
-            </Tag>
-          ))}
-        </Space>
+        <TagList
+          items={operationTypes.map((operationType) => ({
+            key: operationType,
+            label: formatOperationLabel(operationType, t),
+          }))}
+          max={2}
+          tagMaxWidth={88}
+        />
       ),
     },
     {
@@ -166,7 +169,7 @@ const AuditRiskInsights = ({ summary, records, loading }: Props) => {
       dataIndex: 'latestAt',
       key: 'latestAt',
       width: 180,
-      render: (latestAt: string | null) => formatDateTime(latestAt),
+      render: (latestAt: string | null) => formatUtcDateTime(latestAt),
     },
   ];
 
@@ -175,19 +178,22 @@ const AuditRiskInsights = ({ summary, records, loading }: Props) => {
       title: t('audit.time'),
       dataIndex: 'timestamp',
       key: 'timestamp',
-      width: 180,
-      render: (timestamp: string) => formatDateTime(timestamp),
+      width: 160,
+      render: (timestamp: string) => formatUtcDateTime(timestamp),
     },
     {
       title: t('audit.operator'),
       dataIndex: 'operator',
       key: 'operator',
-      width: 130,
+      width: 100,
+      ellipsis: true,
     },
     {
       title: t('audit.opType'),
       dataIndex: 'operationType',
       key: 'operationType',
+      width: 125,
+      ellipsis: true,
       render: (operationType: string) => {
         const presentation = getAuditOperationPresentation(operationType);
         return <Tag color={presentation.color}>{formatOperationLabel(operationType, t)}</Tag>;
@@ -197,13 +203,14 @@ const AuditRiskInsights = ({ summary, records, loading }: Props) => {
       title: t('audit.target'),
       dataIndex: 'target',
       key: 'target',
+      width: 140,
       ellipsis: true,
     },
     {
       title: t('audit.result'),
       dataIndex: 'result',
       key: 'result',
-      width: 100,
+      width: 80,
       align: 'center',
       render: (result: string) => {
         const presentation = getAuditResultPresentation(result);
@@ -228,9 +235,9 @@ const AuditRiskInsights = ({ summary, records, loading }: Props) => {
       }
       style={{ marginBottom: 16 }}
     >
-      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+      <Row gutter={[12, 12]} align="stretch" style={{ marginBottom: 16 }}>
         <Col xs={12} lg={12}>
-          <Card size="small">
+          <Card size="small" style={{ height: '100%' }}>
             <Statistic
               title={t('auditInsights.controlPlaneFailures')}
               value={insights.controlPlaneFailureCount}
@@ -244,7 +251,7 @@ const AuditRiskInsights = ({ summary, records, loading }: Props) => {
           </Card>
         </Col>
         <Col xs={12} lg={12}>
-          <Card size="small">
+          <Card size="small" style={{ height: '100%' }}>
             <Statistic
               title={t('auditInsights.topOperator')}
               value={insights.topOperator?.name ?? '-'}

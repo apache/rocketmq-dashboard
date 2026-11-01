@@ -59,6 +59,42 @@ class ClaudeCodeAgentProviderTest {
     }
 
     @Test
+    void streamRejectsAPartialRewriteThatEndedInFailureTest() {
+        // A result frame carrying text followed by a non-zero exit used to be
+        // accepted because text had already streamed; the enhancer then kept
+        // the truncated rewrite instead of falling back to the raw prompt.
+        TestClaudeCodeAgentProvider provider = new TestClaudeCodeAgentProvider(List.of(
+                "sh", "-c", "printf eyJ0eXBlIjoicmVzdWx0Iiwic3VidHlwZSI6ImVycm9yX2R1cmluZ19leGVjdXRpb24i"
+                        + "LCJpc19lcnJvciI6dHJ1ZSwicmVzdWx0IjoicGFydGlhbCByZXdyaXRlIn0= | base64 -d; "
+                        + "echo cli died >&2; exit 3"), 30);
+        List<String> tokens = new ArrayList<>();
+
+        assertThatThrownBy(() -> provider.stream(LlmConfigVO.builder().build(), "prompt", null, tokens::add))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(502);
+                    assertThat(exception.getCode()).isEqualTo("llm.provider.cli_error");
+                    assertThat(exception.getMessage()).contains("cli died");
+                });
+    }
+
+    @Test
+    void streamRejectsAFailedResultSubtypeDespiteExitZeroTest() {
+        // Exit code 0 with a failure result frame is still a failure for the
+        // text channel, mirroring what the event channel does with the frame.
+        TestClaudeCodeAgentProvider provider = new TestClaudeCodeAgentProvider(List.of(
+                "sh", "-c", "printf eyJ0eXBlIjoicmVzdWx0Iiwic3VidHlwZSI6ImVycm9yX21heF90dXJucyIsImlzX2Vycm9y"
+                        + "Ijp0cnVlLCJyZXN1bHQiOiJ4Iiwic2Vzc2lvbl9pZCI6InMtMSIsImR1cmF0aW9uX21zIjo1LCJ1c2FnZSI6"
+                        + "eyJpbnB1dF90b2tlbnMiOjMsIm91dHB1dF90b2tlbnMiOjR9fQ== | base64 -d"), 30);
+
+        assertThatThrownBy(() -> provider.stream(LlmConfigVO.builder().build(), "prompt", null, token -> { }))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(502);
+                    assertThat(exception.getCode()).isEqualTo("llm.provider.cli_error");
+                    assertThat(exception.getMessage()).contains("error_max_turns");
+                });
+    }
+
+    @Test
     void streamShouldBoundStderrIncludedInFailuresTest() {
         TestClaudeCodeAgentProvider provider = new TestClaudeCodeAgentProvider(
                 List.of("sh", "-c", "yes failure | head -c 131072 >&2; exit 1"), 5);

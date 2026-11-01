@@ -31,16 +31,25 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
 
-/** Global ownership with database row locks; a committed claim is never released by remote operation failures. */
+/**
+ * Slot ownership with database row locks. A slot is (domain, cluster, name): the domain is the
+ * NameServer cluster an instance is bound to (or the cloud instance itself), so the same name may
+ * live in different domains and on different broker clusters of one domain, while one slot belongs
+ * to exactly one instance. A committed claim is never released by remote operation failures.
+ */
 @Component
 @DependsOn("resourceOwnershipSchemaMigration")
 @RequiredArgsConstructor
 public class ResourceOwnershipGuard {
+    private static final String NAMESERVER_DOMAIN_PREFIX = "ns:";
+    private static final String CLOUD_DOMAIN_PREFIX = "cloud:";
+
     private final JdbcTemplate jdbc;
     private final PlatformTransactionManager transactionManager;
     private final InstanceResolver instanceResolver;
@@ -54,7 +63,8 @@ public class ResourceOwnershipGuard {
 
     public record Resource(Kind kind, String name) { }
 
-    public record Ownership(long id, String name, String instanceId, String clusterId, String topicType) { }
+    public record Ownership(long id, String name, String instanceId, String clusterId, String topicType,
+                            String domain) { }
 
     public InstanceVO requireInstance(String identifier) {
         String id = requireText(identifier, "instanceId");
@@ -67,6 +77,27 @@ public class ResourceOwnershipGuard {
             throw new BusinessException(400, field + " is required");
         }
         return value.trim();
+    }
+
+    public static String nameserverDomain(long nameserverId) {
+        return NAMESERVER_DOMAIN_PREFIX + nameserverId;
+    }
+
+    public static String cloudDomain(String cloudInstanceId) {
+        return CLOUD_DOMAIN_PREFIX + requireText(cloudInstanceId, "cloudInstanceId");
+    }
+
+    /** The uniqueness domain an instance lives in; open-source instances must be bound to a NameServer. */
+    public String domainOf(InstanceVO instance) {
+        if (instance.getVendor() != null && instance.getVendor() != InstanceVendor.APACHE) {
+            return cloudDomain(instance.getCloudInstanceId());
+        }
+        if (instance.getNameserverId() == null || instance.getNameserverId() <= 0) {
+            throw new BusinessException(409,
+                    "Instance is not bound to a NameServer cluster; re-create it with a NameServer selected: "
+                            + instance.getName());
+        }
+        return nameserverDomain(instance.getNameserverId());
     }
 
     /** Derived topics borrow the group ownership only; no regular topic registration is created. */
@@ -85,8 +116,50 @@ public class ResourceOwnershipGuard {
         return new Resource(Kind.TOPIC, topic);
     }
 
-    public Ownership check(InstanceVO instance, Resource resource, boolean required) {
-        return checkOwner(instance, resource, read(resource, false), required);
+    /**
+     * Resolves the slot of a configuration mutation. A null cluster accepts the single registration of
+     * the name inside the domain and rejects an ambiguous one, so the caller learns the physical target.
+     */
+    public Ownership checkSlot(InstanceVO instance, Resource resource, String cluster, boolean required) {
+        List<Ownership> rows = read(domainOf(instance), resource, cluster, false);
+        if (rows.size() > 1) {
+            throw new BusinessException(409, resource.name()
+                    + " exists in multiple Broker clusters; a physical target is required for configuration changes");
+        }
+        return checkOwner(instance, resource, rows.isEmpty() ? null : rows.getFirst(), required);
+    }
+
+    /**
+     * Domain-level ownership for operations that route by name instead of mutating a registration
+     * (sending messages, resetting offsets): the caller's own registration wins, a foreign one rejects.
+     */
+    public Ownership checkOwnerInDomain(InstanceVO instance, Resource resource, boolean required) {
+        List<Ownership> rows = read(domainOf(instance), resource, null, false);
+        Ownership own = rows.stream()
+                .filter(row -> instance.getName().equals(row.instanceId()))
+                .findFirst()
+                .orElse(null);
+        if (own != null) {
+            return own;
+        }
+        return checkOwner(instance, resource, rows.isEmpty() ? null : rows.getFirst(), required);
+    }
+
+    /** Every registration of the name inside the instance domain, one per broker cluster. */
+    public List<Ownership> slots(InstanceVO instance, Resource resource) {
+        return read(domainOf(instance), resource, null, false);
+    }
+
+    /**
+     * Picks the cluster a creation should target: the caller's existing registration when there is one,
+     * otherwise the instance default. Foreign registrations on other clusters do not block a creation;
+     * {@link #write} rejects the request only when the resolved slot itself is owned by someone else.
+     */
+    public Ownership createTarget(InstanceVO instance, Resource resource) {
+        return read(domainOf(instance), resource, null, false).stream()
+                .filter(row -> instance.getName().equals(row.instanceId()))
+                .findFirst()
+                .orElse(null);
     }
 
     /** Cloud resources are not registered globally yet; reject writes instead of treating OpenAPI visibility as ownership. */
@@ -103,10 +176,10 @@ public class ResourceOwnershipGuard {
             throw new BusinessException(400, "resourceName is required");
         }
         if (topic != null) {
-            check(instance, topicResource(topic), false);
+            checkSlot(instance, topicResource(topic), null, false);
         }
         if (group != null) {
-            check(instance, new Resource(Kind.GROUP, requireText(group, "groupName")), false);
+            checkSlot(instance, new Resource(Kind.GROUP, requireText(group, "groupName")), null, false);
         }
         throw new BusinessException(501, "Cloud resources are not registered for global ownership yet; resource writes are not allowed");
     }
@@ -114,36 +187,45 @@ public class ResourceOwnershipGuard {
     public <T> T write(InstanceVO instance, Resource resource, String cluster, boolean create,
                        String topicType, Supplier<T> action) {
         requireSupportedProvider(instance);
+        String domain = domainOf(instance);
+        String target = requireText(cluster, "clusterId");
         // Commit the claim first; later RPC, DB updates or process crashes must not let other instances take over.
         try {
             newTransaction().executeWithoutResult(status -> {
                 lockInstance(instance);
-                Ownership existing = checkOwner(instance, resource, read(resource, true), !create);
+                Ownership existing = checkOwner(instance, resource,
+                        read(domain, resource, target, true).stream().findFirst().orElse(null), !create);
                 if (existing == null) {
+                    // The reservation must stamp its own bookkeeping columns: leaving them to the
+                    // `DEFAULT CURRENT_TIMESTAMP` of the schema would store a creation time taken from the
+                    // database clock, while every later write (the create path included) stamps
+                    // gmt_modified from the JVM clock, so a row whose database and studio run in different
+                    // zones would report a creation time offset from its own update time.
+                    LocalDateTime stampedAt = LocalDateTime.now();
                     if (resource.kind() == Kind.TOPIC) {
-                        jdbc.update("INSERT INTO rmq_instance_topic (name, instance_id, cluster_id, status, topic_type)"
-                                        + " VALUES (?, ?, ?, 'PENDING', ?)", resource.name(), instance.getName(), cluster,
-                                topicType == null ? "NORMAL" : topicType);
+                        jdbc.update("INSERT INTO rmq_instance_topic (name, instance_id, cluster_id, domain, status, topic_type, gmt_create, gmt_modified)"
+                                        + " VALUES (?, ?, ?, ?, 'PENDING', ?, ?, ?)", resource.name(), instance.getName(), target,
+                                domain, topicType == null ? "NORMAL" : topicType, stampedAt, stampedAt);
                     } else {
-                        jdbc.update("INSERT INTO rmq_instance_group (name, instance_id, cluster_id, status)"
-                                        + " VALUES (?, ?, ?, 'PENDING')", resource.name(), instance.getName(), cluster);
+                        jdbc.update("INSERT INTO rmq_instance_group (name, instance_id, cluster_id, domain, status, gmt_create, gmt_modified)"
+                                        + " VALUES (?, ?, ?, ?, 'PENDING', ?, ?)", resource.name(), instance.getName(), target,
+                                domain, stampedAt, stampedAt);
                     }
                 } else {
-                    requireCluster(existing, cluster);
                     requireTopicType(existing, topicType);
                 }
             });
         } catch (DuplicateKeyException conflict) {
             // The unique-key race happens before any RPC; never continue remote writes after a unique-key failure.
-            check(instance, resource, true);
+            checkSlot(instance, resource, target, true);
             throw new BusinessException(409, "Resource is being registered concurrently, please retry: " + resource.name());
         } catch (PessimisticLockingFailureException conflict) {
             throw new BusinessException(409, "Resource registration lock conflict, please retry: " + resource.name());
         }
         return newTransaction().execute(status -> {
             lockInstance(instance);
-            Ownership existing = checkOwner(instance, resource, read(resource, true), true);
-            requireCluster(existing, cluster);
+            Ownership existing = checkOwner(instance, resource,
+                    read(domain, resource, target, true).stream().findFirst().orElse(null), true);
             requireTopicType(existing, topicType);
             return action.get();
         });
@@ -156,7 +238,7 @@ public class ResourceOwnershipGuard {
             lockInstance(instance);
             resources.stream().distinct().sorted(Comparator.comparing((Resource r) -> r.kind().name())
                     .thenComparing(Resource::name)).forEach(resource ->
-                    checkOwner(instance, resource, read(resource, true), true));
+                    checkOwnerInDomain(instance, resource, true));
             return action.get();
         });
     }
@@ -220,8 +302,8 @@ public class ResourceOwnershipGuard {
         lockIdentity(instance.getName());
         if (instance.getId() == null) {
             // A virtual instance must not be silently replaced by a registered instance with the same name.
-            if (!jdbc.query("SELECT id FROM rmq_instance WHERE name = ? FOR UPDATE",
-                    (rs, row) -> rs.getLong(1), instance.getName()).isEmpty()) {
+            if (!jdbc.query("SELECT name FROM rmq_instance WHERE name = ? FOR UPDATE",
+                    (rs, row) -> rs.getString(1), instance.getName()).isEmpty()) {
                 throw new BusinessException(409, "Virtual instance is shadowed by a registered instance; please re-confirm ownership");
             }
             return;
@@ -239,16 +321,27 @@ public class ResourceOwnershipGuard {
         }
     }
 
-    private Ownership read(Resource resource, boolean lock) {
+    private List<Ownership> read(String domain, Resource resource, String cluster, boolean lock) {
         String type = resource.kind() == Kind.TOPIC ? "topic_type" : "NULL";
-        List<Ownership> rows = jdbc.query("SELECT id, name, instance_id, cluster_id, " + type
-                        + " FROM " + resource.kind().table + " WHERE name = ?" + (lock ? " FOR UPDATE" : ""),
-                (rs, row) -> new Ownership(rs.getLong(1), rs.getString(2), rs.getString(3),
-                        rs.getString(4), rs.getString(5)), resource.name());
-        if (rows.size() > 1) {
-            throw new BusinessException(409, "Resource has duplicate ownership records and needs manual resolution: " + resource.name());
+        StringBuilder sql = new StringBuilder("SELECT id, name, instance_id, cluster_id, " + type + ", domain FROM "
+                + resource.kind().table + " WHERE domain = ? AND name = ?");
+        if (cluster != null) {
+            sql.append(" AND cluster_id = ?");
         }
-        return rows.isEmpty() ? null : rows.getFirst();
+        if (lock) {
+            sql.append(" FOR UPDATE");
+        }
+        String query = sql.toString();
+        return jdbc.query(connection -> {
+            var prepared = connection.prepareStatement(query);
+            prepared.setString(1, domain);
+            prepared.setString(2, resource.name());
+            if (cluster != null) {
+                prepared.setString(3, cluster);
+            }
+            return prepared;
+        }, (rs, row) -> new Ownership(rs.getLong(1), rs.getString(2), rs.getString(3),
+                rs.getString(4), rs.getString(5), rs.getString(6)));
     }
 
     private Ownership checkOwner(InstanceVO instance, Resource resource, Ownership owner, boolean required) {
@@ -258,19 +351,11 @@ public class ResourceOwnershipGuard {
             }
             return null;
         }
-        boolean legacyVirtual = !StringUtils.hasText(owner.instanceId()) && instance.getId() == null
-                && instance.getName().equals(owner.clusterId());
-        if (!instance.getName().equals(owner.instanceId()) && !legacyVirtual) {
+        if (!instance.getName().equals(owner.instanceId())) {
             throw new BusinessException(409, "Resource " + resource.name() + " belongs to instance: "
                     + (StringUtils.hasText(owner.instanceId()) ? owner.instanceId() : "unknown (legacy record, manual confirmation required)"));
         }
         return owner;
-    }
-
-    private void requireCluster(Ownership owner, String cluster) {
-        if (!Objects.equals(owner.clusterId(), cluster)) {
-            throw new BusinessException(409, "Resource physical cluster does not match the write target: " + owner.name());
-        }
     }
 
     private void requireTopicType(Ownership owner, String requested) {

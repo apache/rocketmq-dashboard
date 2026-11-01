@@ -25,6 +25,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpHeaders;
@@ -62,6 +65,7 @@ class SettingsServiceTest {
 
     private static final String PROMETHEUS_BASE_URL = "http://192.0.2.1:9090";
     private static final String PROMETHEUS_QUERY_URL = PROMETHEUS_BASE_URL + "/api/v1/query?query=up";
+    private static final String VICTORIA_QUERY_URL = PROMETHEUS_BASE_URL + "/select/0/prometheus/api/v1/query?query=up";
     private static final String VICTORIA_METRICS_QUERY_URL =
             PROMETHEUS_BASE_URL + "/select/0/prometheus/api/v1/query?query=up";
     private static final String MIMIR_QUERY_URL =
@@ -185,6 +189,25 @@ class SettingsServiceTest {
     }
 
     @Test
+    void saveGeneralSettingsShouldPreserveSessionIdleTimeoutWhenOmittedTest() {
+        // Clients written before the field existed keep sending replacements without it;
+        // their saves must not silently reset a configured idle deadline to the default.
+        GeneralSettingsVO existing = GeneralSettingsVO.builder()
+                .sessionIdleTimeout(15)
+                .build();
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .theme("light")
+                .sessionTimeout(60)
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(existing);
+
+        settingsService.saveGeneralSettings(update);
+
+        assertThat(update.getSessionIdleTimeout()).isEqualTo(15);
+        verify(settingsRepository).saveGeneralSettings(update);
+    }
+
+    @Test
     void saveGeneralSettingsShouldRejectMetadataLlmBaseUrlBeforePersistingTest() {
         GeneralSettingsVO update = GeneralSettingsVO.builder()
                 .baseUrl("http://169.254.169.254/latest/meta-data")
@@ -288,6 +311,51 @@ class SettingsServiceTest {
         verify(settingsRepository).saveGeneralSettings(update);
         verify(operationAuditService).record("UPDATE_SETTINGS", "SETTINGS", "general",
                 null, "General settings updated", "SUCCESS", null);
+    }
+
+    @Test
+    void saveGeneralSettingsShouldKeepExistingWebhooksWhenTheRedactedMarkerIsEchoedTest() {
+        // A reader session reads the settings through the non-admin redaction and every save
+        // echoes what it loaded, so the write side must recognise the marker it emitted.
+        GeneralSettingsVO existing = GeneralSettingsVO.builder()
+                .dingtalkWebhook("https://oapi.dingtalk.com/robot/send?access_token=secret")
+                .smsWebhook("https://sms.example.test/notify")
+                .build();
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .theme("light")
+                .dingtalkWebhook("******")
+                .smsWebhook("******")
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(existing);
+
+        settingsService.saveGeneralSettings(update);
+
+        assertThat(update.getDingtalkWebhook())
+                .isEqualTo("https://oapi.dingtalk.com/robot/send?access_token=secret");
+        assertThat(update.getSmsWebhook()).isEqualTo("https://sms.example.test/notify");
+        verify(settingsRepository).saveGeneralSettings(update);
+    }
+
+    @Test
+    void saveGeneralSettingsShouldReplaceAWebhookThatWasActuallyRetypedTest() {
+        GeneralSettingsVO existing = GeneralSettingsVO.builder()
+                .dingtalkWebhook("https://oapi.dingtalk.com/robot/send?access_token=old")
+                .smsWebhook("https://sms.example.test/old")
+                .build();
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .theme("light")
+                .dingtalkWebhook("https://oapi.dingtalk.com/robot/send?access_token=new")
+                .smsWebhook("")
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(existing);
+
+        settingsService.saveGeneralSettings(update);
+
+        assertThat(update.getDingtalkWebhook())
+                .isEqualTo("https://oapi.dingtalk.com/robot/send?access_token=new");
+        // Clearing a webhook by blanking the field stays a legitimate edit.
+        assertThat(update.getSmsWebhook()).isEmpty();
+        verify(settingsRepository).saveGeneralSettings(update);
     }
 
     @Test
@@ -507,6 +575,25 @@ class SettingsServiceTest {
                 .isEqualTo(400);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"", "?tenant=a%2Fb+%26", "?route=/", "?tenant=a%2Fb#settings"})
+    void connectionShouldPreserveEncodedBasePathAndQueryTest(String suffix) {
+        int fragmentIndex = suffix.indexOf('#');
+        String query = fragmentIndex < 0 ? suffix : suffix.substring(0, fragmentIndex);
+        String fragment = fragmentIndex < 0 ? "" : suffix.substring(fragmentIndex);
+        String expectedUrl = PROMETHEUS_BASE_URL + "/tenant%20one/api/v1/query"
+                + (query.isEmpty() ? "?" : query + "&") + "query=up" + fragment;
+        prometheusServer.expect(requestTo(expectedUrl))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(PROMETHEUS_SUCCESS_BODY, MediaType.APPLICATION_JSON));
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url(PROMETHEUS_BASE_URL + "/tenant%20one/" + suffix)
+                .type("Prometheus")
+                .build();
+
+        assertThat(settingsService.testDataSource(request).isSuccess()).isTrue();
+    }
+
     @Test
     void connectionShouldQueryPrometheusEndpointTest() {
         prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL))
@@ -521,6 +608,41 @@ class SettingsServiceTest {
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getMessage()).isEqualTo("Connection successful");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "victoria_metrics", " VICTORIA_METRICS ", "victoria-metrics", "VictoriaMetrics",
+        "Victoria Metrics", "victoria"})
+    void connectionShouldResolveVictoriaMetricsAliasesToItsOwnQueryPathTest(String type) {
+        // The DTO accepts every alias spelling of VictoriaMetrics, including the bare "victoria"
+        // short form; the probe must reach VictoriaMetrics' own query path for all of them rather
+        // than fall back to Prometheus'.
+        prometheusServer.expect(requestTo(VICTORIA_QUERY_URL))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(PROMETHEUS_SUCCESS_BODY, MediaType.APPLICATION_JSON));
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url(PROMETHEUS_BASE_URL)
+                .type(type)
+                .build();
+
+        DataSourceTestResultVO result = settingsService.testDataSource(request);
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getMessage()).isEqualTo("Connection successful");
+    }
+
+    @Test
+    void connectionShouldStillRejectUnknownDataSourceTypesTest() {
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url(PROMETHEUS_BASE_URL)
+                .type("grafana-metrics")
+                .build();
+
+        DataSourceTestResultVO result = settingsService.testDataSource(request);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).contains("Unsupported data source type: grafana-metrics");
     }
 
     @Test
@@ -542,6 +664,26 @@ class SettingsServiceTest {
         DataSourceTestResultVO result = settingsService.testDataSource(request);
 
         assertThat(result.isSuccess()).isTrue();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"op\u00e9rator, p\u00e4ssword", "\u7528\u6237, \u5bc6\u7801", "studio, secret\ud83d\udd12"})
+    void connectionShouldEncodeBasicCredentialsAsUtf8Test(String username, String password) {
+        String expectedAuthorization = "Basic " + Base64.getEncoder()
+                .encodeToString((username + ":" + password).getBytes(StandardCharsets.UTF_8));
+        prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, expectedAuthorization))
+                .andRespond(withSuccess(PROMETHEUS_SUCCESS_BODY, MediaType.APPLICATION_JSON));
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url(PROMETHEUS_BASE_URL)
+                .type("Prometheus")
+                .auth("Basic Auth")
+                .username(username)
+                .password(password)
+                .build();
+
+        assertThat(settingsService.testDataSource(request).isSuccess()).isTrue();
     }
 
     @Test

@@ -96,7 +96,7 @@ class LiteTopicServiceTest {
         var resource = new ResourceOwnershipGuard.Resource(ResourceOwnershipGuard.Kind.TOPIC, "chat");
         when(guard.requireInstance("instance-a")).thenReturn(instance);
         when(guard.topicResource(" chat ")).thenReturn(resource);
-        when(guard.check(instance, resource, true)).thenThrow(new BusinessException(409, "Ownership conflict"));
+        when(guard.checkSlot(instance, resource, null, true)).thenThrow(new BusinessException(409, "Ownership conflict"));
         assertThatThrownBy(() -> service.extendTTL(" instance-a ", " chat ", 60_000L))
                 .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(409));
         org.mockito.Mockito.verifyNoInteractions(provider);

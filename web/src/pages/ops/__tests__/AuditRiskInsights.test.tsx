@@ -99,6 +99,21 @@ beforeAll(() => {
 });
 
 describe('AuditRiskInsights', () => {
+  it('does not present failures in distinct global and unscoped resources as one hotspot Test', () => {
+    renderPanel({
+      summary: { ...summary, total: 2, successful: 0, failed: 2, partial: 0 },
+      records: [
+        { ...records[0], id: 1, clusterId: null },
+        { ...records[1], id: 2, clusterId: 'global' },
+      ],
+    });
+    const targetCard = screen.getByText('重复异常对象').closest('.ant-card')!;
+    expect(
+      within(targetCard as HTMLElement).getByText('当前页没有重复失败或部分成功的对象'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/orders 在当前页出现 2 次失败或部分成功/u)).not.toBeInTheDocument();
+  });
+
   it('renders risk findings without restating the summary rates', () => {
     renderPanel();
 
@@ -114,6 +129,20 @@ describe('AuditRiskInsights', () => {
     expect(screen.getByText(/当前筛选失败率 40%/u)).toBeInTheDocument();
     expect(screen.getByText(/当前页有 2 条高风险操作失败/u)).toBeInTheDocument();
     expect(screen.getByText(/orders 在当前页出现 2 次失败或部分成功/u)).toBeInTheDocument();
+  });
+
+  it('keeps the risky record table within its half-width cardTest', () => {
+    renderPanel();
+    const card = screen.getByText('高风险记录').closest('.ant-card');
+    const cols = Array.from(
+      (card as HTMLElement).querySelectorAll('.ant-table-content colgroup col'),
+    );
+    const total = cols.reduce(
+      (sum, col) => sum + (parseInt((col as HTMLElement).style.width, 10) || 0),
+      0,
+    );
+    // 2026-10-28 实测：风险洞察卡片内容宽 609，该表曾溢出 41px（操作类型/操作对象无声明宽）。
+    expect(total).toBeLessThanOrEqual(609);
   });
 
   it('renders repeated target and risky record tables', () => {

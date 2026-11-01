@@ -98,6 +98,13 @@ public class MessageRedeliveryToolHandler extends MutationToolHandler<MessageRed
                 : RETRY_TOPIC_PREFIX + groupName;
     }
 
+    /**
+     * The source message the plan snapshots. {@code size} carries
+     * {@link MessageRecordVO#UNKNOWN_SIZE} when the vendor API reports no body size: structured
+     * output keeps the sentinel the way {@code GroupResetOffsetToolHandler.QueueState} keeps its
+     * own, and the catalog declares the plan's {@code before} side as a free-form object, so no
+     * per-property description travels with it.
+     */
     private record RedeliverySource(String msgId, String topic, String tag, String key, long storeTime, int size) {
     }
 

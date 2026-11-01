@@ -61,10 +61,11 @@ public class AclController {
             @RequestParam(required = false) String resource,
             @RequestParam(required = false) String scope,
             @RequestParam(required = false) String decision,
+            @RequestParam(required = false) String aclVersion,
             @RequestParam(required = false) String instanceId,
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "20") Integer pageSize) {
-        return Result.ok(aclService.listRules(principal, resource, scope, decision,
+        return Result.ok(aclService.listRules(principal, resource, scope, decision, aclVersion,
                 instanceId, page, pageSize));
     }
 
@@ -142,6 +143,16 @@ public class AclController {
     public Result<PlainAccessConfigVO> createAndUpdatePlainAccessConfig(
             @Valid @RequestBody UpsertPlainAccessConfigDTO request) {
         return Result.ok(aclService.createAndUpdatePlainAccessConfig(request.toPlainAccessConfigVO()));
+    }
+
+    /**
+     * Writes every stored ACL account of the instance to its master brokers (ACL 2.0 admin API).
+     * Additive by design: broker accounts the dashboard does not know about are left untouched.
+     */
+    @PostMapping("/push-to-broker")
+    public Result<PushAclToBrokerResultVO> pushAclToBroker(
+            @Valid @RequestBody PushAclToBrokerDTO request) {
+        return Result.ok(aclService.pushAclToBroker(request.getInstanceId()));
     }
 
     private <T> T requireRequest(T request, String message) {

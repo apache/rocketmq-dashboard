@@ -26,7 +26,9 @@ import java.util.List;
 
 @Data
 public class AlertRuleRequestDTO {
-    static final String PROMETHEUS_DURATION_REGEXP = "(?:[0-9]+(?:ms|s|m|h|d|w|y))+";
+    // Prometheus requires each unit at most once, ordered from largest to smallest.
+    static final String PROMETHEUS_DURATION_REGEXP = "(?=.+)(?:[0-9]+y)?(?:[0-9]+w)?(?:[0-9]+d)?"
+            + "(?:[0-9]+h)?(?:[0-9]+m)?(?:[0-9]+s)?(?:[0-9]+ms)?";
 
     private Long id;
     @NotBlank(message = "name is required")

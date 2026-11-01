@@ -125,7 +125,9 @@ const healthyBrokerRoute: BrokerRoute = {
   replicaCount: 1,
 };
 
-const renderWithProviders = (initialEntry = '/instance/topic') =>
+const renderWithProviders = (
+  initialEntry: string | { pathname: string; state?: unknown } = '/instance/topic',
+) =>
   render(
     <App>
       <LangProvider>
@@ -240,9 +242,95 @@ describe('TopicPage', () => {
     expect(cols.length).toBeGreaterThan(0);
     const actionCol = cols[cols.length - 1] as HTMLElement;
     // 操作列实测依据（勿随意改小，topic.tsx 列定义处有同步注释）：
-    // 4 个小按钮（详情/配置/发送/删除）一行占 282px，按钮右对齐贴住表格右缘
-    // （与 Group 管理页操作列一致），列宽不足时按钮溢出产生横向滚动条。
-    expect(actionCol.style.width).toBe('282px');
+    // 4 个小按钮（详情/配置/发送/删除）实测 274px + 单元格左右 padding 各 8px = 290px，
+    // 按钮右对齐贴住表格右缘（与 Group 管理页操作列一致）。只算左 padding 会让按钮组左溢
+    // 8px 压住「修改时间」列。
+    expect(actionCol.style.width).toBe('290px');
+  });
+
+  it('centers the type and status columns', async () => {
+    renderWithProviders('/instance/instance-proxy-1/topic');
+    const row = (await screen.findByText('topic-01')).closest('tr') as HTMLElement;
+
+    // 用户约定 2026-10-16：类型 / 状态两列的表头与单元格都居中，别改回默认左对齐。
+    const headers = Array.from(row.closest('table')!.querySelectorAll('thead th')).map((th) =>
+      th.textContent?.trim(),
+    );
+    const cells = within(row).getAllByRole('cell');
+    for (const title of ['类型', '状态']) {
+      const index = headers.indexOf(title);
+      expect(index).toBeGreaterThan(-1);
+      expect(cells[index].style.textAlign).toBe('center');
+    }
+  });
+
+  it('truncates long topic names inside the sync dialog instead of overflowing the modal', async () => {
+    const longName = 'A_VERY_LONG_TOPIC_NAME_TO_PROBE_TABLE_LAYOUT_TRUNCATION';
+    mockTopicsList([{ ...buildTopics(1)[0], name: longName }]);
+    renderWithProviders('/instance/instance-proxy-1/topic');
+    await screen.findByText(longName);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+
+    await user.click(screen.getByRole('button', { name: /同步数据/ }));
+    const dialog = await screen.findByRole('dialog', { name: /同步数据/ });
+    await waitFor(() => expect(within(dialog).getByText('缺失路由')).toBeInTheDocument());
+
+    // 用户约定 2026-10-16：同步弹窗的表格不得宽于弹窗 body——48 字符的长名曾把表的 min-content
+    // 撑到 727px，溢出 680 弹窗的 632px body 右缘（表格直接画出弹窗外）。长名靠 Topic 列
+    // ellipsis 截断 + 悬停看全名。jsdom 无布局量度，这里守 ellipsis 类名这个机制本身，
+    // 真实宽度由 playwright（/tmp/pw-verify/sync-modal-width.js）在浏览器里量。
+    expect(within(dialog).getByText(longName).closest('td')).toHaveClass('ant-table-cell-ellipsis');
+  });
+
+  it('updates the per-broker queue hint as the queue count changes', async () => {
+    renderWithProviders('/instance/instance-proxy-1/topic');
+    await screen.findByText('topic-01');
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+
+    await user.click(screen.getByRole('button', { name: /创建 Topic/ }));
+    const dialog = await screen.findByRole('dialog', { name: /创建 Topic/ });
+    // 用户约定 2026-10-16：读写队列提示合并为单条、跟随输入值，并说明读写一般需一致。
+    expect(
+      within(dialog).getByText(
+        /每个 Broker 节点写 8 \/ 读 8 个队列；读写队列数一般情况下需保持一致/,
+      ),
+    ).toBeInTheDocument();
+    const inputs = within(dialog).getAllByRole('spinbutton');
+    await user.clear(inputs[0]);
+    await user.type(inputs[0], '16');
+    expect(within(dialog).getByText(/每个 Broker 节点写 16 \/ 读 8 个队列/)).toBeInTheDocument();
+    expect(within(dialog).getAllByText(/每个 Broker 节点写/).length).toBe(1);
+  });
+
+  // 创建规则从「资源模型」页的判定流程图搬到了创建表单上的问号弹窗（用户约定 2026-10-26）。
+  it('explains the naming rule from a question mark on the create form', async () => {
+    renderWithProviders('/instance/instance-proxy-1/topic');
+    await screen.findByText('topic-01');
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+
+    await user.click(screen.getByRole('button', { name: /创建 Topic/ }));
+    const dialog = await screen.findByRole('dialog', { name: /创建 Topic/ });
+    await user.click(within(dialog).getByRole('button', { name: '查看资源命名与归属规则' }));
+    expect(await screen.findByText('资源命名与归属规则')).toBeInTheDocument();
+  });
+
+  it('gives each of the four row actions its own color', async () => {
+    renderWithProviders('/instance/instance-proxy-1/topic');
+    await screen.findByText('topic-01');
+
+    const row = screen.getByText('topic-01').closest('tr') as HTMLElement;
+    const buttons = within(row).getAllByRole('button');
+    const colors = buttons.map((button) => button.style.color);
+
+    // 详情/配置/发送/删除 四个按钮曾有两个同为 #1677ff，用户要求区分开。
+    expect(buttons.map((button) => button.textContent)).toEqual(['详情', '配置', '发送', '删除']);
+    expect(colors).toEqual([
+      'rgb(22, 119, 255)',
+      'rgb(114, 46, 209)',
+      'rgb(82, 196, 26)',
+      'rgb(255, 77, 79)',
+    ]);
+    expect(new Set(colors).size).toBe(colors.length);
   });
 
   it('reloads the authoritative server page after creating a topic', async () => {
@@ -288,6 +376,81 @@ describe('TopicPage', () => {
     expect(within(getTableBody()).getByText('topic-b')).toBeInTheDocument();
     expect(within(getTableBody()).getByText('server page response')).toBeInTheDocument();
     expect(within(getTableBody()).queryByText('create response')).not.toBeInTheDocument();
+  });
+
+  it('sends the Lite TTL when creating a Lite parent topic', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders('/instance/instance-proxy-1/topic');
+
+    await screen.findByText('topic-01');
+    await user.click(screen.getByRole('button', { name: /创建 Topic/ }));
+    const dialog = await screen.findByRole('dialog', { name: /创建 Topic/ });
+    await user.type(within(dialog).getByLabelText('Topic 名称'), 'chat');
+    await user.click(within(dialog).getByText('LiteTopic'));
+
+    // The TTL input appears only for LITE creates and is prefilled with one day (1440 minutes).
+    const ttl = within(dialog).getByLabelText('TTL（分钟）') as HTMLInputElement;
+    expect(ttl.value).toBe('1440');
+
+    await user.click(within(dialog).getByRole('button', { name: /创\s*建/ }));
+
+    await waitFor(() => expect(topicServiceMocks.createTopic).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.createTopic).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'chat', type: 'LITE', liteTtlMinutes: 1440 }),
+    );
+  });
+
+  it('leaves the Lite TTL out of non-Lite creates', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders('/instance/instance-proxy-1/topic');
+
+    await screen.findByText('topic-01');
+    await user.click(screen.getByRole('button', { name: /创建 Topic/ }));
+    const dialog = await screen.findByRole('dialog', { name: /创建 Topic/ });
+    expect(within(dialog).queryByLabelText('TTL（分钟）')).not.toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText('Topic 名称'), 'orders');
+    await user.click(within(dialog).getByRole('button', { name: /创\s*建/ }));
+
+    await waitFor(() => expect(topicServiceMocks.createTopic).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.createTopic.mock.calls[0][0]).not.toHaveProperty('liteTtlMinutes');
+  });
+
+  it('never sends the Lite TTL on topic updates', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const liteTopic = { ...buildTopics(1)[0], type: 'LITE' };
+    mockTopicsList([liteTopic]);
+    renderWithProviders('/instance/instance-proxy-1/topic');
+
+    await screen.findByText('topic-01');
+    const row = screen.getByText('topic-01').closest('tr') as HTMLElement;
+    await user.click(within(row).getByRole('button', { name: /配置/ }));
+    const dialog = await screen.findByRole('dialog', { name: /编辑 Topic/ });
+
+    // TTL is create-only: the edit dialog has no TTL input even for a Lite parent topic.
+    expect(within(dialog).queryByLabelText('TTL（分钟）')).not.toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => expect(topicServiceMocks.updateTopic).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.updateTopic.mock.calls[0][0]).not.toHaveProperty('liteTtlMinutes');
+  });
+
+  it('opens the create dialog with LITE preselected for the LiteTopic page action', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders({
+      pathname: '/instance/instance-proxy-1/topic',
+      state: { createType: 'LITE' },
+    });
+
+    const dialog = await screen.findByRole('dialog', { name: /创建 Topic/ });
+    expect(within(dialog).getByLabelText('TTL（分钟）')).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText('Topic 名称'), 'chat');
+    await user.click(within(dialog).getByRole('button', { name: /创\s*建/ }));
+
+    await waitFor(() => expect(topicServiceMocks.createTopic).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.createTopic).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'chat', type: 'LITE', liteTtlMinutes: 1440 }),
+    );
   });
 
   it('updates topic config through the update service and reloads the page', async () => {
@@ -418,6 +581,56 @@ describe('TopicPage', () => {
       body: 'cloud-test-payload',
       properties: {},
     });
+  });
+
+  it('sends each test message once per confirmation while the first request is pending', async () => {
+    topicServiceMocks.sendTopicMessage.mockImplementation(() => new Promise(() => {}));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
+    mockTopicsList([buildTopics(1)[0]]);
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /发送/ }));
+    const dialog = await getSendDialog();
+    fireEvent.change(within(dialog).getByLabelText('消息体 Body'), {
+      target: { value: 'double-send-payload' },
+    });
+    const send = within(dialog).getByRole('button', { name: /发\s*送/ });
+
+    fireEvent.click(send);
+    // The OK button must lock with the first click: `sending` alone flips only after
+    // validateFields resolves and React re-renders, so a repeat confirmation in that
+    // window re-enters handleSend and sends the same message twice.
+    expect(send).toHaveClass('ant-btn-loading');
+    fireEvent.click(send);
+
+    await waitFor(() => expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ body: 'double-send-payload' }),
+    );
+    expect(send).toHaveClass('ant-btn-loading');
+  });
+
+  it('keeps the send dialog usable for consecutive sends after one completes', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
+    mockTopicsList([buildTopics(1)[0]]);
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /发送/ }));
+    const dialog = await getSendDialog();
+    fireEvent.change(within(dialog).getByLabelText('消息体 Body'), {
+      target: { value: 'consecutive-payload' },
+    });
+    const send = within(dialog).getByRole('button', { name: /发\s*送/ });
+
+    await user.click(send);
+    await waitFor(() => expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(send).not.toHaveClass('ant-btn-loading'));
+
+    await user.click(send);
+    await waitFor(() => expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledTimes(2));
+    expect(within(dialog).getByText(/发送消息到 topic-01/)).toBeInTheDocument();
   });
 
   it('opens a clean create dialog after a cancelled edit', async () => {
@@ -611,7 +824,7 @@ describe('TopicPage', () => {
 
     await user.click(screen.getAllByRole('button', { name: /详情/ })[0]);
 
-    expect(await screen.findByText('路由诊断：加载失败')).toBeInTheDocument();
+    expect(await screen.findByText('路由信息加载失败')).toBeInTheDocument();
     // Rebuilding an existing topic is not the answer to a failed request.
     expect(screen.queryByRole('button', { name: '在 Broker 上重建' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /重\s*试/ })).toBeInTheDocument();
@@ -786,61 +999,6 @@ describe('TopicPage', () => {
     expect(topicServiceMocks.getTopicRoutes).toHaveBeenLastCalledWith('topic-01', 'instance-a');
   });
 
-  it('renders topic route health diagnostics in the detail modal', async () => {
-    const user = userEvent.setup({ pointerEventsCheck: 0 });
-    const routes: BrokerRoute[] = [
-      {
-        brokerName: 'broker-a',
-        brokerAddr: '',
-        masterAddr: '',
-        brokerAddrs: {
-          '1': '10.0.0.2:10911',
-        },
-        brokerIds: [1],
-        replicaCount: 1,
-        writeQueues: 12,
-        readQueues: 0,
-        perm: 'WO',
-        permCode: 2,
-        readable: false,
-        writable: true,
-        topicSysFlag: 0,
-      },
-      {
-        brokerName: 'broker-b',
-        brokerAddr: '10.0.0.3:10911',
-        masterAddr: '10.0.0.3:10911',
-        brokerAddrs: {
-          '0': '10.0.0.3:10911',
-        },
-        brokerIds: [0],
-        replicaCount: 0,
-        writeQueues: 2,
-        readQueues: 8,
-        perm: 'RW',
-        permCode: 6,
-        readable: true,
-        writable: true,
-        topicSysFlag: 0,
-      },
-    ];
-    mockTopicsList([buildTopics(1)[0]]);
-    topicServiceMocks.getTopicRoutes.mockResolvedValue(routes);
-    renderWithProviders();
-
-    await user.click(await screen.findByRole('button', { name: /详情/ }));
-
-    expect(await screen.findByText('路由诊断：不可用')).toBeInTheDocument();
-    expect(screen.getByText('可写 Broker')).toBeInTheDocument();
-    expect(screen.getByText('14 个写队列')).toBeInTheDocument();
-    expect(screen.getByText('Replica 1')).toBeInTheDocument();
-    expect(screen.getAllByText('写队列分布不均').length).toBeGreaterThan(0);
-    expect(screen.getByText('broker-a：读队列不可用')).toBeInTheDocument();
-    expect(
-      screen.getByText('检查 Broker 是否仍向 NameServer 注册，并确认 master 节点可达。'),
-    ).toBeInTheDocument();
-  });
-
   it('keeps failed topics selected after a partially successful batch deletion', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const remainingTopics = [buildTopics(3)[1]];
@@ -995,6 +1153,40 @@ describe('TopicPage', () => {
 
   const previewCsv = (name: string) =>
     '"Name","Type","Write Queues","Read Queues","Permission"\n"' + name + '","NORMAL","4","6","RW"';
+
+  it('rejectsOversizedCsvBeforeReadingTheTailAndRecoversTest', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    mockTopicsList([]);
+    instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
+    renderWithProviders('/instance/instance-proxy-1/topic');
+    await waitFor(() =>
+      expect(topicServiceMocks.listTopicsPage).toHaveBeenCalledWith(
+        expect.objectContaining({ instanceId: 'instance-proxy-1' }),
+      ),
+    );
+    const input = screen.getByTestId('topic-import-file');
+    const oversized = [
+      'Name',
+      ...Array.from({ length: 101 }, (_, i) => `over-${i}`),
+      '"unterminated tail',
+    ].join('\n');
+    await user.upload(input, new File([oversized], 'oversized.csv'));
+    expect(await screen.findByText('一次最多导入 100 行')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '开始导入' })).toBeDisabled();
+    expect(topicServiceMocks.importTopics).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: /^关\s*闭$/ }));
+    await user.upload(input, new File([previewCsv('current-resource')], 'valid.csv'));
+    await screen.findByText('current-resource');
+    expect(screen.queryByText('一次最多导入 100 行')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '开始导入' }));
+    await waitFor(() =>
+      expect(topicServiceMocks.importTopics).toHaveBeenCalledWith('instance-proxy-1', [
+        expect.objectContaining({ name: 'current-resource', instanceId: 'instance-proxy-1' }),
+      ]),
+    );
+    expect(topicServiceMocks.importTopics).toHaveBeenCalledTimes(1);
+  });
 
   it('clearsPreviousImportRowsBeforeReadingTheNextFileTest', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
@@ -1236,7 +1428,29 @@ describe('TopicPage', () => {
     });
   });
 
-  it('previews the send payload and submits the normalized properties', async () => {
+  it('loads the topic page once when the instance list lands after it', async () => {
+    let releaseInstances: (instances: unknown[]) => void = () => {};
+    instanceServiceMocks.listInstances.mockImplementationOnce(
+      () =>
+        new Promise<unknown[]>((resolve) => {
+          releaseInstances = resolve;
+        }),
+    );
+    mockTopicsList(buildTopics(1));
+    renderWithProviders('/instance/instance-proxy-1/topic');
+
+    // The route already names the instance, so the page must not wait for the instance list…
+    await waitFor(() => expect(topicServiceMocks.listTopicsPage).toHaveBeenCalledTimes(1));
+
+    // …and the list landing afterwards must not fire a second, identical request.
+    await act(async () => {
+      releaseInstances([selectedInstance]);
+    });
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    expect(topicServiceMocks.listTopicsPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('submits the normalized send payload', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     mockTopicsList([buildTopics(1)[0]]);
     renderWithProviders();
@@ -1256,12 +1470,6 @@ describe('TopicPage', () => {
       target: { value: 'trace-1' },
     });
 
-    await waitFor(() => expect(within(dialog).getByText('可以发送')).toBeInTheDocument());
-    expect(within(dialog).getByText('JSON Object')).toBeInTheDocument();
-    expect(within(dialog).getByText('Tag paid')).toBeInTheDocument();
-    expect(within(dialog).getByText('Key order-1')).toBeInTheDocument();
-    expect(within(dialog).getByText('traceId=trace-1')).toBeInTheDocument();
-
     await user.click(within(dialog).getByRole('button', { name: /发\s*送/ }));
 
     await waitFor(() => expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledTimes(1));
@@ -1275,7 +1483,7 @@ describe('TopicPage', () => {
     });
   });
 
-  it('blocks duplicate form properties in the send payload preflight', async () => {
+  it('blocks duplicate form properties when sending', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     mockTopicsList([buildTopics(1)[0]]);
     renderWithProviders();
@@ -1293,10 +1501,6 @@ describe('TopicPage', () => {
     fireEvent.change(propertyValues[0], { target: { value: 'first' } });
     fireEvent.change(propertyKeys[1], { target: { value: 'traceId' } });
     fireEvent.change(propertyValues[1], { target: { value: 'second' } });
-
-    await waitFor(() => expect(within(dialog).getByText('阻止发送')).toBeInTheDocument());
-    expect(within(dialog).getByText('属性名重复')).toBeInTheDocument();
-    expect(within(dialog).getByText('重复属性仅保留第一个值：traceId')).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole('button', { name: /发\s*送/ }));
 

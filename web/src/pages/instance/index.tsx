@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Table,
@@ -40,6 +40,7 @@ import type { ColumnsType } from 'antd/es/table';
 import type { SortOrder } from 'antd/es/table/interface';
 import type { Instance, InstanceQuery } from '../../api/instance';
 import { listCloudCredentials, type CloudCredential } from '../../api/cloudCredential';
+import { listNameserverRegistry, type NameserverRegistryEntry } from '../../api/cluster';
 import {
   listAliyunInstances,
   listAliyunRegions,
@@ -50,6 +51,7 @@ import { listTencentInstances, listTencentRegions } from '../../api/tencentCatal
 import { describeApiError } from '../../utils/apiError';
 import { formatDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
+import ResourceRuleHelp from '../../components/ResourceRuleHelp';
 import {
   createInstance,
   deleteInstance,
@@ -61,6 +63,9 @@ import {
 import { DEFAULT_VENDOR, VENDOR_OPTIONS, type InstanceVendor } from './vendorOptions';
 
 const { Text } = Typography;
+
+const CREDENTIAL_PAGE_SIZE = 100;
+const MAX_CREDENTIAL_PAGES = 100;
 
 const DEFAULT_CLOUD_REGION_IDS: Partial<Record<InstanceVendor, string>> = {
   ALIYUN: 'cn-hangzhou',
@@ -124,6 +129,7 @@ const InstancePage = () => {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<InstanceTypeFilter>('ALL');
+  const [regionFilter, setRegionFilter] = useState<string>('ALL');
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [vendor, setVendor] = useState<InstanceVendor>(DEFAULT_VENDOR);
   const [addForm] = Form.useForm();
@@ -137,6 +143,8 @@ const InstancePage = () => {
   const [cloudInstances, setCloudInstances] = useState<CloudInstanceOption[]>([]);
   const [cloudInstancesLoading, setCloudInstancesLoading] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [nameservers, setNameservers] = useState<NameserverRegistryEntry[]>([]);
+  const [nameserversLoading, setNameserversLoading] = useState(false);
   const [editingInstance, setEditingInstance] = useState<Instance | null>(null);
   const [editForm] = Form.useForm();
   const editInstanceType = Form.useWatch<Instance['type'] | undefined>('type', editForm);
@@ -158,7 +166,7 @@ const InstancePage = () => {
 
     setLoading(true);
     try {
-      const nextInstances = await listInstances(query);
+      const nextInstances = await listInstances({ ...query, withCounts: true });
       if (requestId === requestIdRef.current) {
         setInstances(nextInstances);
         const availableNames = new Set(nextInstances.map((instance) => instance.name));
@@ -188,7 +196,60 @@ const InstancePage = () => {
     };
   }, [debouncedSearch, loadInstances, typeFilter]);
 
+  // 地域选项取自已加载实例（列表不分页、一次全量），开源实例无地域不进选项；
+  // 选中某地域后开源实例因无地域而自然被过滤掉。
+  const regionOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const instance of instances) {
+      if (!instance.regionId || seen.has(instance.regionId)) continue;
+      seen.set(instance.regionId, instance.regionName || instance.regionId);
+    }
+    return Array.from(seen.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([value, label]) => ({ value, label }));
+  }, [instances]);
+
+  const visibleInstances = useMemo(
+    () =>
+      regionFilter === 'ALL'
+        ? instances
+        : instances.filter((instance) => instance.regionId === regionFilter),
+    [instances, regionFilter],
+  );
+
   const cloudVendor = vendor === 'ALIYUN' || vendor === 'TENCENT';
+
+  useEffect(() => {
+    if (nameservers.length === 1 && addForm.getFieldValue('nameserverId') == null) {
+      addForm.setFieldsValue({ nameserverId: nameservers[0].id });
+    }
+  }, [nameservers, addForm]);
+
+  useEffect(() => {
+    if (!(addModalOpen || editModalOpen) || cloudVendor) {
+      return;
+    }
+    let active = true;
+    // Deferred like the credential loader: a synchronous setState here trips the
+    // react-hooks lint rule about cascading renders inside effect bodies.
+    const timer = window.setTimeout(() => {
+      setNameserversLoading(true);
+      listNameserverRegistry()
+        .then((entries) => {
+          if (active) setNameservers(entries);
+        })
+        .catch(() => {
+          if (active) setNameservers([]);
+        })
+        .finally(() => {
+          if (active) setNameserversLoading(false);
+        });
+    }, 0);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [addModalOpen, editModalOpen, cloudVendor]);
 
   useEffect(() => {
     if (!cloudVendor || !addModalOpen) {
@@ -198,12 +259,26 @@ const InstancePage = () => {
     let active = true;
     const timer = window.setTimeout(() => {
       setCredentialsLoading(true);
-      listCloudCredentials(vendor)
-        .then((result) => {
-          if (active) {
-            setCredentials(result.items);
-          }
-        })
+      setCredentials([]);
+      const loadCredentialOptions = async () => {
+        const first = await listCloudCredentials(vendor, undefined, 1, CREDENTIAL_PAGE_SIZE);
+        if (!active) return;
+        const pageCount = Math.ceil(first.total / first.size);
+        if (!Number.isFinite(pageCount) || first.size < 1 || pageCount > MAX_CREDENTIAL_PAGES) {
+          throw new Error('Cloud credential inventory exceeds the selector page limit');
+        }
+        const items = [...first.items];
+        // Follow the first response's bounded inventory size. Publish only after all pages
+        // succeed, so a later failure cannot present an incomplete selector as complete.
+        for (let page = 2; page <= pageCount; page += 1) {
+          const result = await listCloudCredentials(vendor, undefined, page, CREDENTIAL_PAGE_SIZE);
+          if (!active) return;
+          items.push(...result.items);
+          if (result.items.length === 0) break;
+        }
+        setCredentials(Array.from(new Map(items.map((item) => [item.id, item])).values()));
+      };
+      void loadCredentialOptions()
         .catch(() => {
           if (active) {
             message.error(t('instance.cloudCredentialLoadFailed'));
@@ -522,7 +597,7 @@ const InstancePage = () => {
       title: t('instance.region'),
       dataIndex: 'regionId',
       key: 'regionId',
-      width: 130,
+      width: 100,
       ellipsis: true,
       onHeaderCell: () => ({ style: { textAlign: 'left' } }),
       sorter: (a, b) => (a.regionId ?? '').localeCompare(b.regionId ?? ''),
@@ -538,6 +613,7 @@ const InstancePage = () => {
       title: t('instance.instanceName'),
       dataIndex: 'name',
       key: 'name',
+      width: 140,
       ellipsis: true,
       onHeaderCell: () => ({ style: { textAlign: 'left' } }),
       sorter: (a, b) => a.name.localeCompare(b.name),
@@ -555,6 +631,7 @@ const InstancePage = () => {
       title: t('instance.remark'),
       dataIndex: 'remark',
       key: 'remark',
+      width: 90,
       ellipsis: { showTitle: false },
       onHeaderCell: () => ({ style: { textAlign: 'left' } }),
       sorter: (a, b) => (a.remark ?? '').localeCompare(b.remark ?? ''),
@@ -575,7 +652,7 @@ const InstancePage = () => {
       title: t('instance.vendor'),
       dataIndex: 'vendor',
       key: 'vendor',
-      width: 100,
+      width: 84,
       align: 'center' as const,
       render: (value?: string) => {
         const option = VENDOR_OPTIONS.find((item) => item.key === (value || 'APACHE'));
@@ -594,7 +671,7 @@ const InstancePage = () => {
       title: t('common.type'),
       dataIndex: 'type',
       key: 'type',
-      width: 110,
+      width: 136,
       align: 'center' as const,
       sorter: (a, b) => a.type.localeCompare(b.type),
       render: (type: string) => {
@@ -603,10 +680,19 @@ const InstancePage = () => {
       },
     },
     {
+      title: t('instance.nameserverColumn'),
+      dataIndex: 'nameserverName',
+      key: 'nameserverName',
+      width: 140,
+      render: (name: string | null, record: Instance) =>
+        record.vendor === 'ALIYUN' || record.vendor === 'TENCENT' ? '-' : (name ?? '-'),
+    },
+    {
       title: 'Topic',
       dataIndex: 'topicCount',
       key: 'topicCount',
-      width: 70,
+      // 表头「Topic」+ 排序图标实测需 ~78，70 会把排序图标挤出列宽
+      width: 84,
       align: 'center' as const,
       sorter: (a, b, sortOrder) => compareResourceCounts(a, b, 'topicCount', sortOrder),
       render: (count: number, record: Instance) =>
@@ -616,7 +702,7 @@ const InstancePage = () => {
       title: 'Group',
       dataIndex: 'consumerGroupCount',
       key: 'consumerGroupCount',
-      width: 70,
+      width: 84,
       align: 'center' as const,
       sorter: (a, b, sortOrder) => compareResourceCounts(a, b, 'consumerGroupCount', sortOrder),
       render: (count: number, record: Instance) =>
@@ -649,7 +735,7 @@ const InstancePage = () => {
     {
       title: t('common.actions'),
       key: 'actions',
-      width: 150,
+      width: 140,
       render: (_: unknown, record: Instance) => (
         <Flex gap={6} justify="flex-end" onClick={(e) => e.stopPropagation()}>
           <Button
@@ -724,6 +810,7 @@ const InstancePage = () => {
             value={typeFilter}
             onChange={setTypeFilter}
             style={{ width: 140 }}
+            aria-label={t('instance.filterByType')}
             options={[
               { value: 'ALL', label: t('instance.allTypes') },
               { value: 'CLOUD', label: t('instance.cloudType') },
@@ -731,6 +818,13 @@ const InstancePage = () => {
               { value: 'PROXY_CLUSTER', label: t('instance.proxyClusterMode') },
               { value: 'DIRECT', label: t('instance.directMode') },
             ]}
+          />
+          <Select
+            value={regionFilter}
+            onChange={setRegionFilter}
+            style={{ width: 160 }}
+            aria-label={t('instance.filterByRegion')}
+            options={[{ value: 'ALL', label: t('instance.allRegions') }, ...regionOptions]}
           />
         </Space>
         <Space size={12}>
@@ -757,7 +851,7 @@ const InstancePage = () => {
         <Table
           className="instance-table"
           columns={columns}
-          dataSource={instances}
+          dataSource={visibleInstances}
           loading={loading}
           rowKey="name"
           rowSelection={{
@@ -947,6 +1041,36 @@ const InstancePage = () => {
               <Input placeholder={t('instance.namePlaceholder')} />
             </Form.Item>
             <Form.Item
+              label={
+                <Space size={4}>
+                  {t('instance.nameserver')}
+                  <ResourceRuleHelp />
+                </Space>
+              }
+              name="nameserverId"
+              rules={[{ required: true, message: t('instance.nameserverRequired') }]}
+              extra={t('instance.nameserverExtra')}
+            >
+              <Select
+                placeholder={t('instance.selectNameserver')}
+                loading={nameserversLoading}
+                notFoundContent={
+                  nameserversLoading ? (
+                    t('instance.loading')
+                  ) : (
+                    <span>
+                      {t('instance.noNameserver')}
+                      <Link to="/cluster">{t('instance.addInClusterPage')}</Link>
+                    </span>
+                  )
+                }
+                options={nameservers.map((entry) => ({
+                  value: entry.id,
+                  label: `${entry.name}（${entry.namesrvAddr}）`,
+                }))}
+              />
+            </Form.Item>
+            <Form.Item
               label={t('instance.accessType')}
               name="type"
               rules={[{ required: true, message: t('instance.accessTypeRequired') }]}
@@ -1009,6 +1133,11 @@ const InstancePage = () => {
           <Form.Item label={t('instance.instanceName')}>
             <Input value={editingInstance?.name} disabled />
           </Form.Item>
+          {editingInstance?.vendor !== 'ALIYUN' && editingInstance?.vendor !== 'TENCENT' && (
+            <Form.Item label={t('instance.nameserver')} extra={t('instance.nameserverImmutable')}>
+              <Input value={editingInstance?.nameserverName ?? '-'} disabled />
+            </Form.Item>
+          )}
           <Form.Item
             label={t('instance.accessType')}
             name="type"

@@ -43,6 +43,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
@@ -60,6 +61,8 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
 
     public static final String ENGINE = "claude-code";
     private static final String BINARY = "claude";
+    /** Mirrors the parser's success subtype for the text-only channel's own check. */
+    private static final String RESULT_SUBTYPE_SUCCESS = "success";
     private static final String COMPATIBLE_MODE_SUFFIX = "/compatible-mode/v1";
     private static final String ANTHROPIC_APP_SUFFIX = "/apps/anthropic";
     private static final long STREAM_TIMEOUT_SECONDS = 300;
@@ -246,17 +249,32 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
         List<String> command = withStreamFormat(buildCommand(config, prompt, modelOverride));
         ClaudeCodeStreamParser parser = new ClaudeCodeStreamParser();
         AtomicBoolean emitted = new AtomicBoolean(false);
+        AtomicReference<String> resultSubtype = new AtomicReference<>();
         SpawnResult spawn = spawn(command, childEnv(config), streamTimeoutSeconds(), null, line -> {
             for (AgentEvent event : parser.parseLine(line)) {
                 if (event instanceof AgentEvent.TextDelta delta && !delta.content().isEmpty()) {
                     emitted.set(true);
                     tokenConsumer.accept(delta.content());
+                } else if (event instanceof AgentEvent.ResultMeta result) {
+                    resultSubtype.set(result.subtype());
                 }
             }
         }, null);
-        if (spawn.exitCode() != 0 && !emitted.get()) {
+        // A partial rewrite that already streamed is not a completion: the
+        // enhancer only falls back to the raw prompt when this channel
+        // throws, so accepting the truncated rewrite replaced the user's
+        // message with the CLI's failure residue. A terminal result frame
+        // with a failure subtype fails the same way even at exit code 0 —
+        // the same rule streamEvents applies through the event channel.
+        if (spawn.exitCode() != 0) {
             throw new LlmGatewayException(502, "llm.provider.cli_error",
                     binaryName() + " CLI failed: " + describeStderr(spawn.stderr()),
+                    "Check the provider credentials, base URL and model name.");
+        }
+        String subtype = resultSubtype.get();
+        if (subtype != null && !RESULT_SUBTYPE_SUCCESS.equals(subtype)) {
+            throw new LlmGatewayException(502, "llm.provider.cli_error",
+                    binaryName() + " CLI reported result subtype " + subtype,
                     "Check the provider credentials, base URL and model name.");
         }
         if (!emitted.get() && StringUtils.hasText(parser.fallbackText())) {

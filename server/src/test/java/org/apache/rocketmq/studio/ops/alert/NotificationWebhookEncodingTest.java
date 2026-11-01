@@ -50,6 +50,7 @@ import org.springframework.web.client.RestTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -109,7 +110,7 @@ class NotificationWebhookEncodingTest {
         when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
                 .thenReturn(List.of(row));
         when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
-                any(LocalDateTime.class), anyString())).thenReturn(1);
+                any(LocalDateTime.class), anyString(), anyInt())).thenReturn(1);
         when(mapper.update(any(), any())).thenReturn(1);
         when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
                 .level(AlertLevel.warning).title("Lag").description("high").instanceId("local").build()));

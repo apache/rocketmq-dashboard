@@ -38,13 +38,13 @@ import type { ColumnsType } from 'antd/es/table';
 import type { TableProps } from 'antd';
 
 import PageHeader from '../../components/PageHeader';
+import TagList from '../../components/TagList';
 import { useLang } from '../../i18n/LangContext';
 import type { ClientConnection } from '../../api/connections';
 import { listConnections } from '../../services/connectionsService';
 import { listRegistryClusters } from '../../services/clusterService';
 import type { ClusterInfo } from '../../api/cluster';
-import { formatDateTime } from '../../utils/format';
-import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { buildCsv, downloadCsv, localExportDateStamp, type CsvColumn } from '../../utils/download';
 import { describeThrownMessage } from '../../utils/apiError';
 import { tableScrollX } from '../../utils/table';
 import {
@@ -67,7 +67,7 @@ const typeConfig: Record<string, { color: string; label: string }> = {
 /**
  * One clipped line inside a diagnostics-table cell. The project-wide
  * `.ant-table-cell { white-space: nowrap }` keeps long values (trace-producer resource names,
- * client ids, risk descriptions) from wrapping, so without an explicit ellipsis they spill over
+ * client ids) from wrapping, so without an explicit ellipsis they spill over
  * the neighbouring column; each line clips itself and carries its full text in a `title`.
  */
 const diagnosticCellLine: CSSProperties = {
@@ -127,7 +127,6 @@ const CLIENT_CONNECTION_EXPORT_COLUMNS: CsvColumn<ClientConnection>[] = [
   { header: 'Address', value: (connection) => connection.address },
   { header: 'Language', value: (connection) => connection.language },
   { header: 'Version', value: (connection) => connection.version },
-  { header: 'Connected At', value: (connection) => connection.connectedAt },
   { header: 'Partial', value: (connection) => (connection.partial ? 'true' : 'false') },
 ];
 
@@ -170,6 +169,7 @@ const ClientsPage = () => {
   const [clusterFilter, setClusterFilter] = useState<string>('ALL');
   const [typeFilter, setTypeFilter] = useState<string>('ALL');
   const [selectedConnection, setSelectedConnection] = useState<ClientConnection | null>(null);
+  const [selectedIssue, setSelectedIssue] = useState<ClientConnectionIssue | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [registryLoadKey, setRegistryLoadKey] = useState(0);
   const [connectionLoadKey, setConnectionLoadKey] = useState(0);
@@ -256,7 +256,8 @@ const ClientsPage = () => {
       .catch((error) => {
         if (connectionRequestRef.current === requestId) {
           setConnections([]);
-          setClusterFilter('ALL');
+          // A failed read cannot change the scope the operator asked to inspect.
+          // Retain the filters so the existing Retry action repeats that same query.
           setSelectedConnection(null);
           setLoadError(describeThrownMessage(error) || DEFAULT_LOAD_ERROR);
         }
@@ -291,21 +292,17 @@ const ClientsPage = () => {
   const clusterConnections = useMemo(() => connections, [connections]);
 
   const connectionStats = useMemo(() => {
-    const instances = Array.from(
-      new Map(
-        clusterConnections.map((connection) => [
-          `${connection.type}:${connection.clientId ?? connection.address ?? connection.groupOrTopic}`,
-          connection,
-        ]),
-      ).values(),
-    );
+    // Every tile describes the connections the table below lists: the page header and the table
+    // footer both count these rows, and the diagnostics panel already reports the de-duplicated
+    // view (unique clients / addresses). Collapsing a client that serves several groups into one
+    // entry here made the summary disagree with both, e.g. 5 in the header of a 7-row page.
     return {
-      total: instances.length,
-      producers: instances.filter((connection) => connection.type === 'Producer').length,
-      consumers: instances.filter((connection) => connection.type === 'Consumer').length,
-      protocols: countBy(instances.map((connection) => connection.protocol)),
+      total: clusterConnections.length,
+      producers: clusterConnections.filter((connection) => connection.type === 'Producer').length,
+      consumers: clusterConnections.filter((connection) => connection.type === 'Consumer').length,
+      protocols: countBy(clusterConnections.map((connection) => connection.protocol)),
       languageVersions: countBy(
-        instances.map(
+        clusterConnections.map(
           (connection) =>
             `${connection.language ?? UNKNOWN_LANGUAGE} ${connection.version ?? UNKNOWN_LANGUAGE}`,
         ),
@@ -379,7 +376,7 @@ const ClientsPage = () => {
   const clampedCurrentPage = Math.min(currentPage, lastPage);
 
   const handleExport = () => {
-    const filename = `rocketmq-client-connections-${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename = `rocketmq-client-connections-${localExportDateStamp()}.csv`;
     const csv = buildCsv(CLIENT_CONNECTION_EXPORT_COLUMNS, exportConnections);
     downloadCsv(filename, csv);
   };
@@ -508,18 +505,6 @@ const ClientsPage = () => {
       render: displayMetadata,
     },
     {
-      title: t('cluster.heartbeat'),
-      dataIndex: 'connectedAt',
-      key: 'connectedAt',
-      width: 170,
-      sorter: (a, b) => (a.connectedAt ?? '').localeCompare(b.connectedAt ?? ''),
-      render: (d?: string | null) => (
-        <Text type="secondary" style={{ fontSize: 14 }}>
-          {d ? formatDateTime(d) : '-'}
-        </Text>
-      ),
-    },
-    {
       title: t('common.actions'),
       key: 'actions',
       width: 90,
@@ -553,18 +538,21 @@ const ClientsPage = () => {
       width: 220,
       // Unbounded resource names (_INNER_TRACE_PRODUCER-…-CONSUME-1) must clip inside the
       // cell: the project-wide `.ant-table-cell { white-space: nowrap }` otherwise lets them
-      // spill over the neighbouring column. Each line ellipsises on its own with a native
-      // title tooltip, the ConversationListModal title-column idiom.
+      // spill over the neighbouring column.
       ellipsis: { showTitle: false },
       render: (_: unknown, record) => (
-        <div style={{ minWidth: 0 }}>
-          <Text strong style={diagnosticCellLine} title={record.resource}>
-            {record.resource}
-          </Text>
-          <Text type="secondary" style={diagnosticCellLine}>
-            {record.type}
-          </Text>
-        </div>
+        <Text strong style={diagnosticCellLine} title={record.resource}>
+          {record.resource}
+        </Text>
+      ),
+    },
+    {
+      title: t('common.type'),
+      dataIndex: 'type',
+      key: 'resourceType',
+      width: 100,
+      render: (type: string) => (
+        <Text style={{ fontSize: 14 }}>{(typeConfig[type] ?? { label: type }).label}</Text>
       ),
     },
     {
@@ -586,15 +574,16 @@ const ClientsPage = () => {
       title: t('clients.protocol'),
       dataIndex: 'protocols',
       key: 'protocols',
+      // gRPC + Remoting 两个标签并排实测需 157px
       width: 160,
       render: (protocols: string[]) => (
-        <Space size={4} wrap>
-          {protocols.map((protocol) => (
-            <Tag key={protocol} color={protocolConfig[protocol]?.color ?? 'default'}>
-              {protocol}
-            </Tag>
-          ))}
-        </Space>
+        <TagList
+          items={protocols.map((protocol) => ({
+            key: protocol,
+            label: protocol,
+            color: protocolConfig[protocol]?.color ?? 'default',
+          }))}
+        />
       ),
     },
     {
@@ -602,18 +591,22 @@ const ClientsPage = () => {
       key: 'versions',
       width: 220,
       render: (_: unknown, record) => (
-        <Space size={4} wrap>
-          {record.languages.map((language) => (
-            <Tag key={language} color={languageConfig[language]?.color ?? 'default'}>
-              {languageConfig[language]?.label ?? language}
-            </Tag>
-          ))}
+        <Flex gap={4} wrap={false} align="center" style={{ minWidth: 0 }}>
+          <TagList
+            items={record.languages.map((language) => ({
+              key: language,
+              label: languageConfig[language]?.label ?? language,
+              color: languageConfig[language]?.color ?? 'default',
+            }))}
+            max={2}
+            tagMaxWidth={64}
+          />
           {record.versions.map((version) => (
             <Text key={version} code>
               {version}
             </Text>
           ))}
-        </Space>
+        </Flex>
       ),
     },
     {
@@ -639,17 +632,19 @@ const ClientsPage = () => {
       title: t('clients.diagnosticIssue'),
       key: 'issue',
       width: 260,
-      // The description is a full sentence; clipped to one line with the full text on hover,
-      // never wrapped (project table rule) and never spilling into the Client ID column.
+      // The title is the row's identity and the only click target: it opens the detail modal that
+      // carries the description. The cell itself stays one clipped line so the row height matches
+      // the other diagnostics tables.
       ellipsis: { showTitle: false },
       render: (_: unknown, record) => (
         <div style={{ minWidth: 0 }}>
-          <Text strong style={diagnosticCellLine} title={record.title}>
+          <Typography.Link
+            style={diagnosticCellLine}
+            title={record.title}
+            onClick={() => setSelectedIssue(record)}
+          >
             {record.title}
-          </Text>
-          <Text type="secondary" style={diagnosticCellLine} title={record.description}>
-            {record.description}
-          </Text>
+          </Typography.Link>
         </div>
       ),
     },
@@ -705,7 +700,7 @@ const ClientsPage = () => {
       {/* ─── Header ─── */}
       <PageHeader
         title={t('clients.title')}
-        subtitle={`${t('clients.title')} — ${filtered.length} connections`}
+        subtitle={t('clients.connectionCount', { count: filtered.length })}
       />
 
       {loadError && (
@@ -876,11 +871,14 @@ const ClientsPage = () => {
         <Flex gap={20} align="center" wrap="wrap" style={{ marginBottom: 16 }}>
           <Progress
             type="circle"
-            percent={clientDiagnostics.score}
+            // 健康分被扣到 0 时 antd 圆环不画任何弧线，看起来像「没算出来」的空组件，与旁边
+            // 「存在高风险 / 风险项 N」的结论自相矛盾（用户约定 2026-10-16）。弧线保底 2% 保证
+            // 始终有一段红色可见弧，环内文字仍显示真实分数并带 /100 标明量纲。
+            percent={Math.max(2, clientDiagnostics.score)}
             size={92}
             status={diagnosticProgressStatus}
             strokeColor={diagnosticStrokeColor}
-            format={(percent) => `${percent}`}
+            format={() => `${clientDiagnostics.score}/100`}
           />
           <div style={{ minWidth: 220, flex: '1 1 260px' }}>
             <Typography.Title level={5} style={{ margin: 0 }}>
@@ -1023,8 +1021,58 @@ const ClientsPage = () => {
             <Descriptions.Item label={t('common.version')}>
               {displayMetadata(selectedConnection.version)}
             </Descriptions.Item>
-            <Descriptions.Item label={t('cluster.heartbeat')}>
-              {selectedConnection.connectedAt ?? '-'}
+          </Descriptions>
+        )}
+      </Modal>
+
+      <Modal
+        title={t('clients.issueDetailTitle')}
+        open={Boolean(selectedIssue)}
+        onCancel={() => setSelectedIssue(null)}
+        footer={<Button onClick={() => setSelectedIssue(null)}>{t('common.close')}</Button>}
+        width={640}
+        destroyOnHidden
+      >
+        {selectedIssue && (
+          <Descriptions column={1} bordered size="small">
+            <Descriptions.Item label={t('clients.diagnosticSeverity')}>
+              <Tag color={issueSeverityColor[selectedIssue.severity]}>
+                {t(issueSeverityTextKey[selectedIssue.severity])}
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label={t('clients.diagnosticIssue')}>
+              <Text strong>{selectedIssue.title}</Text>
+            </Descriptions.Item>
+            <Descriptions.Item label={t('clients.issueDescription')}>
+              <Text>{selectedIssue.description}</Text>
+            </Descriptions.Item>
+            <Descriptions.Item label={t('clients.diagnosticRecommendations')}>
+              <Text>{selectedIssue.recommendation}</Text>
+            </Descriptions.Item>
+            {selectedIssue.clientId ? (
+              <Descriptions.Item label={t('clients.clientId')}>
+                <Text copyable style={{ fontFamily: 'monospace' }}>
+                  {selectedIssue.clientId}
+                </Text>
+              </Descriptions.Item>
+            ) : null}
+            {selectedIssue.resource ? (
+              <Descriptions.Item label={t('clients.groupOrTopic')}>
+                <Text>{selectedIssue.resource}</Text>
+              </Descriptions.Item>
+            ) : null}
+            <Descriptions.Item label={t('clients.diagnosticEvidence')}>
+              <Space size={4} wrap>
+                {selectedIssue.evidence.length === 0 ? (
+                  <Text type="secondary">-</Text>
+                ) : (
+                  selectedIssue.evidence.map((item) => (
+                    <Text key={item} code>
+                      {item}
+                    </Text>
+                  ))
+                )}
+              </Space>
             </Descriptions.Item>
           </Descriptions>
         )}

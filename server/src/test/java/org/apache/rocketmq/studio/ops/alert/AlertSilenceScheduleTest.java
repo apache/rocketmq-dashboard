@@ -147,6 +147,48 @@ class AlertSilenceScheduleTest {
         assertThat(AlertSilenceSchedule.activeUntil(silence, at("2027-11-07T05:45:00"))).isNull();
     }
 
+    @Test
+    void gapAdjustedStartDoesNotMoveTheConfiguredEndTest() {
+        AlertSilenceVO silence = recurring(AlertSilenceRecurrence.DAILY, "America/New_York", Set.of(),
+                "2026-03-07T07:30:00", "2026-03-07T09:00:00", "2026-03-12T00:00:00");
+
+        // 02:30 moves to 03:30 in the gap, but the configured 04:00 end still exists.
+        assertThat(AlertSilenceSchedule.activeUntil(silence, at("2026-03-08T07:45:00")))
+                .isEqualTo(at("2026-03-08T08:00:00"));
+        assertThat(AlertSilenceSchedule.activeUntil(silence, at("2026-03-08T08:15:00"))).isNull();
+        assertThat(AlertSilenceSchedule.activeUntil(silence, at("2026-03-09T06:45:00")))
+                .isEqualTo(at("2026-03-09T08:00:00"));
+    }
+
+    @Test
+    void weeklyWindowDoesNotExtendWhenItsStartFallsInAGapTest() {
+        AlertSilenceVO silence = recurring(AlertSilenceRecurrence.WEEKLY, "America/New_York", Set.of(7),
+                "2026-03-01T07:30:00", "2026-03-01T09:00:00", "2026-03-12T00:00:00");
+
+        assertThat(AlertSilenceSchedule.activeUntil(silence, at("2026-03-08T07:45:00")))
+                .isEqualTo(at("2026-03-08T08:00:00"));
+        assertThat(AlertSilenceSchedule.activeUntil(silence, at("2026-03-08T08:00:00"))).isNull();
+    }
+
+    @Test
+    void halfHourGapDoesNotMoveTheConfiguredEndTest() {
+        AlertSilenceVO silence = recurring(AlertSilenceRecurrence.DAILY, "Australia/Lord_Howe", Set.of(),
+                "2026-10-02T15:45:00", "2026-10-02T16:30:00", "2026-10-06T00:00:00");
+
+        // The October 4 gap moves 02:15 to 02:45; the end remains 03:00.
+        assertThat(AlertSilenceSchedule.activeUntil(silence, at("2026-10-03T15:50:00")))
+                .isEqualTo(at("2026-10-03T16:00:00"));
+        assertThat(AlertSilenceSchedule.activeUntil(silence, at("2026-10-03T16:15:00"))).isNull();
+    }
+
+    @Test
+    void gapThatMovesStartPastEndDoesNotCreateAnExtraWindowTest() {
+        AlertSilenceVO silence = recurring(AlertSilenceRecurrence.DAILY, "America/New_York", Set.of(),
+                "2026-03-07T07:30:00", "2026-03-07T08:15:00", "2026-03-12T00:00:00");
+
+        assertThat(AlertSilenceSchedule.activeUntil(silence, at("2026-03-08T07:45:00"))).isNull();
+    }
+
     private static AlertSilenceVO once(String start, String end) {
         return AlertSilenceVO.builder().startsAt(at(start)).endsAt(at(end))
                 .recurrence(AlertSilenceRecurrence.ONCE).recurrenceDays(Set.of()).build();

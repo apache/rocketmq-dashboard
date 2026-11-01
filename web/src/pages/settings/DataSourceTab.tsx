@@ -35,6 +35,7 @@ import { ApiOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-de
 import type { ColumnsType } from 'antd/es/table';
 
 import { useLang } from '../../i18n/LangContext';
+import { useCanWriteSettings } from '../../hooks/useCanWriteSettings';
 import StatusBadge from '../../components/StatusBadge';
 import {
   createDataSource,
@@ -48,7 +49,7 @@ import type { DataSource } from '../../api/settings';
 import { STATUS_MAP } from '../../constants/theme';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
-import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { buildCsv, downloadCsv, localExportDateStamp, type CsvColumn } from '../../utils/download';
 
 const { Text } = Typography;
 
@@ -117,6 +118,10 @@ const withoutSecrets = (values: DataSourceFormValues): Partial<DataSource> => {
 
 export const DataSourceTab = () => {
   const { t } = useLang();
+  // Data source writes are admin-only (POST/PUT/DELETE fall through to the admin requirement in
+  // AuthInterceptor), so a reader's test, save or delete could only ever come back 403. The controls
+  // stay disabled instead, the same way the other settings tabs treat the writes they own.
+  const canWriteSettings = useCanWriteSettings();
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -126,15 +131,24 @@ export const DataSourceTab = () => {
   const [typeFilter, setTypeFilter] = useState<string | undefined>();
   const [instances, setInstances] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadedQueryKey, setLoadedQueryKey] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingDataSource, setEditingDataSource] = useState<DataSource | null>(null);
   const [dsForm] = Form.useForm();
   const authValue = Form.useWatch('auth', dsForm);
   const [testingKeys, setTestingKeys] = useState<Set<string>>(() => new Set());
+  const modalTestSessionRef = useRef(0);
   const [submitting, setSubmitting] = useState(false);
+  // `submitting` only renders after validateFields resolves and React re-renders, so a second
+  // OK click inside that window would put the same create/update write on the wire twice.
+  // The ref locks the modal synchronously, before any await.
+  const submittingRef = useRef(false);
   const [exporting, setExporting] = useState(false);
   const requestSeqRef = useRef(0);
   const [deleteRefreshVersion, setDeleteRefreshVersion] = useState(0);
+  const queryKey = JSON.stringify([debouncedSearch, typeFilter, page, pageSize]);
+  const listActionsDisabled =
+    loading || search.trim() !== debouncedSearch || loadedQueryKey !== queryKey;
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -166,10 +180,12 @@ export const DataSourceTab = () => {
         }
         setDataSources(result.items);
         setTotal(result.total);
+        setLoadedQueryKey(queryKey);
       } catch {
         if (requestId === requestSeqRef.current) {
           setDataSources([]);
           setTotal(0);
+          setLoadedQueryKey(null);
           message.error(t('settings.dataSourceLoadFailed'));
         }
       } finally {
@@ -178,7 +194,7 @@ export const DataSourceTab = () => {
         }
       }
     })();
-  }, [debouncedSearch, page, pageSize, t, typeFilter]);
+  }, [debouncedSearch, page, pageSize, queryKey, t, typeFilter]);
 
   useEffect(() => {
     void loadDataSources();
@@ -187,6 +203,7 @@ export const DataSourceTab = () => {
   useEffect(
     () => () => {
       requestSeqRef.current += 1;
+      modalTestSessionRef.current += 1;
     },
     [],
   );
@@ -208,7 +225,12 @@ export const DataSourceTab = () => {
   const handleTestConnection = async (
     data: Pick<DataSource, 'type' | 'url' | 'auth'> & Partial<DataSource>,
     key: string,
+    modalSession = modalTestSessionRef.current,
   ) => {
+    const isCurrent = () => key !== 'modal' || modalSession === modalTestSessionRef.current;
+    if (!isCurrent()) return;
+    if (key !== 'modal' && listActionsDisabled) return;
+    if (!canWriteSettings) return;
     if (key !== 'modal' && authNeedsSecret(data.auth)) {
       message.warning(t('settings.dataSourceAuthTestHint'));
       return;
@@ -216,20 +238,41 @@ export const DataSourceTab = () => {
     setTestingKeys((previous) => new Set(previous).add(key));
     try {
       const result = await testDataSource(data);
+      if (!isCurrent()) return;
       if (result.success) message.success(result.message);
       else message.error(result.message);
     } catch {
-      message.error(t('settings.connectionTestFailed'));
+      if (isCurrent()) message.error(t('settings.connectionTestFailed'));
     } finally {
-      setTestingKeys((previous) => {
-        const next = new Set(previous);
-        next.delete(key);
-        return next;
-      });
+      if (isCurrent()) {
+        setTestingKeys((previous) => {
+          const next = new Set(previous);
+          next.delete(key);
+          return next;
+        });
+      }
     }
   };
 
+  const resetModalTest = () => {
+    // A closed dialog's request must not notify or clear a newer dialog's spinner.
+    modalTestSessionRef.current += 1;
+    setTestingKeys((previous) => {
+      const next = new Set(previous);
+      next.delete('modal');
+      return next;
+    });
+  };
+
+  const closeModal = () => {
+    resetModalTest();
+    setModalOpen(false);
+    setEditingDataSource(null);
+    dsForm.resetFields();
+  };
+
   const openCreateModal = () => {
+    resetModalTest();
     setEditingDataSource(null);
     dsForm.resetFields();
     dsForm.setFieldValue('auth', 'None');
@@ -237,18 +280,26 @@ export const DataSourceTab = () => {
   };
 
   const openEditModal = (dataSource: DataSource) => {
+    if (listActionsDisabled) return;
+    resetModalTest();
     setEditingDataSource(dataSource);
     dsForm.setFieldsValue(dataSource);
     setModalOpen(true);
   };
 
   const handleSubmit = async () => {
+    // The role guard runs before the re-entrancy lock: a reader who reaches this handler (keyboard
+    // or assistive paths bypass `disabled`) must not take the lock and never release it, wedging
+    // the dialog for admins too. CloudCredentialTab orders its guards the same way.
+    if (!canWriteSettings) return;
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
     try {
       // Credentials are supplied per metrics query and are only used here by the
       // connection test. Saving metadata must not require re-entering them.
       const values = await dsForm.validateFields(saveFieldNames);
       const dataSourceValues = withoutSecrets(values);
-      setSubmitting(true);
       const saved = editingDataSource
         ? await updateDataSource({ ...editingDataSource, ...dataSourceValues })
         : await createDataSource(dataSourceValues);
@@ -263,19 +314,21 @@ export const DataSourceTab = () => {
       message.success(
         t(editingDataSource ? 'settings.dataSourceUpdated' : 'settings.dataSourceAdded'),
       );
-      setModalOpen(false);
-      dsForm.resetFields();
+      closeModal();
     } catch (error) {
       if (error && typeof error === 'object' && 'errorFields' in error) {
         return; // validation failure; antd already shows field-level errors
       }
       message.error(t('settings.dataSourceSaveFailed'));
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
 
   const handleDelete = async (dataSource: DataSource) => {
+    if (listActionsDisabled) return;
+    if (!canWriteSettings) return;
     try {
       await deleteDataSource(dataSource.key);
       // Refresh through the effect so a completed deletion uses the current filters/page,
@@ -292,8 +345,9 @@ export const DataSourceTab = () => {
     return instanceIds
       .map(
         (instanceId) =>
-          instances.find(
-            (instance) => instance.name === instanceId || String(instance.id) === instanceId,
+          (
+            instances.find((instance) => instance.name === instanceId) ??
+            instances.find((instance) => String(instance.id) === instanceId)
           )?.name ?? instanceId,
       )
       .join('、');
@@ -305,6 +359,7 @@ export const DataSourceTab = () => {
   };
 
   const handleExport = async () => {
+    if (listActionsDisabled || total === 0) return;
     setExporting(true);
     try {
       const exported = await listAllDataSources({
@@ -316,7 +371,7 @@ export const DataSourceTab = () => {
         instanceNames: formatInstanceIds(source.instanceIds),
         statusLabel: formatStatus(source.status),
       }));
-      const filename = `rocketmq-data-sources-${new Date().toISOString().slice(0, 10)}.csv`;
+      const filename = `rocketmq-data-sources-${localExportDateStamp()}.csv`;
       downloadCsv(filename, buildCsv(DATA_SOURCE_EXPORT_COLUMNS, rows));
       message.success(t('settings.dataSourceExported', { total: rows.length }));
     } catch {
@@ -363,7 +418,7 @@ export const DataSourceTab = () => {
             size="small"
             icon={<ApiOutlined />}
             loading={testingKeys.has(record.key)}
-            disabled={authNeedsSecret(record.auth)}
+            disabled={listActionsDisabled || authNeedsSecret(record.auth) || !canWriteSettings}
             title={authNeedsSecret(record.auth) ? t('settings.dataSourceAuthTestHint') : undefined}
             onClick={() => void handleTestConnection(record, record.key)}
           >
@@ -373,6 +428,7 @@ export const DataSourceTab = () => {
             type="link"
             size="small"
             icon={<EditOutlined />}
+            disabled={listActionsDisabled || !canWriteSettings}
             onClick={() => openEditModal(record)}
           >
             {t('common.edit')}
@@ -383,7 +439,13 @@ export const DataSourceTab = () => {
             okText={t('settings.confirmAction')}
             cancelText={t('common.cancel')}
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+            <Button
+              type="link"
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              disabled={listActionsDisabled || !canWriteSettings}
+            >
               {t('common.delete')}
             </Button>
           </Popconfirm>
@@ -424,7 +486,7 @@ export const DataSourceTab = () => {
             icon={<DownloadSimple size={14} />}
             onClick={() => void handleExport()}
             loading={exporting}
-            disabled={loading || total === 0}
+            disabled={listActionsDisabled || total === 0}
           >
             {t('common.export')}
           </Button>
@@ -432,7 +494,7 @@ export const DataSourceTab = () => {
             type="primary"
             icon={<PlusOutlined />}
             onClick={openCreateModal}
-            disabled={loading}
+            disabled={loading || !canWriteSettings}
           >
             {t('settings.addDataSource')}
           </Button>
@@ -466,12 +528,9 @@ export const DataSourceTab = () => {
       <Modal
         title={t(editingDataSource ? 'settings.editDataSource' : 'settings.addDataSource')}
         open={modalOpen}
-        onCancel={() => {
-          setModalOpen(false);
-          setEditingDataSource(null);
-          dsForm.resetFields();
-        }}
+        onCancel={closeModal}
         onOk={() => void handleSubmit()}
+        okButtonProps={{ disabled: !canWriteSettings }}
         confirmLoading={submitting}
         destroyOnHidden
       >
@@ -574,9 +633,10 @@ export const DataSourceTab = () => {
             icon={<ApiOutlined />}
             loading={testingKeys.has('modal')}
             onClick={() => {
+              const modalSession = modalTestSessionRef.current;
               void dsForm
                 .validateFields(testFieldNames(authValue))
-                .then((values) => handleTestConnection(values, 'modal'))
+                .then((values) => handleTestConnection(values, 'modal', modalSession))
                 .catch(() => undefined);
             }}
             style={{ marginTop: 8 }}

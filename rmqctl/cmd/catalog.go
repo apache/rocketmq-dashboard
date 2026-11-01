@@ -315,6 +315,9 @@ func schemaFlagUsage(field toolcatalog.Field) string {
 	if field.HasMinimum {
 		usage += fmt.Sprintf(" (minimum: %g)", field.Minimum)
 	}
+	if field.HasMaximum {
+		usage += fmt.Sprintf(" (maximum: %g)", field.Maximum)
+	}
 	if field.Required {
 		usage += " (required)"
 	}

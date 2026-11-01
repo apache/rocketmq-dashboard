@@ -80,6 +80,35 @@ class DLQMessageExcelRowTest {
         assertThat(cell.codePoints()).noneMatch(codePoint -> codePoint >= 0xD800 && codePoint <= 0xDFFF);
     }
 
+    @Test
+    void shouldClampAnOversizedBodyBase64Test() {
+        // A binary message carries its raw bytes as Base64 in the Body Base64 column. Base64 is pure
+        // ASCII so there is no surrogate pair to worry about, but a body over ~24 KB still encodes to
+        // more than POI's 32767-char cell limit and would abort the whole export with a 502.
+        DLQMessageVO message = DLQMessageVO.builder()
+                .msgId("binary-huge")
+                .storeTime(1_700_000_000_000L)
+                .bodyBase64("A".repeat(40_000))
+                .build();
+
+        String cell = DLQMessageExcelRow.from(message).getBodyBase64();
+
+        assertThat(cell).hasSize(32_767).endsWith("...[truncated]");
+    }
+
+    @Test
+    void shouldLeaveAShortBodyBase64UntouchedTest() {
+        DLQMessageVO message = DLQMessageVO.builder()
+                .msgId("binary-small")
+                .storeTime(1_700_000_000_000L)
+                .bodyBase64("wyg=")
+                .build();
+
+        String cell = DLQMessageExcelRow.from(message).getBodyBase64();
+
+        assertThat(cell).isEqualTo("wyg=");
+    }
+
     private static Map<String, String> firstDataRowByColumnName(List<DLQMessageVO> messages) {
         List<Map<Integer, String>> rows = readBack(messages);
         Map<Integer, String> header = rows.get(0);

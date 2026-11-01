@@ -119,6 +119,11 @@ const readCsvRows = (content: string): ParsedCsvRow[] => {
   const pushRow = () => {
     const nextCells = [...cells, cell];
     if (nextCells.some((value) => value.trim() !== '')) {
+      // The first nonblank row is the header; stop at the first excess data record.
+      // Do not parse or allocate records for the rest of a file that cannot be imported.
+      if (rows.length >= RESOURCE_IMPORT_ROW_LIMIT + 1) {
+        throw new Error(`一次最多导入 ${RESOURCE_IMPORT_ROW_LIMIT} 行`);
+      }
       rows.push({
         lineNumber: rowStartLine,
         cells: nextCells,
@@ -215,7 +220,9 @@ export const parseCsvTable = (content: string): CsvRecord[] => {
     return {
       lineNumber: row.lineNumber,
       values: headers.reduce<Record<string, string>>((acc, header, index) => {
-        acc[header] = restoreFormulaSafeCell(row.cells[index] ?? '').trim();
+        const value = restoreFormulaSafeCell(row.cells[index] ?? '');
+        // Remark is user-authored text; the other columns are identifiers or controlled values.
+        acc[header] = header === 'Remark' ? value : value.trim();
         return acc;
       }, {}),
     };
@@ -223,9 +230,6 @@ export const parseCsvTable = (content: string): CsvRecord[] => {
 
   if (records.length === 0) {
     throw new Error('CSV 没有可导入的数据行');
-  }
-  if (records.length > RESOURCE_IMPORT_ROW_LIMIT) {
-    throw new Error(`一次最多导入 ${RESOURCE_IMPORT_ROW_LIMIT} 行`);
   }
 
   return records;
@@ -278,7 +282,7 @@ export const validateTopicCsvImport = (
       rowErrors,
     );
     const perm = normalizeValue(record.values.Permission) || 'RW';
-    const remark = normalizeValue(record.values.Remark);
+    const remark = record.values.Remark ?? '';
     const duplicateMessage = duplicateMessages.get(record.lineNumber);
     if (duplicateMessage) rowErrors.push(duplicateMessage);
 

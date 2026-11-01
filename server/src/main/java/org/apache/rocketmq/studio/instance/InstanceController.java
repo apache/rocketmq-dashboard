@@ -43,8 +43,9 @@ public class InstanceController {
     @GetMapping
     public Result<List<InstanceVO>> listInstances(
             @RequestParam(required = false) InstanceType type,
-            @RequestParam(required = false) String search) {
-        return Result.ok(instanceService.listInstances(type, search));
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false, defaultValue = "false") boolean withCounts) {
+        return Result.ok(instanceService.listInstances(type, search, withCounts));
     }
 
     @GetMapping("/{instanceId}/capabilities")

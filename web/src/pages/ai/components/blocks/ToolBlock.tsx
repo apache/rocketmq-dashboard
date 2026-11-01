@@ -15,14 +15,16 @@
  * limitations under the License.
  */
 
-import { memo, type CSSProperties } from 'react';
-import { Progress, Tag, theme } from 'antd';
-import { CaretRight, CheckCircle, CircleNotch, XCircle } from '@phosphor-icons/react';
+import { memo, useEffect, useState, type CSSProperties } from 'react';
+import { Tag, theme } from 'antd';
+import { CaretRight, CheckCircle, CircleNotch, MinusCircle, XCircle } from '@phosphor-icons/react';
 import { useLang } from '../../../../i18n/LangContext';
 import type { McpTool } from '../../../../api/ai';
+import type { RunStatus } from '../../../../api/aiEvents';
 import type { ToolBlock as ToolBlockData } from '../../render/blocks';
 import { toolDisplayName } from '../../render/blocks';
 import { formatBytes } from '../../../../utils/format';
+import ToolOutput from './ToolOutput';
 
 /**
  * One tool call: what the agent invoked, with which arguments, and what came back.
@@ -78,6 +80,7 @@ const usePreStyle = (): CSSProperties => {
 
 export interface ToolBlockProps {
   block: ToolBlockData;
+  runStatus?: RunStatus;
   /** Catalog from `listTools()`, used for the risk tag. Optional: no catalog, no tag. */
   toolCatalog?: readonly McpTool[];
 }
@@ -86,6 +89,19 @@ export interface ToolBlockProps {
 function formatDuration(durationMs: number): string {
   if (!Number.isFinite(durationMs) || durationMs < 0) return '-';
   return durationMs < 1000 ? `${Math.round(durationMs)} ms` : `${(durationMs / 1000).toFixed(1)} s`;
+}
+
+/** A call this long is suspicious; this long is probably stuck. Thresholds match mq-hub's tool card. */
+const WARN_ELAPSED_MS = 5 * 60 * 1000;
+const STUCK_ELAPSED_MS = 10 * 60 * 1000;
+
+/** Elapsed as a stopwatch reads: seconds, then minutes and seconds, then hours. */
+function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  if (total < 60) return `${total}s`;
+  const minutes = Math.floor(total / 60);
+  if (minutes < 60) return `${minutes}m ${total % 60}s`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
 /**
@@ -97,22 +113,57 @@ function resolveCatalogTool(
   catalog: readonly McpTool[] | undefined,
   tool: string,
 ): McpTool | undefined {
-  if (!catalog || catalog.length === 0) return undefined;
+  if (typeof tool !== 'string' || !tool.trim() || !catalog || catalog.length === 0)
+    return undefined;
   const exact = catalog.find((entry) => entry.name === tool);
   if (exact) return exact;
   const display = toolDisplayName(tool);
   return catalog.find((entry) => toolDisplayName(entry.name) === display);
 }
 
-const ToolBlock = ({ block, toolCatalog }: ToolBlockProps) => {
+const ToolBlock = ({ block, toolCatalog, runStatus }: ToolBlockProps) => {
   const { t } = useLang();
   const { token } = theme.useToken();
   const preStyle = usePreStyle();
 
   const catalogTool = resolveCatalogTool(toolCatalog, block.tool);
-  const running = block.status === 'running';
+  const ended = runStatus === 'COMPLETED' || runStatus === 'STOPPED' || runStatus === 'FAILED';
+  const missingResult = block.status === 'running' && ended;
+  const running = block.status === 'running' && !ended;
   const failed = block.status === 'done' && block.success === false;
-  const displayName = toolDisplayName(block.tool);
+  const displayName = toolDisplayName(block.tool) || t('ai.tool.unknownName');
+
+  // A client-side stopwatch: neither wire vocabulary carries a tool_start timestamp, and a finished
+  // card already reports the authoritative durationMs — so only the running card needs a clock, and
+  // rejoining a call in flight counts from the reconnect (the elapsed hint says so out loud).
+  const [expanded, setExpanded] = useState(false);
+  const [showInput, setShowInput] = useState(false);
+  const [showOutput, setShowOutput] = useState(false);
+  const [now, setNow] = useState(0);
+  // The start stamp is state, not a ref: reading a ref during render is a react-hooks violation,
+  // and the stopwatch only needs it while `running` holds.
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (!running) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setStartedAt(null);
+      return undefined;
+    }
+    const started = Date.now();
+
+    setStartedAt((previous) => previous ?? started);
+
+    setNow(started);
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [running]);
+  const elapsedMs = running && startedAt !== null ? Math.max(0, now - startedAt) : 0;
+  const elapsedColor =
+    elapsedMs >= STUCK_ELAPSED_MS
+      ? token.colorError
+      : elapsedMs >= WARN_ELAPSED_MS
+        ? token.colorWarning
+        : token.colorTextTertiary;
 
   const inputText =
     block.input === null || block.input === undefined
@@ -121,20 +172,29 @@ const ToolBlock = ({ block, toolCatalog }: ToolBlockProps) => {
         ? block.input
         : JSON.stringify(block.input, null, 2);
 
-  const summaryStyle: CSSProperties = {
-    cursor: 'pointer',
-    color: token.colorTextSecondary,
+  const panelToggleStyle: CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    border: 0,
+    padding: 0,
+    background: 'transparent',
+    color: token.colorTextTertiary,
     fontSize: 14,
-    fontWeight: 500,
-    userSelect: 'none',
+    cursor: 'pointer',
+    flexShrink: 0,
   };
+  const panelCaret = (open: boolean): CSSProperties => ({
+    transform: open ? 'rotate(90deg)' : undefined,
+    transition: 'transform 0.2s',
+  });
 
   return (
-    <details
+    <div
       data-testid="ai-tool-block"
-      data-status={block.status}
+      data-status={missingResult ? 'missing-result' : block.status}
+      data-expanded={expanded || undefined}
       className="ai-tool-card"
-      open={running || undefined}
       style={{
         padding: '8px 12px',
         border: `1px solid ${token.colorBorderSecondary}`,
@@ -142,11 +202,14 @@ const ToolBlock = ({ block, toolCatalog }: ToolBlockProps) => {
         background: token.colorFillQuaternary,
       }}
     >
-      {/* Collapsed the card is exactly one line — icon, name, status, duration — so a finished
-          call stays out of the reader's way; expanding reveals the arguments and the result.
-          While running it is forced open so the progress line is visible. */}
-      <summary
+      {/* Collapsed the card is exactly ONE line: identity and verdict on the left, the two panel
+          switches on the right. The panels used to be <details> sections of their own, which spent
+          two extra rows per call saying nothing a finished call needs; as right-hand switches the
+          same words cost zero height. The panels stay mounted (hidden) so a reader can open either
+          without the card re-laying-out, and so screen readers keep the sections addressable. */}
+      <div
         data-testid="ai-tool-summary"
+        onClick={() => setExpanded((value) => !value)}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -154,12 +217,13 @@ const ToolBlock = ({ block, toolCatalog }: ToolBlockProps) => {
           flexWrap: 'nowrap',
           minWidth: 0,
           cursor: 'pointer',
-          listStyle: 'none',
           userSelect: 'none',
         }}
       >
         {running ? (
           <CircleNotch size={16} className="ai-icon-spin" style={{ color: token.colorPrimary }} />
+        ) : missingResult ? (
+          <MinusCircle size={16} style={{ color: token.colorTextSecondary }} />
         ) : failed ? (
           <XCircle size={16} weight="fill" style={{ color: token.colorError }} />
         ) : (
@@ -190,40 +254,96 @@ const ToolBlock = ({ block, toolCatalog }: ToolBlockProps) => {
         )}
         <Tag
           data-testid="ai-tool-status"
-          color={running ? 'processing' : failed ? 'error' : 'success'}
+          color={running ? 'processing' : missingResult ? 'default' : failed ? 'error' : 'success'}
           style={{ marginInlineEnd: 0, fontSize: 14, flexShrink: 0 }}
         >
-          {running ? t('ai.tool.running') : failed ? t('ai.tool.failed') : t('ai.tool.success')}
+          {running
+            ? t('ai.tool.running')
+            : missingResult
+              ? t('ai.tool.missingResult')
+              : failed
+                ? t('ai.tool.failed')
+                : t('ai.tool.success')}
         </Tag>
-        {block.durationMs !== null && (
-          <span style={{ fontSize: 14, color: token.colorTextTertiary, flexShrink: 0 }}>
-            {formatDuration(block.durationMs)}
+        {running ? (
+          <span
+            data-testid="ai-tool-elapsed"
+            title={t('ai.tool.elapsedHint')}
+            style={{
+              fontSize: 14,
+              color: elapsedColor,
+              flexShrink: 0,
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {formatElapsed(elapsedMs)}
           </span>
+        ) : (
+          block.durationMs !== null && (
+            <span style={{ fontSize: 14, color: token.colorTextTertiary, flexShrink: 0 }}>
+              {formatDuration(block.durationMs)}
+            </span>
+          )
+        )}
+        {running && elapsedMs >= STUCK_ELAPSED_MS && (
+          <Tag
+            data-testid="ai-tool-may-timeout"
+            color="error"
+            style={{ marginInlineEnd: 0, fontSize: 14, flexShrink: 0 }}
+          >
+            {t('ai.tool.mayTimeout')}
+          </Tag>
         )}
         {block.truncated && (
           <Tag data-testid="ai-tool-truncated" style={{ marginInlineEnd: 0, fontSize: 14 }}>
             {t('ai.tool.truncated', { size: formatBytes(block.outputBytes ?? 0) })}
           </Tag>
         )}
-        <CaretRight
-          size={12}
-          className="ai-tool-chevron"
-          style={{ color: token.colorTextTertiary, flexShrink: 0, marginLeft: 'auto' }}
-        />
-      </summary>
+        <span
+          style={{
+            marginLeft: 'auto',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 10,
+            flexShrink: 0,
+          }}
+        >
+          <button
+            type="button"
+            data-testid="ai-tool-toggle-input"
+            aria-expanded={showInput}
+            onClick={(event) => {
+              event.stopPropagation();
+              setShowInput((value) => !value);
+            }}
+            style={panelToggleStyle}
+          >
+            {t('ai.tool.input')}
+            <CaretRight size={10} style={panelCaret(showInput)} />
+          </button>
+          <button
+            type="button"
+            data-testid="ai-tool-toggle-output"
+            aria-expanded={showOutput}
+            onClick={(event) => {
+              event.stopPropagation();
+              setShowOutput((value) => !value);
+            }}
+            style={panelToggleStyle}
+          >
+            {t('ai.tool.output')}
+            <CaretRight size={10} style={panelCaret(showOutput)} />
+          </button>
+          <CaretRight
+            size={12}
+            className="ai-tool-chevron"
+            style={{ color: token.colorTextTertiary }}
+          />
+        </span>
+      </div>
 
-      {catalogTool?.description && (
-        <div style={{ marginTop: 4, fontSize: 14, color: token.colorTextTertiary }}>
-          {catalogTool.description}
-        </div>
-      )}
-
-      {running && (
-        <div data-testid="ai-tool-progress" style={{ marginTop: 8 }}>
-          <Progress percent={100} status="active" showInfo={false} strokeWidth={2} />
-        </div>
-      )}
-
+      {/* A failure is never hidden behind a toggle: the operator scanning a transcript must see it
+          without interacting with the card. */}
       {block.error && (
         <div
           data-testid="ai-tool-error"
@@ -233,10 +353,15 @@ const ToolBlock = ({ block, toolCatalog }: ToolBlockProps) => {
         </div>
       )}
 
-      <details data-testid="ai-tool-input" style={{ marginTop: 8 }}>
-        <summary style={summaryStyle}>{t('ai.tool.input')}</summary>
+      {expanded && catalogTool?.description && (
+        <div style={{ marginTop: 4, fontSize: 14, color: token.colorTextTertiary }}>
+          {catalogTool.description}
+        </div>
+      )}
+
+      <div data-testid="ai-tool-input" hidden={!showInput} style={{ marginTop: 8 }}>
         {inputText === null ? (
-          <div style={{ marginTop: 6, fontSize: 14, color: token.colorTextTertiary }}>
+          <div style={{ fontSize: 14, color: token.colorTextTertiary }}>
             {t('ai.tool.inputUnavailable')}
           </div>
         ) : (
@@ -244,21 +369,20 @@ const ToolBlock = ({ block, toolCatalog }: ToolBlockProps) => {
             {inputText}
           </pre>
         )}
-      </details>
+      </div>
 
-      <details data-testid="ai-tool-output" style={{ marginTop: 8 }}>
-        <summary style={summaryStyle}>{t('ai.tool.output')}</summary>
+      <div data-testid="ai-tool-output" hidden={!showOutput} style={{ marginTop: 8 }}>
         {block.output === null ? (
-          <div style={{ marginTop: 6, fontSize: 14, color: token.colorTextTertiary }}>
-            {t('ai.tool.outputPending')}
+          <div style={{ fontSize: 14, color: token.colorTextTertiary }}>
+            {t(missingResult ? 'ai.tool.outputMissing' : 'ai.tool.outputPending')}
           </div>
         ) : (
-          <pre data-testid="tool-result" style={{ ...preStyle, marginTop: 6 }}>
-            {block.output}
-          </pre>
+          <div style={{ marginTop: 6 }}>
+            <ToolOutput text={block.output} preStyle={preStyle} />
+          </div>
         )}
-      </details>
-    </details>
+      </div>
+    </div>
   );
 };
 

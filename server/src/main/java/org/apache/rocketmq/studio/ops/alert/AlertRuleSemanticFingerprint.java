@@ -2,9 +2,21 @@
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package org.apache.rocketmq.studio.ops.alert;
+
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -23,13 +35,28 @@ final class AlertRuleSemanticFingerprint {
     }
 
     static String of(AlertRuleVO rule) {
+        return of(rule, normalizeLower(rule.getDuration()));
+    }
+
+    /** Runtime equivalence only; keep the persisted unique fingerprint's existing format. */
+    static String evaluationIdentity(AlertRuleVO rule) {
+        String duration = normalizeLower(rule.getDuration());
+        try {
+            duration = AlertRuleDuration.parse(duration).toString();
+        } catch (BusinessException invalidLegacyDuration) {
+            // Legacy external rules may contain invalid text; comparing identities must still work.
+        }
+        return of(rule, duration);
+    }
+
+    private static String of(AlertRuleVO rule, String duration) {
         StringBuilder value = new StringBuilder();
         append(value, rule.getDomain() == null ? AlertDomain.BUSINESS.name() : rule.getDomain().name());
         append(value, normalize(rule.getInstanceId()));
         append(value, normalize(rule.getMetric()));
         append(value, normalizeUpper(rule.getOperator()));
         append(value, normalizeThreshold(rule));
-        append(value, normalizeLower(rule.getDuration()));
+        append(value, duration);
         append(value, normalizeUpper(defaultIfBlank(rule.getAggregation(), "LAST")));
         append(value, Integer.toString(Math.max(0, rule.getWindowSeconds())));
         append(value, normalize(rule.getBrokerName()));

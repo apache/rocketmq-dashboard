@@ -40,7 +40,8 @@ vi.mock('../../../api/cloudCredential', () => ({
   updateCloudCredential: vi.fn(),
 }));
 
-vi.mock('../../../utils/download', () => ({
+vi.mock('../../../utils/download', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../utils/download')>()),
   downloadBlob: vi.fn(),
 }));
 
@@ -99,7 +100,7 @@ describe('CloudCredentialTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.removeItem(LANGUAGE_STORAGE_KEY);
-    vi.mocked(listCloudCredentials).mockResolvedValue(credentials);
+    vi.mocked(listCloudCredentials).mockReset().mockResolvedValue(credentials);
   });
 
   it('renders masked credentials from the backend', async () => {
@@ -212,7 +213,9 @@ describe('CloudCredentialTab', () => {
     expect(error.closest('.ant-alert')).not.toBeNull();
     expect(screen.queryByText('aliyun-test')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /删除/ })).not.toBeInTheDocument();
-    expect(document.querySelector('.ant-spin-spinning')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(document.querySelector('.ant-spin-spinning')).not.toBeInTheDocument(),
+    );
 
     await user.click(screen.getByRole('button', { name: /^重\s*试$/ }));
     expect(await screen.findByText('tencent-prod')).toBeInTheDocument();
@@ -241,7 +244,9 @@ describe('CloudCredentialTab', () => {
     const error = await screen.findByText('云凭据加载失败，请稍后重试');
     expect(error.closest('.ant-alert')).not.toBeNull();
     expect(screen.queryByText('aliyun-test')).not.toBeInTheDocument();
-    expect(document.querySelector('.ant-spin-spinning')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(document.querySelector('.ant-spin-spinning')).not.toBeInTheDocument(),
+    );
 
     await user.click(screen.getByRole('button', { name: /^重\s*试$/ }));
     await waitFor(() => expect(listCloudCredentials).toHaveBeenCalledTimes(2));
@@ -529,6 +534,26 @@ describe('CloudCredentialTab', () => {
     await user.click(screen.getByRole('button', { name: /导出/ }));
 
     expect(await screen.findByText('导出云凭据失败，请稍后重试')).toBeInTheDocument();
+    expect(downloadBlob).not.toHaveBeenCalled();
+  });
+
+  it('surfaces the server reason when a credential export is refused', async () => {
+    vi.mocked(exportCloudCredentials).mockRejectedValueOnce({
+      response: {
+        data: {
+          code: 400,
+          message: 'Cloud credential export exceeds the maximum of 500 records; narrow the filters',
+        },
+      },
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderTab();
+    await waitFor(() => expect(listCloudCredentials).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+
+    expect(await screen.findByText(/narrow the filters/)).toBeInTheDocument();
+    expect(screen.queryByText('导出云凭据失败，请稍后重试')).not.toBeInTheDocument();
     expect(downloadBlob).not.toHaveBeenCalled();
   });
 });

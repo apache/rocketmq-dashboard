@@ -1,3 +1,20 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import client from './client';
 
 // Matches mock/acl.ts
@@ -142,5 +159,35 @@ export async function examineBrokerClusterAclConfig(clusterId: string) {
 
 export async function createAndUpdatePlainAccessConfig(data: Partial<PlainAccessConfig>) {
   const res = await client.post<{ data: PlainAccessConfig }>('/acl/plain-access-config', data);
+  return res.data.data;
+}
+
+export interface PushAclBrokerOutcome {
+  broker: string;
+  success: boolean;
+  error?: string | null;
+}
+
+export interface PushAclAccountOutcome {
+  username: string;
+  subject: string;
+  policyCount: number;
+  skipped: string[];
+  brokers: PushAclBrokerOutcome[];
+}
+
+export interface PushAclToBrokerResult {
+  instanceId: string;
+  brokers: string[];
+  pushed: number;
+  failed: number;
+  accounts: PushAclAccountOutcome[];
+}
+
+/** Writes every stored ACL account of the instance to its master brokers (additive upsert). */
+export async function pushAclToBroker(instanceId: string) {
+  const res = await client.post<{ data: PushAclToBrokerResult }>('/acl/push-to-broker', {
+    instanceId,
+  });
   return res.data.data;
 }

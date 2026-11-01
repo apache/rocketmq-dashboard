@@ -34,6 +34,8 @@ public class RmqGroup {
 
     private String instanceId;
 
+    private String domain;
+
     private String name;
 
     private String consumeType;

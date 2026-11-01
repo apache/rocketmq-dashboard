@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getLlmConfig, getLlmModels, type LlmConfig } from '../../../api/llm';
 import type { AgentEngine } from '../../../stores/engineStore';
 
@@ -68,6 +68,9 @@ export function useLlmRuntime(options: UseLlmRuntimeOptions): UseLlmRuntimeResul
   const { enabled } = options;
   const [config, setConfig] = useState<LlmConfig | null>(null);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  // A catalog load can finish after the home-page draft was applied. Keep its
+  // added options separate so replacing the catalog does not discard them.
+  const [handoffModelOptions, setHandoffModelOptions] = useState<ModelOption[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState('');
 
@@ -80,7 +83,7 @@ export function useLlmRuntime(options: UseLlmRuntimeOptions): UseLlmRuntimeResul
 
   const selectModel = useCallback((model: string) => {
     setSelectedModel(model);
-    setModelOptions((current) =>
+    setHandoffModelOptions((current) =>
       current.some((option) => option.value === model)
         ? current
         : [{ value: model, label: model }, ...current],
@@ -96,6 +99,7 @@ export function useLlmRuntime(options: UseLlmRuntimeOptions): UseLlmRuntimeResul
     if (!enabled) {
       setConfig(null);
       setModelOptions([]);
+      setHandoffModelOptions([]);
       setSelectedModel('');
       setModelsLoading(false);
       return;
@@ -137,10 +141,17 @@ export function useLlmRuntime(options: UseLlmRuntimeOptions): UseLlmRuntimeResul
   }, [load]);
 
   const llmReady = Boolean((config?.ready ?? config?.enabled) && selectedModel);
+  const selectableModelOptions = useMemo(() => {
+    const catalogIds = new Set(modelOptions.map((option) => option.value));
+    return [
+      ...handoffModelOptions.filter((option) => !catalogIds.has(option.value)),
+      ...modelOptions,
+    ];
+  }, [handoffModelOptions, modelOptions]);
 
   return {
     config,
-    modelOptions,
+    modelOptions: selectableModelOptions,
     modelsLoading,
     selectedModel,
     llmReady,

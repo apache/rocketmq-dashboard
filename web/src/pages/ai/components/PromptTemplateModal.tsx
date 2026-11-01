@@ -32,9 +32,11 @@ import {
   Tag,
   Typography,
   message,
+  theme,
 } from 'antd';
 import { Plus, Trash } from '@phosphor-icons/react';
 import { useLang } from '../../../i18n/LangContext';
+import useAuthStore from '../../../stores/authStore';
 import type { ChatMode } from '../chatDraft';
 import {
   deleteCustomPromptTemplate,
@@ -54,7 +56,8 @@ import {
  *
  * Storage stays where it was (`promptTemplates.ts`, `localStorage`): a template is a personal
  * snippet, not conversation history, and it is the one AI artefact that legitimately outlives a
- * session. Custom templates therefore survive the move of history to the server untouched.
+ * session. Signed-in operators use separate local storage keys; an unowned legacy key is only
+ * read when authentication is disabled because its original owner cannot be established.
  *
  * ─── Expand / collapse ─────────────────────────────────────────
  * A template body is clamped to two lines by default and expands on demand. Long runbook prompts
@@ -90,7 +93,12 @@ const PromptTemplateModal = ({
   onApply,
 }: PromptTemplateModalProps) => {
   const { t } = useLang();
+  const userId = useAuthStore((state) => state.userId);
+  const username = useAuthStore((state) => state.user);
+  const templateOwner = userId != null ? `id:${userId}` : username ? `name:${username}` : undefined;
+  const { token } = theme.useToken();
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
+  const [loadedOwner, setLoadedOwner] = useState<string | undefined>();
   const [storageAvailable, setStorageAvailable] = useState(true);
   const [search, setSearch] = useState('');
   const [modeFilter, setModeFilter] = useState<ChatMode | 'all'>('all');
@@ -119,15 +127,16 @@ const PromptTemplateModal = ({
   );
 
   const visibleTemplates = useMemo(
-    () => filterPromptTemplates(templates, search, modeFilter),
-    [modeFilter, search, templates],
+    () => filterPromptTemplates(loadedOwner === templateOwner ? templates : [], search, modeFilter),
+    [loadedOwner, modeFilter, search, templateOwner, templates],
   );
 
   const refreshPromptTemplates = useCallback(() => {
-    const catalog = loadPromptTemplateCatalog(undefined, t);
+    const catalog = loadPromptTemplateCatalog(undefined, t, templateOwner);
     setTemplates(catalog.templates);
+    setLoadedOwner(templateOwner);
     setStorageAvailable(catalog.storageAvailable);
-  }, [t]);
+  }, [t, templateOwner]);
 
   // The catalog is read from localStorage, so it is refreshed on every open: a template saved in
   // another tab (or by the previous open of this modal) has to show up.
@@ -141,13 +150,18 @@ const PromptTemplateModal = ({
   }, [open, refreshPromptTemplates]);
 
   const handleSaveCurrentPromptTemplate = useCallback(() => {
-    const result = saveCustomPromptTemplate({
-      title: customTemplateTitle,
-      tags: customTemplateTags,
-      mode,
-      enhance,
-      body: inputValue,
-    });
+    const result = saveCustomPromptTemplate(
+      {
+        title: customTemplateTitle,
+        tags: customTemplateTags,
+        mode,
+        enhance,
+        body: inputValue,
+      },
+      undefined,
+      undefined,
+      templateOwner,
+    );
     if (!result.ok) {
       const errorMessage =
         result.reason === 'empty_title'
@@ -170,19 +184,20 @@ const PromptTemplateModal = ({
     mode,
     refreshPromptTemplates,
     t,
+    templateOwner,
   ]);
 
   const handleDeletePromptTemplate = useCallback(
     (template: PromptTemplate) => {
       if (template.scope !== 'custom') return;
-      if (!deleteCustomPromptTemplate(template.id)) {
+      if (!deleteCustomPromptTemplate(template.id, undefined, templateOwner)) {
         message.error(t('ai.promptTemplates.storageDeleteFailed'));
         return;
       }
       message.success(t('ai.promptTemplates.deleted'));
       refreshPromptTemplates();
     },
-    [refreshPromptTemplates, t],
+    [refreshPromptTemplates, t, templateOwner],
   );
 
   return (
@@ -341,8 +356,11 @@ const PromptTemplateModal = ({
         {/* 保存当前输入是次要操作，下沉到弹窗底部并弱化呈现 */}
         <div
           style={{
-            background: '#fafafa',
-            border: '1px solid #f0f0f0',
+            // Theme tokens instead of fixed light values: the block's text inherits the
+            // active theme's color, so a hardcoded light background made it unreadable in
+            // dark mode.
+            background: token.colorFillQuaternary,
+            border: `1px solid ${token.colorBorderSecondary}`,
             borderRadius: 8,
             padding: 12,
           }}

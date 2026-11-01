@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.provider.apache;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -47,6 +48,7 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -434,6 +436,63 @@ class RocketMQDashboardProviderTest {
     }
 
     @Test
+    void dashboardShouldNarrowTheTopologyToTheClusterConfiguredForTheInstanceTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        InstanceVO instance = InstanceVO.builder()
+                .type(InstanceType.PROXY_LOCAL)
+                .endpoint("local-proxy:8080")
+                .build();
+        instance.setId(1L);
+        when(resolver.resolveInstance("instance-local")).thenReturn(instance);
+        when(resolver.configuredClusterName("instance-local")).thenReturn("cluster-a");
+        when(resolver.execute(eq(instance), any())).thenAnswer(invocation ->
+                invocation.<MqAdminExtFactory.AdminAction<DashboardDataVO>>getArgument(1).apply(adminExt));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoClusters());
+        when(adminExt.getAllTopicConfig(anyString(), anyLong())).thenReturn(topicConfig("order-topic"));
+        when(adminExt.getAllSubscriptionGroup(anyString(), anyLong())).thenReturn(subscriptionGroups());
+        when(adminExt.fetchBrokerRuntimeStats(anyString())).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt, resolver).getDashboardData("instance-local");
+
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getName()).isEqualTo("cluster-a");
+            assertThat(cluster.getBrokers()).isEqualTo(1);
+        });
+        assertThat(dashboard.getStats().getTotalClusters()).isEqualTo(1);
+        assertThat(dashboard.getStats().getTotalBrokers()).isEqualTo(1);
+        verify(adminExt, never()).fetchBrokerRuntimeStats("10.0.0.12:10911");
+        verify(adminExt, never()).getAllTopicConfig(eq("10.0.0.12:10911"), anyLong());
+        verify(adminExt, never()).getAllSubscriptionGroup(eq("10.0.0.12:10911"), anyLong());
+    }
+
+    @Test
+    void dashboardShouldExposeEveryClusterForAnInstanceWithoutAConfiguredClusterTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        InstanceVO instance = InstanceVO.builder()
+                .type(InstanceType.PROXY_LOCAL)
+                .endpoint("local-proxy:8080")
+                .build();
+        instance.setId(1L);
+        when(resolver.resolveInstance("instance-local")).thenReturn(instance);
+        when(resolver.execute(eq(instance), any())).thenAnswer(invocation ->
+                invocation.<MqAdminExtFactory.AdminAction<DashboardDataVO>>getArgument(1).apply(adminExt));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoClusters());
+        when(adminExt.getAllTopicConfig(anyString(), anyLong())).thenReturn(topicConfig("order-topic"));
+        when(adminExt.getAllSubscriptionGroup(anyString(), anyLong())).thenReturn(subscriptionGroups());
+        when(adminExt.fetchBrokerRuntimeStats(anyString())).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt, resolver).getDashboardData("instance-local");
+
+        assertThat(dashboard.getClusters()).extracting(cluster -> cluster.getName())
+                .containsExactlyInAnyOrder("cluster-a", "cluster-b");
+        assertThat(dashboard.getStats().getTotalClusters()).isEqualTo(2);
+        assertThat(dashboard.getStats().getTotalBrokers()).isEqualTo(2);
+        verify(adminExt).fetchBrokerRuntimeStats("10.0.0.12:10911");
+    }
+
+    @Test
     void dashboardShouldReportUnconfiguredLegacyTopologyAsUnavailable() {
         RocketMQProperties properties = new RocketMQProperties();
         properties.setNamesrvAddr(" ");
@@ -520,6 +579,126 @@ class RocketMQDashboardProviderTest {
         assertThat(dashboard.getClusters()).allSatisfy(cluster -> {
             assertThat(cluster.getTpsIn()).isZero();
             assertThat(cluster.getTpsOut()).isZero();
+        });
+    }
+
+    @Test
+    void dashboardShouldBoundExtremeTpsExponentsBeforeAggregationTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911"))
+                .thenReturn(runtimeStats("1e-2147483647", "1e2147483647"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.12:10911"))
+                .thenReturn(runtimeStats("1.75", "2.25"));
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTpsIn()).isEqualTo(1L);
+        assertThat(dashboard.getStats().getTpsOut()).isEqualTo(2L);
+        assertThat(dashboard.getStats().getMessagesPerSecond()).isEqualTo(3L);
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getTpsIn()).isEqualTo(1L);
+            assertThat(cluster.getTpsOut()).isEqualTo(2L);
+        });
+    }
+
+    @Test
+    void dashboardShouldPreserveAcceptedDoubleTpsFormatsTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911"))
+                .thenReturn(runtimeStats("0x1.8p0", "2.5D"));
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTpsIn()).isEqualTo(1L);
+        assertThat(dashboard.getStats().getTpsOut()).isEqualTo(2L);
+        assertThat(dashboard.getStats().getMessagesPerSecond()).isEqualTo(3L);
+    }
+
+    @Test
+    void dashboardShouldAggregateSubUnitBrokerTpsBeforeRoundingTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911"))
+                .thenReturn(runtimeStats("0.75", "0.75"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.12:10911"))
+                .thenReturn(runtimeStats("0.75", "0.75"));
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTpsIn()).isEqualTo(1L);
+        assertThat(dashboard.getStats().getTpsOut()).isEqualTo(1L);
+        assertThat(dashboard.getStats().getMessagesPerSecond()).isEqualTo(2L);
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getTpsIn()).isEqualTo(1L);
+            assertThat(cluster.getTpsOut()).isEqualTo(1L);
+        });
+    }
+
+    @Test
+    void dashboardShouldPreserveExactDecimalTpsBoundariesTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        ClusterInfo info = new ClusterInfo();
+        HashMap<String, BrokerData> brokers = new HashMap<>();
+        for (int i = 0; i < 10; i++) {
+            String brokerName = "broker-" + i;
+            String address = "10.0.0." + (20 + i) + ":10911";
+            brokers.put(brokerName, brokerData(brokerName, address));
+            when(adminExt.fetchBrokerRuntimeStats(address)).thenReturn(runtimeStats("0.1", "0.2"));
+        }
+        info.setBrokerAddrTable(brokers);
+        info.setClusterAddrTable(new HashMap<>(java.util.Map.of("DefaultCluster", brokers.keySet())));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(info);
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTpsIn()).isEqualTo(1L);
+        assertThat(dashboard.getStats().getTpsOut()).isEqualTo(2L);
+        assertThat(dashboard.getStats().getMessagesPerSecond()).isEqualTo(3L);
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getTpsIn()).isEqualTo(1L);
+            assertThat(cluster.getTpsOut()).isEqualTo(2L);
+        });
+    }
+
+    @Test
+    void dashboardShouldAggregateBrokerTpsFractionsBeforeRoundingTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911"))
+                .thenReturn(runtimeStats("10.75", "20.75"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.12:10911"))
+                .thenReturn(runtimeStats("20.75", "10.75"));
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTpsIn()).isEqualTo(31L);
+        assertThat(dashboard.getStats().getTpsOut()).isEqualTo(31L);
+        assertThat(dashboard.getStats().getMessagesPerSecond()).isEqualTo(62L);
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getTpsIn()).isEqualTo(31L);
+            assertThat(cluster.getTpsOut()).isEqualTo(31L);
+        });
+    }
+
+    @Test
+    void dashboardShouldSaturateAggregatedTpsWithoutNegativeTrafficTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911"))
+                .thenReturn(runtimeStats("6000000000000000000", "3000000000000000000"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.12:10911"))
+                .thenReturn(runtimeStats("6000000000000000000", "3000000000000000000"));
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTpsIn()).isEqualTo(Long.MAX_VALUE);
+        assertThat(dashboard.getStats().getTpsOut()).isEqualTo(6_000_000_000_000_000_000L);
+        assertThat(dashboard.getStats().getMessagesPerSecond()).isEqualTo(Long.MAX_VALUE);
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getTpsIn()).isEqualTo(Long.MAX_VALUE);
+            assertThat(cluster.getTpsOut()).isEqualTo(6_000_000_000_000_000_000L);
         });
     }
 
@@ -684,6 +863,33 @@ class RocketMQDashboardProviderTest {
         when(instanceRepository.findAll()).thenReturn(instances);
         return new RocketMQDashboardProvider(adminFactory, properties, resolver, instanceRepository);
     }
+
+    @Test
+    void dashboardClusterOverviewShouldOrderClustersByNameTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        ClusterInfo info = new ClusterInfo();
+        HashMap<Long, String> addrs = new HashMap<>();
+        addrs.put(0L, "10.0.0.11:10911");
+        HashMap<String, BrokerData> brokerAddrTable = new HashMap<>();
+        brokerAddrTable.put("broker-a", new BrokerData("zeta-cluster", "broker-a", new HashMap<>(addrs)));
+        info.setBrokerAddrTable(brokerAddrTable);
+        HashMap<String, Set<String>> clusterAddrTable = new LinkedHashMap<>();
+        // Reverse insertion order so the table's iteration order differs from name order.
+        clusterAddrTable.put("zeta-cluster", Set.of("broker-a"));
+        clusterAddrTable.put("alpha-cluster", Set.of("broker-a"));
+        info.setClusterAddrTable(clusterAddrTable);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(info);
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000)).thenReturn(topicConfig("order-topic"));
+        when(adminExt.getAllSubscriptionGroup("10.0.0.11:10911", 5000)).thenReturn(subscriptionGroups());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        // The overview list must be stable across snapshots like the cluster list is.
+        assertThat(dashboard.getClusters()).extracting(ClusterOverviewVO::getId)
+                .containsExactly("alpha-cluster", "zeta-cluster");
+    }
+
     private ClusterInfo clusterInfo() {
         ClusterInfo info = new ClusterInfo();
         HashMap<Long, String> addrs = new HashMap<>();
@@ -716,6 +922,24 @@ class RocketMQDashboardProviderTest {
         HashMap<Long, String> addresses = new HashMap<>();
         addresses.put(0L, address);
         return new BrokerData("DefaultCluster", name, addresses);
+    }
+
+    private ClusterInfo clusterInfoWithTwoClusters() {
+        ClusterInfo info = new ClusterInfo();
+        HashMap<Long, String> firstAddresses = new HashMap<>();
+        firstAddresses.put(0L, "10.0.0.11:10911");
+        HashMap<Long, String> secondAddresses = new HashMap<>();
+        secondAddresses.put(0L, "10.0.0.12:10911");
+        HashMap<String, BrokerData> brokerAddrTable = new HashMap<>();
+        brokerAddrTable.put("broker-a", new BrokerData("cluster-a", "broker-a", firstAddresses));
+        brokerAddrTable.put("broker-b", new BrokerData("cluster-b", "broker-b", secondAddresses));
+        info.setBrokerAddrTable(brokerAddrTable);
+
+        HashMap<String, Set<String>> clusterAddrTable = new HashMap<>();
+        clusterAddrTable.put("cluster-a", Set.of("broker-a"));
+        clusterAddrTable.put("cluster-b", Set.of("broker-b"));
+        info.setClusterAddrTable(clusterAddrTable);
+        return info;
     }
 
     private TopicList topicList() {

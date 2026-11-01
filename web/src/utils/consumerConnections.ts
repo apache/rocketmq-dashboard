@@ -30,6 +30,9 @@ export const formatOnlineInstances = (
   unavailableLabel: string = String(UNKNOWN_ONLINE_INSTANCES),
 ): string => (isOnlineInstancesAvailable(value) ? value.toLocaleString() : unavailableLabel);
 
-/** Sort key that pushes unavailable connection counts to the end of an ascending list. */
-export const onlineInstancesSortValue = (value: number | null | undefined): number =>
-  isOnlineInstancesAvailable(value) ? value : Number.MAX_SAFE_INTEGER;
+/**
+ * Group 页的呈现口径：连接信息查不到（后端 -1 sentinel）与「确认为 0」一律按 0 展示，页面上不出现
+ * 「不可用」。列表列的显示与排序必须共用这一个函数，否则会出现「显示 0 却排在 5 后面」的自相矛盾。
+ */
+export const onlineInstancesCount = (value: number | null | undefined): number =>
+  isOnlineInstancesAvailable(value) ? value : 0;

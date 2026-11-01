@@ -155,6 +155,13 @@ public class ApacheInstanceProvider implements InstanceProvider {
     }
 
     @Override
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, String subscriptionMode, int page, int pageSize) {
+        return metadataProvider.listConsumerGroupsPage(instanceId, clusterId, search, subscriptionMode,
+                page, pageSize);
+    }
+
+    @Override
     public ConsumerGroupVO createConsumerGroup(String instanceId, ConsumerGroupVO group) {
         requireGroupInstance(instanceId, group);
         return adminClient.createConsumerGroup(group);
@@ -243,6 +250,11 @@ public class ApacheInstanceProvider implements InstanceProvider {
     @Override
     public SendMessageVO sendMessage(SendMessageDTO request) {
         return adminClient.sendMessage(request);
+    }
+
+    @Override
+    public SendMessageVO redeliverMessage(SendMessageDTO request, String sourceTopic) {
+        return adminClient.redeliverMessage(request, sourceTopic);
     }
 
     @Override
