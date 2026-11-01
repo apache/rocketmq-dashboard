@@ -21,6 +21,8 @@ import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 
 import java.util.List;
@@ -358,6 +360,24 @@ class LlmConfigServiceTest {
         ArgumentCaptor<GeneralSettingsVO> captor = ArgumentCaptor.forClass(GeneralSettingsVO.class);
         verify(settingsService).saveGeneralSettings(captor.capture());
         assertThat(captor.getValue().getBaseUrl()).isEqualTo("https://api.openai.com/v1");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"?route=/", "?route=/chat/completions", "?tenant=a%2Fb+%26#gateway"})
+    void saveAndReadConfigShouldNormalizeOnlyTheUrlPathTest(String suffix) {
+        llmConfigService.saveConfig(LlmConfigVO.builder()
+                .provider("ollama")
+                .apiBase(" http://localhost:11434/v1/chat/completions/" + suffix + " ")
+                .model("llama3")
+                .enabled(true)
+                .build());
+
+        ArgumentCaptor<GeneralSettingsVO> captor = ArgumentCaptor.forClass(GeneralSettingsVO.class);
+        verify(settingsService).saveGeneralSettings(captor.capture());
+        String expected = "http://localhost:11434/v1" + suffix;
+        assertThat(captor.getValue().getBaseUrl()).isEqualTo(expected);
+        when(settingsService.getGeneralSettings()).thenReturn(captor.getValue());
+        assertThat(llmConfigService.getConfig().getApiBase()).isEqualTo(expected);
     }
 
     @Test

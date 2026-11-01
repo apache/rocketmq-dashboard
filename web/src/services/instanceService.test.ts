@@ -105,6 +105,20 @@ describe('instanceService mock instances', () => {
     expect(storedUpdated?.remark).toBe('updated');
   });
 
+  it('rejects an existing instance name without changing the mock store', async () => {
+    const before = await listInstances();
+    const existing = before[0];
+
+    await expect(
+      createInstance({ name: existing.name, type: 'DIRECT', endpoint: '127.0.0.1:9876' }),
+    ).rejects.toThrow(`Instance name already exists: ${existing.name}`);
+    await expect(
+      createInstance({ name: `  ${existing.name}  `, type: 'DIRECT', endpoint: '127.0.0.1:9876' }),
+    ).rejects.toThrow(`Instance name already exists: ${existing.name}`);
+
+    expect(await listInstances()).toEqual(before);
+  });
+
   it('rejects deleting missing mock instances', async () => {
     const before = await listInstances();
 

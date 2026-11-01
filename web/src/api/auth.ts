@@ -32,6 +32,8 @@ export interface AuthenticatedUser {
   userId: number | null;
   username: string;
   admin: boolean;
+  /** The current password was chosen by someone else; the login flow must make the owner rotate it. */
+  mustChangePassword?: boolean;
 }
 
 export interface AuthStatus {

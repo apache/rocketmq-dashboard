@@ -117,6 +117,9 @@ class AiConversationControllerTest extends WebMvcAuthTestSupport {
     private AiRunService runService;
 
     @MockitoBean
+    private AiFollowupService followupService;
+
+    @MockitoBean
     private RmqctlWorkspace rmqctlWorkspace;
 
     @MockitoBean

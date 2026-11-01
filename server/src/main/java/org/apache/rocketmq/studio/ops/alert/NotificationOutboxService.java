@@ -2,12 +2,23 @@
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package org.apache.rocketmq.studio.ops.alert;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
@@ -459,8 +470,10 @@ public class NotificationOutboxService {
 
     private static void validateDingTalkResponse(String response) {
         try {
-            JsonNode body = JSON.readTree(response);
-            if (body != null && body.path("errcode").canConvertToInt() && body.path("errcode").asInt() == 0) {
+            // Keep nonzero fractions intact: integer conversion truncates them, and
+            // double parsing can underflow a small nonzero error code to zero.
+            JsonNode body = JSON.reader().with(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS).readTree(response);
+            if (body != null && body.path("errcode").isNumber() && body.path("errcode").decimalValue().signum() == 0) {
                 return;
             }
             String error = body == null ? null : body.path("errmsg").asText(null);
@@ -498,23 +511,31 @@ public class NotificationOutboxService {
 
     private static String[] parseRecipients(String raw) throws AddressException {
         List<String> recipients = new ArrayList<>();
-        // Split on the documented separators (comma, plus the legacy
-        // semicolon) only outside a quoted display name: a list like
-        // `"Doe, John" <john@example.com>, ops@example.com` is valid RFC 822
-        // input, but a plain [,;] split broke it into unbalanced fragments
-        // that failed validation and drove the notification into retry
-        // instead of sending.
+        // Commas and legacy semicolons separate recipients only outside quoted
+        // strings and comments. Comments may nest and contain quoted pairs;
+        // keep each address intact for InternetAddress's strict validation.
         StringBuilder current = new StringBuilder();
         boolean quoted = false;
+        int commentDepth = 0;
         boolean escaped = false;
         for (int i = 0; i < raw.length(); i++) {
             char c = raw.charAt(i);
             if (escaped) {
                 current.append(c);
                 escaped = false;
-            } else if (quoted && c == '\\') {
+            } else if ((quoted || commentDepth > 0) && c == '\\') {
                 current.append(c);
                 escaped = true;
+            } else if (commentDepth > 0) {
+                current.append(c);
+                if (c == '(') {
+                    commentDepth++;
+                } else if (c == ')') {
+                    commentDepth--;
+                }
+            } else if (!quoted && c == '(') {
+                current.append(c);
+                commentDepth = 1;
             } else if (c == '"') {
                 current.append(c);
                 quoted = !quoted;

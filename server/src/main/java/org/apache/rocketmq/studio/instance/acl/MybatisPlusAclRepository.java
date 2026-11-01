@@ -262,7 +262,12 @@ public class MybatisPlusAclRepository implements AclRepository {
             // Blank secret on an existing account keeps the stored secret unchanged.
             entity.setSecretKey(existing.getSecretKey());
         }
-        entity.setAdmin(config.isAdmin());
+        // The flag is optional in the write contract: an omitted flag keeps the stored value for an
+        // existing account (as the sibling user update does), a new account defaults to false, and
+        // an explicit value always wins.
+        boolean admin = config.getAdmin() != null ? config.getAdmin()
+                : existing != null && Boolean.TRUE.equals(existing.getAdmin());
+        entity.setAdmin(admin);
         entity.setClusters(null);
         entity.setWhiteRemoteAddress(normalizeWhiteRemoteAddress(config.getWhiteRemoteAddress()));
         entity.setGmtModified(LocalDateTime.now());
@@ -300,7 +305,7 @@ public class MybatisPlusAclRepository implements AclRepository {
                 // hidden (read-back views always mask it).
                 .secretKey(secretProvided ? config.getSecretKey() : null)
                 .whiteRemoteAddress(entity.getWhiteRemoteAddress())
-                .admin(config.isAdmin())
+                .admin(admin)
                 .defaultTopicPerm(config.getDefaultTopicPerm())
                 .defaultGroupPerm(config.getDefaultGroupPerm())
                 .topicPerms(config.getTopicPerms() == null ? null : new ArrayList<>(config.getTopicPerms()))

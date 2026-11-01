@@ -43,5 +43,11 @@ public class LoginVO {
         private Long userId;
         private String username;
         private boolean admin;
+        /**
+         * The current password was chosen by someone other than the owner (an administrator's
+         * reset or the account's initial password); the login flow must make the owner rotate
+         * it before proceeding. Always false for properties-based (in-memory) users.
+         */
+        private boolean mustChangePassword;
     }
 }

@@ -2,10 +2,20 @@
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import MessageQueryHistoryModal from '../MessageQueryHistoryModal';
@@ -105,6 +115,83 @@ describe('MessageQueryHistoryModal', () => {
     expect(document.querySelector('.ant-table')).toHaveClass('ant-table-small');
   });
 
+  it.each(['messages', 'traces'] as const)(
+    'recovers an out-of-range %s page after changing instance Test',
+    async (tab) => {
+      const user = userEvent.setup();
+      const row =
+        tab === 'messages'
+          ? {
+              id: 1,
+              queryType: 'KEY',
+              topic: 'orders',
+              messageKey: 'remaining-record',
+              resultCount: 1,
+              queriedBy: 'alice',
+              queriedAt: '',
+            }
+          : {
+              id: 1,
+              msgId: 'remaining-record',
+              topic: 'orders',
+              nodeCount: 1,
+              consumerCount: 1,
+              queriedBy: 'alice',
+              queriedAt: '',
+            };
+      const list =
+        tab === 'messages' ? vi.mocked(listMessageQueryHistory) : vi.mocked(listTraceQueryHistory);
+      list.mockImplementation(
+        async ({ clusterId, page = 1 }) =>
+          ({
+            items: clusterId === 'instance-a' || page === 1 ? [row] : [],
+            total: clusterId === 'instance-a' ? 60 : 1,
+            page,
+            size: 20,
+          }) as never,
+      );
+      const modal = (clusterId: string) => (
+        <App>
+          <LangProvider>
+            <MessageQueryHistoryModal open clusterId={clusterId} onClose={vi.fn()} />
+          </LangProvider>
+        </App>
+      );
+      const view = render(modal('instance-a'));
+      if (tab === 'traces') await user.click(screen.getByRole('tab', { name: '轨迹查询' }));
+      expect(await screen.findByText('remaining-record')).toBeInTheDocument();
+      await user.click(within(screen.getByRole('tabpanel')).getByTitle('3'));
+      await waitFor(() =>
+        expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3 })),
+      );
+      view.rerender(modal('instance-b'));
+      await waitFor(() =>
+        expect(list).toHaveBeenLastCalledWith(
+          expect.objectContaining({ clusterId: 'instance-b', page: 1 }),
+        ),
+      );
+      expect(await screen.findByText('remaining-record')).toBeInTheDocument();
+    },
+  );
+
+  it('does not offer a page size that fixed-size API requests ignore Test', async () => {
+    vi.mocked(listMessageQueryHistory).mockResolvedValue({
+      items: [],
+      total: 60,
+      page: 1,
+      size: 20,
+    });
+    render(
+      <App>
+        <LangProvider>
+          <MessageQueryHistoryModal open onClose={vi.fn()} />
+        </LangProvider>
+      </App>,
+    );
+    await screen.findByTitle('3');
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+  });
+
   it('loads persisted message and trace history by instance', async () => {
     const user = userEvent.setup();
     render(
@@ -125,7 +212,7 @@ describe('MessageQueryHistoryModal', () => {
     await waitFor(() => expect(listTraceQueryHistory).toHaveBeenCalled());
   });
 
-  it('clears stale rows and offers retry when a new instance load fails', async () => {
+  it('keeps the new instance rows when only the summary fails', async () => {
     const view = render(
       <App>
         <LangProvider>
@@ -135,6 +222,22 @@ describe('MessageQueryHistoryModal', () => {
     );
     expect(await screen.findByText('order-1')).toBeInTheDocument();
     vi.mocked(getQueryHistorySummary).mockRejectedValueOnce(new Error('network unavailable'));
+    vi.mocked(listMessageQueryHistory).mockResolvedValueOnce({
+      items: [
+        {
+          id: 3,
+          queryType: 'KEY',
+          topic: 'payments',
+          messageKey: 'payment-3',
+          resultCount: 1,
+          queriedBy: 'bob',
+          queriedAt: '2026-08-05T13:00:00Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
 
     view.rerender(
       <App>
@@ -144,9 +247,57 @@ describe('MessageQueryHistoryModal', () => {
       </App>,
     );
 
+    expect(await screen.findByText('查询历史统计加载失败')).toBeInTheDocument();
+    expect(screen.getByText('payment-3')).toBeInTheDocument();
+    expect(screen.queryByText('order-1')).not.toBeInTheDocument();
+    expect(
+      [...document.querySelectorAll('.ant-statistic-content-value')]
+        .slice(0, 2)
+        .map((element) => element.textContent),
+    ).toEqual(['-', '-']);
+    expect(screen.getByRole('button', { name: /重\s*试/ })).toBeEnabled();
+  });
+
+  it('keeps the summary when only the message rows fail', async () => {
+    vi.mocked(listMessageQueryHistory).mockRejectedValueOnce(new Error('rows unavailable'));
+    render(
+      <App>
+        <LangProvider>
+          <MessageQueryHistoryModal open clusterId="instance-a" onClose={vi.fn()} />
+        </LangProvider>
+      </App>,
+    );
+
     expect(await screen.findByText('查询历史加载失败')).toBeInTheDocument();
     expect(screen.queryByText('order-1')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /重\s*试/ })).toBeEnabled();
+    expect(
+      [...document.querySelectorAll('.ant-statistic-content-value')]
+        .slice(0, 2)
+        .map((element) => element.textContent),
+    ).toEqual(['4', '2']);
+  });
+
+  it('shows the loaded rows while the independent summary request is still pending', async () => {
+    let resolveSummary: (value: {
+      messageQueries: number;
+      traceQueries: number;
+    }) => void = () => {};
+    vi.mocked(getQueryHistorySummary).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSummary = resolve;
+        }),
+    );
+    render(
+      <App>
+        <LangProvider>
+          <MessageQueryHistoryModal open clusterId="instance-a" onClose={vi.fn()} />
+        </LangProvider>
+      </App>,
+    );
+
+    expect(await screen.findByText('order-1')).toBeInTheDocument();
+    resolveSummary({ messageQueries: 4, traceQueries: 2 });
   });
 
   it('treats offset-less queriedAt values as UTC', async () => {

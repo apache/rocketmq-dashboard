@@ -115,6 +115,45 @@ class AlertStateMachineTest {
                 .hasMessage("reminderInterval must not be negative");
     }
 
+    @Test
+    void representableDurationBeyondInstantRangeKeepsAlertPendingTest() {
+        Duration duration = AlertRuleDuration.parse(Long.MAX_VALUE + "s");
+        AlertStateUpdate first = stateMachine.advance(null, met(), 1, duration, now);
+        AlertStateUpdate next = stateMachine.advance(first.state(), met(), 1, duration, now.plusSeconds(60));
+
+        assertThat(first.transition()).isEqualTo(AlertStateTransition.PENDING);
+        assertThat(next.transition()).isEqualTo(AlertStateTransition.PENDING);
+        assertThat(next.state().firstPendingAt()).isEqualTo(now);
+    }
+
+    @Test
+    void representableReminderBeyondInstantRangeDoesNotNotifyEarlyTest() {
+        AlertRuleState firing = new AlertRuleState(AlertStateStatus.FIRING, 1, 0.9, now, now, now, null);
+        AlertStateUpdate update = stateMachine.advance(firing, met(), 1, Duration.ZERO,
+                AlertRuleDuration.parse(Long.MAX_VALUE + "s"), now.plusSeconds(60));
+
+        assertThat(update.transition()).isEqualTo(AlertStateTransition.NONE);
+        assertThat(update.state().lastNotifiedAt()).isEqualTo(now);
+    }
+
+    @Test
+    void elapsedTimeComparisonRetainsNanosecondBoundaryAndClockRollbackTest() {
+        Duration interval = Duration.ofSeconds(1).plusNanos(1);
+        AlertRuleState pending = stateMachine.advance(null, met(), 1, interval, now).state();
+        assertThat(stateMachine.advance(pending, met(), 1, interval, now.minusSeconds(1)).transition())
+                .isEqualTo(AlertStateTransition.PENDING);
+        assertThat(stateMachine.advance(pending, met(), 1, interval, now.plusSeconds(1)).transition())
+                .isEqualTo(AlertStateTransition.PENDING);
+        AlertRuleState firing = stateMachine.advance(pending, met(), 1, interval, now.plus(interval)).state();
+        assertThat(firing.status()).isEqualTo(AlertStateStatus.FIRING);
+        assertThat(stateMachine.advance(firing, met(), 1, Duration.ZERO, interval, now).transition())
+                .isEqualTo(AlertStateTransition.NONE);
+        assertThat(stateMachine.advance(firing, met(), 1, Duration.ZERO, interval,
+                now.plus(interval).plusSeconds(1)).transition()).isEqualTo(AlertStateTransition.NONE);
+        assertThat(stateMachine.advance(firing, met(), 1, Duration.ZERO, interval,
+                now.plus(interval).plus(interval)).transition()).isEqualTo(AlertStateTransition.REMINDER);
+    }
+
     private static AlertEvaluationResult met() {
         return new AlertEvaluationResult(true, true, 0.9, MetricAvailability.AVAILABLE);
     }

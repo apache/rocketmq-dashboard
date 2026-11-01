@@ -15,6 +15,11 @@
  * limitations under the License.
  */
 
+import { formatDate } from './format';
+
+/** Stamp export filenames in the operator's local date, including across a UTC date boundary. */
+export const localExportDateStamp = (now = new Date()): string => formatDate(now);
+
 export const downloadBlob = (blob: Blob, filename: string) => {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');

@@ -33,7 +33,9 @@ public interface AiEventRepository {
     int maxSeq(Long conversationId);
 
     /**
-     * Events with seq strictly greater than afterSeq, capped at limit, ascending by seq.
+     * The lowest {@code limit} events whose seq is strictly greater than afterSeq, ascending by
+     * seq — a page of the backlog, not "whatever fits", so a caller that walks a cursor can rely
+     * on it never skipping a row it has not seen.
      *
      * <p>Deliberately does NOT use SQL ORDER BY. The payload column is MEDIUMTEXT, and any
      * sort MySQL cannot satisfy from an index materialises the whole value into
@@ -41,6 +43,9 @@ public interface AiEventRepository {
      * sorts the (small, bounded) result in memory. Do not "optimise" this into an ORDER BY.
      */
     List<RmqAiEvent> findByConversationIdAfterSeq(Long conversationId, int afterSeq, int limit);
+
+    /** Latest bounded rows before an admitted run, returned in ascending seq order. */
+    List<RmqAiEvent> findRecentBeforeSeq(Long conversationId, int beforeSeq, int limit);
 
     int deleteByConversationId(Long conversationId);
 

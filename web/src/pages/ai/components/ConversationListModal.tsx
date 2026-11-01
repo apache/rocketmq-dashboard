@@ -38,6 +38,7 @@ import { useConversationList } from '../hooks/useConversationList';
 import { formatUtcDateTime } from '../../../utils/format';
 import { tableScrollX } from '../../../utils/table';
 import ModelBadge from './ModelBadge';
+import InfoBanner from '../../../components/InfoBanner';
 
 /**
  * Server-paged conversation history.
@@ -148,6 +149,8 @@ const CHAT_MODE_KEYS = new Set(['chat', 'diagnose', 'manage', 'query']);
 
 export interface ConversationListModalProps {
   open: boolean;
+  /** Mock mode: explain why history is unavailable without mounting its live query or actions. */
+  disabled?: boolean;
   onClose: () => void;
   /** Conversation on screen; marked as current and not offered as a navigation target. */
   activeConversationId?: number | null;
@@ -514,6 +517,7 @@ const ConversationListPanel = ({
 const ConversationListModal = ({
   open,
   onClose,
+  disabled = false,
   activeConversationId = null,
   onSelect,
   onActiveDeleted,
@@ -547,11 +551,18 @@ const ConversationListModal = ({
       width={TABLE_SCROLL_X + MODAL_BODY_PADDING + VERTICAL_SCROLLBAR_WIDTH}
       destroyOnHidden
     >
-      <ConversationListPanel
-        activeConversationId={activeConversationId}
-        onSelect={onSelect}
-        onDeleted={handleDeleted}
-      />
+      {disabled ? (
+        <InfoBanner
+          data-testid="ai-mock-history-disabled"
+          description={t('ai.mockConversationsUnavailable')}
+        />
+      ) : (
+        <ConversationListPanel
+          activeConversationId={activeConversationId}
+          onSelect={onSelect}
+          onDeleted={handleDeleted}
+        />
+      )}
     </Modal>
   );
 };

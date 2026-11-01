@@ -119,6 +119,26 @@ class RmqctlWorkspaceTest {
     }
 
     @Test
+    void relativeWorkspacePathsRemainUsableFromChildWorkingDirectoryTest() throws Exception {
+        Path configuredRoot = root.resolve("agent workspaces");
+        properties.setWorkspaceDir(Path.of("").toAbsolutePath().relativize(configuredRoot).toString());
+
+        RmqctlWorkspace.Preparation preparation = prepared();
+        Path childDirectory = Path.of(preparation.workspaceDir()).toAbsolutePath();
+
+        assertThat(childDirectory.resolve(preparation.mcpConfigPath())).isRegularFile();
+        assertThat(childDirectory.resolve(preparation.systemPromptPath())).isRegularFile();
+        assertThat(Path.of(preparation.childEnv().get(RmqctlWorkspace.HOME_ENV)))
+                .isAbsolute().isDirectory();
+        JsonNode args = MAPPER.readTree(Path.of(preparation.mcpConfigPath()).toFile())
+                .path("mcpServers").path(AgentEventProjector.STUDIO_MCP_SERVER).path("args");
+        assertThat(childDirectory.resolve(args.get(3).asText())).isRegularFile();
+        assertThat(availableWorkspace().workspaceRoot()).isEqualTo(configuredRoot);
+        assertThat(availableWorkspace().delete(CONVERSATION_ID)).isTrue();
+        assertThat(childDirectory).doesNotExist();
+    }
+
+    @Test
     void writesRmqctlConfigWithEnvironmentReferencesOnlyTest() throws Exception {
         RmqctlWorkspace.Preparation preparation = prepared();
 

@@ -251,8 +251,11 @@ public final class AgentEventProjector {
      * <p>Exhaustive over the sealed hierarchy with no default branch, like {@link #project}: a new
      * persisted event type that nobody thought about is a compile error here rather than a silently
      * missing block in every replayed conversation.
+     *
+     * <p>{@code runDurationMs} is the run row's duration, which is not stored on a timeline terminal
+     * event. A missing duration stays unknown; other event types retain their own timing fields.
      */
-    public Optional<LiveEvent> replay(TimelineEvent event) {
+    public Optional<LiveEvent> replay(TimelineEvent event, Long runDurationMs) {
         if (event == null) {
             return Optional.empty();
         }
@@ -269,7 +272,7 @@ public final class AgentEventProjector {
             case TimelineEvent.Notice notice -> new LiveEvent.Notice(notice.level(), notice.message());
             case TimelineEvent.Error error -> new LiveEvent.Error(error.code(), error.message(), error.hint());
             case TimelineEvent.RunStatus terminal ->
-                    new LiveEvent.RunFinished(runId, terminal.status(), null);
+                    new LiveEvent.RunFinished(runId, terminal.status(), runDurationMs);
         };
         return Optional.ofNullable(live);
     }

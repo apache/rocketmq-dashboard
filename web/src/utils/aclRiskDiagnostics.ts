@@ -206,7 +206,9 @@ const hasDefaultAllow = (account: PlainAccessConfig): boolean =>
   PERMISSION_ALLOW_RANK[normalizePermission(account.defaultGroupPerm)] > 0;
 
 const wildcardEntries = (entries: ParsedPermissionEntry[]): ParsedPermissionEntry[] =>
-  entries.filter((entry) => isWildcardResource(entry.resource) && entry.permission !== 'DENY');
+  entries.filter(
+    (entry) => isWildcardResource(entry.resource) && PERMISSION_ALLOW_RANK[entry.permission] > 0,
+  );
 
 const hasWildcardPermission = (account: PlainAccessConfig): boolean =>
   wildcardEntries(parsePermissionEntries(account.topicPerms)).length > 0 ||
@@ -226,8 +228,11 @@ const collectDuplicateAccessKeys = (accounts: PlainAccessConfig[]): Set<string> 
   return duplicates;
 };
 
-const accountWhitelistClass = (account: PlainAccessConfig): WhitelistClass =>
-  classifyWhitelist(splitWhitelist(account.whiteRemoteAddress));
+const accountWhitelistClass = (account: PlainAccessConfig): WhitelistClass => {
+  const addresses = splitWhitelist(account.whiteRemoteAddress);
+  // An empty account whitelist imposes no source restriction, unlike an empty global trust list.
+  return addresses.length === 0 ? 'open' : classifyWhitelist(addresses);
+};
 
 const addDefaultPermissionIssues = (
   issues: AclRiskIssue[],

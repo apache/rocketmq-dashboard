@@ -24,7 +24,10 @@ import org.springframework.context.annotation.Import;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
+import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -272,6 +275,75 @@ class TopicControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void createTopicShouldPassLiteTtlMinutesTest() throws Exception {
+        TopicVO created = new TopicVO();
+        created.setName("chat");
+        created.setLiteTtlMinutes(1440);
+        when(metadataService.createTopic(any(TopicVO.class))).thenReturn(created);
+        when(instanceService.normalizeIdentifier("1")).thenReturn("open-source-local");
+
+        mockMvc.perform(post("/api/topics/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "instanceId": "1",
+                                  "name": "chat",
+                                  "type": "LITE",
+                                  "writeQueues": 8,
+                                  "readQueues": 8,
+                                  "liteTtlMinutes": 1440
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.liteTtlMinutes").value(1440));
+
+        ArgumentCaptor<TopicVO> captor = ArgumentCaptor.forClass(TopicVO.class);
+        verify(metadataService).createTopic(captor.capture());
+        assertThat(captor.getValue().getName()).isEqualTo("chat");
+        assertThat(captor.getValue().getLiteTtlMinutes()).isEqualTo(1440);
+    }
+
+    @Test
+    void createTopicShouldRejectLiteTtlMinutesOutsideBoundsTest() throws Exception {
+        mockMvc.perform(post("/api/topics/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "chat",
+                                  "type": "LITE",
+                                  "writeQueues": 8,
+                                  "readQueues": 8,
+                                  "liteTtlMinutes": 43201
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("liteTtlMinutes must be between 1 and 43200"));
+
+        verifyNoInteractions(metadataService);
+    }
+
+    @Test
+    void topicListResponseOmitsTheCreateOnlyLiteTtlTest() throws Exception {
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setType(TopicType.LITE);
+        topic.setWriteQueues(8);
+        topic.setReadQueues(8);
+        when(metadataService.listTopics(isNull(), isNull(), isNull(), isNull())).thenReturn(List.of(topic));
+
+        // A read path never computes the Lite TTL, so the key must not be advertised at all. The
+        // assertion is on the raw body because jsonPath(...).doesNotExist() also passes for an
+        // explicit JSON null, which is exactly the shape this guards against.
+        String body = mockMvc.perform(get("/api/topics"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].name").value("orders"))
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(body).doesNotContain("liteTtlMinutes");
+    }
+
+    @Test
     void topicWriteEndpointsShouldRejectNullRequestBody() throws Exception {
         mockMvc.perform(post("/api/topics/create")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -314,6 +386,61 @@ class TopicControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.message").value("name is required"));
 
         verifyNoInteractions(metadataService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "{\"instanceId\":\"instance-a\",\"topic\":\"orders\"}",
+        "{\"instanceId\":\"instance-a\",\"topic\":\"orders\",\"body\":null}",
+        "{\"instanceId\":\"instance-a\",\"topic\":\"orders\",\"body\":\"\"}"
+    })
+    void sendRejectsMissingOrEmptyBodyBeforeCallingMetadataTest(String json) throws Exception {
+        mockMvc.perform(post("/api/topics/send").contentType(MediaType.APPLICATION_JSON).content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("body must not be empty"));
+
+        verifyNoInteractions(metadataService);
+    }
+
+    @Test
+    void sendPreservesWhitespaceOnlyBodyTest() throws Exception {
+        String body = " \t\n";
+        SendMessageDTO request = SendMessageDTO.builder().instanceId("instance-a").topic("orders")
+                .body(body).build();
+
+        mockMvc.perform(post("/api/topics/send").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<SendMessageDTO> captor = ArgumentCaptor.forClass(SendMessageDTO.class);
+        verify(metadataService).sendMessage(captor.capture());
+        assertThat(captor.getValue().getBody()).isEqualTo(body);
+    }
+
+    @Test
+    void updateTopicBindsLiteTtlMinutesSoTheServiceCanRejectItTest() throws Exception {
+        TopicVO updated = new TopicVO();
+        updated.setName("chat");
+        when(metadataService.updateTopic(any(TopicVO.class))).thenReturn(updated);
+
+        mockMvc.perform(post("/api/topics/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "instanceId": "1",
+                                  "name": "chat",
+                                  "type": "LITE",
+                                  "liteTtlMinutes": 60
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        // UpdateTopicDTO binds the create-only field on purpose: MetadataService turns it into an
+        // explicit 400 instead of the request being accepted with the TTL silently dropped.
+        ArgumentCaptor<TopicVO> captor = ArgumentCaptor.forClass(TopicVO.class);
+        verify(metadataService).updateTopic(captor.capture());
+        assertThat(captor.getValue().getLiteTtlMinutes()).isEqualTo(60);
     }
 
     @Test

@@ -25,6 +25,7 @@ import (
 	"go/format"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -74,6 +75,7 @@ type property struct {
 	Description          string              `yaml:"description" json:"description,omitempty"`
 	Enum                 []string            `yaml:"enum" json:"enum,omitempty"`
 	Minimum              *float64            `yaml:"minimum" json:"minimum,omitempty"`
+	Maximum              *float64            `yaml:"maximum" json:"maximum,omitempty"`
 	MinLength            int                 `yaml:"minLength" json:"minLength,omitempty"`
 	Items                *property           `yaml:"items" json:"items,omitempty"`
 	Required             []string            `yaml:"required,omitempty" json:"required,omitempty"`
@@ -129,6 +131,7 @@ type goField struct {
 	Required      bool
 	Enum          []string
 	Minimum       *float64
+	Maximum       *float64
 	MinLength     int
 	ClientDefault string
 	Object        *goInputSchema
@@ -197,7 +200,7 @@ var defaultDocument = Document{
 {{- end }}
 	},
 }
-{{ define "field" }}{Name: {{ quote .Name }}{{ if .Flag }}, Flag: {{ quote .Flag }}{{ end }}{{ if .Description }}, Description: {{ quote .Description }}{{ end }}, Kind: {{ .Kind }}{{ if .Required }}, Required: true{{ end }}{{ if .Enum }}, Enum: {{ stringSlice .Enum }}{{ end }}{{ if .Minimum }}, Minimum: {{ number .Minimum }}, HasMinimum: true{{ end }}{{ if .MinLength }}, MinLength: {{ .MinLength }}{{ end }}{{ if .ClientDefault }}, ClientDefault: {{ quote .ClientDefault }}{{ end }}{{ with .Object }}, Object: &InputSchema{
+{{ define "field" }}{Name: {{ quote .Name }}{{ if .Flag }}, Flag: {{ quote .Flag }}{{ end }}{{ if .Description }}, Description: {{ quote .Description }}{{ end }}, Kind: {{ .Kind }}{{ if .Required }}, Required: true{{ end }}{{ if .Enum }}, Enum: {{ stringSlice .Enum }}{{ end }}{{ if .Minimum }}, Minimum: {{ number .Minimum }}, HasMinimum: true{{ end }}{{ if .Maximum }}, Maximum: {{ number .Maximum }}, HasMaximum: true{{ end }}{{ if .MinLength }}, MinLength: {{ .MinLength }}{{ end }}{{ if .ClientDefault }}, ClientDefault: {{ quote .ClientDefault }}{{ end }}{{ with .Object }}, Object: &InputSchema{
 	Fields: []Field{
 	{{ range .Fields }}{{ template "field" . }},
 	{{ end }}},
@@ -235,7 +238,7 @@ func (schema *property) UnmarshalYAML(node *yaml.Node) error {
 	// Reject unsupported input keywords instead of silently dropping constraints.
 	for index := 0; index+1 < len(node.Content); index += 2 {
 		switch key := node.Content[index].Value; key {
-		case "type", "description", "enum", "minimum", "minLength", "items",
+		case "type", "description", "enum", "minimum", "maximum", "minLength", "items",
 			"required", "properties", "additionalProperties", "anyOf", "x-cli-flag",
 			"x-client-default":
 		default:
@@ -466,9 +469,27 @@ func writeGenerated(outputPath string, content []byte) error {
 	return nil
 }
 
+// The patterns rmq-tools.schema.json declares for the fields validate() otherwise checks by
+// hand. Enforcing them here is what keeps the JSON schema and this validator from drifting
+// apart: a document the schema would reject must not be able to reach the generated catalog.
+var (
+	semanticVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$`)
+	toolNamePattern        = regexp.MustCompile(`^rmq\.[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`)
+	lowerTokenPattern      = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+	permissionPattern      = regexp.MustCompile(`^[a-z][a-z0-9-]*(?::[a-z][a-z0-9-]*)+$`)
+	capabilityPattern      = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
+)
+
 func validate(document catalogDocument) error {
 	if strings.TrimSpace(document.Version) == "" || strings.TrimSpace(document.MinimumClientVersion) == "" {
 		return fmt.Errorf("version and minimumClientVersion are required")
+	}
+	if !semanticVersionPattern.MatchString(document.Version) {
+		return fmt.Errorf("version %q does not match the schema semantic-version pattern", document.Version)
+	}
+	if !semanticVersionPattern.MatchString(document.MinimumClientVersion) {
+		return fmt.Errorf("minimumClientVersion %q does not match the schema semantic-version pattern",
+			document.MinimumClientVersion)
 	}
 	if len(document.Tools) == 0 {
 		return fmt.Errorf("at least one tool is required")
@@ -499,6 +520,28 @@ func validate(document catalogDocument) error {
 		}
 		if strings.TrimSpace(tool.Permission) == "" {
 			return fmt.Errorf("tool %q permission is required", tool.Name)
+		}
+		if !toolNamePattern.MatchString(tool.Name) {
+			return fmt.Errorf("tool %q does not match the schema tool-name pattern", tool.Name)
+		}
+		if !lowerTokenPattern.MatchString(tool.CLI.Resource) {
+			return fmt.Errorf("tool %q has a CLI resource that does not match the schema pattern", tool.Name)
+		}
+		if !lowerTokenPattern.MatchString(tool.CLI.Verb) {
+			return fmt.Errorf("tool %q has a CLI verb that does not match the schema pattern", tool.Name)
+		}
+		if !permissionPattern.MatchString(tool.Permission) {
+			return fmt.Errorf("tool %q has a permission that does not match the schema pattern", tool.Name)
+		}
+		seenCapabilities := make(map[string]struct{}, len(tool.RequiredCapabilities))
+		for _, capability := range tool.RequiredCapabilities {
+			if !capabilityPattern.MatchString(capability) {
+				return fmt.Errorf("tool %q has capability %q that does not match the schema pattern", tool.Name, capability)
+			}
+			if _, exists := seenCapabilities[capability]; exists {
+				return fmt.Errorf("tool %q repeats capability %q; requiredCapabilities must be unique", tool.Name, capability)
+			}
+			seenCapabilities[capability] = struct{}{}
 		}
 		if tool.ViewHint != "object" && tool.ViewHint != "table" {
 			return fmt.Errorf("tool %q has unsupported view hint %q", tool.Name, tool.ViewHint)
@@ -574,6 +617,12 @@ func validateSchema(schema inputSchema, flags map[string]struct{}, depth int) er
 		flagName := schemaFlagName(name, field)
 		if field.CLIFlag != "" && !validCLIFlag(field.CLIFlag) {
 			return fmt.Errorf("property %q has invalid x-cli-flag %q", name, field.CLIFlag)
+		}
+		if field.CLIFlag == "" && !validCLIFlag(flagName) {
+			// toFlagName maps _ to - and folds camel humps, so a property name like _mode
+			// derives -mode, which no flag parser accepts. An explicit x-cli-flag is checked
+			// above; a name-derived flag must clear the same bar.
+			return fmt.Errorf("property %q derives an unusable CLI flag %q from its name; set x-cli-flag explicitly", name, flagName)
 		}
 		// Global persistent flags own their names. The only exception is the
 		// top-level instanceId property: the runtime feeds it from the global
@@ -709,6 +758,9 @@ func compileSchema(schema inputSchema) (goInputSchema, error) {
 		}
 		if field.Minimum != nil {
 			compiledField.Minimum = new(*field.Minimum)
+		}
+		if field.Maximum != nil {
+			compiledField.Maximum = new(*field.Maximum)
 		}
 		if kind == "ObjectField" {
 			object, err := compileSchema(field)

@@ -85,6 +85,29 @@ class K8sCertServiceTest {
             -----END CERTIFICATE-----
             """;
 
+    // Self-signed fixture with padded Base64: concatenating decoded PEM bodies is not valid Base64.
+    private static final String PADDED_CERT_PEM = """
+            -----BEGIN CERTIFICATE-----
+            MIIC/TCCAeWgAwIBAgIIGOSWQYsmrhswDQYJKoZIhvcNAQEMBQAwHTEbMBkGA1UE
+            AxMSY2hhaW4tbGVhZi1maXh0dXJlMB4XDTI2MTAxOTAzMzE1NFoXDTI3MTAxOTAz
+            MzE1NFowHTEbMBkGA1UEAxMSY2hhaW4tbGVhZi1maXh0dXJlMIIBIjANBgkqhkiG
+            9w0BAQEFAAOCAQ8AMIIBCgKCAQEA119FOU0/w31UeWkSQzCCPRZpojS+VF6Ossg7
+            qCODIqjxrSUcaGXbT0oMEOZXSuXyLxFQyPYp2TNzhX03k60kaKrP/Aep7tSg0Evh
+            IbDvI4sudrAwuTPW2gxm7LJewKVhANzebepiXHcEQEw80Y6DL42HEVS2hNMEuQ8B
+            pNTB/Y9/w0pOqdniewuEAujYzYvpalEsAfk9kgyFSo0n0R58QAVC+9zkZG96JthT
+            OI3+MWz75jSlVe3DLCUn6UZAvSDLmfcfbLqZiIiWlIwO8G/sTUd5x4JeA2wV1tIc
+            rqs4wH6jUcn4ntBxj8XlP3hGMv/stKHs7eWgntIQr6V1E29W0QIDAQABo0EwPzAd
+            BgNVHQ4EFgQU9fRXroIZUDtHInqnB0cOm4t9IEMwHgYDVR0RBBcwFYITYnJva2Vy
+            LmV4YW1wbGUudGVzdDANBgkqhkiG9w0BAQwFAAOCAQEAcTRl79KET8Dgks6OrwEn
+            gseClYO/pm8RKsUbJU0fZiw6lASH2LIZEIohcMamaIhj0//AhZUKtKA/W+PaQR/o
+            G8kvr1kkedUl1+6LSRmDJaPiRWkcsrwIsuBnSzlJWWGhJSO88oZfDYK5w8mZiWDY
+            6VlwWtGWpFmA2nUS/KvySHxN3CHF2wDX6S2+oo85i+eqNTVjKhDS4yCXV+n2BEyC
+            2g2mHuhkeJUT1jaPD1SEwO09N2Yf0Yz0j9glZhQdShlAPq029jfv9x8PWv2/iaB4
+            VHNEY4xAlzAMvSQ1LckL46dCnZGNE9XLUi4CVRJjZrItfWxG3LfL3ojqWaQX+EyW
+            JQ==
+            -----END CERTIFICATE-----
+            """;
+
     @Mock
     private K8sCertRepository k8sCertRepository;
 
@@ -112,6 +135,50 @@ class K8sCertServiceTest {
         sampleCert.setId(1L);
         sampleCert.setGmtCreate(LocalDateTime.of(2024, 12, 1, 0, 0));
         sampleCert.setGmtModified(LocalDateTime.of(2025, 1, 2, 0, 0));
+    }
+
+    @Test
+    void createCertShouldReadFirstCertificateFromPemBundleTest() throws Exception {
+        when(k8sCertRepository.save(any(K8sCertVO.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        X509Certificate first = (X509Certificate) CertificateFactory.getInstance("X.509")
+                .generateCertificate(new ByteArrayInputStream(PADDED_CERT_PEM.getBytes(StandardCharsets.UTF_8)));
+
+        for (String newline : List.of("\n", "\r\n")) {
+            String bundle = (PADDED_CERT_PEM + TEST_CERT_PEM).replace("\n", newline);
+            K8sCertVO result = k8sCertService.createCert(CreateCertDTO.builder()
+                    .k8sId("bundle-cert").type("TLS").certPem(bundle).build());
+
+            assertThat(result.getCertPem()).isEqualTo(bundle);
+            assertThat(result.getIssuer()).isEqualTo(first.getIssuerX500Principal().getName());
+            assertThat(result.getSan()).containsExactly("broker.example.test");
+            assertThat(result.getNotAfter())
+                    .isEqualTo(LocalDateTime.ofInstant(first.getNotAfter().toInstant(), ZoneOffset.UTC));
+        }
+    }
+
+    @Test
+    void createCertShouldRetainBareBase64CompatibilityTest() {
+        when(k8sCertRepository.save(any(K8sCertVO.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        String base64 = PADDED_CERT_PEM.replace("-----BEGIN CERTIFICATE-----", "")
+                .replace("-----END CERTIFICATE-----", "");
+
+        K8sCertVO result = k8sCertService.createCert(CreateCertDTO.builder()
+                .type("TLS").certPem(base64).build());
+
+        assertThat(result.getIssuer()).isEqualTo("CN=chain-leaf-fixture");
+        assertThat(result.getCertPem()).isEqualTo(base64);
+    }
+
+    @Test
+    void createCertShouldStillRejectMalformedPemTest() {
+        CreateCertDTO command = CreateCertDTO.builder().type("TLS")
+                .certPem("-----BEGIN CERTIFICATE-----\ninvalid\n-----END CERTIFICATE-----").build();
+
+        assertThatThrownBy(() -> k8sCertService.createCert(command))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("Invalid certificate content");
+        verifyNoInteractions(k8sCertRepository, operationAuditService);
     }
 
     @Test

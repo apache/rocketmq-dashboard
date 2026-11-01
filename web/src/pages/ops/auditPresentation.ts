@@ -120,6 +120,26 @@ const operationPresentation: Record<string, AuditOperationPresentation> = {
   DELETE_ALERT_RULE: { label: 'Delete Alert Rule', color: 'volcano', category: 'alerts' },
   CREATE_ALERT_SILENCE: { label: 'Create Alert Silence', color: 'blue', category: 'alerts' },
   DELETE_ALERT_SILENCE: { label: 'Delete Alert Silence', color: 'volcano', category: 'alerts' },
+  DELIVER_ALERT_NOTIFICATION: {
+    label: 'Deliver Alert Notification',
+    color: 'gold',
+    category: 'alerts',
+  },
+  RETRY_ALERT_NOTIFICATION: {
+    label: 'Retry Alert Notification',
+    color: 'gold',
+    category: 'alerts',
+  },
+  RETRY_ALERT_NOTIFICATION_MANUALLY: {
+    label: 'Retry Alert Notification Manually',
+    color: 'gold',
+    category: 'alerts',
+  },
+  FAIL_ALERT_NOTIFICATION: {
+    label: 'Fail Alert Notification',
+    color: 'volcano',
+    category: 'alerts',
+  },
   ACKNOWLEDGE_SYSTEM_ALERT: {
     label: 'Acknowledge System Alert',
     color: 'green',
@@ -134,6 +154,8 @@ const operationPresentation: Record<string, AuditOperationPresentation> = {
   IMPORT_CLOUD_INSTANCES: { label: 'Import Cloud Instances', color: 'cyan', category: 'instance' },
 
   UPDATE_GROUP_SETTINGS: { label: 'Update Group Settings', color: 'purple', category: 'metadata' },
+
+  SUMMARY_DASHBOARD: { label: 'View Summary Dashboard', color: 'default', category: 'other' },
 
   CREATE_INSTANCE: { label: 'Create Instance', color: 'blue', category: 'instance' },
   UPDATE_INSTANCE: { label: 'Update Instance', color: 'cyan', category: 'instance' },
@@ -174,6 +196,7 @@ const resourcePresentation: Record<string, AuditPresentation> = {
   ALERT_RULE: { label: 'Alert Rule', color: 'gold' },
   ALERT_SILENCE: { label: 'Alert Silence', color: 'gold' },
   SYSTEM_ALERT: { label: 'System Alert', color: 'gold' },
+  ALERT_NOTIFICATION: { label: 'Alert Notification', color: 'gold' },
   K8S_CERTIFICATE: { label: 'K8s Certificate', color: 'lime' },
 };
 

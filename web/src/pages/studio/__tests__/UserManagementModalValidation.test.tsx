@@ -34,13 +34,20 @@ import UserManagementPage from '../UserManagement';
 type MockAuthState = { admin: boolean; userId: number; logout: () => void };
 vi.mock('../../../api/studioUsers', () => ({
   createStudioUser: vi.fn(),
+  deleteStudioUser: vi.fn(),
   getStudioUserSessionOverview: vi.fn(),
   listAllStudioUsers: vi.fn(),
+  // The page awaits this inside Promise.all, so the mock has to hand back a promise:
+  // a bare vi.fn() returns undefined and the whole load rejects before the table renders.
+  listStudioLoginLockouts: vi.fn().mockResolvedValue([]),
   listStudioUserSessions: vi.fn(),
   listStudioUsers: vi.fn(),
   resetStudioUserPassword: vi.fn(),
+  revokeAllStudioUserSessions: vi.fn(),
+  revokeStudioSession: vi.fn(),
   revokeStudioUserSessions: vi.fn(),
   setStudioUserEnabled: vi.fn(),
+  setStudioUserRole: vi.fn(),
 }));
 
 vi.mock('../../../stores/authStore', () => ({
@@ -109,12 +116,14 @@ const collectUnhandledRejections = () => {
   const handler = (reason: unknown) => {
     reasons.push(reason);
   };
-  const nodeProcess = (globalThis as typeof globalThis & {
-    process: {
-      on: (event: 'unhandledRejection', listener: (reason: unknown) => void) => void;
-      off: (event: 'unhandledRejection', listener: (reason: unknown) => void) => void;
-    };
-  }).process;
+  const nodeProcess = (
+    globalThis as typeof globalThis & {
+      process: {
+        on: (event: 'unhandledRejection', listener: (reason: unknown) => void) => void;
+        off: (event: 'unhandledRejection', listener: (reason: unknown) => void) => void;
+      };
+    }
+  ).process;
   nodeProcess.on('unhandledRejection', handler);
   return {
     reasons,

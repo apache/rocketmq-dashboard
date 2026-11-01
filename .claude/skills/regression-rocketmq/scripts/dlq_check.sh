@@ -1,16 +1,31 @@
 #!/usr/bin/env bash
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # 死信全链路回归：建 topic/group → Studio 发 3 条 → 必失败消费者重试进 DLQ →
 # Studio DLQ 接口可见 → 重投 → 清理。命名带时间戳，trap 保证收尾清理。
-# 依赖：目标机已有 deploy-rocketmq 模式 B/C 集群（容器网络 rocketmq_net + 镜像 apache-rocketmq:develop）。
+# 依赖：目标机已有 deploy-rocketmq 模式 B/C 集群（容器网络 rocketmq_net + 镜像 apache-rocketmq:5.5.0）。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_DIR="$(dirname "$SCRIPT_DIR")"
 E2E_DIR="${E2E_DIR:-$SCRIPT_DIR/../../../../../../project/rocketmq-studio-docs/e2e-tests}"
-SSH_TARGET="${SSH_TARGET:-root@47.98.43.243}"
+: "${SSH_TARGET:?need: export SSH_TARGET=<user>@<host> before running}"
 SSH="ssh -o BatchMode=yes $SSH_TARGET"
 NAMESRV="${NAMESRV:-rmq-nameserver:9876}"
-RMQ_IMAGE="${RMQ_IMAGE:-apache-rocketmq:develop}"
+RMQ_IMAGE="${RMQ_IMAGE:-apache-rocketmq:5.5.0}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/e2e-dlq}"
 
 cd "$E2E_DIR"

@@ -150,6 +150,9 @@ public class RealClusterProvider implements ClusterProvider {
         List<NameServerVO> nameServers = Arrays.stream(namesrvAddr.split("[;,]"))
                 .map(String::trim)
                 .filter(addr -> !addr.isEmpty())
+                // The admin client deduplicates the endpoint before connecting; the reported
+                // rows must match that view instead of repeating a node per repeated segment.
+                .distinct()
                 .map(addr -> NameServerVO.builder().addr(addr).status(ClusterStatus.healthy).build())
                 .toList();
 

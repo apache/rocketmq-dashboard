@@ -58,6 +58,9 @@ class MybatisPlusInstanceRepositoryTest {
     @Mock
     private RmqGroupMapper groupMapper;
 
+    @Mock
+    private org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryService nameserverRegistry;
+
     @InjectMocks
     private MybatisPlusInstanceRepository repository;
 

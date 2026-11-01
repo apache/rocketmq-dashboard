@@ -38,7 +38,7 @@ import type { AuditFilter } from '../../api/audit';
 import type { AuditRecord } from '../../api/ops';
 import { exportAuditLogs, listAuditRecords } from '../../services/opsService';
 import { downloadBlob } from '../../utils/download';
-import { formatDateTime } from '../../utils/format';
+import { formatUtcDateTime } from '../../utils/format';
 import { useLang } from '../../i18n/LangContext';
 import {
   getAuditOperationPresentation,
@@ -209,7 +209,7 @@ const ResourceOperationTimelineModal = ({
                         </Tag>
                       </Flex>
                       <Typography.Text type="secondary">
-                        {formatDateTime(record.timestamp)} · {record.operator || '-'}
+                        {formatUtcDateTime(record.timestamp)} · {record.operator || '-'}
                       </Typography.Text>
                       {detail && <Typography.Text>{detail}</Typography.Text>}
                       {record.errorMessage && (

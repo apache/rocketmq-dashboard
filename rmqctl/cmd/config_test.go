@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -84,6 +85,97 @@ func TestConfigSetContextRejectsRemovedClusterFlag(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "unknown flag") {
 		t.Fatalf("stderr = %q, want an unknown flag error", stderr.String())
+	}
+}
+
+func TestConfigSetContextRejectsServerCredentialsBeforeSaving(t *testing.T) {
+	for _, server := range []string{
+		"https://example-user:example-password@studio.example.com",
+		"https://example-user@studio.example.com",
+		"https://:example-password@studio.example.com",
+		"https://@studio.example.com",
+		"https://example-user:example-password%zz@studio.example.com",
+		"https://studio.example.com/?accessKey=example-password",
+		"https://studio.example.com/#secretKey=example-password",
+	} {
+		for _, existing := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/existing=%t", server, existing), func(t *testing.T) {
+				stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+				app := NewApp(stdout, stderr)
+				app.Store.Getenv = emptyEnv
+				configPath := newTestConfigPath(t)
+				var before []byte
+				if existing {
+					cfg := config.Config{CurrentContext: "prod", Contexts: map[string]config.Context{
+						"prod": {Server: "https://studio.example.com", Credential: config.CredentialRef{
+							AccessKeyRef: "env:RMQ_AK", SecretKeyRef: "env:RMQ_SK",
+						}},
+					}}
+					if err := app.Store.Save(configPath, cfg); err != nil {
+						t.Fatal(err)
+					}
+					var err error
+					before, err = os.ReadFile(configPath)
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				args := []string{"--config", configPath, "config", "set-context", "prod", "--server", server}
+				if !existing {
+					args = append(args, "--access-key-env", "RMQ_AK", "--secret-key-env", "RMQ_SK")
+				}
+				if exitCode := app.Execute(args); exitCode == 0 {
+					t.Fatal("set-context accepted server URL credentials")
+				}
+				if stdout.Len() != 0 || !strings.Contains(stderr.String(), "INVALID_ARGUMENT") || !strings.Contains(stderr.String(), "--server") {
+					t.Fatalf("stdout=%q stderr=%q, want an argument error without success output", stdout, stderr)
+				}
+				if strings.Contains(stderr.String(), "example-password") || strings.Contains(stderr.String(), "example-user") {
+					t.Fatal("error output disclosed URL credentials")
+				}
+				after, err := os.ReadFile(configPath)
+				if existing {
+					if err != nil || !bytes.Equal(before, after) {
+						t.Fatalf("rejected update changed the existing config: %v", err)
+					}
+				} else if !os.IsNotExist(err) {
+					t.Fatalf("rejected creation wrote config: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestConfigSetContextCanRemoveStoredServerCredentials(t *testing.T) {
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+	app.Store.Getenv = emptyEnv
+	configPath := newTestConfigPath(t)
+	if err := app.Store.Save(configPath, config.Config{CurrentContext: "prod", Contexts: map[string]config.Context{
+		"prod": {Server: "https://example-user:example-password@studio.example.com", Credential: config.CredentialRef{
+			AccessKeyRef: "env:RMQ_AK", SecretKeyRef: "env:RMQ_SK",
+		}},
+		"dev": {Server: "http://localhost:8888", Credential: config.CredentialRef{
+			AccessKeyRef: "env:DEV_AK", SecretKeyRef: "env:DEV_SK",
+		}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if exitCode := app.Execute([]string{"--config", configPath, "config", "set-context", "prod",
+		"--server", "https://studio.example.com/studio"}); exitCode != 0 {
+		t.Fatalf("repair failed: %s", stderr)
+	}
+	cfg, err := app.Store.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contextValue := cfg.Contexts["prod"]
+	if contextValue.Server != "https://studio.example.com/studio" ||
+		contextValue.Credential.AccessKeyRef != "env:RMQ_AK" || contextValue.Credential.SecretKeyRef != "env:RMQ_SK" {
+		t.Fatalf("repair did not preserve context fields: %#v", contextValue)
+	}
+	if cfg.CurrentContext != "prod" || len(cfg.Contexts) != 2 || cfg.Contexts["dev"].Server != "http://localhost:8888" {
+		t.Fatalf("repair changed unrelated configuration: %#v", cfg)
 	}
 }
 

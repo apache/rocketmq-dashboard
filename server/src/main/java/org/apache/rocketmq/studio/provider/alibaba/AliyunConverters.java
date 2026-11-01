@@ -262,7 +262,8 @@ final class AliyunConverters {
                 .storeHost(data.getStoreHost())
                 .storeTime(parseTimeMillis(data.getStoreTime()))
                 .properties(data.getUserProperties())
-                .size(data.getBodySize() == null ? 0 : data.getBodySize());
+                // BodySize is optional in the ListMessages response; report the unknown sentinel instead of a fabricated zero.
+                .size(data.getBodySize() == null ? MessageRecordVO.UNKNOWN_SIZE : data.getBodySize());
         if (body != null) {
             builder.body(body.value()).bodyEncoding(body.encoding());
         }
@@ -388,7 +389,14 @@ final class AliyunConverters {
             return null;
         }
         try {
-            return java.time.LocalDateTime.parse(value, TIME_FORMATTER);
+            // The string is Aliyun's UTC+8 wall clock (see ALIYUN_TIME_ZONE), so relabeling it
+            // as-is would hand the caller a zone-less value in a zone nobody else uses: the
+            // gmtCreate/gmtModified columns would drift from every timestamp Studio itself
+            // writes, and from the epoch-based message/trace times of the same instance.
+            // Convert into the server zone, the same relabeling the Tencent provider applies.
+            java.time.LocalDateTime aliyunWallClock = java.time.LocalDateTime.parse(value, TIME_FORMATTER);
+            return java.time.LocalDateTime.ofInstant(
+                    aliyunWallClock.atZone(ALIYUN_TIME_ZONE).toInstant(), ZoneId.systemDefault());
         } catch (RuntimeException ex) {
             return null;
         }

@@ -21,13 +21,16 @@ import { mockAuditRecords } from '../mock/audit';
 import {
   acknowledgeAlert,
   createAlertRule,
+  createAlertSilence,
   deleteAlertRule,
+  deleteAlertSilence,
   exportAlertRulesTransfer,
   exportAuditLogs,
   getAuditFilterOptions,
   importAlertRulesTransfer,
   listAlertRules,
   listAlertRulesPage,
+  listAlertSilences,
   listAuditRecords,
   listSystemAlerts,
   listSystemAlertsPage,
@@ -76,8 +79,10 @@ describe('ops service mock data', () => {
 
   it('copies alert rule channels on create, update, and toggle', async () => {
     const channels = ['email'];
+    // Distinct evaluation fields: a second rule with the same fingerprint is rejected.
     const created = await createAlertRule({
       name: 'created-copy-test',
+      metric: 'mock.channel.copy',
       channels,
     });
     channels.push('sms');
@@ -117,11 +122,19 @@ describe('ops service mock data', () => {
 
   it('keeps alert rule CRUD isolated between cluster and business domains', async () => {
     const clusterRule = await createAlertRule(
-      { name: 'cluster-domain-rule', channels: ['email'] },
+      {
+        name: 'cluster-domain-rule',
+        metric: 'mock.cluster.domain',
+        channels: ['email'],
+      },
       'CLUSTER',
     );
     const businessRule = await createAlertRule(
-      { name: 'business-domain-rule', channels: ['sms'] },
+      {
+        name: 'business-domain-rule',
+        metric: 'mock.business.domain',
+        channels: ['sms'],
+      },
       'BUSINESS',
     );
 
@@ -150,6 +163,99 @@ describe('ops service mock data', () => {
     expect((await listAlertRules('CLUSTER')).map((rule) => rule.id)).not.toContain(clusterRule.id);
     expect((await listAlertRules('BUSINESS')).map((rule) => rule.id)).toContain(businessRule.id);
     await deleteAlertRule(businessRule.id, 'BUSINESS');
+  });
+
+  it('rejects a mock alert rule that repeats an existing evaluation fingerprint', async () => {
+    const semantics = {
+      metric: '__probe_duplicate_metric__',
+      operator: '>',
+      threshold: 17,
+      thresholdUnit: 'count',
+      duration: '5m',
+      enabled: true,
+      channels: ['email'],
+    };
+    const first = await createAlertRule({ ...semantics, name: '__probe_duplicate_one__' });
+    const ratioFirst = await createAlertRule({
+      name: '__probe_ratio_percent__',
+      metric: 'broker.disk.usage_ratio',
+      operator: '>',
+      threshold: 80,
+      thresholdUnit: '%',
+      duration: '1m',
+      channels: [],
+    });
+
+    try {
+      // The REST service answers 409 for a second rule with the same evaluation fields, and the
+      // display name is not one of them.
+      await expect(
+        createAlertRule({ ...semantics, name: '__probe_duplicate_two__' }),
+      ).rejects.toThrow(
+        'An alert rule with the same evaluation conditions already exists: __probe_duplicate_one__',
+      );
+      // The fingerprint normalises case and surrounding whitespace before comparing.
+      await expect(
+        createAlertRule({
+          ...semantics,
+          name: '__probe_duplicate_three__',
+          operator: ' > ',
+          duration: ' 5M ',
+        }),
+      ).rejects.toThrow('An alert rule with the same evaluation conditions already exists');
+      // For ratio metrics the server turns "%" into a fraction of the same threshold.
+      await expect(
+        createAlertRule({
+          name: '__probe_ratio_fraction__',
+          metric: 'broker.disk.usage_ratio',
+          operator: '>',
+          threshold: 0.8,
+          thresholdUnit: 'ratio',
+          duration: '1m',
+          channels: [],
+        }),
+      ).rejects.toThrow(
+        'An alert rule with the same evaluation conditions already exists: __probe_ratio_percent__',
+      );
+
+      const created = (await listAlertRules()).map((rule) => rule.name);
+      expect(created).not.toContain('__probe_duplicate_two__');
+      expect(created).not.toContain('__probe_duplicate_three__');
+      expect(created).not.toContain('__probe_ratio_fraction__');
+
+      // A different evaluation is still accepted, even under an existing display name.
+      const distinct = await createAlertRule({
+        ...semantics,
+        name: '__probe_duplicate_one__',
+        threshold: 18,
+      });
+      expect(distinct.threshold).toBe(18);
+      await deleteAlertRule(distinct.id);
+    } finally {
+      await deleteAlertRule(first.id);
+      await deleteAlertRule(ratioFirst.id);
+    }
+  });
+
+  it('rejects deleting a missing alert rule in mock mode', async () => {
+    const rule = await createAlertRule({
+      name: 'deleted-rule-marker',
+      metric: 'mock.delete.missing',
+      channels: ['email'],
+    });
+    await deleteAlertRule(rule.id, 'CLUSTER');
+
+    await expect(deleteAlertRule(rule.id, 'CLUSTER')).rejects.toThrow(
+      `Alert rule not found: ${rule.id}`,
+    );
+    await expect(deleteAlertRule(rule.id, 'BUSINESS')).rejects.toThrow(
+      `Alert rule not found: ${rule.id}`,
+    );
+    // The two rejections above delete by the id createAlertRule handed out, which is Date.now()
+    // based. An id that was never issued keeps the case deterministic regardless of that.
+    await expect(deleteAlertRule(999999, 'CLUSTER')).rejects.toThrow(
+      'Alert rule not found: 999999',
+    );
   });
 
   it('imports and exports alert rules within the selected domain only', async () => {
@@ -362,5 +468,63 @@ describe('ops service mock data', () => {
       '"2026-08-01 10:00:00","\'=admin","DELETE","TOPIC","csv-export-target",' +
         '"prod-cn","removed ""topic"", safely","SUCCESS","\'=denied"',
     );
+  });
+
+  it('rejects a mock alert silence whose end is not after its start', async () => {
+    const before = await listAlertSilences();
+
+    for (const endsAt of ['2026-10-20T11:00:00Z', '2026-10-20T12:00:00Z']) {
+      await expect(
+        createAlertSilence({
+          domain: 'BUSINESS',
+          startsAt: '2026-10-20T12:00:00Z',
+          endsAt,
+          recurrence: 'ONCE',
+          reason: 'invalid-order-probe',
+        }),
+      ).rejects.toThrow('Silence end time must be after start time');
+    }
+
+    expect(await listAlertSilences()).toHaveLength(before.length);
+  });
+
+  it('rejects a mock recurring alert silence whose recurrence end is missing or too early', async () => {
+    const before = await listAlertSilences();
+
+    // AlertSilenceService.validateRecurrence requires recurrenceUntil for a recurring silence and
+    // rejects one that ends before the first window does; the mock must not accept what the server
+    // would refuse, or a form built against the mock breaks the moment it meets a real backend.
+    for (const recurrenceUntil of [undefined, '2026-10-20T11:30:00Z']) {
+      await expect(
+        createAlertSilence({
+          domain: 'BUSINESS',
+          startsAt: '2026-10-20T11:00:00Z',
+          endsAt: '2026-10-20T12:00:00Z',
+          recurrence: 'DAILY',
+          timeZone: 'UTC',
+          recurrenceUntil,
+          reason: 'recurrence-until-probe',
+        }),
+      ).rejects.toThrow(/Recurrence end time/);
+    }
+
+    expect(await listAlertSilences()).toHaveLength(before.length);
+  });
+
+  it('keeps accepting a mock alert silence whose end is after its start', async () => {
+    const created = await createAlertSilence({
+      domain: 'BUSINESS',
+      startsAt: '2026-10-20T11:00:00Z',
+      endsAt: '2026-10-20T12:00:00Z',
+      recurrence: 'ONCE',
+      reason: 'valid-order-probe',
+    });
+
+    try {
+      expect(created.startsAt).toBe('2026-10-20T11:00:00Z');
+      expect(await listAlertSilences()).toContainEqual(created);
+    } finally {
+      await deleteAlertSilence(created.id);
+    }
   });
 });

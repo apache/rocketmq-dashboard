@@ -42,6 +42,21 @@ public interface LiteTopicProvider {
     int NOT_IMPLEMENTED = 501;
 
     /**
+     * Upper bound on a lite parent topic's TTL in minutes — mirrors
+     * {@code TopicAttributes.LITE_EXPIRATION_ATTRIBUTE}'s 30-day cap. The value must stay a
+     * literal: bean-validation annotations reference it and require a compile-time constant.
+     */
+    int MAX_LITE_TTL_MINUTES = 43_200;
+
+    /**
+     * TTL a new lite parent topic gets when the create request omits one, in minutes. The broker
+     * attribute itself defaults to {@code -1}, i.e. never expire, so a create that carries no TTL
+     * must not be forwarded as-is: it would leave an immortal parent topic behind. One day matches
+     * the console dialog's prefilled value.
+     */
+    int DEFAULT_LITE_TTL_MINUTES = 1_440;
+
+    /**
      * Whether the active cluster exposes the LiteTopic admin surface. Detected by probing the
      * broker; a cluster running a RocketMQ build without LiteTopic answers the probe with an
      * unsupported-code error.

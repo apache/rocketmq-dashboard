@@ -359,17 +359,7 @@ public class LlmConfigService {
     }
 
     private String normalizeApiBase(String apiBase) {
-        String normalized = apiBase.trim();
-        while (normalized.endsWith("/")) {
-            normalized = normalized.substring(0, normalized.length() - 1);
-        }
-        if (normalized.endsWith(CHAT_COMPLETIONS_PATH)) {
-            normalized = normalized.substring(0, normalized.length() - CHAT_COMPLETIONS_PATH.length());
-            while (normalized.endsWith("/")) {
-                normalized = normalized.substring(0, normalized.length() - 1);
-            }
-        }
-        return normalized;
+        return LlmApiBase.normalize(apiBase);
     }
 
     private boolean isValidApiBase(String apiBase) {
@@ -377,7 +367,7 @@ public class LlmConfigService {
             URI uri = new URI(apiBase);
             String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
             if (!("http".equals(scheme) || "https".equals(scheme)) || !StringUtils.hasText(uri.getHost())
-                    || apiBase.endsWith(CHAT_COMPLETIONS_PATH)) {
+                    || uri.getRawPath().endsWith(CHAT_COMPLETIONS_PATH)) {
                 return false;
             }
             // SSRF guard on both the save and test paths (validate() runs for each). Loopback is

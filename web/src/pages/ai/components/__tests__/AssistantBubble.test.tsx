@@ -80,13 +80,13 @@ describe('terminal tool rendering', () => {
           <AssistantBubble bubble={bubble([pendingTool])} streaming />
         </LangProvider>,
       );
-      expect(screen.getByTestId('ai-tool-progress')).toBeInTheDocument();
+      expect(screen.getByTestId('ai-tool-elapsed')).toBeInTheDocument();
       rerender(
         <LangProvider>
           <AssistantBubble bubble={bubble([pendingTool], { runStatus })} />
         </LangProvider>,
       );
-      expect(screen.queryByTestId('ai-tool-progress')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('ai-tool-elapsed')).not.toBeInTheDocument();
       const card = screen.getByTestId('ai-tool-block');
       expect(within(card).queryByText('执行中')).not.toBeInTheDocument();
       expect(within(card).queryByText('成功')).not.toBeInTheDocument();
@@ -473,7 +473,13 @@ describe('AssistantBubble', () => {
     expect(finished).toHaveAttribute('data-status', 'done');
     expect(screen.getByTestId('ai-tool-status')).toHaveTextContent('成功');
     expect(finished).toHaveTextContent('1.2 s');
-    expect(screen.getByTestId('tool-result')).toHaveTextContent('"topics":["TopicA","TopicB"]');
+    // A JSON object renders pretty-printed and colour-coded, with the raw transport string one
+    // click away — the operator must never lose the exact bytes the tool returned.
+    expect(screen.getByTestId('ai-tool-output-json')).toHaveTextContent('TopicB');
+    fireEvent.click(screen.getByTestId('ai-tool-output-raw-toggle'));
+    expect(screen.getByTestId('ai-tool-output-raw')).toHaveTextContent(
+      '"topics":["TopicA","TopicB"]',
+    );
   });
 
   it('rendersAColourlessRiskTagForAToolMissingFromTheCatalogTest', () => {
@@ -522,7 +528,9 @@ describe('AssistantBubble', () => {
     renderBubble({ blocks: done, toolCatalog: CATALOG });
 
     expect(screen.getByTestId('ai-tool-input')).toHaveTextContent('输入参数不在已加载的事件范围内');
-    expect(screen.getByTestId('tool-result')).toHaveTextContent('"TopicA"');
+    expect(screen.getByTestId('ai-tool-output-json')).toHaveTextContent('TopicA');
+    fireEvent.click(screen.getByTestId('ai-tool-output-raw-toggle'));
+    expect(screen.getByTestId('ai-tool-output-raw')).toHaveTextContent('"TopicA"');
   });
 
   it('rendersANoticeAsANeutralBannerNotAColouredAlertTest', () => {
@@ -591,5 +599,24 @@ describe('AssistantBubble', () => {
 
     expect(screen.getByText(/2026-09-\d{2} \d{2}:\d{2}:\d{2}/)).toBeInTheDocument();
     expect(screen.queryByText('2026-09-20T02:12:31')).not.toBeInTheDocument();
+  });
+
+  it('keepsTheBubbleAtOneDeclaredWidthWhateverTheAnswerLengthTest', () => {
+    // The bubble is a fixed column, not a shrink-to-fit box. Capped by maxWidth alone it grew a
+    // character at a time for the whole stream and jumped again on every code block or tool card,
+    // because both contribute their max-content width to the Card's intrinsic size. jsdom has no
+    // layout, so what is pinned here is the declaration that makes the rendered width content-free.
+    const renders = [
+      renderBubble({ blocks: appendText([], '嗯') }),
+      renderBubble({ blocks: appendText([], '很长的回答'.repeat(200)) }),
+    ];
+
+    for (const { container } of renders) {
+      const card = container.querySelector<HTMLElement>('.ant-card');
+      expect(card).not.toBeNull();
+      expect(card?.style.width).toBe('75%');
+      expect(card?.style.maxWidth).toBe('');
+      expect(card?.style.flexShrink).toBe('0');
+    }
   });
 });

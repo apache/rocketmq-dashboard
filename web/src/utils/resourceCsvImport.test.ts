@@ -73,6 +73,21 @@ describe('resourceCsvImport', () => {
     ]);
   });
 
+  it('preserves quoted topic remarks across CSV export and import', () => {
+    const remark = '  on-call note, line 1\nline 2  ';
+    const csv = buildCsv(
+      [
+        { header: 'Name', value: (row: { name: string; remark: string }) => row.name },
+        { header: 'Remark', value: (row: { name: string; remark: string }) => row.remark },
+      ],
+      [{ name: 'orders', remark }],
+    );
+    const records = parseCsvTable(csv);
+
+    expect(records[0].values.Remark).toBe(remark);
+    expect(validateTopicCsvImport(records).rows[0].payload.remark).toBe(remark);
+  });
+
   it('rejects malformed headers, unclosed quotes, and row caps', () => {
     expect(() => parseCsvTable('"Name","Name"\n"a","b"')).toThrow('CSV 表头重复');
     expect(() => parseCsvTable('"Name","Remark"\n"a,"broken"')).toThrow('CSV 引号格式错误');

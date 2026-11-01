@@ -73,6 +73,15 @@ describe('AuditSummaryCards', () => {
     expect(screen.getByText('资源类型分布')).toBeInTheDocument();
   });
 
+  it('shows localized operation and resource names in the top buckets', () => {
+    renderCards();
+    // 高频操作 / 资源榜用本地化名称（删除 Topic），不裸显 DELETE_TOPIC 这类内部码。
+    expect(screen.getByText('删除 Topic')).toBeInTheDocument();
+    expect(screen.getByText('Topic')).toBeInTheDocument();
+    expect(screen.queryByText('DELETE TOPIC')).not.toBeInTheDocument();
+    expect(screen.queryByText('DELETE_TOPIC')).not.toBeInTheDocument();
+  });
+
   it('renders every card label in English when the console language is English', () => {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
     renderCards();

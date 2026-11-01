@@ -59,6 +59,7 @@ class SourceSnapshotTest(unittest.TestCase):
 set -euo pipefail
 # Load unchanged production functions without invoking main. $0 points at
 # the copied deploy.sh, retaining its real project-root calculation.
+REMOTE_PATH="$FIXTURE/remote"
 source <(sed '$d' "$0")
 SRC_TAR="$FIXTURE/source.tar.gz"
 REMOTE_PATH="$FIXTURE/remote"
@@ -73,7 +74,10 @@ run_remote() {
     mkdir() { [[ "$FAILURE" != restore-directory || "$*" != "-p deploy" ]] || return 76; command mkdir "$@"; }
   '"$command"
 }
-scp() { cp "$2" "${3#*:}"; }
+scp() {
+  [[ "$1" == -q && "$3" == "$REMOTE:$REMOTE_PATH_QUOTED/" ]] || return 77
+  cp "$2" "$REMOTE_PATH/"
+}
 package_source
 upload_source
 """, str(self.script)],

@@ -220,7 +220,9 @@ export const parseCsvTable = (content: string): CsvRecord[] => {
     return {
       lineNumber: row.lineNumber,
       values: headers.reduce<Record<string, string>>((acc, header, index) => {
-        acc[header] = restoreFormulaSafeCell(row.cells[index] ?? '').trim();
+        const value = restoreFormulaSafeCell(row.cells[index] ?? '');
+        // Remark is user-authored text; the other columns are identifiers or controlled values.
+        acc[header] = header === 'Remark' ? value : value.trim();
         return acc;
       }, {}),
     };
@@ -280,7 +282,7 @@ export const validateTopicCsvImport = (
       rowErrors,
     );
     const perm = normalizeValue(record.values.Permission) || 'RW';
-    const remark = normalizeValue(record.values.Remark);
+    const remark = record.values.Remark ?? '';
     const duplicateMessage = duplicateMessages.get(record.lineNumber);
     if (duplicateMessage) rowErrors.push(duplicateMessage);
 

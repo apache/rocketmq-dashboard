@@ -22,6 +22,7 @@ export type AuditFilter = Omit<AuditQuery, 'page' | 'pageSize'>;
 export type AuditSummaryFilter = Omit<AuditFilter, 'target' | 'clusterIdMissing'>;
 
 export interface AuditFilterOptions {
+  operators: string[];
   operationTypes: string[];
   resourceTypes: string[];
   clusterIds: string[];

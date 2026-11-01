@@ -125,7 +125,9 @@ const healthyBrokerRoute: BrokerRoute = {
   replicaCount: 1,
 };
 
-const renderWithProviders = (initialEntry = '/instance/topic') =>
+const renderWithProviders = (
+  initialEntry: string | { pathname: string; state?: unknown } = '/instance/topic',
+) =>
   render(
     <App>
       <LangProvider>
@@ -246,6 +248,72 @@ describe('TopicPage', () => {
     expect(actionCol.style.width).toBe('290px');
   });
 
+  it('centers the type and status columns', async () => {
+    renderWithProviders('/instance/instance-proxy-1/topic');
+    const row = (await screen.findByText('topic-01')).closest('tr') as HTMLElement;
+
+    // 用户约定 2026-10-16：类型 / 状态两列的表头与单元格都居中，别改回默认左对齐。
+    const headers = Array.from(row.closest('table')!.querySelectorAll('thead th')).map((th) =>
+      th.textContent?.trim(),
+    );
+    const cells = within(row).getAllByRole('cell');
+    for (const title of ['类型', '状态']) {
+      const index = headers.indexOf(title);
+      expect(index).toBeGreaterThan(-1);
+      expect(cells[index].style.textAlign).toBe('center');
+    }
+  });
+
+  it('truncates long topic names inside the sync dialog instead of overflowing the modal', async () => {
+    const longName = 'A_VERY_LONG_TOPIC_NAME_TO_PROBE_TABLE_LAYOUT_TRUNCATION';
+    mockTopicsList([{ ...buildTopics(1)[0], name: longName }]);
+    renderWithProviders('/instance/instance-proxy-1/topic');
+    await screen.findByText(longName);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+
+    await user.click(screen.getByRole('button', { name: /同步数据/ }));
+    const dialog = await screen.findByRole('dialog', { name: /同步数据/ });
+    await waitFor(() => expect(within(dialog).getByText('缺失路由')).toBeInTheDocument());
+
+    // 用户约定 2026-10-16：同步弹窗的表格不得宽于弹窗 body——48 字符的长名曾把表的 min-content
+    // 撑到 727px，溢出 680 弹窗的 632px body 右缘（表格直接画出弹窗外）。长名靠 Topic 列
+    // ellipsis 截断 + 悬停看全名。jsdom 无布局量度，这里守 ellipsis 类名这个机制本身，
+    // 真实宽度由 playwright（/tmp/pw-verify/sync-modal-width.js）在浏览器里量。
+    expect(within(dialog).getByText(longName).closest('td')).toHaveClass('ant-table-cell-ellipsis');
+  });
+
+  it('updates the per-broker queue hint as the queue count changes', async () => {
+    renderWithProviders('/instance/instance-proxy-1/topic');
+    await screen.findByText('topic-01');
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+
+    await user.click(screen.getByRole('button', { name: /创建 Topic/ }));
+    const dialog = await screen.findByRole('dialog', { name: /创建 Topic/ });
+    // 用户约定 2026-10-16：读写队列提示合并为单条、跟随输入值，并说明读写一般需一致。
+    expect(
+      within(dialog).getByText(
+        /每个 Broker 节点写 8 \/ 读 8 个队列；读写队列数一般情况下需保持一致/,
+      ),
+    ).toBeInTheDocument();
+    const inputs = within(dialog).getAllByRole('spinbutton');
+    await user.clear(inputs[0]);
+    await user.type(inputs[0], '16');
+    expect(within(dialog).getByText(/每个 Broker 节点写 16 \/ 读 8 个队列/)).toBeInTheDocument();
+    expect(within(dialog).getAllByText(/每个 Broker 节点写/).length).toBe(1);
+  });
+
+  // 创建规则从「资源模型」页的判定流程图搬到了创建表单上的问号弹窗（用户约定 2026-10-26）。
+  it('explains the naming rule from a question mark on the create form', async () => {
+    renderWithProviders('/instance/instance-proxy-1/topic');
+    await screen.findByText('topic-01');
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+
+    await user.click(screen.getByRole('button', { name: /创建 Topic/ }));
+    const dialog = await screen.findByRole('dialog', { name: /创建 Topic/ });
+    await user.click(within(dialog).getByRole('button', { name: '查看资源命名与归属规则' }));
+    expect(await screen.findByText('资源命名与归属规则')).toBeInTheDocument();
+  });
+
   it('gives each of the four row actions its own color', async () => {
     renderWithProviders('/instance/instance-proxy-1/topic');
     await screen.findByText('topic-01');
@@ -308,6 +376,81 @@ describe('TopicPage', () => {
     expect(within(getTableBody()).getByText('topic-b')).toBeInTheDocument();
     expect(within(getTableBody()).getByText('server page response')).toBeInTheDocument();
     expect(within(getTableBody()).queryByText('create response')).not.toBeInTheDocument();
+  });
+
+  it('sends the Lite TTL when creating a Lite parent topic', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders('/instance/instance-proxy-1/topic');
+
+    await screen.findByText('topic-01');
+    await user.click(screen.getByRole('button', { name: /创建 Topic/ }));
+    const dialog = await screen.findByRole('dialog', { name: /创建 Topic/ });
+    await user.type(within(dialog).getByLabelText('Topic 名称'), 'chat');
+    await user.click(within(dialog).getByText('LiteTopic'));
+
+    // The TTL input appears only for LITE creates and is prefilled with one day (1440 minutes).
+    const ttl = within(dialog).getByLabelText('TTL（分钟）') as HTMLInputElement;
+    expect(ttl.value).toBe('1440');
+
+    await user.click(within(dialog).getByRole('button', { name: /创\s*建/ }));
+
+    await waitFor(() => expect(topicServiceMocks.createTopic).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.createTopic).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'chat', type: 'LITE', liteTtlMinutes: 1440 }),
+    );
+  });
+
+  it('leaves the Lite TTL out of non-Lite creates', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders('/instance/instance-proxy-1/topic');
+
+    await screen.findByText('topic-01');
+    await user.click(screen.getByRole('button', { name: /创建 Topic/ }));
+    const dialog = await screen.findByRole('dialog', { name: /创建 Topic/ });
+    expect(within(dialog).queryByLabelText('TTL（分钟）')).not.toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText('Topic 名称'), 'orders');
+    await user.click(within(dialog).getByRole('button', { name: /创\s*建/ }));
+
+    await waitFor(() => expect(topicServiceMocks.createTopic).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.createTopic.mock.calls[0][0]).not.toHaveProperty('liteTtlMinutes');
+  });
+
+  it('never sends the Lite TTL on topic updates', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const liteTopic = { ...buildTopics(1)[0], type: 'LITE' };
+    mockTopicsList([liteTopic]);
+    renderWithProviders('/instance/instance-proxy-1/topic');
+
+    await screen.findByText('topic-01');
+    const row = screen.getByText('topic-01').closest('tr') as HTMLElement;
+    await user.click(within(row).getByRole('button', { name: /配置/ }));
+    const dialog = await screen.findByRole('dialog', { name: /编辑 Topic/ });
+
+    // TTL is create-only: the edit dialog has no TTL input even for a Lite parent topic.
+    expect(within(dialog).queryByLabelText('TTL（分钟）')).not.toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => expect(topicServiceMocks.updateTopic).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.updateTopic.mock.calls[0][0]).not.toHaveProperty('liteTtlMinutes');
+  });
+
+  it('opens the create dialog with LITE preselected for the LiteTopic page action', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders({
+      pathname: '/instance/instance-proxy-1/topic',
+      state: { createType: 'LITE' },
+    });
+
+    const dialog = await screen.findByRole('dialog', { name: /创建 Topic/ });
+    expect(within(dialog).getByLabelText('TTL（分钟）')).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText('Topic 名称'), 'chat');
+    await user.click(within(dialog).getByRole('button', { name: /创\s*建/ }));
+
+    await waitFor(() => expect(topicServiceMocks.createTopic).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.createTopic).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'chat', type: 'LITE', liteTtlMinutes: 1440 }),
+    );
   });
 
   it('updates topic config through the update service and reloads the page', async () => {

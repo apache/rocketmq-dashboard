@@ -110,6 +110,18 @@ class RealClusterProviderTest {
     }
 
     @Test
+    void describeClusterShouldDeduplicateRepeatedNameServerSegments() throws Exception {
+        stubClusterInfo("10.0.0.1:9876;10.0.0.2:9876;10.0.0.1:9876", sampleClusterInfo());
+
+        ClusterVO cluster = provider.describeCluster("10.0.0.1:9876;10.0.0.2:9876;10.0.0.1:9876");
+
+        // The admin client deduplicates the endpoint segments before connecting; the reported
+        // name-server rows must not repeat a node the connection itself treats once.
+        assertThat(cluster.getNameServers()).extracting("addr")
+                .containsExactly("10.0.0.1:9876", "10.0.0.2:9876");
+    }
+
+    @Test
     void describeClusterShouldDefaultAbsentRuntimeCollectionsToEmpty() throws Exception {
         stubClusterInfo("10.0.0.1:9876", sampleClusterInfo());
 

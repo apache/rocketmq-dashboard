@@ -43,6 +43,8 @@ import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -99,6 +101,16 @@ public class AclService {
 
     public PageResult<AclRuleVO> listRules(String principal, String resource, String scope, String decision,
             String instanceId, Integer page, Integer pageSize) {
+        return listRules(principal, resource, scope, decision, null, instanceId, page, pageSize);
+    }
+
+    /**
+     * @param aclVersion restricts the page to one ACL version ({@code 1.0}/{@code 2.0}); the console
+     *                   has offered this filter all along, and the repository predicate existed, but
+     *                   nothing carried the value from the request to it.
+     */
+    public PageResult<AclRuleVO> listRules(String principal, String resource, String scope, String decision,
+            String aclVersion, String instanceId, Integer page, Integer pageSize) {
         int normalizedPage = requireValidPage(page);
         int normalizedPageSize = requireValidPageSize(pageSize);
         requireAcl2Supported(instanceId);
@@ -107,13 +119,15 @@ public class AclService {
                     .filter(rule -> containsIgnoreCase(rule.getResource(), resource))
                     .filter(rule -> equalsIgnoreCase(rule.getScope(), scope))
                     .filter(rule -> equalsIgnoreCase(rule.getDecision(), decision))
+                    .filter(rule -> equalsIgnoreCase(rule.getAclVersion(), aclVersion))
                     .toList();
-            return paginateRules(filtered, normalizedPage, normalizedPageSize);
+            return toUtcWire(paginateRules(filtered, normalizedPage, normalizedPageSize));
         }
-        log.info("Listing ACL rules for principal={}, resource={}, scope={}, decision={}, page={}, pageSize={}",
-                principal, resource, scope, decision, normalizedPage, normalizedPageSize);
-        return aclRepository.findRulePage(principal, resource, scope, decision, null,
-                normalizedPage, normalizedPageSize);
+        log.info("Listing ACL rules for principal={}, resource={}, scope={}, decision={}, aclVersion={},"
+                        + " page={}, pageSize={}",
+                principal, resource, scope, decision, aclVersion, normalizedPage, normalizedPageSize);
+        return toUtcWire(aclRepository.findRulePage(principal, resource, scope, decision, aclVersion,
+                normalizedPage, normalizedPageSize));
     }
 
 
@@ -132,6 +146,8 @@ public class AclService {
         rule.setGmtCreate(LocalDateTime.now());
         AclRuleVO saved = aclRepository.saveRule(rule);
         auditRule("CREATE_ACL_RULE", saved);
+        // Write paths echo the stored row (the stored server-local base) for form prefill; the
+        // read paths are what the pages render, so only they convert to the UTC wire.
         return saved;
     }
 
@@ -140,14 +156,14 @@ public class AclService {
             throw new BusinessException(400, "ACL rule id is required");
         }
         if (isTencentInstance(instanceId)) {
-            return tencentAclService.listRules(instanceId, null).stream()
+            return toUtcWire(tencentAclService.listRules(instanceId, null).stream()
                     .filter(rule -> id.equals(rule.getPrincipal())
                             || rule.getId() != null && id.equals(rule.getId().toString()))
                     .findFirst()
-                    .orElseThrow(() -> new BusinessException(404, "ACL rule not found: " + id));
+                    .orElseThrow(() -> new BusinessException(404, "ACL rule not found: " + id)));
         }
-        return aclRepository.findRuleById(EntityIds.parseId(id))
-                .orElseThrow(() -> new BusinessException(404, "ACL rule not found: " + id));
+        return toUtcWire(aclRepository.findRuleById(EntityIds.parseId(id))
+                .orElseThrow(() -> new BusinessException(404, "ACL rule not found: " + id)));
     }
 
     public AclUserVO getUser(String id, String instanceId) {
@@ -193,12 +209,12 @@ public class AclService {
     public List<AclUserVO> listUsers(String instanceId) {
         if (isTencentInstance(instanceId)) {
             return tencentAclService.listUsers(instanceId).stream()
-                    .map(this::maskCredentials)
+                    .map(this::forWire)
                     .toList();
         }
         log.info("Listing ACL users");
         return aclRepository.findUsers().stream()
-                .map(this::maskCredentials)
+                .map(this::forWire)
                 .toList();
     }
 
@@ -218,12 +234,12 @@ public class AclService {
             int from = (int) Math.min(Pagination.pageOffset(page, pageSize), users.size());
             int to = Math.min(from + pageSize, users.size());
             return PageResult.of(
-                    users.subList(from, to).stream().map(this::maskCredentials).toList(),
+                    users.subList(from, to).stream().map(this::forWire).toList(),
                     users.size(), page, pageSize);
         }
         PageResult<AclUserVO> result = aclRepository.findUserPage(
                 StringUtils.hasText(keyword) ? keyword.trim() : null, page, pageSize);
-        return PageResult.of(result.getItems().stream().map(this::maskCredentials).toList(),
+        return PageResult.of(result.getItems().stream().map(this::forWire).toList(),
                 result.getTotal(), result.getPage(), result.getSize());
     }
 
@@ -242,6 +258,8 @@ public class AclService {
         user.setGmtCreate(LocalDateTime.now());
         AclUserVO saved = aclRepository.saveUser(user);
         auditUser("CREATE_ACL_USER", saved);
+        // Write paths echo the stored row (the stored server-local base); only the read paths
+        // that the pages render convert to the UTC wire.
         return saved;
     }
 
@@ -327,7 +345,7 @@ public class AclService {
         }
         log.info("Creating/updating plain access config accessKey={}", config.getAccessKey());
         PlainAccessConfigVO saved = aclRepository.createAndUpdatePlainAccessConfig(config);
-        String auditDetail = "admin=" + saved.isAdmin()
+        String auditDetail = "admin=" + Boolean.TRUE.equals(saved.getAdmin())
                 + ", whiteRemoteAddressConfigured="
                 + StringUtils.hasText(saved.getWhiteRemoteAddress());
         recordAudit("UPSERT_PLAIN_ACCESS_CONFIG", "ACL_USER", saved.getAccessKey(), null,
@@ -363,7 +381,7 @@ public class AclService {
         log.info("Pushing {} ACL account(s) of instance {} to the brokers", plans.size(), instanceId);
         return runtimeAdminClientResolver.execute(instanceId, admin -> {
             DefaultMQAdminExt adminExt = (DefaultMQAdminExt) admin;
-            List<String> masters = masterAddresses(adminExt);
+            List<String> masters = masterAddresses(adminExt, instanceId);
             if (!masters.isEmpty() && !acl2Enabled(adminExt, masters.get(0))) {
                 throw new BusinessException(409, "Broker ACL 2.0 is not enabled on "
                         + masters.get(0) + "; set authenticationEnabled=true and "
@@ -431,6 +449,16 @@ public class AclService {
                 continue;
             }
             String resource = brokerResource(rule);
+            if (resource == null) {
+                // A rule without a resource type does not say whether its resource names a topic
+                // or a group. Pushing it as the ANY resource would widen a named grant to the
+                // whole cluster, so it is skipped with a reason like every other rule the broker
+                // model cannot express.
+                skipped.add(rule.getResource() + ": resource type "
+                        + (rule.getResourceType() == null ? "" : rule.getResourceType())
+                        + " has no broker ACL equivalent");
+                continue;
+            }
             entries.add(AclInfo.PolicyEntryInfo.of(resource, actions,
                     splitWhiteList(user.getWhiteRemoteAddress()),
                     (rule.getDecision() == null ? "" : rule.getDecision()).toUpperCase(Locale.ROOT)));
@@ -485,12 +513,21 @@ public class AclService {
         }
     }
 
-    private List<String> masterAddresses(DefaultMQAdminExt adminExt) throws Exception {
+    /**
+     * The master brokers this push may write to. The instance's configured cluster decides the set,
+     * through the same scope the ACL read uses ({@link AclBrokerScope}): a NameServer shared by
+     * several clusters must not receive this instance's accounts and policies on the clusters it is
+     * not bound to. An instance that names no cluster keeps every master of the endpoint.
+     */
+    private List<String> masterAddresses(DefaultMQAdminExt adminExt, String instanceId) throws Exception {
         ClusterInfo clusterInfo = adminExt.examineBrokerClusterInfo();
         if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null) {
             return List.of();
         }
-        return clusterInfo.getBrokerAddrTable().values().stream()
+        String configuredCluster = StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
+        return AclBrokerScope.scopedBrokerNames(clusterInfo, configuredCluster).stream()
+                .map(clusterInfo.getBrokerAddrTable()::get)
                 .filter(broker -> broker != null && broker.getBrokerAddrs() != null)
                 .map(broker -> broker.getBrokerAddrs().get(MixAll.MASTER_ID))
                 .filter(Objects::nonNull)
@@ -501,7 +538,9 @@ public class AclService {
     /**
      * Broker ACL 2.0 resources are typed strings ("Topic:orders", "Group:cg"); a bare name parses
      * to a null resource and the broker rejects the entry with CODE 16. Cluster-scoped rules map to
-     * the ANY resource, which the broker stores as "*".
+     * the ANY resource, which the broker stores as "*". A rule with no resource type (or one the
+     * broker model has no equivalent for) returns {@code null}: its resource name cannot be typed,
+     * and pushing it as ANY would widen a named grant to the whole cluster.
      */
     private String brokerResource(AclRuleVO rule) {
         String type = rule.getResourceType() == null ? "" : rule.getResourceType();
@@ -511,7 +550,10 @@ public class AclService {
         if ("Group".equalsIgnoreCase(type)) {
             return "Group:" + rule.getResource();
         }
-        return "*";
+        if ("Cluster".equalsIgnoreCase(type)) {
+            return "*";
+        }
+        return null;
     }
 
     /** ALL expands to both message directions; anything else the broker cannot act on is dropped. */
@@ -574,7 +616,7 @@ public class AclService {
         // Both vendor paths reveal a secret, so both are audited; the detail never carries it.
         recordAudit("REVEAL_ACL_USER_CREDENTIALS", "ACL_USER", String.valueOf(id), null,
                 "instanceId=" + instanceId);
-        return user;
+        return withUtcWire(user);
     }
 
     /**
@@ -738,6 +780,7 @@ public class AclService {
         };
     }
 
+    /** Write paths echo the stored row, so masking must not also shift its creation stamp. */
     private AclUserVO maskCredentials(AclUserVO user) {
         return AclUserVO.builder()
                 .id(user.getId())
@@ -751,6 +794,73 @@ public class AclService {
                 .whiteRemoteAddress(user.getWhiteRemoteAddress())
                 .gmtCreate(user.getGmtCreate())
                 .build();
+    }
+
+    /**
+     * The read-path wire shape: a masked copy whose creation stamp is UTC. maskCredentials already
+     * builds a fresh row, so the shift lands on the copy and the stored base stays server-local.
+     */
+    private AclUserVO forWire(AclUserVO user) {
+        AclUserVO masked = maskCredentials(user);
+        masked.setGmtCreate(toUtcWire(masked.getGmtCreate()));
+        return masked;
+    }
+
+    /**
+     * ACL timestamps are stored as zone-less server-local values (every source produces that
+     * shape: the local repositories write {@code LocalDateTime.now()}, the Tencent adapter
+     * converts cloud epochs with the server zone). The pages render them in the viewer's zone,
+     * so the JSON wire carries a UTC wall clock — the alert / K8s-cert convention — instead of a
+     * zone-less value the browser would parse as its own zone. The stored base is not converted,
+     * and these mappers return copies so repository- or adapter-owned rows stay untouched.
+     */
+    private static LocalDateTime toUtcWire(LocalDateTime serverLocal) {
+        return serverLocal == null ? null : serverLocal.atZone(ZoneId.systemDefault())
+                .withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
+    }
+
+    private static AclRuleVO toUtcWire(AclRuleVO rule) {
+        if (rule == null) {
+            return null;
+        }
+        return AclRuleVO.builder()
+                .id(rule.getId())
+                .principal(rule.getPrincipal())
+                .resource(rule.getResource())
+                .resourceType(rule.getResourceType())
+                .resourcePattern(rule.getResourcePattern())
+                .actions(rule.getActions() == null ? null : List.copyOf(rule.getActions()))
+                .decision(rule.getDecision())
+                .scope(rule.getScope())
+                .aclVersion(rule.getAclVersion())
+                .gmtCreate(toUtcWire(rule.getGmtCreate()))
+                .build();
+    }
+
+    private static AclUserVO withUtcWire(AclUserVO user) {
+        if (user == null) {
+            return null;
+        }
+        return AclUserVO.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .accessKey(user.getAccessKey())
+                .secretKey(user.getSecretKey())
+                .admin(user.isAdmin())
+                .permRead(user.getPermRead())
+                .permWrite(user.getPermWrite())
+                .clusters(user.getClusters() == null ? null : List.copyOf(user.getClusters()))
+                .whiteRemoteAddress(user.getWhiteRemoteAddress())
+                .gmtCreate(toUtcWire(user.getGmtCreate()))
+                .build();
+    }
+
+    private static PageResult<AclRuleVO> toUtcWire(PageResult<AclRuleVO> page) {
+        if (page == null) {
+            return null;
+        }
+        return PageResult.of(page.getItems().stream().map(AclService::toUtcWire).toList(),
+                page.getTotal(), page.getPage(), page.getSize());
     }
 
     private static int normalizePage(Integer page) {
