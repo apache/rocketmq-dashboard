@@ -144,6 +144,29 @@ describe('AiAssistantTab', () => {
     expect(screen.queryByText('密钥已配置')).not.toBeInTheDocument();
   });
 
+  it('preserves a newly typed key while clearing the stored key Test', async () => {
+    let resolveSave!: (result: { status: number }) => void;
+    llmApiMocks.saveLlmConfig.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('密钥已配置');
+    await user.click(screen.getByRole('button', { name: /清除密钥/ }));
+    await waitFor(() => expect(llmApiMocks.saveLlmConfig).toHaveBeenCalledTimes(1));
+    const apiKey = screen.getByLabelText('API Key');
+    await user.type(apiKey, 'sk-new-key');
+    await act(async () => resolveSave({ status: 0 }));
+
+    expect(apiKey).toHaveValue('sk-new-key');
+    expect(screen.queryByText('密钥已配置')).not.toBeInTheDocument();
+  });
+
   it('submits the Azure deployment fields required by the backend', async () => {
     const user = userEvent.setup();
     const { container } = renderPage();
@@ -193,6 +216,30 @@ describe('AiAssistantTab', () => {
     expect(
       await screen.findByText('qwen-plus-latest', { selector: '.ant-select-item-option-content' }),
     ).toBeInTheDocument();
+  });
+
+  it('preserves a new API key typed while an earlier save is pending', async () => {
+    let resolveSave!: (result: { status: number }) => void;
+    llmApiMocks.saveLlmConfig.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('密钥已配置');
+    const apiKey = screen.getByLabelText('API Key');
+    await user.type(apiKey, 'sk-first');
+    await user.click(screen.getByRole('button', { name: /保\s*存/ }));
+    await waitFor(() => expect(llmApiMocks.saveLlmConfig).toHaveBeenCalledTimes(1));
+
+    await user.clear(apiKey);
+    await user.type(apiKey, 'sk-second');
+    await act(async () => resolveSave({ status: 0 }));
+
+    expect(apiKey).toHaveValue('sk-second');
   });
 
   it('ignores a saved model refresh after the provider changes', async () => {
