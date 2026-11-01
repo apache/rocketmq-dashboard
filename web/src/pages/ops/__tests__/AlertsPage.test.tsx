@@ -268,8 +268,9 @@ describe('AlertsPage', () => {
 
     expect(screen.getByRole('button', { name: 'Test Run' })).toBeInTheDocument();
     expect(screen.getByText('Window aggregation')).toBeInTheDocument();
+    // The retention help moved from an `extra` line into the field label's tooltip.
     expect(
-      screen.getByText(
+      screen.getByTitle(
         'Aggregation uses only metric snapshots currently retained locally. History outside the current retention period is unavailable; changing retention does not invalidate the rule.',
       ),
     ).toBeInTheDocument();
@@ -284,7 +285,7 @@ describe('AlertsPage', () => {
     await user.click(await screen.findByRole('button', { name: '新建规则' }));
 
     expect(
-      screen.getByText(
+      screen.getByTitle(
         '聚合只使用本地当前保留的指标快照。当前保留周期之外的历史数据不可用；调整保留时间不会使规则失效。',
       ),
     ).toBeInTheDocument();
@@ -398,6 +399,155 @@ describe('AlertsPage', () => {
     await waitFor(() =>
       expect(updateAlertRule).toHaveBeenCalledWith(
         expect.objectContaining({ id: 1, threshold: 29, thresholdUnit: '%' }),
+      ),
+    );
+  });
+
+  it.each([
+    ['edit', 'pending', 'broker.disk.usage_ratio'],
+    ['edit', 'failed', 'broker.jvm.heap.usage_ratio'],
+    ['duplicate', 'pending', 'broker.send_queue.usage_ratio'],
+    ['duplicate', 'failed', 'broker.disk.usage_ratio'],
+  ] as const)(
+    'preservesLegacyRatioThresholdWith%sAnd%sDiscoveryFor%sTest',
+    async (mode, discovery, metric) => {
+      const legacyRule = {
+        ...cloneRule(alertRules[0]),
+        instanceId: 'local',
+        metric,
+        threshold: 0.29,
+        thresholdUnit: null,
+      };
+      vi.mocked(listAlertRulesPage).mockResolvedValue(pageResult([legacyRule]));
+      let rejectDiscovery!: (error: Error) => void;
+      vi.mocked(listNativeAlertMetrics).mockReturnValue(
+        new Promise<NativeAlertMetricInfo[]>((_resolve, reject) => {
+          rejectDiscovery = reject;
+        }),
+      );
+      vi.mocked(updateAlertRule).mockImplementation(async (data) => ({ ...legacyRule, ...data }));
+      vi.mocked(createAlertRule).mockImplementation(async (data) => ({ ...legacyRule, ...data }));
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByText(legacyRule.name);
+      await expectRuleRowInteractive(legacyRule.name);
+      await user.click(
+        within(getRuleRow(legacyRule.name)).getByRole('button', {
+          name: mode === 'edit' ? '编辑' : '复制',
+        }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      await waitFor(() => expect(listNativeAlertMetrics).toHaveBeenCalledTimes(1));
+      if (discovery === 'failed') {
+        await act(async () => rejectDiscovery(new Error('metric discovery unavailable')));
+      }
+      await user.click(
+        within(dialog).getByRole('button', { name: mode === 'edit' ? /编\s*辑/ : /新\s*建/ }),
+      );
+      await waitFor(() =>
+        expect(mode === 'edit' ? updateAlertRule : createAlertRule).toHaveBeenCalledWith(
+          expect.objectContaining({ threshold: 29, thresholdUnit: '%' }),
+        ),
+      );
+    },
+  );
+
+  it('keepsOperatorThresholdWhenLegacyDiscoveryFinishesLateTest', async () => {
+    const legacyRule = {
+      ...cloneRule(alertRules[0]),
+      instanceId: 'local',
+      metric: 'broker.disk.usage_ratio',
+      threshold: 0.29,
+      thresholdUnit: null,
+    };
+    vi.mocked(listAlertRulesPage).mockResolvedValue(pageResult([legacyRule]));
+    let resolveDiscovery!: (metrics: NativeAlertMetricInfo[]) => void;
+    vi.mocked(listNativeAlertMetrics).mockReturnValue(
+      new Promise<NativeAlertMetricInfo[]>((resolve) => {
+        resolveDiscovery = resolve;
+      }),
+    );
+    vi.mocked(updateAlertRule).mockImplementation(async (data) => ({ ...legacyRule, ...data }));
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText(legacyRule.name);
+    await expectRuleRowInteractive(legacyRule.name);
+    await user.click(within(getRuleRow(legacyRule.name)).getByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog');
+    const threshold = within(dialog).getByPlaceholderText('阈值');
+    await user.clear(threshold);
+    await user.type(threshold, '40');
+    await act(async () =>
+      resolveDiscovery([
+        {
+          key: legacyRule.metric,
+          label: 'Broker disk usage ratio',
+          thresholdUnit: 'ratio',
+          supportsConsumerGroup: false,
+        },
+      ]),
+    );
+    await user.click(within(dialog).getByRole('button', { name: /编\s*辑/ }));
+    await waitFor(() =>
+      expect(updateAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({ threshold: 40, thresholdUnit: '%' }),
+      ),
+    );
+  });
+
+  it.each([
+    ['broker.disk.usage_ratio', 29, '%'],
+    ['consumer.lag.total', 1200, 'messages'],
+    ['rocketmq_disk_use_ratio', 85, '%'],
+  ] as const)(
+    'preservesExistingUnitsWithoutDiscoveryFor%sTest',
+    async (metric, threshold, thresholdUnit) => {
+      const rule = {
+        ...cloneRule(alertRules[0]),
+        instanceId: 'local',
+        metric,
+        threshold,
+        thresholdUnit,
+      };
+      vi.mocked(listAlertRulesPage).mockResolvedValue(pageResult([rule]));
+      vi.mocked(listNativeAlertMetrics).mockReturnValue(new Promise(() => {}));
+      vi.mocked(updateAlertRule).mockImplementation(async (data) => ({ ...rule, ...data }));
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByText(rule.name);
+      await expectRuleRowInteractive(rule.name);
+      await user.click(within(getRuleRow(rule.name)).getByRole('button', { name: '编辑' }));
+      const dialog = await screen.findByRole('dialog');
+      await user.click(within(dialog).getByRole('button', { name: /编\s*辑/ }));
+      await waitFor(() =>
+        expect(updateAlertRule).toHaveBeenCalledWith(
+          expect.objectContaining({ threshold, thresholdUnit }),
+        ),
+      );
+    },
+  );
+
+  it('testsLegacyRatioInPercentBeforeDiscoveryCompletesTest', async () => {
+    const legacyRule = {
+      ...cloneRule(alertRules[0]),
+      instanceId: 'local',
+      metric: 'broker.disk.usage_ratio',
+      threshold: 0.29,
+      thresholdUnit: null,
+    };
+    vi.mocked(listAlertRulesPage).mockResolvedValue(pageResult([legacyRule]));
+    vi.mocked(listNativeAlertMetrics).mockReturnValue(new Promise(() => {}));
+    vi.mocked(testAlertRule).mockResolvedValue({ samples: [] });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText(legacyRule.name);
+    await expectRuleRowInteractive(legacyRule.name);
+    await user.click(within(getRuleRow(legacyRule.name)).getByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: '试运行' }));
+    await waitFor(() =>
+      expect(testAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({ threshold: 29, thresholdUnit: '%' }),
       ),
     );
   });
@@ -847,6 +997,8 @@ describe('AlertsPage', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: '新建规则' }));
+    // The template editor and its variable chips live in a collapsed panel.
+    await user.click(screen.getByText('通知模板'));
 
     expect(screen.getByText('可用变量')).toBeInTheDocument();
     expect(screen.getByText('${ruleName}')).toBeInTheDocument();
@@ -858,6 +1010,8 @@ describe('AlertsPage', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: '新建规则' }));
+    // The template editor lives in a collapsed panel; its header carries the readiness tag.
+    await user.click(screen.getByText('通知模板'));
     const template = screen.getByRole('textbox', { name: '通知模板' });
     await user.type(template, 'Alert: ');
     await user.click(screen.getByText('${ruleName}'));
@@ -871,6 +1025,7 @@ describe('AlertsPage', () => {
 
     await user.click(await screen.findByRole('button', { name: '新建规则' }));
     await user.type(screen.getByRole('textbox', { name: '规则名称' }), 'Disk hot');
+    await user.click(screen.getByText('通知模板'));
     const template = screen.getByRole('textbox', { name: '通知模板' });
     fireEvent.change(template, { target: { value: '[${level}] ${ruleName} ${owner}' } });
 
@@ -882,7 +1037,8 @@ describe('AlertsPage', () => {
         within(preview as HTMLElement).getByText('[WARNING] Disk hot ${owner}'),
       ).toBeInTheDocument();
     });
-    expect(within(preview as HTMLElement).getByText('需关注')).toBeInTheDocument();
+    // The readiness tag moved to the collapse panel header; the preview card keeps the render.
+    expect(screen.getByText('需关注')).toBeInTheDocument();
     expect(
       within(preview as HTMLElement).getByText('未知变量不会被替换：owner'),
     ).toBeInTheDocument();
@@ -896,6 +1052,7 @@ describe('AlertsPage', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: '新建规则' }));
+    await user.click(screen.getByText('通知模板'));
     const template = screen.getByRole('textbox', { name: '通知模板' });
     await user.click(screen.getByRole('button', { name: '填入默认模板' }));
 
@@ -1138,6 +1295,29 @@ describe('AlertsPage', () => {
     await waitFor(() => expect(bulkDeleteAlertRules).toHaveBeenCalledWith([1, 2]));
     expect(screen.queryByText('Broker disk usage')).not.toBeInTheDocument();
     expect(await screen.findByText('所选告警规则已删除')).toBeInTheDocument();
+  });
+
+  it('shows a failure message and keeps the selection when the bulk delete request fails', async () => {
+    vi.mocked(bulkDeleteAlertRules).mockRejectedValue(new Error('network error'));
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Broker disk usage');
+    await user.click(within(getRuleRow('Broker disk usage')).getByRole('checkbox'));
+    await user.click(within(getRuleRow('Consumer lag')).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: '批量删除' }));
+    await user.click(await screen.findByRole('button', { name: 'OK' }));
+
+    await waitFor(() => expect(bulkDeleteAlertRules).toHaveBeenCalledWith([1, 2]));
+    expect(await screen.findByText('2 条告警规则删除失败')).toBeInTheDocument();
+    // A request-level failure must not clear the selection: every selected rule still
+    // exists on the server, so the operator can retry without re-checking rows.
+    expect(within(getRuleRow('Broker disk usage')).getByRole('checkbox')).toBeChecked();
+    expect(within(getRuleRow('Consumer lag')).getByRole('checkbox')).toBeChecked();
+    // The confirmation dialog closes once the outcome (even a failed one) is reported,
+    // instead of sitting open with no feedback the way a rejected onOk does.
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'OK' })).not.toBeInTheDocument(),
+    );
   });
 
   it('stays on the page after a bulk delete clears a full page while more pages remain', async () => {

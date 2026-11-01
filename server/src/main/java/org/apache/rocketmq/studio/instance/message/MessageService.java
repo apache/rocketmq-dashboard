@@ -176,7 +176,7 @@ public class MessageService {
         List<Resource> resources = List.of(new Resource(Kind.GROUP, request.getConsumerGroup()),
                 ownershipGuard.topicResource(request.getTopic()));
         if (apache) {
-            resources.forEach(resource -> ownershipGuard.check(instance, resource, true));
+            resources.forEach(resource -> ownershipGuard.checkOwnerInDomain(instance, resource, true));
             ownershipGuard.requireSupportedProvider(instance);
         }
         String detail = "topic=" + request.getTopic() + ", consumerGroup=" + request.getConsumerGroup()

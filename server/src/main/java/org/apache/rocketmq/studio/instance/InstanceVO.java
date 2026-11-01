@@ -42,6 +42,8 @@ public class InstanceVO extends BaseEntity {
     private String adminCredentialRef;
     private String regionId;
     private String regionName;
+    private Long nameserverId;
+    private String nameserverName;
     private int topicCount;
     private int consumerGroupCount;
     @Builder.Default

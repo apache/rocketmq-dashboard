@@ -371,6 +371,29 @@ describe('consumer service mock data', () => {
     expect(secondSubscriptions[0]).not.toBe(firstSubscriptions[0]);
   });
 
+  it('does not show another instance fixture for a same-named mock group', async () => {
+    const name = 'cg-order-notify';
+    const otherInstance = 'instance-proxy-2';
+    expect((await getConsumerProgress(name, 'instance-proxy-1')).length).toBeGreaterThan(0);
+    expect((await getConsumerSubscriptions(name, 'instance-proxy-1')).length).toBeGreaterThan(0);
+
+    await createConsumerGroup({ name, instanceId: otherInstance });
+    try {
+      expect(await getConsumerProgress(name, otherInstance)).toEqual([]);
+      expect(await getConsumerSubscriptions(name, otherInstance)).toEqual([]);
+      const preview = await previewConsumerOffsetReset({
+        name,
+        instanceId: otherInstance,
+        topic: 'order-create',
+        timestamp: 1784246400000,
+      });
+      expect(preview.queueCount).toBe(0);
+      expect(preview.allowReset).toBe(false);
+    } finally {
+      await deleteConsumerGroup(name, otherInstance);
+    }
+  });
+
   it('builds copied reset offset previews in mock mode', async () => {
     const firstPreview = await previewConsumerOffsetReset({
       name: 'cg-order-notify',
@@ -527,6 +550,37 @@ describe('consumer service mock data', () => {
 });
 
 describe('consumer group CSV export', () => {
+  it('renders an unmeasurable consume delay as unknown instead of the placeholder zero', async () => {
+    const unmeasured = {
+      ...mockConsumerGroups[0],
+      name: 'cg-delay-unmeasured',
+      namespace: 'ns',
+      clusterId: 'cluster-a',
+      subscriptionMode: 'Push' as const,
+      consumeType: 'CLUSTERING' as const,
+      delaySeconds: 0,
+      consumptionTimestampAvailable: false,
+    };
+    const measuredZero = {
+      ...unmeasured,
+      name: 'cg-delay-zero',
+      consumptionTimestampAvailable: true,
+    };
+    mockConsumerGroups.push(unmeasured, measuredZero);
+    try {
+      const csv = await exportConsumerGroups({ names: ['cg-delay-unmeasured', 'cg-delay-zero'] });
+
+      expect(csv).toContain(
+        '"cg-delay-unmeasured","ns","cluster-a","Push","CLUSTERING","0","0","unknown"',
+      );
+      // A measured zero must stay numeric, otherwise the column loses its meaning entirely.
+      expect(csv).toContain('"cg-delay-zero","ns","cluster-a","Push","CLUSTERING","0","0","0"');
+    } finally {
+      mockConsumerGroups.pop();
+      mockConsumerGroups.pop();
+    }
+  });
+
   it('exports an unavailable total lag as unknown while preserving measured values', async () => {
     const unavailable = {
       ...mockConsumerGroups[0],

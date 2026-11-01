@@ -157,6 +157,19 @@ Agent 循环 ⊃ 一条时间线条目。不带多租户 `tenant_id`、`shareSco
 `server/src/test/resources/ai/ai-event-contract.json`：Java 的 `AiEventContractTest` 与 TS 的
 `aiEvents.contract.test.ts` 读同一个文件，各自断言类型集合与示例。任一侧漂移，另一侧 CI 变红。
 
+### HTTP 多轮文本上下文
+
+HTTP 正式回答会读取当前 run 的 `start_seq` 之前、同一 conversation 最近的 200 条事件
+（额外一条仅用于探测裁剪）。先按索引选出有界 seq，再读取这些事件的 payload；不对大文本排序。
+只把完整的用户问题和助手文本组成独立的 `user`/`assistant` 消息，忽略 reasoning、工具和诊断。
+同一轮连续文本按原顺序合并，最多保留最近 16 轮、64 KiB UTF-8 历史；超预算时丢弃整轮，
+不切断 Unicode 或拼出半轮回答。当前问题单独追加且始终保留，总输入仍经既有 payload 校验。
+历史被裁剪或存在不完整/不可读轮次时，使用已有 Notice 告知上下文有限。
+
+`resume=false` 让该 HTTP 请求不携带历史；它不是删除数据库历史或为后续请求建立持久重置点。
+旧的单 prompt HTTP 调用和 CLI 会话保持原行为。HTTP 仍没有 CLI 的 runtime session、工具执行或
+完整无限上下文；未出现在有界窗口中的内容不会自动总结，限制是应用文本预算而非精确 token 预算。
+
 ## 7. 生成与 HTTP 连接解耦
 
 SSE 流是**观察者，不是所有者**。今天（改造前）`LlmSseSession` 把 `emitter.onCompletion/onTimeout/
@@ -165,6 +178,12 @@ onError` 接到 `cancel()`，TCP 一断就杀 worker。改造后：事件先落�
 
 代价要说清楚：关掉标签页后 Agent 会跑到完，由 CLI 超时与孤儿 run 清扫兜住。换来的是刷新不丢、
 崩溃可恢复、以及「run 在没有客户端时也能完成」这个可验证性质。
+
+整轮 worker 有一个共享墙钟期限，包含提示增强、正式生成和丢失 resume 后的重试，而不是每个阶段
+重新获得一整份预算。期限从 worker 开始执行时计算，预留最多 5 秒（短预算预留 10%）供停止和
+终态写入；到期通过现有 handle 记录 `TIMEOUT`、停止当前执行，下一次 provider 调用会被拒绝。
+完成时取消定时任务。它不把用户断线改成取消；底层 I/O 的中断响应、可配置的停止宽限和数据库
+延迟仍可能延后最终退出，因此预留窗口不是持久化一定在连接关闭前完成的保证。
 
 ## 8. 取消
 

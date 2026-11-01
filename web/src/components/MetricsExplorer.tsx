@@ -53,6 +53,7 @@ import { listMetricProfiles, queryByDataSource, queryMetrics } from '../api/metr
 import type { DataSource } from '../api/settings';
 import type { MetricData, MetricMapping, MetricProfile } from '../api/metrics';
 import { useLang } from '../i18n/LangContext';
+import useAuthStore from '../stores/authStore';
 import { downloadCsv } from '../utils/download';
 import { tableScrollX } from '../utils/table';
 import { readLocalStorage, removeLocalStorage, writeLocalStorage } from '../utils/browserStorage';
@@ -75,6 +76,7 @@ import {
   type MetricResultSummary,
   type MetricSeriesDetailRow,
   type MetricsQueryHistoryEntry,
+  type MetricsQueryHistoryOwner,
   type NumericMetricSample,
 } from '../utils/metricsExplorerDiagnostics';
 
@@ -537,8 +539,16 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   const [dataSourceKey, setDataSourceKey] = useState('');
   const [dataSourcesLoading, setDataSourcesLoading] = useState(true);
   const [pendingDataSource, setPendingDataSource] = useState<DataSource | null>(null);
+  // Query history belongs to the signed-in account (#5982). The owner is memoized because the
+  // query callbacks below list it in their dependency arrays.
+  const authUser = useAuthStore((state) => state.user);
+  const authUserId = useAuthStore((state) => state.userId);
+  const historyOwner = useMemo<MetricsQueryHistoryOwner>(
+    () => ({ userId: authUserId, username: authUser }),
+    [authUser, authUserId],
+  );
   const [history, setHistory] = useState<MetricsQueryHistoryEntry[]>(() =>
-    loadMetricsQueryHistory(),
+    loadMetricsQueryHistory(historyOwner),
   );
   const [historyOpen, setHistoryOpen] = useState(false);
   const [detailsPanel, setDetailsPanel] = useState<DetailsPanelState | null>(null);
@@ -697,7 +707,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
               setHistory((currentHistory) => {
                 if (historyGeneration !== historyGenerationRef.current) return currentHistory;
                 const nextHistory = mergeMetricsQueryHistory(currentHistory, historyEntry);
-                saveMetricsQueryHistory(nextHistory);
+                saveMetricsQueryHistory(nextHistory, historyOwner);
                 return nextHistory;
               });
             }
@@ -715,7 +725,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         }),
       );
     },
-    [instanceId, runQuery],
+    [historyOwner, instanceId, runQuery],
   );
 
   useEffect(() => {
@@ -809,7 +819,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           setHistory((currentHistory) => {
             if (historyGeneration !== historyGenerationRef.current) return currentHistory;
             const nextHistory = mergeMetricsQueryHistory(currentHistory, historyEntry);
-            saveMetricsQueryHistory(nextHistory);
+            saveMetricsQueryHistory(nextHistory, historyOwner);
             return nextHistory;
           });
         }
@@ -822,7 +832,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         }
       }
     },
-    [instanceId, runQuery],
+    [historyOwner, instanceId, runQuery],
   );
 
   const handleRangeChange = (nextRangeId: RangeOption['value']) => {
@@ -1129,7 +1139,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
 
   const handleClearHistory = () => {
     historyGenerationRef.current += 1;
-    clearMetricsQueryHistory();
+    clearMetricsQueryHistory(historyOwner);
     setHistory([]);
   };
 

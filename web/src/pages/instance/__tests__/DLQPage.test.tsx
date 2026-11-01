@@ -1325,4 +1325,18 @@ describe('DLQ page', () => {
     expect(await screen.findByText(/1 条无法定位/)).toBeInTheDocument();
     expect(screen.queryByText(/重发完成：成功 0 条/)).not.toBeInTheDocument();
   });
+  it('offers no clear control on the windows the export and the resend always send', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const { container } = renderWithProviders(<DLQPage />);
+
+    // Both windows are always sent to the service, so clearing them could only
+    // snap back to the previous value. Neither picker may offer a clear control.
+    expect(await screen.findByRole('button', { name: '重投消息' })).toBeEnabled();
+    expect(container.querySelectorAll('.ant-picker-clear')).toHaveLength(0);
+
+    await user.click(screen.getByRole('button', { name: '重投消息' }));
+    const retryDialog = (await screen.findByText('重投死信消息')).closest('.ant-modal');
+    expect(retryDialog).not.toBeNull();
+    expect((retryDialog as HTMLElement).querySelectorAll('.ant-picker-clear')).toHaveLength(0);
+  });
 });

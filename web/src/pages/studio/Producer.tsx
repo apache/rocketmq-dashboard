@@ -123,8 +123,8 @@ const ProducerPage = () => {
   }, []);
 
   // Invalidates any in-flight connection query and drops its visible results,
-  // shared by every scope change (instance / topic) so a slow response can never
-  // repopulate results that belong to a different scope.
+  // shared by every scope change (instance / topic / producer group) so a slow
+  // response can never repopulate results that belong to a different scope.
   const resetConnectionQuery = () => {
     queryRequestIdRef.current += 1;
     queryInFlightRef.current = null;
@@ -374,6 +374,12 @@ const ProducerPage = () => {
               }}
               onSearch={(value) => {
                 void loadProducerGroups(value);
+              }}
+              onChange={() => {
+                // Editing the optional group filter is a criteria change like a topic edit:
+                // an in-flight query belongs to the group it was started with, and its rows
+                // must not survive the edit or land underneath the new criteria.
+                resetConnectionQuery();
               }}
               filterOption={(inputValue, option) =>
                 option?.value.toLowerCase().includes(inputValue.toLowerCase()) ?? false

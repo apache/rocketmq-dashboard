@@ -362,6 +362,7 @@ final class AiRunTestSupport {
         copy.setErrorCode(run.getErrorCode());
         copy.setErrorMessage(run.getErrorMessage());
         copy.setTokensPerSecond(run.getTokensPerSecond());
+        copy.setGmtModified(run.getGmtModified());
         return copy;
     }
 

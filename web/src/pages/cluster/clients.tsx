@@ -44,7 +44,6 @@ import type { ClientConnection } from '../../api/connections';
 import { listConnections } from '../../services/connectionsService';
 import { listRegistryClusters } from '../../services/clusterService';
 import type { ClusterInfo } from '../../api/cluster';
-import { formatDateTime } from '../../utils/format';
 import { buildCsv, downloadCsv, localExportDateStamp, type CsvColumn } from '../../utils/download';
 import { describeThrownMessage } from '../../utils/apiError';
 import { tableScrollX } from '../../utils/table';
@@ -128,7 +127,6 @@ const CLIENT_CONNECTION_EXPORT_COLUMNS: CsvColumn<ClientConnection>[] = [
   { header: 'Address', value: (connection) => connection.address },
   { header: 'Language', value: (connection) => connection.language },
   { header: 'Version', value: (connection) => connection.version },
-  { header: 'Connected At', value: (connection) => connection.connectedAt },
   { header: 'Partial', value: (connection) => (connection.partial ? 'true' : 'false') },
 ];
 
@@ -294,21 +292,17 @@ const ClientsPage = () => {
   const clusterConnections = useMemo(() => connections, [connections]);
 
   const connectionStats = useMemo(() => {
-    const instances = Array.from(
-      new Map(
-        clusterConnections.map((connection) => [
-          `${connection.type}:${connection.clientId ?? connection.address ?? connection.groupOrTopic}`,
-          connection,
-        ]),
-      ).values(),
-    );
+    // Every tile describes the connections the table below lists: the page header and the table
+    // footer both count these rows, and the diagnostics panel already reports the de-duplicated
+    // view (unique clients / addresses). Collapsing a client that serves several groups into one
+    // entry here made the summary disagree with both, e.g. 5 in the header of a 7-row page.
     return {
-      total: instances.length,
-      producers: instances.filter((connection) => connection.type === 'Producer').length,
-      consumers: instances.filter((connection) => connection.type === 'Consumer').length,
-      protocols: countBy(instances.map((connection) => connection.protocol)),
+      total: clusterConnections.length,
+      producers: clusterConnections.filter((connection) => connection.type === 'Producer').length,
+      consumers: clusterConnections.filter((connection) => connection.type === 'Consumer').length,
+      protocols: countBy(clusterConnections.map((connection) => connection.protocol)),
       languageVersions: countBy(
-        instances.map(
+        clusterConnections.map(
           (connection) =>
             `${connection.language ?? UNKNOWN_LANGUAGE} ${connection.version ?? UNKNOWN_LANGUAGE}`,
         ),
@@ -509,18 +503,6 @@ const ClientsPage = () => {
       key: 'version',
       width: 90,
       render: displayMetadata,
-    },
-    {
-      title: t('cluster.heartbeat'),
-      dataIndex: 'connectedAt',
-      key: 'connectedAt',
-      width: 170,
-      sorter: (a, b) => (a.connectedAt ?? '').localeCompare(b.connectedAt ?? ''),
-      render: (d?: string | null) => (
-        <Text type="secondary" style={{ fontSize: 14 }}>
-          {d ? formatDateTime(d) : '-'}
-        </Text>
-      ),
     },
     {
       title: t('common.actions'),
@@ -1038,9 +1020,6 @@ const ClientsPage = () => {
             </Descriptions.Item>
             <Descriptions.Item label={t('common.version')}>
               {displayMetadata(selectedConnection.version)}
-            </Descriptions.Item>
-            <Descriptions.Item label={t('cluster.heartbeat')}>
-              {selectedConnection.connectedAt ?? '-'}
             </Descriptions.Item>
           </Descriptions>
         )}

@@ -754,6 +754,7 @@ const DLQPage = () => {
             <RangePicker
               showTime
               format="YYYY-MM-DD HH:mm:ss"
+              allowClear={false}
               value={exportRange}
               onChange={(vals) => {
                 if (vals && vals[0] && vals[1]) {
@@ -885,6 +886,7 @@ const DLQPage = () => {
               <RangePicker
                 showTime
                 style={{ width: '100%' }}
+                allowClear={false}
                 value={retryRange}
                 onChange={(vals) => {
                   if (vals && vals[0] && vals[1]) {

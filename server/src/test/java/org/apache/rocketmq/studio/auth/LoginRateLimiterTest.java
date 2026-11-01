@@ -78,6 +78,60 @@ class LoginRateLimiterTest {
     }
 
     @Test
+    void activeLockoutsListLockedUsernamesSortedByRemainingSecondsTest() {
+        for (int attempt = 0; attempt < LoginRateLimiter.MAX_FAILED_ATTEMPTS; attempt++) {
+            limiter.recordFailure(" Operator ");   // normalized to lowercase/trimmed
+        }
+        clock.advance(Duration.ofMinutes(1));
+        for (int attempt = 0; attempt < LoginRateLimiter.MAX_FAILED_ATTEMPTS; attempt++) {
+            limiter.recordFailure("contractor");
+        }
+        for (int attempt = 1; attempt < LoginRateLimiter.MAX_FAILED_ATTEMPTS; attempt++) {
+            limiter.recordFailure("reader");
+        }
+        clock.advance(Duration.ofSeconds(30));
+
+        java.util.List<LoginRateLimiter.LoginLockout> lockouts = limiter.activeLockouts();
+
+        // Two locks (the tracked-but-not-locked "reader" stays hidden), the one expiring
+        // sooner first: operator's lock started at t=0, contractor's at t=60.
+        assertThat(lockouts).extracting(LoginRateLimiter.LoginLockout::username)
+                .containsExactly("operator", "contractor");
+        assertThat(lockouts.get(0).remainingSeconds())
+                .isEqualTo(LoginRateLimiter.LOCK_DURATION.toSeconds() - 90);
+        assertThat(lockouts.get(1).remainingSeconds())
+                .isEqualTo(LoginRateLimiter.LOCK_DURATION.toSeconds() - 30);
+    }
+
+    @Test
+    void activeLockoutsEmptyWhenNothingIsTrackedOrOnlyCountedTest() {
+        assertThat(limiter.activeLockouts()).isEmpty();
+
+        // Tracked-but-not-locked usernames (fewer failures than the threshold) stay hidden.
+        limiter.recordFailure("reader");
+        assertThat(limiter.activeLockouts()).isEmpty();
+    }
+
+    @Test
+    void activeLockoutsDropExpiredLocksTest() {
+        for (int attempt = 0; attempt < LoginRateLimiter.MAX_FAILED_ATTEMPTS; attempt++) {
+            limiter.recordFailure("first-locked");
+        }
+        clock.advance(Duration.ofMinutes(1));
+        for (int attempt = 0; attempt < LoginRateLimiter.MAX_FAILED_ATTEMPTS; attempt++) {
+            limiter.recordFailure("second-locked");
+        }
+        // t = 330s: the first lock (300s) has expired and disappears on its own, while the
+        // second (locked at t=60 until t=360) still holds 30 seconds.
+        clock.advance(LoginRateLimiter.LOCK_DURATION.minus(Duration.ofSeconds(30)));
+
+        java.util.List<LoginRateLimiter.LoginLockout> lockouts = limiter.activeLockouts();
+        assertThat(lockouts).hasSize(1);
+        assertThat(lockouts.get(0).username()).isEqualTo("second-locked");
+        assertThat(lockouts.get(0).remainingSeconds()).isEqualTo(30);
+    }
+
+    @Test
     void successResetsFailureCountTest() {
         for (int attempt = 1; attempt < LoginRateLimiter.MAX_FAILED_ATTEMPTS; attempt++) {
             limiter.recordFailure("operator");

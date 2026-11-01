@@ -61,8 +61,21 @@ func TestWindowsNativeBuildIgnoresCrossCompilationTarget(t *testing.T) {
 	t.Setenv("PATH", filepath.Dir(goTool)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("GOOS", "linux")
 	t.Setenv("GOARCH", "arm64")
-	command := exec.Command(shell, "-NoProfile", "-File", filepath.Join(fixture, "scripts", "build-windows.ps1"),
-		"-Output", filepath.Join("bin", "本机构建.exe"), "-RunTests")
+	t.Setenv("CGO_ENABLED", "1")
+	command := exec.Command(shell, "-NoProfile", "-Command", `
+$before = (Get-Location).Path
+$goos = $env:GOOS
+$goarch = $env:GOARCH
+$cgoEnabled = $env:CGO_ENABLED
+$path = $env:Path
+& $env:RMQCTL_BUILD_SCRIPT -Output 'bin\本机构建.exe' -RunTests
+if ((Get-Location).Path -ne $before) { throw 'Build changed the caller location' }
+if ($env:GOOS -ne $goos -or $env:GOARCH -ne $goarch -or
+    $env:CGO_ENABLED -ne $cgoEnabled -or $env:Path -ne $path) {
+    throw 'Build changed the caller environment'
+}
+`)
+	command.Env = append(os.Environ(), "RMQCTL_BUILD_SCRIPT="+filepath.Join(fixture, "scripts", "build-windows.ps1"))
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("native build failed: %v\n%s", err, output)
 	}

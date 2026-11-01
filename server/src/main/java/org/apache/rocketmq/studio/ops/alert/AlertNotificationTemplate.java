@@ -2,7 +2,17 @@
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package org.apache.rocketmq.studio.ops.alert;
 
@@ -51,7 +61,7 @@ final class AlertNotificationTemplate {
         values.put("metric", text(rule == null ? null : rule.getMetric()));
         values.put("instanceId", text(alert.getInstanceId()));
         values.put("value", formattedValue(alert, rule));
-        values.put("threshold", rule == null ? "" : String.valueOf(rule.getThreshold()));
+        values.put("threshold", rule == null ? "" : formatNumber(rule.getThreshold()));
         values.put("thresholdUnit", text(rule == null ? null : rule.getThresholdUnit()));
         values.put("level", text(alert.getLevel()));
         values.put("time", alert.getTime() == null ? "" : alert.getTime().toString());
@@ -73,7 +83,17 @@ final class AlertNotificationTemplate {
                     ? BigDecimal.valueOf(currentValue).movePointRight(2).stripTrailingZeros().toPlainString()
                     : String.valueOf(currentValue);
         }
-        return String.valueOf(currentValue);
+        return formatNumber(currentValue);
+    }
+
+    /**
+     * Renders a measurement with {@code Double.toString} instead of the plain decimal the rule
+     * dialog previews. {@code Double.toString} switches to computerized scientific notation at 1e7,
+     * so a consumer-lag alert of 12,500,000 messages reached the operator as "1.25E7" while the
+     * preview of the same template showed "12500000". Only a non-finite value has no decimal form.
+     */
+    private static String formatNumber(double value) {
+        return Double.isFinite(value) ? BigDecimal.valueOf(value).toPlainString() : String.valueOf(value);
     }
 
     private static String formatLabels(Map<String, String> labels) {

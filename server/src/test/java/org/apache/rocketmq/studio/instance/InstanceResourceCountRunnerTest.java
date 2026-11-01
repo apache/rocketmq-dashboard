@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -213,6 +214,44 @@ class InstanceResourceCountRunnerTest {
             assertThat(outcomes.get()).extracting(InstanceResourceCountRunner.CountOutcome::status)
                     .containsOnly(InstanceResourceCountRunner.OutcomeStatus.INTERRUPTED);
             assertThat(runner.queuedCount()).isZero();
+        }
+    }
+
+    @Test
+    void closeShouldCancelQueuedCountsAndReleaseWaitingRequestsTest() throws Exception {
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicBoolean queuedExecuted = new AtomicBoolean();
+        try (InstanceResourceCountRunner runner =
+                     new InstanceResourceCountRunner(1, 1, 1, TimeUnit.MINUTES)) {
+            FutureTask<List<InstanceResourceCountRunner.CountOutcome>> call = new FutureTask<>(
+                    () -> runner.countAll(List.of(instance(1L), instance(2L)), instance -> {
+                        if (instance.getId().equals(2L)) {
+                            queuedExecuted.set(true);
+                        }
+                        started.countDown();
+                        release.await();
+                        return new InstanceResourceCountRunner.ResourceCounts(1, 1);
+                    }));
+            Thread caller = new Thread(call, "resource-count-shutdown-test");
+            caller.start();
+            try {
+                assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThat(waitForQueueSize(runner, 1, 5, TimeUnit.SECONDS)).isTrue();
+
+                runner.close();
+
+                List<InstanceResourceCountRunner.CountOutcome> outcomes = call.get(2, TimeUnit.SECONDS);
+                assertThat(outcomes).hasSize(2);
+                assertThat(outcomes.get(1).status())
+                        .isEqualTo(InstanceResourceCountRunner.OutcomeStatus.INTERRUPTED);
+                assertThat(queuedExecuted).isFalse();
+                assertThat(runner.queuedCount()).isZero();
+            } finally {
+                release.countDown();
+                call.cancel(true);
+                caller.join(TimeUnit.SECONDS.toMillis(5));
+            }
         }
     }
 

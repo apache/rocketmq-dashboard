@@ -458,7 +458,68 @@ class MybatisPlusAclRepositoryTest {
                 .isEqualTo(CredentialUtils.encodeBase64("kept-secret-value"));
         // The kept secret is not echoed back.
         assertThat(result.getSecretKey()).isNull();
-        assertThat(result.isAdmin()).isTrue();
+        assertThat(result.getAdmin()).isTrue();
+    }
+
+    @Test
+    void updateWithoutTheAdminFlagShouldKeepTheStoredAdminFlag() {
+        RmqAclUser existing = userEntity(1L, "svc-x",
+                CredentialUtils.encodeBase64("kept-secret-value"));
+        existing.setAdmin(true);
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(existing));
+        when(userMapper.updateById(any(RmqAclUser.class))).thenReturn(1);
+        when(ruleMapper.delete(any(QueryWrapper.class))).thenReturn(0);
+
+        // admin is optional in the write contract: rotating the secret must not demote the account.
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder().accessKey("svc-x").build();
+
+        PlainAccessConfigVO result = repository.createAndUpdatePlainAccessConfig(config);
+
+        ArgumentCaptor<RmqAclUser> captor = ArgumentCaptor.forClass(RmqAclUser.class);
+        verify(userMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getAdmin()).isTrue();
+        assertThat(result.getAdmin()).isTrue();
+    }
+
+    @Test
+    void updateWithAnExplicitFalseShouldClearTheStoredAdminFlag() {
+        RmqAclUser existing = userEntity(1L, "svc-x",
+                CredentialUtils.encodeBase64("kept-secret-value"));
+        existing.setAdmin(true);
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(existing));
+        when(userMapper.updateById(any(RmqAclUser.class))).thenReturn(1);
+        when(ruleMapper.delete(any(QueryWrapper.class))).thenReturn(0);
+
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("svc-x")
+                .admin(false)
+                .build();
+
+        PlainAccessConfigVO result = repository.createAndUpdatePlainAccessConfig(config);
+
+        ArgumentCaptor<RmqAclUser> captor = ArgumentCaptor.forClass(RmqAclUser.class);
+        verify(userMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getAdmin()).isFalse();
+        assertThat(result.getAdmin()).isFalse();
+    }
+
+    @Test
+    void createWithoutTheAdminFlagShouldStoreFalse() {
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
+        when(userMapper.insert(any(RmqAclUser.class))).thenReturn(1);
+        when(ruleMapper.delete(any(QueryWrapper.class))).thenReturn(0);
+
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("svc-new")
+                .secretKey("secret-new")
+                .build();
+
+        PlainAccessConfigVO result = repository.createAndUpdatePlainAccessConfig(config);
+
+        ArgumentCaptor<RmqAclUser> captor = ArgumentCaptor.forClass(RmqAclUser.class);
+        verify(userMapper).insert(captor.capture());
+        assertThat(captor.getValue().getAdmin()).isFalse();
+        assertThat(result.getAdmin()).isFalse();
     }
 
     @Test

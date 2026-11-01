@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Delete resources left behind by earlier e2e / regression runs.
 
 A crashed run leaves alert rules (same evaluation conditions then make the next create
@@ -15,7 +30,9 @@ from dotenv import load_dotenv
 E2E_DIR = Path(os.getenv("E2E_DIR", Path(__file__).resolve().parents[5] / "rocketmq-studio-docs" / "e2e-tests"))
 load_dotenv(E2E_DIR / ".env")
 
-BASE = os.getenv("STUDIO_URL", "http://47.98.43.243:6789").rstrip("/")
+BASE = os.getenv("STUDIO_URL", "").rstrip("/")
+if not BASE:
+    sys.exit("STUDIO_URL is not set; export STUDIO_URL=http://<host>:6789 first")
 INSTANCE = os.getenv("OPEN_SOURCE_INSTANCE_ID", "open-source-local")
 PREFIXES = ("e2e_rule_", "e2e_del_", "e2e_channel_", "E2ETest", "E2EDlq")
 

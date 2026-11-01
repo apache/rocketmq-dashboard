@@ -92,6 +92,7 @@ public final class NamesrvAddrParser {
     }
 
     private static boolean isValidIpv6Literal(String ipv6) {
-        return ADDRESS_VALIDATOR.isValidInet6Address(ipv6);
+        // The validator also accepts CIDR prefixes, which are not socket endpoints.
+        return ipv6.indexOf('/') < 0 && ADDRESS_VALIDATOR.isValidInet6Address(ipv6);
     }
 }

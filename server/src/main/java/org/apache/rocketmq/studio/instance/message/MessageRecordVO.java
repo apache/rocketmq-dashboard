@@ -28,6 +28,16 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class MessageRecordVO {
+    /**
+     * Sentinel for a body size the vendor API does not report: Aliyun {@code ListMessages} leaves
+     * {@code BodySize} null, and Tencent {@code DescribeMessage} / {@code MessageItem} carry no size
+     * field at all. It matches the {@code -1} the broker uses for an undeterminable value, the
+     * console renders a negative size as unavailable instead of a number that would read like a
+     * measurement, and the tool catalog declares {@code minimum: -1} so an AI caller learns the
+     * sentinel means unknown rather than zero bytes.
+     */
+    public static final int UNKNOWN_SIZE = -1;
+
     private String msgId;
     private String topic;
     private String tag;

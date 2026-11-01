@@ -37,6 +37,13 @@ public class UpdateTopicDTO {
     private TopicPerm perm;
     private String remark;
 
+    /**
+     * Bound only so an update that carries a Lite TTL is rejected with an actionable error instead
+     * of being dropped as an unknown property: the TTL is create-only and changes go through
+     * {@code POST /api/liteTopic/extendTTL}. {@code MetadataService#updateTopic} raises the 400.
+     */
+    private Integer liteTtlMinutes;
+
     public TopicVO toTopicVO() {
         TopicVO topic = new TopicVO();
         topic.setName(name);
@@ -51,6 +58,7 @@ public class UpdateTopicDTO {
         }
         topic.setPerm(perm);
         topic.setRemark(remark);
+        topic.setLiteTtlMinutes(liteTtlMinutes);
         return topic;
     }
 }

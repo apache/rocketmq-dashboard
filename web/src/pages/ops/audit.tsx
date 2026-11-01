@@ -49,6 +49,7 @@ import {
   listAuditRecords,
 } from '../../services/opsService';
 import { downloadBlob } from '../../utils/download';
+import { describeApiError } from '../../utils/apiError';
 import { formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import {
@@ -65,6 +66,7 @@ import ResourceOperationTimelineModal, {
 } from './ResourceOperationTimelineModal';
 
 const emptyFilterOptions: AuditFilterOptions = {
+  operators: [],
   operationTypes: [],
   resourceTypes: [],
   clusterIds: [],
@@ -73,6 +75,7 @@ const emptyFilterOptions: AuditFilterOptions = {
 
 const buildAuditFilter = (
   searchText: string,
+  selectedOperator: string | undefined,
   selectedType: string | undefined,
   selectedResourceType: string | undefined,
   selectedClusterId: string | undefined,
@@ -80,6 +83,7 @@ const buildAuditFilter = (
   resultFilter: string,
 ): AuditFilter => ({
   search: searchText || undefined,
+  operator: selectedOperator,
   operationType: selectedType,
   resourceType: selectedResourceType,
   clusterId: selectedClusterId,
@@ -98,6 +102,7 @@ const AuditPage: React.FC = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [searchText, setSearchText] = useState('');
   const [debouncedSearchText, setDebouncedSearchText] = useState('');
+  const [selectedOperator, setSelectedOperator] = useState<string | undefined>(undefined);
   const [selectedType, setSelectedType] = useState<string | undefined>(undefined);
   const [selectedResourceType, setSelectedResourceType] = useState<string | undefined>(undefined);
   const [selectedClusterId, setSelectedClusterId] = useState<string | undefined>(undefined);
@@ -147,6 +152,7 @@ const AuditPage: React.FC = () => {
       pageSize,
       ...buildAuditFilter(
         debouncedSearchText,
+        selectedOperator,
         selectedType,
         selectedResourceType,
         selectedClusterId,
@@ -177,6 +183,7 @@ const AuditPage: React.FC = () => {
     page,
     pageSize,
     debouncedSearchText,
+    selectedOperator,
     selectedType,
     selectedResourceType,
     selectedClusterId,
@@ -198,6 +205,7 @@ const AuditPage: React.FC = () => {
     () =>
       buildAuditFilter(
         debouncedSearchText,
+        selectedOperator,
         selectedType,
         selectedResourceType,
         selectedClusterId,
@@ -206,6 +214,7 @@ const AuditPage: React.FC = () => {
       ),
     [
       debouncedSearchText,
+      selectedOperator,
       selectedType,
       selectedResourceType,
       selectedClusterId,
@@ -321,8 +330,10 @@ const AuditPage: React.FC = () => {
       const csv = await exportAuditLogs(activeFilter);
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       downloadBlob(blob, `rocketmq-audit-logs-${dayjs().format('YYYY-MM-DD')}.csv`);
-    } catch {
-      message.error(t('audit.exportFailed'));
+    } catch (error) {
+      // The server refuses an export above AuditService.MAX_EXPORT_RECORDS with a 400 that names
+      // the cap and says to narrow the filters; retrying the same request can never succeed.
+      message.error(describeApiError(error, t('audit.exportFailed')));
     } finally {
       setExporting(false);
     }
@@ -332,7 +343,7 @@ const AuditPage: React.FC = () => {
     {
       title: t('audit.time'),
       dataIndex: 'timestamp',
-      width: 180,
+      width: 170,
       // The wire carries a UTC wall clock; parsing it as browser-local would shift the render
       // by the server-viewer offset. The sorter is left to #6687's removal direction.
       defaultSortOrder: 'descend',
@@ -341,14 +352,14 @@ const AuditPage: React.FC = () => {
     {
       title: t('audit.operator'),
       dataIndex: 'operator',
-      width: 130,
+      width: 90,
       align: 'center',
       sorter: (a, b) => (a.operator ?? '').localeCompare(b.operator ?? ''),
     },
     {
       title: t('audit.opType'),
       dataIndex: 'operationType',
-      width: 190,
+      width: 140,
       align: 'center',
       sorter: (a, b) => (a.operationType ?? '').localeCompare(b.operationType ?? ''),
       render: renderOperationType,
@@ -356,7 +367,7 @@ const AuditPage: React.FC = () => {
     {
       title: t('audit.resourceType'),
       dataIndex: 'resourceType',
-      width: 150,
+      width: 110,
       ellipsis: true,
       align: 'right',
       sorter: (a, b) => (a.resourceType ?? '').localeCompare(b.resourceType ?? ''),
@@ -365,14 +376,14 @@ const AuditPage: React.FC = () => {
     {
       title: t('audit.cluster'),
       dataIndex: 'clusterId',
-      width: 140,
+      width: 110,
       ellipsis: true,
       sorter: (a, b) => (a.clusterId ?? '').localeCompare(b.clusterId ?? ''),
     },
     {
       title: t('audit.target'),
       dataIndex: 'target',
-      width: 200,
+      width: 170,
       ellipsis: true,
       align: 'center',
       render: (_: string, record) => {
@@ -416,14 +427,14 @@ const AuditPage: React.FC = () => {
       // （实测各 290），配合 TagList 的 nowrap 会把标签压窄到逐个带省略号。
       // 450 = 190(tagMaxWidth 上限) + 123 + 104 + gap 8 + 单元格内边距 16，留 9px 余量；
       // 全表合计 1640，1920 视口下容器 1650，不会引出横向滚动条。
-      width: 450,
+      width: 330,
       ellipsis: true,
       render: renderDetail,
     },
     {
       title: t('audit.result'),
       dataIndex: 'result',
-      width: 80,
+      width: 70,
       align: 'center',
       sorter: (a, b) => (a.result ?? '').localeCompare(b.result ?? ''),
       render: renderResult,
@@ -431,6 +442,7 @@ const AuditPage: React.FC = () => {
     {
       title: t('audit.error'),
       dataIndex: 'errorMessage',
+      width: 140,
       ellipsis: true,
     },
   ];
@@ -452,6 +464,18 @@ const AuditPage: React.FC = () => {
             }}
             style={{ width: 240 }}
             allowClear
+          />
+          <Select
+            aria-label={t('audit.operator')}
+            placeholder={t('audit.operator')}
+            allowClear
+            style={{ width: 150 }}
+            value={selectedOperator}
+            onChange={(value) => {
+              setPage(1);
+              setSelectedOperator(value);
+            }}
+            options={filterOptions.operators.map((value) => ({ label: value, value }))}
           />
           <Select
             aria-label={t('audit.opType')}

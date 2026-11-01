@@ -16,7 +16,7 @@
  */
 
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Alert,
   Table,
@@ -59,6 +59,7 @@ import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import TopicConfigComparisonModal from '../../components/TopicConfigComparisonModal';
+import ResourceRuleHelp from '../../components/ResourceRuleHelp';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, CLUSTER_TYPE_MAP } from '../../constants/theme';
 import type { Topic, BrokerRoute, ConsumerGroupInfo, TopicConsumerPage } from '../../api/metadata';
@@ -293,6 +294,7 @@ const TopicPageContent = ({
 }: TopicPageContentProps) => {
   const { t } = useLang();
   const navigate = useNavigate();
+  const location = useLocation();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const canSendTestMessage = (topic: Topic) => !isCloudInstance || topic.type === 'NORMAL';
@@ -337,6 +339,21 @@ const TopicPageContent = ({
   // 队列数提示要跟着输入值走（用户约定 2026-10-16：写死的「8 个队列」不随值变化是错的）
   const createWriteQueues = Form.useWatch('writeQueues', form);
   const createReadQueues = Form.useWatch('readQueues', form);
+
+  // The LiteTopic page's "Create Lite parent" action lands here with LITE preselected and
+  // opens this same create dialog; the state is cleared so refresh/back cannot reopen it.
+  // The handoff is consumed on a microtask (same shape as useDraftHandoff) so the dialog opens
+  // outside the effect pass instead of stacking renders on it.
+  useEffect(() => {
+    const state = location.state as { createType?: string } | null;
+    if (state?.createType !== 'LITE') return;
+    void Promise.resolve().then(() => {
+      form.setFieldsValue({ type: 'LITE', liteTtlMinutes: 1440 });
+      setEditingTopic(null);
+      setModalOpen(true);
+      navigate('.', { replace: true, state: {} });
+    });
+  }, [location.state, form, navigate]);
   const [sendModalOpen, setSendModalOpen] = useState(false);
   const [sendTopic, setSendTopic] = useState<Topic | null>(null);
   const [sending, setSending] = useState(false);
@@ -1000,17 +1017,20 @@ const TopicPageContent = ({
     setCreating(true);
     try {
       const values = await form.validateFields();
+      // The Lite TTL is create-only: updates never carry it and non-Lite creates leave it out.
+      const { liteTtlMinutes, ...rest } = values;
       if (editingTopic) {
         const updated = await updateTopic({
-          ...values,
+          ...rest,
           instanceId: selectedInstanceId,
         });
         await reloadTopicPage();
         message.success(`Topic「${updated.name}」更新成功`);
       } else {
         const created = await createTopic({
-          ...values,
+          ...rest,
           instanceId: selectedInstanceId,
+          ...(values.type === 'LITE' ? { liteTtlMinutes } : {}),
         });
         await reloadTopicPage();
         message.success(`Topic「${created.name}」创建成功`);
@@ -1522,11 +1542,21 @@ const TopicPageContent = ({
             readQueues: 8,
             perm: 'RW',
             type: 'NORMAL',
+            liteTtlMinutes: 1440,
           }}
           style={{ marginTop: 16 }}
         >
           <Form.Item
-            label="Topic 名称"
+            label={
+              editingTopic ? (
+                'Topic 名称'
+              ) : (
+                <Space size={4}>
+                  Topic 名称
+                  <ResourceRuleHelp />
+                </Space>
+              )
+            }
             name="name"
             rules={[
               { required: true, message: '请输入 Topic 名称' },
@@ -1556,6 +1586,23 @@ const TopicPageContent = ({
               )}
             />
           </Form.Item>
+
+          {/* A Lite parent topic's TTL is written at create time and never edited afterwards. */}
+          {createTopicType === 'LITE' && !editingTopic && (
+            <Form.Item
+              label={t('topic.liteTtl')}
+              name="liteTtlMinutes"
+              rules={[{ required: true, message: t('topic.liteTtlRequired') }]}
+              extra={t('topic.liteTtlExtra')}
+            >
+              <InputNumber
+                min={1}
+                max={43200}
+                style={{ width: '100%' }}
+                addonAfter={t('topic.liteTtlUnit')}
+              />
+            </Form.Item>
+          )}
 
           {!isCloudInstance && (
             <>

@@ -292,3 +292,24 @@ export function ratioToPercent(value: number): number {
       : `${digits}${'0'.repeat(pointIndex - digits.length)}`;
   return Number(`${sign}${scaled}`);
 }
+
+/**
+ * Trace and consumption records report "no time" as 0. {@link formatTimeMs} deliberately treats
+ * zero as a real timestamp because stored values can legitimately be the epoch, so the
+ * optional-time call sites map zero to the placeholder themselves.
+ */
+export function formatOptionalTimeMs(value: number | string | null | undefined): string {
+  return value === 0 || value === '0' ? '-' : formatTimeMs(value);
+}
+
+/** The server's sentinel for a message body size the vendor API does not report: unknown, not zero. */
+export const UNKNOWN_MESSAGE_SIZE = -1;
+
+/**
+ * Message records report "no body size" as {@link UNKNOWN_MESSAGE_SIZE}. {@link formatBytes}
+ * deliberately formats negatives as real byte counts, so the message-size call sites map the
+ * sentinel to the placeholder themselves.
+ */
+export function formatOptionalBytes(bytes: number): string {
+  return bytes < 0 ? '-' : formatBytes(bytes);
+}

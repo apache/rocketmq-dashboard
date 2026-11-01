@@ -48,6 +48,8 @@ public class RmqInstance {
 
     private String regionId;
 
+    private Long nameserverId;
+
     private LocalDateTime gmtCreate;
 
     private LocalDateTime gmtModified;

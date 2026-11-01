@@ -228,8 +228,11 @@ const collectDuplicateAccessKeys = (accounts: PlainAccessConfig[]): Set<string> 
   return duplicates;
 };
 
-const accountWhitelistClass = (account: PlainAccessConfig): WhitelistClass =>
-  classifyWhitelist(splitWhitelist(account.whiteRemoteAddress));
+const accountWhitelistClass = (account: PlainAccessConfig): WhitelistClass => {
+  const addresses = splitWhitelist(account.whiteRemoteAddress);
+  // An empty account whitelist imposes no source restriction, unlike an empty global trust list.
+  return addresses.length === 0 ? 'open' : classifyWhitelist(addresses);
+};
 
 const addDefaultPermissionIssues = (
   issues: AclRiskIssue[],

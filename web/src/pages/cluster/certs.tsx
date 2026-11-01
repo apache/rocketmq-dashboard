@@ -39,7 +39,7 @@ import InfoBanner from '../../components/InfoBanner';
 import type { K8sCertInfo } from '../../api/cluster';
 import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../services/clusterService';
 import { describeThrownMessage } from '../../utils/apiError';
-import { formatUtcDateTime } from '../../utils/format';
+import { formatUtcDateTime, parseUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import { useLang } from '../../i18n/LangContext';
 
@@ -167,8 +167,17 @@ const K8sCertsPage = () => {
       key: 'k8sId',
       width: 240,
       sorter: (a, b) => a.k8sId.localeCompare(b.k8sId),
+      // Cluster IDs are long opaque strings; wrapping them made rows unevenly tall, so the cell
+      // truncates with the full value in a tooltip and copyable keeps it retrievable verbatim.
+      ellipsis: { showTitle: false },
       render: (k8sId: string) => (
-        <Text style={{ fontFamily: 'monospace', fontSize: 14 }}>{k8sId}</Text>
+        <Text
+          copyable={{ text: k8sId }}
+          ellipsis={{ tooltip: k8sId }}
+          style={{ fontFamily: 'monospace', fontSize: 14, display: 'block' }}
+        >
+          {k8sId}
+        </Text>
       ),
     },
     {
@@ -202,7 +211,7 @@ const K8sCertsPage = () => {
       dataIndex: 'notAfter',
       key: 'notAfter',
       width: 156,
-      sorter: (a, b) => (Date.parse(a.notAfter ?? '') || 0) - (Date.parse(b.notAfter ?? '') || 0),
+      sorter: (a, b) => (parseUtcDateTime(a.notAfter) || 0) - (parseUtcDateTime(b.notAfter) || 0),
       render: (iso: string | null) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
           {formatUtcDateTime(iso)}

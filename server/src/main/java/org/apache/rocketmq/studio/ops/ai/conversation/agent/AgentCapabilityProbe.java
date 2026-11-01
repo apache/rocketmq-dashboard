@@ -91,7 +91,7 @@ public class AgentCapabilityProbe {
     }
 
     /** The three CLI probes, cached together so one request costs at most one round of forks. */
-    public Binaries binaries() {
+    public synchronized Binaries binaries() {
         Instant now = clock.instant();
         Binaries current = cached.get();
         if (current != null && Duration.between(current.probedAt(), now).compareTo(CACHE_TTL) < 0) {
@@ -102,7 +102,7 @@ public class AgentCapabilityProbe {
                 binaryProbe.isAvailable(CLAUDE_BINARY),
                 binaryProbe.isAvailable(QODER_BINARY),
                 now);
-        // Last writer wins and every writer wrote a fresh probe, so a racing refresh is harmless.
+        // Concurrent requests reuse this round instead of launching duplicate subprocesses.
         cached.set(probed);
         log.debug("probed agent binaries: rmqctl={} claude={} qoder={} (cached for {}s)",
                 probed.rmqctl(), probed.claude(), probed.qoder(), CACHE_TTL_SECONDS);

@@ -21,6 +21,7 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.util.LikePatterns;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertRule;
@@ -30,6 +31,7 @@ import org.apache.rocketmq.studio.persistence.mapper.RmqAlertNotificationOutboxM
 import org.apache.rocketmq.studio.persistence.mapper.RmqSystemAlertMapper;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 
@@ -82,19 +84,20 @@ public class MybatisPlusAlertRepository implements AlertRepository {
 
     private QueryWrapper<RmqAlertRule> ruleQuery(String search, Boolean enabled) {
         return new QueryWrapper<RmqAlertRule>()
-                .like(StringUtils.hasText(search), "name", search)
+                .like(StringUtils.hasText(search), "name", LikePatterns.escape(search))
                 .eq(enabled != null, "enabled", enabled)
                 .orderByAsc("name", "id");
     }
 
     @Override
     public PageResult<AlertRuleVO> findRulesPage(AlertRuleQuery query) {
+        String literalSearch = StringUtils.hasText(query.search()) ? LikePatterns.escape(query.search().trim()) : null;
         QueryWrapper<RmqAlertRule> conditions = new QueryWrapper<RmqAlertRule>()
                 .eq(query.enabled() != null, "enabled", query.enabled())
                 .and(StringUtils.hasText(query.search()), wrapper -> wrapper
-                        .like("name", query.search().trim())
+                        .like("name", literalSearch)
                         .or()
-                        .like("metric", query.search().trim()))
+                        .like("metric", literalSearch))
                 .orderByAsc("name")
                 .orderByAsc("id");
         if (query.domain() == AlertDomain.BUSINESS) {
@@ -115,6 +118,16 @@ public class MybatisPlusAlertRepository implements AlertRepository {
         }
         return Optional.ofNullable(ruleMapper.selectById(id))
                 .map(MybatisPlusAlertRepository::toRuleVO);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<AlertRuleVO> findRuleByIdForUpdate(Long id) {
+        if (id == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(ruleMapper.selectOne(new QueryWrapper<RmqAlertRule>()
+                .eq("id", id).last("FOR UPDATE"))).map(MybatisPlusAlertRepository::toRuleVO);
     }
 
     @Override
@@ -222,13 +235,6 @@ public class MybatisPlusAlertRepository implements AlertRepository {
     @Override
     public boolean deleteRule(Long id) {
         return id != null && ruleMapper.deleteById(id) > 0;
-    }
-
-    @Override
-    public List<SystemAlertVO> findAlerts(String level) {
-        return alertMapper.selectList(alertQuery(level)).stream()
-                .map(MybatisPlusAlertRepository::toAlertVO)
-                .collect(Collectors.toList());
     }
 
     @Override

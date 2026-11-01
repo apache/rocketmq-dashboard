@@ -36,6 +36,8 @@ public class UpdateInstanceDTO {
 
     private String adminCredentialRef;
 
+    private Long nameserverId;
+
     public InstanceVO toInstanceVO() {
         return InstanceVO.builder()
                 .name(name)
@@ -43,6 +45,7 @@ public class UpdateInstanceDTO {
                 .endpoint(endpoint)
                 .remark(remark)
                 .adminCredentialRef(adminCredentialRef)
+                .nameserverId(nameserverId)
                 .build();
     }
 }

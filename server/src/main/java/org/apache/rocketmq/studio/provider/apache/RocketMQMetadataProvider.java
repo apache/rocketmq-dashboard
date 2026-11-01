@@ -30,6 +30,7 @@ import org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
+import org.apache.rocketmq.studio.common.util.LikePatterns;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -144,6 +145,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     public List<TopicVO> listTopics(String instanceId, String clusterId, String type, String search) {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
+        String literalSearch = LikePatterns.escape(search);
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
                 .and(instanceId != null, scope -> {
                     scope.eq(RmqTopic::getInstanceId, normalizeMetadataScope(instanceId));
@@ -155,7 +157,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 })
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
                 .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
-                .like(StringUtils.hasText(search), RmqTopic::getName, search)
+                .like(StringUtils.hasText(search), RmqTopic::getName, literalSearch)
                 .orderByAsc(RmqTopic::getName);
 
         List<TopicVO> result = new ArrayList<>();
@@ -173,6 +175,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             String search, int page, int pageSize) {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
+        String literalSearch = LikePatterns.escape(search);
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
                 .and(instanceId != null, scope -> {
                     scope.eq(RmqTopic::getInstanceId, normalizeMetadataScope(instanceId));
@@ -184,7 +187,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 })
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
                 .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
-                .like(StringUtils.hasText(search), RmqTopic::getName, search)
+                .like(StringUtils.hasText(search), RmqTopic::getName, literalSearch)
                 .notIn(RmqTopic::getName, TopicValidator.getSystemTopicSet())
                 .notLikeRight(RmqTopic::getName, "rmq_sys_")
                 .notLikeRight(RmqTopic::getName, "%RETRY%")
@@ -243,6 +246,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     public List<ConsumerGroupVO> listConsumerGroups(String instanceId, String clusterId, String search) {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
+        String literalSearch = LikePatterns.escape(search);
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
                 .and(instanceId != null, scope -> {
                     scope.eq(RmqGroup::getInstanceId, normalizeMetadataScope(instanceId));
@@ -253,7 +257,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     }
                 })
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
-                .like(StringUtils.hasText(search), RmqGroup::getName, search)
+                .like(StringUtils.hasText(search), RmqGroup::getName, literalSearch)
                 .orderByAsc(RmqGroup::getName);
 
         List<ConsumerGroupVO> result = new ArrayList<>();
@@ -267,8 +271,20 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     @Override
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
             String search, int page, int pageSize) {
+        return listConsumerGroupsPage(instanceId, clusterId, search, null, page, pageSize);
+    }
+
+    @Override
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, String subscriptionMode, int page, int pageSize) {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
+        String literalSearch = LikePatterns.escape(search);
+        // message_model stores the subscription mode ("Push"/"Pop"); blank and "ALL" mean no
+        // restriction, so the count and the page both describe the filtered result set.
+        boolean modeRestricted = StringUtils.hasText(subscriptionMode)
+                && !"ALL".equals(subscriptionMode);
+        boolean popOnly = modeRestricted && SubscriptionMode.Pop.name().equalsIgnoreCase(subscriptionMode);
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
                 .and(instanceId != null, scope -> {
                     scope.eq(RmqGroup::getInstanceId, normalizeMetadataScope(instanceId));
@@ -279,7 +295,19 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     }
                 })
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
-                .like(StringUtils.hasText(search), RmqGroup::getName, search)
+                .like(StringUtils.hasText(search), RmqGroup::getName, literalSearch)
+                .and(modeRestricted, scope -> {
+                    if (popOnly) {
+                        scope.eq(RmqGroup::getMessageModel, SubscriptionMode.Pop.name());
+                    } else {
+                        // parseSubscriptionMode answers Push for every value that is not Pop — a
+                        // null, a blank, or a legacy "CLUSTERING" — so the Push filter has to match
+                        // that same set. message_model = 'Push' would drop exactly the rows the
+                        // list shows as Push, and the page total would disagree with the page.
+                        scope.isNull(RmqGroup::getMessageModel)
+                                .or().ne(RmqGroup::getMessageModel, SubscriptionMode.Pop.name());
+                    }
+                })
                 .orderByAsc(RmqGroup::getName, RmqGroup::getId);
         Page<RmqGroup> result = groupMapper.selectPage(new Page<>(page, pageSize), query);
         List<ConsumerGroupVO> groups = result.getRecords().stream()
@@ -296,7 +324,11 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             boolean consumeStatsAvailable, long totalLag, int delaySeconds,
             boolean consumptionTimestampAvailable) {
         private static GroupLiveSnapshot empty() {
-            return new GroupLiveSnapshot(List.of(), 0, false, 0L, 0, false);
+            // The snapshot every group starts from. It is also what is applied when the batch
+            // deadline cancels the future before it runs, so the online count must stay the
+            // documented -1 "inventory unavailable" sentinel (see ConsumerGroupVO) instead of a
+            // fabricated 0 that reads as "no clients online". Workers overwrite it with real data.
+            return new GroupLiveSnapshot(List.of(), -1, false, 0L, 0, false);
         }
     }
 
@@ -723,10 +755,11 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                         .build());
             }
 
-            progress.sort((a, b) -> {
-                int cmp = a.getBroker().compareToIgnoreCase(b.getBroker());
-                return cmp != 0 ? cmp : Integer.compare(a.getQueueId(), b.getQueueId());
-            });
+            progress.sort(Comparator.comparing(QueueProgressVO::getBroker, String.CASE_INSENSITIVE_ORDER)
+                    .thenComparing(QueueProgressVO::getBroker)
+                    .thenComparing(QueueProgressVO::getTopic, String.CASE_INSENSITIVE_ORDER)
+                    .thenComparing(QueueProgressVO::getTopic)
+                    .thenComparingInt(QueueProgressVO::getQueueId));
             return progress;
         } catch (Exception e) {
             if (isGroupNotOnline(e)) {

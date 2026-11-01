@@ -29,6 +29,7 @@ export type ConsumerGroupHealthIssueCode =
   | 'QUEUE_LAG_SKEW'
   | 'HIGH_GROUP_LAG'
   | 'HIGH_CONSUME_DELAY'
+  | 'CONSUME_DELAY_UNKNOWN'
   | 'UNKNOWN_QUEUE_LAG'
   | 'STALE_HEARTBEAT';
 
@@ -141,7 +142,7 @@ const heartbeatAgeSeconds = (lastHeartbeat: string | undefined, now: number): nu
 const knownLag = (progress: QueueProgress[]): number =>
   progress.reduce((sum, queue) => sum + (isLagAvailable(queue.diffTotal) ? queue.diffTotal : 0), 0);
 
-const reportedLag = (group: ConsumerGroup, fallback: number): number | null =>
+const reportedLag = (group: ConsumerGroup, fallback: number | null): number | null =>
   isLagAvailable(group.totalLag) ? group.totalLag : fallback;
 
 const topicCount = (group: ConsumerGroup, subscriptions: SubscriptionEntry[]): number => {
@@ -158,11 +159,17 @@ const topicCount = (group: ConsumerGroup, subscriptions: SubscriptionEntry[]): n
 };
 
 const lagSkewRatio = (knownQueueLags: number[]): number => {
-  const positive = knownQueueLags.filter((lag) => lag > 0);
-  if (positive.length <= 1) return 0;
-  const min = Math.min(...positive);
-  if (min === 0) return 0;
-  return Math.round((Math.max(...positive) / min) * 100) / 100;
+  let positiveCount = 0;
+  let minPositive = Number.POSITIVE_INFINITY;
+  let maxPositive = 0;
+  for (const lag of knownQueueLags) {
+    if (lag <= 0) continue;
+    positiveCount += 1;
+    minPositive = Math.min(minPositive, lag);
+    maxPositive = Math.max(maxPositive, lag);
+  }
+  if (positiveCount <= 1) return 0;
+  return Math.round((maxPositive / minPositive) * 100) / 100;
 };
 
 const maxStatus = (issues: ConsumerGroupHealthIssue[]): ConsumerGroupHealthStatus =>
@@ -334,25 +341,38 @@ const runtimeIssues = (
     }
   }
 
-  const delaySeconds = Number.isFinite(group.delaySeconds) ? group.delaySeconds : 0;
-  if (delaySeconds >= options.criticalDelaySeconds) {
+  if (group.consumptionTimestampAvailable === false) {
+    // delaySeconds is the provider's placeholder zero here, not a measurement, so judging it
+    // would report an unmeasurable group as caught up. Say the delay is unknown instead.
     issues.push(
       issue(
-        'HIGH_CONSUME_DELAY',
-        'critical',
-        '消费延迟过高',
-        `Group 当前消费延迟约 ${delaySeconds.toLocaleString()} 秒，业务可能已经感知延迟。`,
-      ),
-    );
-  } else if (delaySeconds >= options.highDelaySeconds) {
-    issues.push(
-      issue(
-        'HIGH_CONSUME_DELAY',
+        'CONSUME_DELAY_UNKNOWN',
         'warning',
-        '消费延迟偏高',
-        `Group 当前消费延迟约 ${delaySeconds.toLocaleString()} 秒，建议继续观察趋势。`,
+        '消费延迟不可用',
+        'Broker 消费统计未返回已消费消息时间戳，无法判断该 Group 的消费延迟。',
       ),
     );
+  } else {
+    const delaySeconds = Number.isFinite(group.delaySeconds) ? group.delaySeconds : 0;
+    if (delaySeconds >= options.criticalDelaySeconds) {
+      issues.push(
+        issue(
+          'HIGH_CONSUME_DELAY',
+          'critical',
+          '消费延迟过高',
+          `Group 当前消费延迟约 ${delaySeconds.toLocaleString()} 秒，业务可能已经感知延迟。`,
+        ),
+      );
+    } else if (delaySeconds >= options.highDelaySeconds) {
+      issues.push(
+        issue(
+          'HIGH_CONSUME_DELAY',
+          'warning',
+          '消费延迟偏高',
+          `Group 当前消费延迟约 ${delaySeconds.toLocaleString()} 秒，建议继续观察趋势。`,
+        ),
+      );
+    }
   }
   return issues;
 };
@@ -379,6 +399,9 @@ const recommendations = (issues: ConsumerGroupHealthIssue[]): string[] => {
   if (codes.has('UNKNOWN_QUEUE_LAG')) {
     result.push('当堆积不可用时，优先确认 Proxy 指标采集和 Broker offset 查询权限。');
   }
+  if (codes.has('CONSUME_DELAY_UNKNOWN')) {
+    result.push('消费延迟不可用时，确认 Broker 消费统计可读且消费端仍在提交 offset。');
+  }
   return result;
 };
 
@@ -402,7 +425,8 @@ export const analyzeConsumerGroupHealth = (
     .map((queue) => queue.diffTotal)
     .filter((lag): lag is number => isLagAvailable(lag));
   const totalKnownLag = knownLag(progress);
-  const summaryReportedLag = reportedLag(group, totalKnownLag);
+  const allQueuesKnown = progress.length > 0 && knownQueueLags.length === progress.length;
+  const summaryReportedLag = reportedLag(group, allQueuesKnown ? totalKnownLag : null);
   const unknownQueueCount = progress.length - knownQueueLags.length;
   const heartbeatAges = (group.instances ?? [])
     .map((client) => heartbeatAgeSeconds(client.lastHeartbeat, now))
@@ -410,7 +434,7 @@ export const analyzeConsumerGroupHealth = (
   const issues = [
     ...subscriptionIssues(subscriptions),
     ...progressIssues(progress, knownQueueLags, unknownQueueCount, normalizedOptions),
-    ...runtimeIssues(group, summaryReportedLag, now, normalizedOptions),
+    ...runtimeIssues(group, summaryReportedLag ?? totalKnownLag, now, normalizedOptions),
   ];
   const status = maxStatus(issues);
 
@@ -427,8 +451,12 @@ export const analyzeConsumerGroupHealth = (
       unknownQueueCount,
       totalKnownLag,
       reportedLag: summaryReportedLag,
-      maxQueueLag: knownQueueLags.length > 0 ? Math.max(...knownQueueLags) : null,
-      maxHeartbeatAgeSeconds: heartbeatAges.length > 0 ? Math.max(...heartbeatAges) : null,
+      maxQueueLag:
+        knownQueueLags.length > 0
+          ? knownQueueLags.reduce((max, lag) => Math.max(max, lag), 0)
+          : null,
+      maxHeartbeatAgeSeconds:
+        heartbeatAges.length > 0 ? heartbeatAges.reduce((max, age) => Math.max(max, age), 0) : null,
       staleClientCount: issues.filter((item) => item.code === 'STALE_HEARTBEAT').length,
     },
     issues,

@@ -1,6 +1,7 @@
 # RocketMQ 开源集群本地部署（docker compose）
 
-从 Apache RocketMQ 开源 develop 分支源码构建镜像，用 docker compose 拉起
+从 Apache RocketMQ 开源已发布 tag（默认 `rocketmq-all-5.5.0`，与 `server/pom.xml` 的
+`rocketmq.version` 对齐）源码构建镜像，用 docker compose 拉起
 NameServer + 双 Broker + Proxy（集群名 `rocketmq-studio`），并附带 1 TPS
 持续收发消息的 Producer / Consumer 容器（均开启消息轨迹），供 RocketMQ Studio
 本地调试使用。
@@ -9,7 +10,7 @@ NameServer + 双 Broker + Proxy（集群名 `rocketmq-studio`），并附带 1 T
 
 ```
 deploy/rocketmq/
-├── Dockerfile              # git clone develop 分支 + Maven 构建，多阶段产出运行镜像
+├── Dockerfile              # git clone 已发布 tag + Maven 构建，多阶段产出运行镜像
 ├── build.sh                # 构建入口：自动判断地理位置，国内走阿里源
 ├── docker-compose.yml      # nameserver / broker-0 / broker-1 / proxy / producer / consumer
 ├── conf/
@@ -32,6 +33,10 @@ cd deploy/rocketmq
 
 # 1. 构建镜像（首次约 10-20 分钟，含 clone + mvn 编译；国内自动切阿里源）
 ./build.sh
+
+# 换 RocketMQ 版本时同时改两处：Dockerfile 的 ROCKETMQ_BRANCH 默认值、
+# docker-compose.yml 的 image tag（apache-rocketmq:<version>）
+# 临时跟未发布分支：ROCKETMQ_BRANCH=develop ./build.sh
 
 # 2. 拉起集群与收发客户端（compose 把 rocketmq_net 声明为 external，需先创建）
 docker network create rocketmq_net 2>/dev/null || true

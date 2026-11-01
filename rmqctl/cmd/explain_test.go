@@ -60,6 +60,50 @@ func TestExplainResourceJSONComesFromCatalog(t *testing.T) {
 	}
 }
 
+// TestExplainReportsTheDeclaredPageSizeCeiling verifies that explain reports every bound the
+// catalog declares for a field. It is the machine-readable view agents build calls from, so it
+// cannot be the one surface that omits the ceiling --help prints and the CLI enforces.
+func TestExplainReportsTheDeclaredPageSizeCeiling(t *testing.T) {
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	exitCode := NewApp(stdout, stderr).Execute([]string{"--output", "json", "explain", "acl"})
+	if exitCode != 0 {
+		t.Fatalf("explain failed: %s", stderr)
+	}
+	var explanation resourceExplanation
+	if err := json.Unmarshal(stdout.Bytes(), &explanation); err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	var found *fieldExplanation
+	for _, action := range explanation.Actions {
+		for index := range action.Fields {
+			if action.Fields[index].Name == "page.pageSize" {
+				found = &action.Fields[index]
+				break
+			}
+		}
+		if found != nil {
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("explain acl does not report page.pageSize: %#v", explanation.Actions)
+	}
+	if found.Minimum == nil || *found.Minimum != 1 {
+		t.Fatalf("page.pageSize minimum = %v, want 1", found.Minimum)
+	}
+	if found.Maximum == nil || *found.Maximum != 100 {
+		t.Fatalf("page.pageSize maximum = %v, want 100", found.Maximum)
+	}
+
+	tableOut, tableErr := &bytes.Buffer{}, &bytes.Buffer{}
+	if code := NewApp(tableOut, tableErr).Execute([]string{"explain", "acl"}); code != 0 {
+		t.Fatalf("explain acl failed: %s", tableErr)
+	}
+	if !strings.Contains(tableOut.String(), "minimum=1, maximum=100") {
+		t.Fatalf("the constraints column does not carry the ceiling:\n%s", tableOut.String())
+	}
+}
+
 // TestExplainMarksInstanceFieldGlobal verifies that the instance identifier
 // field stays visible in explain output even though it is no longer a per-tool
 // flag: it must be presented as the global --instance-id flag.
