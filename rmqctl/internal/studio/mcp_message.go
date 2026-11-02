@@ -17,6 +17,7 @@
 package studio
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -55,7 +56,7 @@ func (session *MCPClientSession) SendMessage(ctx context.Context, payload json.R
 	defer cancel()
 
 	if decoded.request != nil {
-		return session.sendRequest(callCtx, *decoded.request)
+		return session.sendRequest(callCtx, *decoded.request, decoded.rawID)
 	}
 	return nil, false, session.sendNotification(callCtx, *decoded.notification)
 }
@@ -63,6 +64,11 @@ func (session *MCPClientSession) SendMessage(ctx context.Context, payload json.R
 type decodedMCPMessage struct {
 	request      *mcptransport.JSONRPCRequest
 	notification *mcp.JSONRPCNotification
+	// rawID is the untouched top-level "id" token of a request frame. The SDK
+	// decodes numeric identities through float64, which silently rounds
+	// integers beyond 2^53, so the bridge keeps the original text to preserve
+	// the request identity end to end (issue #6904).
+	rawID json.RawMessage
 }
 
 func decodeMCPMessage(payload json.RawMessage) (decodedMCPMessage, error) {
@@ -80,13 +86,18 @@ func decodeMCPMessage(payload json.RawMessage) (decodedMCPMessage, error) {
 		if err := json.Unmarshal(payload, &request); err != nil {
 			return decodedMCPMessage{}, fmt.Errorf("invalid MCP JSON-RPC request: %w", err)
 		}
-		return decodedMCPMessage{request: &request}, nil
+		request.ID = exactRequestID(fields["id"], request.ID)
+		return decodedMCPMessage{request: &request, rawID: fields["id"]}, nil
 	}
 	if hasMethod {
 		var notification mcp.JSONRPCNotification
 		if err := json.Unmarshal(payload, &notification); err != nil {
 			return decodedMCPMessage{}, fmt.Errorf("invalid MCP JSON-RPC notification: %w", err)
 		}
+		// notifications/cancelled carries params.requestId; the SDK decodes
+		// notification params into map[string]any, so a large numeric identity
+		// would be rounded the same way (issue #6904).
+		notification.Params = exactNotificationRequestID(fields["params"], notification.Params)
 		return decodedMCPMessage{notification: &notification}, nil
 	}
 	if hasID {
@@ -100,9 +111,71 @@ func decodeMCPMessage(payload json.RawMessage) (decodedMCPMessage, error) {
 	return decodedMCPMessage{}, fmt.Errorf("invalid MCP JSON-RPC message: missing method")
 }
 
+// exactRequestID returns a RequestId that re-encodes a numeric identity with
+// its original textual representation. The SDK decodes JSON numbers through
+// float64, which silently rounds integers beyond 2^53; json.Number marshals
+// verbatim, so the wire identity stays exact. String and null identities are
+// already preserved by the SDK and returned unchanged.
+func exactRequestID(raw json.RawMessage, decoded mcp.RequestId) mcp.RequestId {
+	if number, ok := jsonNumberToken(raw); ok {
+		return mcp.NewRequestId(number)
+	}
+	return decoded
+}
+
+// exactNotificationRequestID restores the original textual representation of a
+// numeric params.requestId that the SDK decoded into AdditionalFields as a
+// float64 (issue #6904).
+func exactNotificationRequestID(rawParams json.RawMessage, params mcp.NotificationParams) mcp.NotificationParams {
+	var fields map[string]json.RawMessage
+	if len(rawParams) == 0 || json.Unmarshal(rawParams, &fields) != nil {
+		return params
+	}
+	number, ok := jsonNumberToken(fields["requestId"])
+	if !ok {
+		return params
+	}
+	if params.AdditionalFields == nil {
+		params.AdditionalFields = map[string]any{}
+	}
+	params.AdditionalFields["requestId"] = number
+	return params
+}
+
+// jsonNumberToken reports whether a raw JSON token is a number and returns it
+// as a json.Number.
+func jsonNumberToken(raw json.RawMessage) (json.Number, bool) {
+	token := bytes.TrimSpace(raw)
+	if len(token) == 0 || (token[0] != '-' && (token[0] < '0' || token[0] > '9')) {
+		return "", false
+	}
+	var number json.Number
+	if err := json.Unmarshal(token, &number); err != nil {
+		return "", false
+	}
+	return number, true
+}
+
+// mcpRequestIDEquivalent compares the decoded response identity against the
+// request identity normalized the way the SDK decodes it. A request carrying
+// an exact json.Number never string-matches a float64-rounded response, so the
+// raw token is re-decoded for the comparison; genuinely different tokens are
+// already rejected at the HTTP layer (see mcpStatusRoundTripper).
+func mcpRequestIDEquivalent(rawID json.RawMessage, requestID, responseID mcp.RequestId) bool {
+	if requestID.String() == responseID.String() {
+		return true
+	}
+	var normalized mcp.RequestId
+	if err := json.Unmarshal(rawID, &normalized); err != nil {
+		return false
+	}
+	return normalized.String() == responseID.String()
+}
+
 func (session *MCPClientSession) sendRequest(
 	ctx context.Context,
 	request mcptransport.JSONRPCRequest,
+	rawID json.RawMessage,
 ) (json.RawMessage, bool, error) {
 	var response *mcptransport.JSONRPCResponse
 	err := session.sendWithReconnect(ctx, request.Method == string(mcp.MethodInitialize), func() error {
@@ -116,11 +189,15 @@ func (session *MCPClientSession) sendRequest(
 	if response == nil {
 		return nil, false, fmt.Errorf("empty MCP JSON-RPC response")
 	}
-	if response.ID.String() != request.ID.String() {
+	if !mcpRequestIDEquivalent(rawID, request.ID, response.ID) {
 		return nil, false, fmt.Errorf(
 			"MCP JSON-RPC response id %s does not match request id %s",
 			response.ID.String(), request.ID.String())
 	}
+	// The HTTP layer has already compared the raw id tokens on the wire; the
+	// decoded response id may still be rounded, so return the exact outgoing
+	// identity to the stdio client (issue #6904).
+	response.ID = request.ID
 	if request.Method == string(mcp.MethodInitialize) && response.Error == nil {
 		if err := session.recordInitialization(request, response); err != nil {
 			return nil, false, err
