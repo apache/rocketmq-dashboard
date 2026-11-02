@@ -17,7 +17,7 @@
 
 import axios from 'axios';
 import { message } from 'antd';
-import { clearAuthSession } from '../stores/authStorage';
+import { clearAuthSession, currentSessionEpoch } from '../stores/authStorage';
 import { API_BASE_URL } from '../config';
 
 const SUCCESS_BUSINESS_CODES = new Set([0, 200]);
@@ -78,7 +78,12 @@ function isPublicAuthRequest(url?: string): boolean {
   }
 }
 
-export function handleSessionUnauthorized(): void {
+export function handleSessionUnauthorized(requestEpoch?: number): void {
+  if (requestEpoch !== undefined && requestEpoch !== currentSessionEpoch()) {
+    // The 401 belongs to a login that has since been replaced; leave the current
+    // session and its redirect alone.
+    return;
+  }
   clearAuthSession();
   // Carry the page the operator was on so the login flow can return to it after
   // re-authenticating; an expired session while already on /login must not self-reference.
@@ -94,6 +99,13 @@ const client = axios.create({
   withCredentials: true,
 });
 
+// Record the login each request belongs to so the response interceptor can tell a
+// late 401 from an earlier login apart from the current session expiring.
+client.interceptors.request.use((config) => {
+  Object.assign(config, { sessionEpoch: currentSessionEpoch() });
+  return config;
+});
+
 // Response interceptor: check business code and handle 401
 client.interceptors.response.use(
   (response) => {
@@ -106,7 +118,8 @@ client.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401 && !isPublicAuthRequest(error.config?.url)) {
-      handleSessionUnauthorized();
+      const requestEpoch = (error.config as { sessionEpoch?: number } | undefined)?.sessionEpoch;
+      handleSessionUnauthorized(requestEpoch);
       return Promise.reject(error);
     }
     if (isCorsRejection(error)) {
