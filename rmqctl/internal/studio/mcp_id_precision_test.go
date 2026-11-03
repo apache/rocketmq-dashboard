@@ -100,9 +100,9 @@ func toolsListResult(id json.RawMessage) *http.Response {
 	return mcpJSONResultResponse(id, map[string]any{"tools": []any{}})
 }
 
-// sendToolsList runs one tools/list exchange with the given raw id token and
+// sendToolsListWithID runs one tools/list exchange with the given raw id token and
 // returns the response payload sent to the stdio client.
-func sendToolsList(t *testing.T, session *MCPClientSession, ctx context.Context, idToken string) json.RawMessage {
+func sendToolsListWithID(t *testing.T, session *MCPClientSession, ctx context.Context, idToken string) json.RawMessage {
 	t.Helper()
 	response, ok, err := session.SendMessage(ctx, json.RawMessage(
 		`{"jsonrpc":"2.0","id":`+idToken+`,"method":"tools/list","params":{}}`))
@@ -130,7 +130,7 @@ func TestLargeNumericRequestIDIsPreserved(t *testing.T) {
 	session, ctx := newMCPIDTestSession(t, mcpIDPeerTransport(t, peer, func(payload observedMCPPayload) *http.Response {
 		return toolsListResult(payload.ID)
 	}))
-	response := sendToolsList(t, session, ctx, `9007199254740993`)
+	response := sendToolsListWithID(t, session, ctx, `9007199254740993`)
 	assertWireAndReturnedID(t, peer, response, `9007199254740993`)
 }
 
@@ -140,7 +140,7 @@ func TestInt64MaxRequestIDIsPreserved(t *testing.T) {
 	session, ctx := newMCPIDTestSession(t, mcpIDPeerTransport(t, peer, func(payload observedMCPPayload) *http.Response {
 		return toolsListResult(payload.ID)
 	}))
-	response := sendToolsList(t, session, ctx, `9223372036854775807`)
+	response := sendToolsListWithID(t, session, ctx, `9223372036854775807`)
 	assertWireAndReturnedID(t, peer, response, `9223372036854775807`)
 }
 
@@ -196,7 +196,7 @@ func TestSmallNumericRequestIDIsPreserved(t *testing.T) {
 	session, ctx := newMCPIDTestSession(t, mcpIDPeerTransport(t, peer, func(payload observedMCPPayload) *http.Response {
 		return toolsListResult(payload.ID)
 	}))
-	response := sendToolsList(t, session, ctx, `7`)
+	response := sendToolsListWithID(t, session, ctx, `7`)
 	assertWireAndReturnedID(t, peer, response, `7`)
 }
 
