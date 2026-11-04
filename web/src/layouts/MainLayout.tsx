@@ -91,6 +91,11 @@ const MainLayout = () => {
   // treating "unknown" as mobile flashed the drawer layout (and broke jsdom, which has no
   // matchMedia at all).
   const isMobile = screens.md === false;
+
+  // A drawer opened on mobile must not reopen after a desktop round trip.
+  if (!isMobile && drawerOpen) {
+    setDrawerOpen(false);
+  }
   const searchInputRef = useRef<HTMLInputElement>(null);
   const { lang, setLang, t } = useLang();
   const clearAuth = useAuthStore((state) => state.logout);
