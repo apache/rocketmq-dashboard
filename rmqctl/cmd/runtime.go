@@ -66,25 +66,6 @@ func (r commandRuntime) resolveTarget() (studio.Target, error) {
 	}, nil
 }
 
-// targetServer returns the configured Studio Server URL for the active context
-// without resolving credentials. It is used by confirmation prompts so the user
-// can see where the dangerous request will be sent before approving it.
-func (r commandRuntime) targetServer() string {
-	cfg, err := r.loadConfig()
-	if err != nil {
-		return "Studio Server"
-	}
-	name, err := config.ContextName(r.options.context, cfg)
-	if err != nil {
-		return "Studio Server"
-	}
-	contextConfig, ok := cfg.Contexts[name]
-	if !ok || contextConfig.Server == "" {
-		return "Studio Server"
-	}
-	return contextConfig.Server
-}
-
 func (r commandRuntime) loadConfig() (config.Config, error) {
 	path, err := r.store.Path(r.options.configPath)
 	if err != nil {
