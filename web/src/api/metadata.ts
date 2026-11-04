@@ -116,6 +116,8 @@ export interface ConsumerGroup {
   /** Confirmed online clients; -1 means the connection inventory is unavailable. */
   onlineInstances: number;
   totalLag: number;
+  /** Explicit false means the aggregate consumption statistics are unavailable. */
+  consumeStatsAvailable?: boolean;
   subscribedTopics: string[];
   subscriptionDataType: string;
   deliveryOrderType?: string;

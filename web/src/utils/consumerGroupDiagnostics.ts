@@ -227,7 +227,7 @@ const subscriptionIssues = (subscriptions: SubscriptionEntry[]): ConsumerGroupHe
 };
 
 const progressIssues = (
-  progress: QueueProgress[],
+  totalLag: number,
   knownQueueLags: number[],
   unknownQueueCount: number,
   options: Required<
@@ -237,11 +237,8 @@ const progressIssues = (
     >
   >,
 ): ConsumerGroupHealthIssue[] => {
-  if (progress.length === 0) return [];
-
   const issues: ConsumerGroupHealthIssue[] = [];
   const skew = lagSkewRatio(knownQueueLags);
-  const totalLag = knownQueueLags.reduce((sum, lag) => sum + lag, 0);
 
   if (unknownQueueCount > 0) {
     issues.push(
@@ -427,13 +424,18 @@ export const analyzeConsumerGroupHealth = (
   const totalKnownLag = knownLag(progress);
   const allQueuesKnown = progress.length > 0 && knownQueueLags.length === progress.length;
   const summaryReportedLag = reportedLag(group, allQueuesKnown ? totalKnownLag : null);
+  // Independently collected aggregate and queue observations may have different coverage.
+  const diagnosticLag = Math.max(
+    totalKnownLag,
+    group.consumeStatsAvailable !== false && isLagAvailable(group.totalLag) ? group.totalLag : 0,
+  );
   const unknownQueueCount = progress.length - knownQueueLags.length;
   const heartbeatAges = (group.instances ?? [])
     .map((client) => heartbeatAgeSeconds(client.lastHeartbeat, now))
     .filter((age): age is number => age !== null);
   const issues = [
     ...subscriptionIssues(subscriptions),
-    ...progressIssues(progress, knownQueueLags, unknownQueueCount, normalizedOptions),
+    ...progressIssues(diagnosticLag, knownQueueLags, unknownQueueCount, normalizedOptions),
     ...runtimeIssues(group, summaryReportedLag ?? totalKnownLag, now, normalizedOptions),
   ];
   const status = maxStatus(issues);
