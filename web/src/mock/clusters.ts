@@ -46,7 +46,7 @@ export interface K8sCertInfo {
   issuer: string;
   notBefore: string;
   notAfter: string;
-  status: 'valid' | 'expiring' | 'expired';
+  status: 'valid' | 'expiring' | 'expired' | 'not_yet_valid';
   daysRemaining: number;
   san: string[];
 }
