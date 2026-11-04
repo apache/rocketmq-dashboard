@@ -175,6 +175,7 @@ const SystemAlertsPage = ({ embedded = false }: { embedded?: boolean } = {}) => 
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const alertReadGeneration = useRef(0);
   const pageSize = 20;
   const [acknowledgingIds, setAcknowledgingIds] = useState<Set<number>>(() => new Set());
   const [clearing, setClearing] = useState(false);
@@ -217,6 +218,7 @@ const SystemAlertsPage = ({ embedded = false }: { embedded?: boolean } = {}) => 
 
   useEffect(() => {
     let cancelled = false;
+    const generation = ++alertReadGeneration.current;
 
     void listSystemAlertsPage({
       ...currentQuery(),
@@ -224,7 +226,7 @@ const SystemAlertsPage = ({ embedded = false }: { embedded?: boolean } = {}) => 
       pageSize,
     })
       .then((data: PageResult<SystemAlert>) => {
-        if (!cancelled) {
+        if (!cancelled && generation === alertReadGeneration.current) {
           setAlerts(data.items);
           setTotal(data.total);
           setLoadFailed(false);
@@ -234,7 +236,7 @@ const SystemAlertsPage = ({ embedded = false }: { embedded?: boolean } = {}) => 
         }
       })
       .catch(() => {
-        if (!cancelled) {
+        if (!cancelled && generation === alertReadGeneration.current) {
           // A failed read must not leave the page reporting "0 unacknowledged" for a store it
           // never reached, and the alert surfaces below must offer a retry.
           message.error(t('sysAlerts.loadFailed'));
@@ -242,7 +244,7 @@ const SystemAlertsPage = ({ embedded = false }: { embedded?: boolean } = {}) => 
         }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && generation === alertReadGeneration.current) setLoading(false);
       });
     void getCollectorStatus()
       .then((status) => {
@@ -272,7 +274,10 @@ const SystemAlertsPage = ({ embedded = false }: { embedded?: boolean } = {}) => 
     setAcknowledgingIds((current) => new Set(current).add(id));
     try {
       await acknowledgeAlert(id);
+      // Reject pre-ACK snapshots immediately, including before the refresh effect cleans up.
+      alertReadGeneration.current += 1;
       setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, acknowledged: true } : a)));
+      setRefreshNonce((value) => value + 1);
       message.success(t('sysAlerts.acknowledged'));
     } catch {
       message.error(t('sysAlerts.acknowledgeFailed'));
