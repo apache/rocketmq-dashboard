@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
   Card,
@@ -124,6 +124,14 @@ const TopicConfigComparisonModal = ({
   const [statusFilter, setStatusFilter] = useState<TopicComparisonStatus | 'ALL'>('ALL');
   const [search, setSearch] = useState('');
   const requestIdRef = useRef(0);
+
+  useEffect(
+    () => () => {
+      // TopicPage unmounts this modal on close; pending reads no longer own its UI.
+      requestIdRef.current += 1;
+    },
+    [],
+  );
 
   const options = instances.map((instance) => ({
     value: instance.name,
