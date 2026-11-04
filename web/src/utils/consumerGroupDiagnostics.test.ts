@@ -353,3 +353,106 @@ describe('independent backlog observations', () => {
     expect(diagnostics.issues.some((item) => item.code === 'HIGH_GROUP_LAG')).toBe(false);
   });
 });
+
+describe('measured aggregate regression controls', () => {
+  it.each([
+    { totalLag: 999, expected: undefined },
+    { totalLag: 1_000, expected: 'warning' },
+    { totalLag: 9_999, expected: 'warning' },
+    { totalLag: 10_000, expected: 'critical' },
+  ])('honors aggregate threshold boundaries at $totalLag Test', ({ totalLag, expected }) => {
+    // Older API objects omit the availability flag; a valid reported lag is still evidence.
+    const diagnostics = analyzeConsumerGroupHealth(
+      group({ totalLag, instances: [] }),
+      [subscription()],
+      [],
+    );
+    const findings = diagnostics.issues.filter((item) => item.code === 'HIGH_GROUP_LAG');
+    expect(findings).toHaveLength(expected ? 1 : 0);
+    if (expected) expect(findings[0].severity).toBe(expected);
+    expect(diagnostics.summary.reportedLag).toBe(totalLag);
+  });
+
+  it.each([1_000, 10_000])(
+    'keeps measured aggregate evidence beside partial queues at %i Test',
+    (totalLag) => {
+      const diagnostics = analyzeConsumerGroupHealth(
+        group({ totalLag, consumeStatsAvailable: true, instances: [] }),
+        [subscription()],
+        [queue({ diffTotal: 17 }), queue({ queueId: 1, diffTotal: -1 })],
+      );
+      expect(diagnostics.summary).toMatchObject({
+        reportedLag: totalLag,
+        totalKnownLag: 17,
+        unknownQueueCount: 1,
+      });
+      expect(diagnostics.issues.filter((item) => item.code === 'HIGH_GROUP_LAG')).toEqual([
+        expect.objectContaining({ severity: totalLag >= 10_000 ? 'critical' : 'warning' }),
+      ]);
+      expect(diagnostics.issues.map((item) => item.code)).toContain('UNKNOWN_QUEUE_LAG');
+    },
+  );
+
+  it.each([-1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    'preserves an unknown total and independent queue evidence for %s Test',
+    (totalLag) => {
+      const diagnostics = analyzeConsumerGroupHealth(
+        group({ totalLag, consumeStatsAvailable: true, instances: [] }),
+        [subscription()],
+        [queue({ diffTotal: 1_000 }), queue({ queueId: 1, diffTotal: -1 })],
+      );
+      expect(diagnostics.summary).toMatchObject({
+        reportedLag: null,
+        totalKnownLag: 1_000,
+        unknownQueueCount: 1,
+      });
+      expect(diagnostics.issues.filter((item) => item.code === 'HIGH_GROUP_LAG')).toEqual([
+        expect.objectContaining({ severity: 'warning' }),
+      ]);
+    },
+  );
+
+  it('does not add overlapping aggregate and queue observations Test', () => {
+    const diagnostics = analyzeConsumerGroupHealth(
+      group({ totalLag: 9_000, consumeStatsAvailable: true, instances: [] }),
+      [subscription()],
+      [queue({ diffTotal: 9_000 })],
+    );
+    expect(diagnostics.issues.filter((item) => item.code === 'HIGH_GROUP_LAG')).toEqual([
+      expect.objectContaining({ severity: 'warning' }),
+    ]);
+    expect(diagnostics.summary.reportedLag).toBe(9_000);
+  });
+
+  it.each([false, undefined])(
+    'retains queue-only risk with aggregate availability %s Test',
+    (consumeStatsAvailable) => {
+      const diagnostics = analyzeConsumerGroupHealth(
+        group({ totalLag: 0, consumeStatsAvailable, instances: [] }),
+        [subscription()],
+        [queue({ diffTotal: 10_000 })],
+      );
+      expect(diagnostics.issues.filter((item) => item.code === 'HIGH_GROUP_LAG')).toEqual([
+        expect.objectContaining({ severity: 'critical' }),
+      ]);
+    },
+  );
+
+  it('uses configured aggregate thresholds without inventing queue observations Test', () => {
+    const diagnostics = analyzeConsumerGroupHealth(
+      group({ totalLag: 25, consumeStatsAvailable: true, instances: [] }),
+      [subscription()],
+      [],
+      { highLagThreshold: 10, criticalLagThreshold: 25 },
+    );
+    expect(diagnostics.issues.filter((item) => item.code === 'HIGH_GROUP_LAG')).toEqual([
+      expect.objectContaining({ severity: 'critical' }),
+    ]);
+    expect(diagnostics.summary).toMatchObject({
+      queueCount: 0,
+      maxQueueLag: null,
+      totalKnownLag: 0,
+      reportedLag: 25,
+    });
+  });
+});
