@@ -73,7 +73,7 @@ org.apache.rocketmq.studio
   region/实例目录，`TencentInstanceProvider` 提供 Topic、消费组、消息查询与轨迹能力，
   `TencentAclService` 提供 ACL 管理，目录端点位于 `/api/cloud/tencent/*`
 - `provider.credential`：云厂商凭据管理（`rmq_cloud_credential` 表 CRUD，`/api/cloud-credentials`）：
-  vendor+access_key 唯一键，SK base64 存储，列表打码 + `/{id}/credentials` reveal 接口，
+  vendor+access_key 唯一键，SK base64 编码存储（不是加密），列表打码 + `/{id}/credentials` reveal 接口，
   编解码与打码统一走 `common.util.CredentialUtils`
 
 ### settings / audit
@@ -93,8 +93,9 @@ org.apache.rocketmq.studio
 - **SPI 模式**：跨实现的能力（消息、DLQ、诊断、Dashboard、多厂商）定义 Provider 接口，
   开源实现统一放 `provider/apache/`（admin 客户端经 `MqAdminExtFactory` 单轨获取），
   云厂商实现放 `provider/<vendor>/` 保持高内聚
-- **敏感字段**：VO 上 `@ToString.Exclude`；存储 base64（见 `CredentialUtils`）；
-  列表打码、reveal 接口 admin-only
+- **敏感字段**：VO 上 `@ToString.Exclude`；部分凭据使用 base64 编码存储（见 `CredentialUtils`），
+  这不是静态加密，通用设置也没有应用层静态加密；列表打码、write-only 字段和 admin-only reveal
+  接口是响应保护，不能替代数据库及备份的访问控制和存储层加密
 - **实例标识**：`rmq_instance.id` 是数据库内部使用的自增 `BIGINT` 主键，`name` 是带唯一约束、
   创建后不可变的人类可读外部标识。REST 的 `instanceId` 参数应通过
   `InstanceRepository#findByIdentifier` 或 `InstanceService#resolveInstanceId` 解析：先按唯一名称查找，
