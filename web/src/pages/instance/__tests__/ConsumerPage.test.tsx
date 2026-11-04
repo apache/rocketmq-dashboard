@@ -455,6 +455,7 @@ describe('Consumer page', () => {
       Modal.destroyAll();
     });
     // 静态提示由全局清理卸载，避免冷调用 destroy 再创建异步 root。
+    vi.useRealTimers();
   });
 
   it('clamps back to a valid page when the current page becomes empty after a delete', async () => {
@@ -1658,6 +1659,9 @@ describe('Consumer page', () => {
   });
 
   it('highlights inconsistent subscriptions and refreshes the check result', async () => {
+    // This checks a manual refresh. Keep the modal polling from consuming the
+    // one-shot responses while user interactions run on slower CI workers.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     vi.mocked(consumerService.getConsumerSubscriptions)
       .mockResolvedValueOnce([
         {
