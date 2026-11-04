@@ -30,11 +30,16 @@ Recommended background reading:
 
 ### Run the full stack
 
+Prepare `deploy/.env` as described in [deployment setup](deploy/README.md) first: configure
+an explicit bootstrap username and unique password, set `STUDIO_AUTH_LOGIN_REQUIRED=true`, and set
+`STUDIO_AUTH_SESSION_COOKIE_SECURE=false` only for local HTTP development. Preserve existing
+configuration and database users.
+
 ```bash
 # Run from the repository root; rocketmq_net is external to both compose files and must exist first
 (docker network create rocketmq_net 2>/dev/null || true) && \
   docker compose -f deploy/rocketmq/docker-compose.yml up -d && \
-  docker compose -f deploy/docker-compose.yml up -d --build
+  docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
 ```
 
 Studio is then available at <http://127.0.0.1:6789> (frontend, which also proxies `/api` to the
@@ -44,11 +49,32 @@ so that URL answers only when you run the backend directly (see below). See
 
 ### Run the backend only
 
-Run this command from the repository root. The subshell preserves that working directory
-for the next command.
+The standalone server retains the `admin` / `admin` bootstrap fallback when
+`STUDIO_AUTH_ADMIN_USERNAME` and `STUDIO_AUTH_ADMIN_PASSWORD` are unset. Override these values
+in the server process environment (or external Spring configuration) before exposing the server.
+It does not load `deploy/.env` automatically. Existing database users remain authoritative;
+changing bootstrap values does not reset their passwords.
+
+For local development without MySQL, use the existing `dev` profile and include the test
+classpath, which contains the test-scoped H2 driver. Run from the repository root;
+the subshell preserves that working directory for the next command:
 
 ```bash
-(cd server && mvn -B -ntp spring-boot:run)   # or: (cd server && mvn -B -ntp package -DskipTests)
+(cd server && mvn -B -ntp spring-boot:run \
+  -Dspring-boot.run.profiles=dev \
+  -Dspring-boot.run.useTestClasspath=true)
+```
+
+The backend listens on <http://localhost:8888>; <http://localhost:8888/readyz> reports
+readiness. Run the frontend separately using the next section. The `dev` profile initializes
+the schema in an **in-memory H2 database**: its data is lost when the backend process exits.
+Use this profile only for local development. For a persistent MySQL-backed setup, follow
+the full-stack instructions above and [`deploy/README.md`](deploy/README.md).
+
+To build the backend without starting it, run this from the repository root:
+
+```bash
+(cd server && mvn -B -ntp package -DskipTests)
 ```
 
 ### Run the frontend only
