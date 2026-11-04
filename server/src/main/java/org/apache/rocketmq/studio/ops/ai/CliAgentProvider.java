@@ -135,10 +135,7 @@ public abstract class CliAgentProvider implements AgentProvider {
             output = outputFuture.get(10, TimeUnit.SECONDS);
         } catch (ExecutionException exception) {
             if (exception.getCause() instanceof OutputLimitException outputLimitException) {
-                throw new LlmGatewayException(502, "llm.provider.output_too_large",
-                        binaryName() + " CLI output exceeded the maximum of "
-                                + outputLimitException.limitBytes() + " bytes",
-                        "Retry with a shorter prompt or reduce the provider response size.", exception);
+                throw outputLimitExceeded(outputLimitException, exception);
             }
             output = "";
         } catch (InterruptedException exception) {
@@ -200,10 +197,16 @@ public abstract class CliAgentProvider implements AgentProvider {
         return TextBounds.truncate(value.trim(), 500, "...");
     }
 
-    private static final class OutputLimitException extends IOException {
+    final LlmGatewayException outputLimitExceeded(OutputLimitException limit, Throwable cause) {
+        return new LlmGatewayException(502, "llm.provider.output_too_large",
+                binaryName() + " CLI output exceeded the maximum of " + limit.limitBytes() + " bytes",
+                "Retry with a shorter prompt or reduce the provider response size.", cause);
+    }
+
+    static final class OutputLimitException extends IOException {
         private final int limitBytes;
 
-        private OutputLimitException(int limitBytes) {
+        OutputLimitException(int limitBytes) {
             super("CLI output exceeds " + limitBytes + " bytes");
             this.limitBytes = limitBytes;
         }
