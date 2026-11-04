@@ -17,7 +17,7 @@
 
 import axios from 'axios';
 import { message } from 'antd';
-import { clearAuthSession } from '../stores/authStorage';
+import { clearAuthSession, getAuthSessionRevision } from '../stores/authStorage';
 import { API_BASE_URL } from '../config';
 
 const SUCCESS_BUSINESS_CODES = new Set([0, 200]);
@@ -78,7 +78,8 @@ function isPublicAuthRequest(url?: string): boolean {
   }
 }
 
-export function handleSessionUnauthorized(): void {
+export function handleSessionUnauthorized(requestSessionRevision: number): void {
+  if (requestSessionRevision !== getAuthSessionRevision()) return;
   clearAuthSession();
   // Carry the page the operator was on so the login flow can return to it after
   // re-authenticating; an expired session while already on /login must not self-reference.
@@ -94,6 +95,13 @@ const client = axios.create({
   withCredentials: true,
 });
 
+// Keep ownership out of the wire config and release it automatically when the request is gone.
+const requestSessionRevisions = new WeakMap<object, number>();
+client.interceptors.request.use((config) => {
+  requestSessionRevisions.set(config, getAuthSessionRevision());
+  return config;
+});
+
 // Response interceptor: check business code and handle 401
 client.interceptors.response.use(
   (response) => {
@@ -106,7 +114,8 @@ client.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401 && !isPublicAuthRequest(error.config?.url)) {
-      handleSessionUnauthorized();
+      const revision = error.config && requestSessionRevisions.get(error.config);
+      if (revision !== undefined) handleSessionUnauthorized(revision);
       return Promise.reject(error);
     }
     if (isCorsRejection(error)) {
