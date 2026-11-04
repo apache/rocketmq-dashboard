@@ -17,6 +17,7 @@
 package cmd
 
 import (
+	"os"
 	"path/filepath"
 
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/output"
@@ -65,6 +66,24 @@ func (a *App) newMCPConfigCommand(runtime commandRuntime) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
+			commandPath := command
+			// Bind explicit paths before a client launches from another directory.
+			// Bare executable names intentionally keep the client's PATH lookup.
+			if !filepath.IsAbs(command) && filepath.Base(command) != command {
+				var err error
+				if filepath.Separator == '/' {
+					// Preserve symlink/.. semantics: filepath.Abs would clean the path.
+					var cwd string
+					cwd, err = os.Getwd()
+					commandPath = cwd + "/" + command
+				} else {
+					// Native Windows resolution also handles drive-relative/rooted paths.
+					commandPath, err = filepath.Abs(command)
+				}
+				if err != nil {
+					return err
+				}
+			}
 			stdioArgs := []string{"mcp", "stdio"}
 			if runtime.options.configPath != "" {
 				// The MCP client may launch from a different working directory.
@@ -86,7 +105,7 @@ func (a *App) newMCPConfigCommand(runtime commandRuntime) *cobra.Command {
 			config := map[string]any{
 				"mcpServers": map[string]any{
 					name: map[string]any{
-						"command": command,
+						"command": commandPath,
 						"args":    stdioArgs,
 					},
 				},
