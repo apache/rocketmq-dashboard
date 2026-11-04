@@ -88,7 +88,7 @@ class MybatisPlusAlertStateRepositoryTest {
         alert.setInstanceId("local");
         alert.setLabelsJson("{\"consumerGroup\":\"orders\"}");
         RmqSystemAlertMapper alertMapper = mock(RmqSystemAlertMapper.class);
-        when(alertMapper.selectList(any())).thenReturn(List.of(alert));
+        when(alertMapper.selectLatestMetadata(any(), any(), any())).thenReturn(List.of(alert));
         MybatisPlusAlertStateRepository repository = new MybatisPlusAlertStateRepository(mapper, alertMapper);
         AlertRuleVO rule = AlertRuleVO.builder().id(4L).domain(AlertDomain.BUSINESS).enabled(true)
                 .instanceId("local").metric("consumer.lag.total").build();
@@ -102,7 +102,7 @@ class MybatisPlusAlertStateRepositoryTest {
             assertThat(item.instanceId()).isEqualTo("local");
             assertThat(item.labels()).isEqualTo(Map.of("consumerGroup", "orders"));
         });
-        verify(alertMapper).selectList(any());
+        verify(alertMapper).selectLatestMetadata(eq("BUSINESS"), eq("local"), any());
         verify(alertMapper, never()).selectOne(any());
     }
 
@@ -121,7 +121,7 @@ class MybatisPlusAlertStateRepositoryTest {
         state.setCurrentValue(30D);
         when(mapper.selectList(any())).thenReturn(List.of(state));
         RmqSystemAlertMapper alertMapper = mock(RmqSystemAlertMapper.class);
-        when(alertMapper.selectList(any())).thenReturn(List.of(
+        when(alertMapper.selectLatestMetadata(any(), any(), any())).thenReturn(List.of(
                 alert(4L, "fingerprint", "local", "{\"consumerGroup\":\"orders\"}")));
         MybatisPlusAlertStateRepository repository = new MybatisPlusAlertStateRepository(mapper, alertMapper);
         AlertRuleVO rule = AlertRuleVO.builder().id(4L).domain(AlertDomain.BUSINESS).enabled(true)
@@ -151,7 +151,7 @@ class MybatisPlusAlertStateRepositoryTest {
         state.setCurrentValue(10D);
         when(mapper.selectList(any())).thenReturn(List.of(state));
         RmqSystemAlertMapper alertMapper = mock(RmqSystemAlertMapper.class);
-        when(alertMapper.selectList(any())).thenReturn(List.of(
+        when(alertMapper.selectLatestMetadata(any(), any(), any())).thenReturn(List.of(
                 alert(6L, "fingerprint", "local", "{\"consumerGroup\":\"orders\"}")));
         MybatisPlusAlertStateRepository repository = new MybatisPlusAlertStateRepository(mapper, alertMapper);
         AlertRuleVO rule = AlertRuleVO.builder().id(6L).domain(AlertDomain.BUSINESS).enabled(true)
@@ -174,8 +174,7 @@ class MybatisPlusAlertStateRepositoryTest {
         RmqSystemAlertMapper alertMapper = mock(RmqSystemAlertMapper.class);
         RmqSystemAlert firstAlert = alert(4L, "fingerprint-a", "local", "{\"consumerGroup\":\"orders\"}");
         RmqSystemAlert secondAlert = alert(5L, "fingerprint-b", "local", "{\"consumerGroup\":\"payments\"}");
-        RmqSystemAlert staleFirstAlert = alert(4L, "fingerprint-a", "local", "{\"consumerGroup\":\"old\"}");
-        when(alertMapper.selectList(any())).thenReturn(List.of(firstAlert, secondAlert, staleFirstAlert));
+        when(alertMapper.selectLatestMetadata(any(), any(), any())).thenReturn(List.of(firstAlert, secondAlert));
         MybatisPlusAlertStateRepository repository = new MybatisPlusAlertStateRepository(mapper, alertMapper);
         AlertRuleVO firstRule = AlertRuleVO.builder().id(4L).domain(AlertDomain.BUSINESS).enabled(true)
                 .instanceId("local").metric("consumer.lag.total").build();
@@ -188,7 +187,7 @@ class MybatisPlusAlertStateRepositoryTest {
         assertThat(active).hasSize(2);
         assertThat(active).extracting(item -> item.labels().get("consumerGroup"))
                 .containsExactly("orders", "payments");
-        verify(alertMapper, times(1)).selectList(any());
+        verify(alertMapper, times(1)).selectLatestMetadata(eq("BUSINESS"), eq("local"), any());
         verify(alertMapper, never()).selectOne(any());
     }
 
