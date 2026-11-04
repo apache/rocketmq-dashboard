@@ -261,7 +261,7 @@ const OpsPage: React.FC = () => {
           )}
           {writeOperationEnabled && (
             <Popconfirm
-              title={t('common.areYouSureToDelete')}
+              title={t('ops.deleteNamesrvConfirm', { addr: selectedNamesrv })}
               onConfirm={handleDeleteNameSvrAddr}
               okText={t('common.confirm')}
               cancelText={t('common.cancel')}

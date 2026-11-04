@@ -442,15 +442,21 @@ const ProxyPage: React.FC = () => {
               onClick={() => handleViewConfig(record)}
             />
           </Tooltip>
-          <Tooltip title={t('proxy.reloadConfig')}>
-            <Button
-              type="link"
-              size="small"
-              icon={<ArrowClockwise size={14} />}
-              aria-label={t('proxy.reloadConfig')}
-              onClick={() => handleReloadConfig(record)}
-            />
-          </Tooltip>
+          <Popconfirm
+            title={t('proxy.reloadConfigConfirm', { addr: record.address })}
+            okText={t('common.confirm')}
+            cancelText={t('common.cancel')}
+            onConfirm={() => void handleReloadConfig(record)}
+          >
+            <Tooltip title={t('proxy.reloadConfig')}>
+              <Button
+                type="link"
+                size="small"
+                icon={<ArrowClockwise size={14} />}
+                aria-label={t('proxy.reloadConfig')}
+              />
+            </Tooltip>
+          </Popconfirm>
           <Popconfirm
             title={t('proxy.removeAddressConfirm', { addr: record.address })}
             okText={t('common.confirm')}
