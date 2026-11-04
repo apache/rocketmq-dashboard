@@ -925,38 +925,78 @@ describe('Consumer page', () => {
     expect(screen.queryByText('SQL')).not.toBeInTheDocument();
   });
 
-  it('shows measured aggregate backlog risk without queue observations Test', async () => {
-    const backloggedGroup: ConsumerGroup = {
-      ...group,
+  it.each([
+    { totalLag: 1_000, consumeStatsAvailable: true, partial: false, title: 'Group 总堆积偏高' },
+    { totalLag: 10_000, consumeStatsAvailable: true, partial: false, title: 'Group 总堆积过高' },
+    {
       totalLag: 10_000,
-      consumeStatsAvailable: true,
-      instances: [],
-    };
-    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
-      groupPage([backloggedGroup]),
-    );
-    vi.mocked(consumerService.refreshConsumerGroup).mockResolvedValue(backloggedGroup);
-    vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
-      {
-        topic: 'remote-topic',
-        expression: '*',
-        type: 'TAG',
-        filterMode: 'TAG',
-        consistency: 'consistent',
-      },
-    ]);
-    vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([]);
-    const user = userEvent.setup();
-    renderWithProviders(<ConsumerPage />);
-    await user.click(await screen.findByRole('button', { name: /详情/ }));
-    const healthTab = await screen.findByRole('tab', { name: /健康诊断/ });
-    await expectInteractive(healthTab);
-    await user.click(healthTab);
-    const panel = await screen.findByRole('tabpanel', { name: /健康诊断/ });
-    await waitFor(() => expect(consumerService.getConsumerProgress).toHaveBeenCalled());
-    expect(await within(panel).findByText('Group 总堆积过高')).toBeInTheDocument();
-    expect(within(panel).queryByText('未发现消费组健康风险')).not.toBeInTheDocument();
-  });
+      consumeStatsAvailable: undefined,
+      partial: false,
+      title: 'Group 总堆积过高',
+    },
+    { totalLag: 10_000, consumeStatsAvailable: true, partial: true, title: 'Group 总堆积过高' },
+  ])(
+    'shows measured aggregate backlog risk at $totalLag with availability $consumeStatsAvailable and partial queues $partial Test',
+    async ({ totalLag, consumeStatsAvailable, partial, title }) => {
+      const backloggedGroup: ConsumerGroup = {
+        ...group,
+        totalLag,
+        ...(consumeStatsAvailable === undefined ? {} : { consumeStatsAvailable }),
+        instances: [],
+      };
+      vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+        groupPage([backloggedGroup]),
+      );
+      vi.mocked(consumerService.refreshConsumerGroup).mockResolvedValue(backloggedGroup);
+      vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
+        {
+          topic: 'remote-topic',
+          expression: '*',
+          type: 'TAG',
+          filterMode: 'TAG',
+          consistency: 'consistent',
+        },
+      ]);
+      vi.mocked(consumerService.getConsumerProgress).mockResolvedValue(
+        partial
+          ? [
+              {
+                topic: 'remote-topic',
+                broker: 'broker-a',
+                queueId: 0,
+                brokerOffset: 17,
+                consumerOffset: 0,
+                diffTotal: 17,
+              },
+              {
+                topic: 'remote-topic',
+                broker: 'broker-b',
+                queueId: 1,
+                brokerOffset: -1,
+                consumerOffset: -1,
+                diffTotal: -1,
+              },
+            ]
+          : [],
+      );
+      const user = userEvent.setup();
+      renderWithProviders(<ConsumerPage />);
+      const detailButton = await screen.findByRole('button', { name: /详情/ });
+      await expectInteractive(detailButton);
+      await user.click(detailButton);
+      const healthTab = await screen.findByRole('tab', { name: /健康诊断/ });
+      await expectInteractive(healthTab);
+      await user.click(healthTab);
+      const panel = await screen.findByRole('tabpanel', { name: /健康诊断/ });
+      await waitFor(() => expect(consumerService.getConsumerProgress).toHaveBeenCalled());
+      expect(await within(panel).findByText(title)).toBeInTheDocument();
+      expect(within(panel).getAllByText(title)).toHaveLength(1);
+      expect(within(panel).queryByText('未发现消费组健康风险')).not.toBeInTheDocument();
+      if (partial) {
+        expect(await within(panel).findByText('部分 Queue 堆积不可用')).toBeInTheDocument();
+      }
+    },
+  );
 
   it('shows group health diagnostics from subscriptions, progress and clients', async () => {
     const riskyGroup: ConsumerGroup = {
