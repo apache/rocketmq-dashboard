@@ -1597,6 +1597,9 @@ describe('Consumer page', () => {
   });
 
   it('highlights inconsistent subscriptions and refreshes the check result', async () => {
+    // This checks a manual refresh. Keep the modal polling from consuming the
+    // one-shot responses while user interactions run on slower CI workers.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     vi.mocked(consumerService.getConsumerSubscriptions)
       .mockResolvedValueOnce([
         {
