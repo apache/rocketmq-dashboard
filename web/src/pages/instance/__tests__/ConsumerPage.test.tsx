@@ -455,6 +455,7 @@ describe('Consumer page', () => {
       Modal.destroyAll();
     });
     // 静态提示由全局清理卸载，避免冷调用 destroy 再创建异步 root。
+    vi.useRealTimers();
   });
 
   it('clamps back to a valid page when the current page becomes empty after a delete', async () => {
@@ -1415,6 +1416,8 @@ describe('Consumer page', () => {
   });
 
   it('keeps the latest client stack when an older request resolves last', async () => {
+    // Keep the selected clients stable while exercising out-of-order manual requests.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const firstStack = {
       groupName: 'remote-cg',
       clientId: 'client-1',
@@ -1594,6 +1597,9 @@ describe('Consumer page', () => {
   });
 
   it('highlights inconsistent subscriptions and refreshes the check result', async () => {
+    // This checks a manual refresh. Keep the modal polling from consuming the
+    // one-shot responses while user interactions run on slower CI workers.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     vi.mocked(consumerService.getConsumerSubscriptions)
       .mockResolvedValueOnce([
         {
@@ -1650,6 +1656,8 @@ describe('Consumer page', () => {
   });
 
   it('refreshes the subscription verdict on the 2s modal auto-refresh', async () => {
+    // Check the 2s boundary with a controlled interval clock, not wall-clock waiting.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     vi.mocked(consumerService.getConsumerSubscriptions)
       .mockResolvedValueOnce([
         {
@@ -1692,6 +1700,15 @@ describe('Consumer page', () => {
     // The modal advertises that the diagnostic result refreshes every 2 seconds. Without any
     // further user action the subscription consistency verdict must be re-checked alongside
     // the progress table, not stay frozen at whatever the first load returned.
+    expect(await screen.findByText('发现 1 个订阅配置不一致')).toBeInTheDocument();
+    expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1999);
+    });
+    expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
     await waitFor(() => expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledTimes(2), {
       timeout: 10000,
     });

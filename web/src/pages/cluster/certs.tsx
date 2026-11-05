@@ -64,6 +64,8 @@ const K8sCertsPage = () => {
   const [certTypeFilter, setCertTypeFilter] = useState<string>('');
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const createSessionRef = useRef(0);
+  const createRequestSessionRef = useRef<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [createForm] = Form.useForm<CreateCertFormValues>();
 
@@ -112,10 +114,18 @@ const K8sCertsPage = () => {
   });
 
   const handleCreate = async () => {
+    const session = createSessionRef.current;
+    if (createRequestSessionRef.current === session) return;
+    createRequestSessionRef.current = session;
     let values: CreateCertFormValues;
     try {
       values = await createForm.validateFields();
     } catch {
+      if (createRequestSessionRef.current === session) createRequestSessionRef.current = null;
+      return;
+    }
+    if (session !== createSessionRef.current) {
+      if (createRequestSessionRef.current === session) createRequestSessionRef.current = null;
       return;
     }
     setCreating(true);
@@ -129,12 +139,17 @@ const K8sCertsPage = () => {
       });
       setCerts((previous) => [...previous, created]);
       message.success(t('cert.certCreated', { name: created.k8sId }));
-      setCreateModalOpen(false);
-      createForm.resetFields();
+      // The request still creates an inventory entry after cancellation, but it no longer
+      // owns a dialog that has since been reopened for another certificate.
+      if (session === createSessionRef.current) {
+        setCreateModalOpen(false);
+        createForm.resetFields();
+      }
     } catch (error: unknown) {
       message.error(describeThrownMessage(error) || t('cert.requestFailed'));
     } finally {
-      setCreating(false);
+      if (createRequestSessionRef.current === session) createRequestSessionRef.current = null;
+      if (session === createSessionRef.current) setCreating(false);
     }
   };
 
@@ -330,7 +345,15 @@ const K8sCertsPage = () => {
             ]}
           />
         </Space>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={() => {
+            createSessionRef.current += 1;
+            setCreating(false);
+            setCreateModalOpen(true);
+          }}
+        >
           {t('cert.addCert')}
         </Button>
       </Flex>
@@ -351,7 +374,9 @@ const K8sCertsPage = () => {
         title={t('cert.addCert')}
         open={createModalOpen}
         onCancel={() => {
+          createSessionRef.current += 1;
           setCreateModalOpen(false);
+          setCreating(false);
           createForm.resetFields();
         }}
         onOk={() => void handleCreate()}
