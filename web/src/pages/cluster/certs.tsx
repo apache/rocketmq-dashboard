@@ -65,6 +65,7 @@ const K8sCertsPage = () => {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const createSessionRef = useRef(0);
+  const createRequestSessionRef = useRef<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [createForm] = Form.useForm<CreateCertFormValues>();
 
@@ -114,13 +115,19 @@ const K8sCertsPage = () => {
 
   const handleCreate = async () => {
     const session = createSessionRef.current;
+    if (createRequestSessionRef.current === session) return;
+    createRequestSessionRef.current = session;
     let values: CreateCertFormValues;
     try {
       values = await createForm.validateFields();
     } catch {
+      if (createRequestSessionRef.current === session) createRequestSessionRef.current = null;
       return;
     }
-    if (session !== createSessionRef.current) return;
+    if (session !== createSessionRef.current) {
+      if (createRequestSessionRef.current === session) createRequestSessionRef.current = null;
+      return;
+    }
     setCreating(true);
     try {
       const created = await createK8sCert({
@@ -141,6 +148,7 @@ const K8sCertsPage = () => {
     } catch (error: unknown) {
       message.error(describeThrownMessage(error) || t('cert.requestFailed'));
     } finally {
+      if (createRequestSessionRef.current === session) createRequestSessionRef.current = null;
       if (session === createSessionRef.current) setCreating(false);
     }
   };
