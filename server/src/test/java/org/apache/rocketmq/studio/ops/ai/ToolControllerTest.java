@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.ops.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.ops.ai.auth.McpAuthentication;
+import org.apache.rocketmq.studio.ops.ai.tool.core.ToolError;
 import org.apache.rocketmq.studio.ops.ai.tool.service.ToolDiscoveryService;
 import org.apache.rocketmq.studio.ops.ai.tool.service.ToolExecutionService;
 import org.junit.jupiter.api.BeforeEach;
@@ -206,6 +207,31 @@ class ToolControllerTest {
         verify(toolExecutor).execute(
                 eq("rmq.topic.create"), argThat(arguments ->
                         Boolean.TRUE.equals(arguments.get("dry_run"))), eq(authentication));
+    }
+
+    /** A replayed confirmation token surfaces as 409 with a distinguishable code and hint. */
+    @Test
+    void executeToolMapsReplayedConfirmTokenToConflictTest() throws Exception {
+        when(toolExecutor.executeWithTarget("rmq.topic.create", Map.of(
+                        "instanceId", "instance-id",
+                        "topic", "order-topic",
+                        "confirm_token", "used-token"),
+                "instance-id"))
+                .thenThrow(ToolError.CONFIRMATION_TOKEN_ALREADY_USED.exception("rmq.topic.create"));
+
+        mockMvc.perform(post("/api/ai/tools/rmq.topic.create/execute")
+                        .queryParam("instanceId", "instance-id")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"instanceId":"instance-id","topic":"order-topic","confirm_token":"used-token"}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"))
+                .andExpect(jsonPath("$.message").value(
+                        "Tool confirm_token was already consumed by an earlier execution "
+                                + "and cannot be reused. Tool: rmq.topic.create"))
+                .andExpect(jsonPath("$.hint").value(
+                        "Run with --dry-run again to preview the current state and retry with its fresh token."));
     }
 
 }
