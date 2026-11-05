@@ -426,6 +426,7 @@ const InstancePage = () => {
     mutationInFlightRef.current = true;
     try {
       const values = await addForm.validateFields();
+      if (modalSession !== addModalSessionRef.current) return;
       setSubmitting(true);
       const payload = cloudVendor
         ? {
