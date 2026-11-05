@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App, ConfigProvider, Modal } from 'antd';
+import { App, ConfigProvider, Form, Modal } from 'antd';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -695,6 +695,54 @@ describe('InstancePage', () => {
     );
   });
 
+  it.each(['cancel', 'close'] as const)(
+    'abandonsCancelledValidationBeforeSendingCreateWith%sTest',
+    async (close) => {
+      const validation = deferred<Record<string, unknown>>();
+      const useForm = vi.spyOn(Form, 'useForm');
+      render(
+        <ConfigProvider theme={{ token: { motion: false } }}>
+          <App>
+            <LangProvider>
+              <MemoryRouter>
+                <InstancePage />
+              </MemoryRouter>
+            </LangProvider>
+          </App>
+        </ConfigProvider>,
+      );
+      const addForm = useForm.mock.results[0].value[0];
+      useForm.mockRestore();
+      const validate = vi.spyOn(addForm, 'validateFields').mockReturnValueOnce(validation.promise);
+      await screen.findByText('production-proxy');
+      fireEvent.click(screen.getByRole('button', { name: /添加实例/ }));
+      const firstDialog = await screen.findByRole('dialog');
+      fireEvent.click(within(firstDialog).getByRole('button', { name: /连\s*接/ }));
+      expect(validate).toHaveBeenCalledTimes(1);
+      fireEvent.click(within(firstDialog).getByRole('button', { name: /连\s*接/ }));
+      expect(validate).toHaveBeenCalledTimes(1);
+      fireEvent.click(
+        within(firstDialog).getByRole('button', { name: close === 'cancel' ? /取\s*消/ : 'Close' }),
+      );
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: /添加实例/ }));
+      const secondDialog = await screen.findByRole('dialog');
+      fireEvent.change(within(secondDialog).getByLabelText('实例 ID'), {
+        target: { value: 'second-draft' },
+      });
+      await act(async () =>
+        validation.resolve({ name: 'cancelled', type: 'PROXY_LOCAL', endpoint: 'old:8080' }),
+      );
+      validate.mockRestore();
+      expect(instanceService.createInstance).not.toHaveBeenCalled();
+      expect(instanceService.listInstances).toHaveBeenCalledTimes(1);
+      expect(within(secondDialog).getByLabelText('实例 ID')).toHaveValue('second-draft');
+      expect(within(secondDialog).getByRole('button', { name: /连\s*接/ })).not.toHaveClass(
+        'ant-btn-loading',
+      );
+    },
+  );
+
   it.each([
     { close: 'cancel', outcome: 'success' },
     { close: 'close', outcome: 'success' },
@@ -720,7 +768,9 @@ describe('InstancePage', () => {
       await screen.findByText('production-proxy');
       await user.click(screen.getByRole('button', { name: /添加实例/ }));
       const firstDialog = await screen.findByRole('dialog');
-      await user.type(within(firstDialog).getByLabelText('实例 ID'), 'first-proxy');
+      fireEvent.change(within(firstDialog).getByLabelText('实例 ID'), {
+        target: { value: 'first-proxy' },
+      });
       fireEvent.mouseDown(
         within(firstDialog).getByRole('combobox', { name: '接入方式' }).parentElement!,
       );
@@ -729,7 +779,9 @@ describe('InstancePage', () => {
           selector: '.ant-select-item-option-content',
         }),
       );
-      await user.type(within(firstDialog).getByLabelText('接入地址'), 'first-proxy:8080');
+      fireEvent.change(within(firstDialog).getByLabelText('接入地址'), {
+        target: { value: 'first-proxy:8080' },
+      });
       await user.click(within(firstDialog).getByRole('button', { name: /连\s*接/ }));
       await waitFor(() => expect(instanceService.createInstance).toHaveBeenCalledTimes(1));
       await user.click(
@@ -739,7 +791,9 @@ describe('InstancePage', () => {
 
       await user.click(screen.getByRole('button', { name: /添加实例/ }));
       const secondDialog = await screen.findByRole('dialog');
-      await user.type(within(secondDialog).getByLabelText('实例 ID'), 'second-draft');
+      fireEvent.change(within(secondDialog).getByLabelText('实例 ID'), {
+        target: { value: 'second-draft' },
+      });
       expect(within(secondDialog).getByLabelText('实例 ID')).toHaveValue('second-draft');
       await act(async () => {
         if (outcome === 'success') pendingCreate.resolve(instance(3, 'first-proxy', 'PROXY_LOCAL'));
@@ -778,7 +832,9 @@ describe('InstancePage', () => {
       await screen.findByText('production-proxy');
       await user.click(screen.getByRole('button', { name: /添加实例/ }));
       const dialog = await screen.findByRole('dialog');
-      await user.type(within(dialog).getByLabelText('实例 ID'), 'new-proxy');
+      fireEvent.change(within(dialog).getByLabelText('实例 ID'), {
+        target: { value: 'new-proxy' },
+      });
       fireEvent.mouseDown(
         within(dialog).getByRole('combobox', { name: '接入方式' }).parentElement!,
       );
@@ -787,7 +843,9 @@ describe('InstancePage', () => {
           selector: '.ant-select-item-option-content',
         }),
       );
-      await user.type(within(dialog).getByLabelText('接入地址'), 'new-proxy:8080');
+      fireEvent.change(within(dialog).getByLabelText('接入地址'), {
+        target: { value: 'new-proxy:8080' },
+      });
       await user.click(within(dialog).getByRole('button', { name: /连\s*接/ }));
       await waitFor(() =>
         expect(instanceService.createInstance).toHaveBeenCalledWith({
