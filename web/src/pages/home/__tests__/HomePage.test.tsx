@@ -20,6 +20,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import HomePage from '../index';
 
 const navigateMock = vi.hoisted(() => vi.fn());
@@ -208,6 +209,19 @@ describe('HomePage LLM models', () => {
 });
 
 describe('HomePage footer', () => {
+  it('renders the build version in the selected language', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    try {
+      renderHome();
+      await screen.findByText('qwen3.8-max');
+
+      const versionLine = screen.getByText(/Version \d{4}-\d{2}-\d{2} \d{2}:\d{2} build\(/u);
+      expect(versionLine.textContent ?? '').not.toMatch(/[\u4e00-\u9fff]/u);
+    } finally {
+      localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+    }
+  });
+
   it('links to RocketMQ documentation and community pages', () => {
     renderHome();
 
