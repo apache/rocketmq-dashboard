@@ -337,7 +337,7 @@ const HomePage = () => {
               }}
             >
               {t(getGreetingKey())}
-              {lang === 'zh' ? '，欢迎' : ', welcome'}
+              {t('home.welcomeSuffix')}
               <span
                 style={{
                   display: 'inline-block',
@@ -348,7 +348,7 @@ const HomePage = () => {
               >
                 🚀
               </span>
-              {lang === 'zh' ? t('home.welcomeTo') : 'to'}{' '}
+              {t('home.welcomeTo')}{' '}
               <span
                 className="bg-clip-text text-transparent bg-gradient-to-r from-violet-600 via-fuchsia-500 to-orange-500"
                 style={{ marginLeft: '0.15em' }}
@@ -440,19 +440,13 @@ const HomePage = () => {
                 showModeSelect={false}
                 showTemplates={false}
                 panelBorderless
-                placeholder={
-                  lang === 'zh'
-                    ? '向 RocketMQ Bot 提问，全程加密、安全、可信'
-                    : 'Ask RocketMQ Bot — encrypted, secure, trusted'
-                }
+                placeholder={t('home.placeholder')}
                 toolbarExtra={
                   <button
                     type="button"
                     className="tool-btn"
                     style={{ minHeight: 30, minWidth: 32, padding: 6 }}
-                    title={
-                      lang === 'zh' ? '语音输入（暂未支持）' : 'Voice input (not supported yet)'
-                    }
+                    title={t('home.voiceInputTitle')}
                     onClick={() => message.info(t('home.voiceNotSupported'))}
                   >
                     <Microphone size={17} />
@@ -502,7 +496,7 @@ const HomePage = () => {
             <span>{t('home.brand')}</span>
             <span style={{ margin: '0 4px' }}>｜</span>
             <span>
-              当前版本 {__BUILD_TIME__} build({__BUILD_COMMIT__})
+              {t('home.buildVersion', { time: __BUILD_TIME__, commit: __BUILD_COMMIT__ })}
             </span>
           </span>
         </footer>
