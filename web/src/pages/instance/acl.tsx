@@ -376,16 +376,19 @@ const AclPageContent = ({
   const handleRuleSubmit = async () => {
     try {
       const values = (await ruleForm.validateFields()) as AclRuleFormValues;
+      // The rule's resource is a copy-pasted identity (topic, group, cluster name); a padded
+      // value would persist a LITERAL rule that never matches the real resource. The backend
+      // stores this field raw, so trim at the form boundary.
       const normalizedValues = tencentRoleMode
         ? {
             ...values,
-            resourceType: 'Cluster',
             resource: '*',
+            resourceType: 'Cluster',
             resourcePattern: 'LITERAL',
             decision: 'ALLOW',
             scope: 'cluster',
           }
-        : values;
+        : { ...values, resource: values.resource?.trim() };
       setRuleSubmitting(true);
       if (editingRule) {
         await updateAclRule({
@@ -480,11 +483,14 @@ const AclPageContent = ({
   const handleUserSubmit = async () => {
     try {
       const values = (await userForm.validateFields()) as AclUserFormValues;
+      // Padded usernames fragment ACL identity (a rule's principal and the user are then
+      // different strings); the backend stores the username raw, so trim at the boundary.
+      const trimmedUsername = values.username?.trim();
       setUserSubmitting(true);
       if (editingUser) {
         const updated = await updateAclUser({
           id: editingUser.id,
-          username: values.username,
+          username: trimmedUsername,
           admin: values.admin ?? false,
           clusters: values.clusters ?? [],
           instanceId: selectedInstanceId,
@@ -495,7 +501,7 @@ const AclPageContent = ({
         message.success(t('acl.userUpdated'));
       } else {
         await createAclUser({
-          username: values.username,
+          username: trimmedUsername,
           admin: values.admin ?? false,
           clusters: values.clusters ?? [],
           instanceId: selectedInstanceId,
@@ -710,6 +716,7 @@ const AclPageContent = ({
       const saved = await createAndUpdatePlainAccessConfig({
         ...values,
         accessKey: (values.accessKey ?? '').trim(),
+        secretKey: values.secretKey?.trim(),
       });
       const normalized: PlainAccessConfig = {
         ...saved,
