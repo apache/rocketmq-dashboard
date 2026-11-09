@@ -260,7 +260,9 @@ class AiConversationPersistenceIntegrationTest {
         assertThat(tail.items()).hasSize(EVENT_COUNT - 150);
         assertThat(tail.items()).extracting(AiConversationService.TimelineItem::seq)
                 .containsExactlyElementsOf(expectedSeqs(151, EVENT_COUNT));
-        assertThat(tail.nextAfter()).isEqualTo(EVENT_COUNT);
+        // The 50-row tail page is the whole remaining timeline: no cursor at the tail, per the
+        // controller contract ("nextAfter ... or null at the tail").
+        assertThat(tail.nextAfter()).isNull();
         // The payload column is MEDIUMTEXT and the rows are decoded polymorphically; both the text and
         // the denormalised turn/run columns have to come back intact for the UI to replay a finished run.
         AiConversationService.TimelineItem first = tail.items().get(0);
