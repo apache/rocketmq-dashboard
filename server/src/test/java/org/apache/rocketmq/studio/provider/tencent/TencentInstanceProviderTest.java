@@ -399,10 +399,21 @@ class TencentInstanceProviderTest {
     }
 
     @Test
-    void countGroupsShouldTreatMissingTotalCountAsZeroTest() throws Exception {
-        when(client.DescribeConsumerGroupList(any())).thenReturn(new DescribeConsumerGroupListResponse());
+    void countGroupsShouldFallBackToCompleteListingWhenTotalCountIsMissing() throws Exception {
+        // TotalCount unknown must not fabricate a zero: the instance page's
+        // group count would show 0 while the group list on the same cloud
+        // shows the real groups. countTopics in this file already falls back
+        // to a complete listing for the same situation.
+        ConsumeGroupItem item = new ConsumeGroupItem();
+        item.setConsumerGroup("GID_orders");
+        DescribeConsumerGroupListResponse response = new DescribeConsumerGroupListResponse();
+        response.setData(new ConsumeGroupItem[]{item});
+        // TotalCount left null
+        when(client.DescribeConsumerGroupList(any())).thenReturn(response);
 
-        assertThat(provider.countGroups(STUDIO_INSTANCE_ID)).isZero();
+        int count = provider.countGroups(STUDIO_INSTANCE_ID);
+
+        assertThat(count).isEqualTo(1);
     }
 
     @Test
