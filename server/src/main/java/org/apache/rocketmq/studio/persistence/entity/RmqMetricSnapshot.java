@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.persistence.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -34,6 +35,7 @@ public class RmqMetricSnapshot {
     private String clusterId;
     private String labelsHash;
     private String labelsJson;
+    @TableField("`value`")
     private Double value;
     private String availability;
     private LocalDateTime collectedAt;
