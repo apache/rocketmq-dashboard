@@ -113,6 +113,7 @@ Studio 只负责**托管**一个通用 Agent CLI（Claude Code 或 Qoder，另�
 绑定实例、带风险闸门的工具面，同时服务于托管 Agent、手敲 `rmqctl topic list` 的开发者，以及任何
 指向 `rmqctl mcp config` 输出的外部 Agent。设计与取舍见
 [docs/ai-agent-architecture.md](docs/ai-agent-architecture.md)。
+交互式 CLI 使用方式见 [rmqctl shell 补全指南](docs/rmqctl-completion.md)。
 
 - **会话在服务端持久化**，可从历史抽屉回看。刷新或断线重连回放出的时间线与直播时渲染的完全一致，
   因为两条路径归约到同一套 block 模型。
