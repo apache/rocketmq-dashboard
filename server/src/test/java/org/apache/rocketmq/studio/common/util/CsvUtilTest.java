@@ -35,4 +35,33 @@ class CsvUtilTest {
         assertThat(CsvUtil.toCell("=SUM(A1)")).isEqualTo("\"'=SUM(A1)\"");
         assertThat(CsvUtil.toCell("+cmd")).isEqualTo("\"'+cmd\"");
     }
+
+    @Test
+    void toCellShouldEscapeApostrophePrefixedFormulasTest() {
+        assertThat(CsvUtil.toCell("'=HYPERLINK(\"a\",\"b\")"))
+                .isEqualTo("\"''=HYPERLINK(\"\"a\"\",\"\"b\"\")\"");
+        assertThat(CsvUtil.toCell("''=SUM(A1)")).isEqualTo("\"'''=SUM(A1)\"");
+        assertThat(CsvUtil.toCell("'-1")).isEqualTo("\"''-1\"");
+    }
+
+    @Test
+    void toCellShouldLeavePlainApostrophesAloneTest() {
+        assertThat(CsvUtil.toCell("it's fine")).isEqualTo("\"it's fine\"");
+        assertThat(CsvUtil.toCell("'quoted'")).isEqualTo("\"'quoted'\"");
+        assertThat(CsvUtil.toCell("'")).isEqualTo("\"'\"");
+    }
+
+    @Test
+    void escapedCellsSurviveTheWebImportersSingleApostropheStripTest() {
+        // The web importer (resourceCsvImport.ts) removes exactly one protection
+        // apostrophe from cells whose remainder still starts a formula; the escaped
+        // cell must keep the original value recoverable through that strip.
+        String[] originals = {"=SUM(A1)", "'=SUM(A1)", "''=SUM(A1)", "'-tag", "+x"};
+        for (String original : originals) {
+            String cell = CsvUtil.toCell(original);
+            String unquoted = cell.substring(1, cell.length() - 1).replace("\"\"", "\"");
+            String stripped = unquoted.replaceFirst("^'(?='*[=+\\-@\t\r\n])", "");
+            assertThat(stripped).isEqualTo(original);
+        }
+    }
 }
