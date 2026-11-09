@@ -18,5 +18,5 @@
 package org.apache.rocketmq.studio.common.domain.enums;
 
 public enum TopicType {
-    NORMAL, FIFO, DELAY, TRANSACTION, LITE
+    NORMAL, FIFO, DELAY, TRANSACTION, LITE, MIXED
 }

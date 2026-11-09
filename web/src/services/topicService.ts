@@ -22,6 +22,7 @@ import type {
   TopicExportQuery,
   TopicQuery,
   TopicPage,
+  TopicFeatures,
   BrokerRoute,
   ConsumerGroupInfo,
   TopicConsumerPage,
@@ -79,6 +80,13 @@ function visibleExportTopics(topics: Topic[], params?: TopicExportQuery): Topic[
     result = result.filter((topic) => selectedNames.has(topic.name));
   }
   return [...result].sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export async function getTopicFeatures(): Promise<TopicFeatures> {
+  if (isMockMode()) {
+    return { mixedTypeEnabled: false };
+  }
+  return metadataApi.getTopicFeatures();
 }
 
 export async function listTopics(params?: TopicQuery): Promise<Topic[]> {

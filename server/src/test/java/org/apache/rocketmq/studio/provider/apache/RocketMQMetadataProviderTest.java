@@ -21,6 +21,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.domain.enums.TopicType;
+import org.apache.rocketmq.studio.instance.topic.TopicProperties;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.cluster.metrics.collectors.ApacheRocketMqBusinessMetricsCollector;
@@ -105,7 +107,7 @@ class RocketMQMetadataProviderTest {
      */
     private RocketMQMetadataProvider newProvider() {
         return new RocketMQMetadataProvider(mock(MqAdminExtFactory.class), new RocketMQProperties(),
-                topicMapper, groupMapper, runtimeAdminClientResolver);
+                topicMapper, groupMapper, runtimeAdminClientResolver, new TopicProperties());
     }
 
     @Test
@@ -126,6 +128,42 @@ class RocketMQMetadataProviderTest {
             assertThat(query.getSqlSegment()).contains("instance_id =", "cluster_id =");
             assertThat(query.getParamNameValuePairs().values()).contains("", "DefaultCluster");
         }
+    }
+
+    @Test
+    void listTopicsFallsBackToNormalForMixedTypeWhenTheFeatureIsDisabled() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        RmqTopic entity = new RmqTopic();
+        entity.setName("mixed-topic");
+        entity.setClusterId("cluster-1");
+        entity.setTopicType("MIXED");
+        when(topicMapper.selectList(any())).thenReturn(List.of(entity));
+
+        var topics = newProvider().listTopics("cluster-1", null, null, null);
+
+        assertThat(topics).hasSize(1);
+        assertThat(topics.get(0).getType()).isEqualTo(TopicType.NORMAL);
+    }
+
+    @Test
+    void listTopicsKeepsMixedTypeWhenTheFeatureIsEnabled() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        RmqTopic entity = new RmqTopic();
+        entity.setName("mixed-topic");
+        entity.setClusterId("cluster-1");
+        entity.setTopicType("MIXED");
+        when(topicMapper.selectList(any())).thenReturn(List.of(entity));
+
+        TopicProperties topicProperties = new TopicProperties();
+        topicProperties.setMixedTypeEnabled(true);
+        RocketMQMetadataProvider provider = new RocketMQMetadataProvider(
+                mock(MqAdminExtFactory.class), new RocketMQProperties(), topicMapper, groupMapper,
+                runtimeAdminClientResolver, topicProperties);
+
+        var topics = provider.listTopics("cluster-1", null, null, null);
+
+        assertThat(topics).hasSize(1);
+        assertThat(topics.get(0).getType()).isEqualTo(TopicType.MIXED);
     }
 
     @Test
@@ -1211,7 +1249,7 @@ class RocketMQMetadataProviderTest {
         lenient().when(factory.execute(anyString(), any(), any())).thenAnswer(invocation ->
                 invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(admin));
         return new RocketMQMetadataProvider(factory, liveProperties, topicMapper, groupMapper,
-                runtimeAdminClientResolver);
+                runtimeAdminClientResolver, new TopicProperties());
     }
 
     private void mockTopicConsumeStats(DefaultMQAdminExt admin, OffsetWrapper... queueOffsets) throws Exception {

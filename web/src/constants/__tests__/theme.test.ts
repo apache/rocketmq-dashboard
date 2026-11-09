@@ -68,12 +68,13 @@ describe('theme constants', () => {
       }
     });
 
-    it('contains NORMAL, FIFO, DELAY, TRANSACTION, LITE', () => {
+    it('contains NORMAL, FIFO, DELAY, TRANSACTION, LITE, MIXED', () => {
       expect(TOPIC_TYPE_MAP.NORMAL).toBeDefined();
       expect(TOPIC_TYPE_MAP.FIFO).toBeDefined();
       expect(TOPIC_TYPE_MAP.DELAY).toBeDefined();
       expect(TOPIC_TYPE_MAP.TRANSACTION).toBeDefined();
       expect(TOPIC_TYPE_MAP.LITE).toBeDefined();
+      expect(TOPIC_TYPE_MAP.MIXED).toBeDefined();
     });
   });
 

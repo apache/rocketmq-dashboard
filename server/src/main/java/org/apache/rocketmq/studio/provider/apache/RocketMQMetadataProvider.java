@@ -53,6 +53,7 @@ import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.topic.BrokerRouteVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
+import org.apache.rocketmq.studio.instance.topic.TopicProperties;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.persistence.entity.RmqGroup;
 import org.apache.rocketmq.studio.persistence.entity.RmqTopic;
@@ -116,6 +117,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     private final RmqTopicMapper topicMapper;
     private final RmqGroupMapper groupMapper;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+    private final TopicProperties topicProperties;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private ProxyConsumerResolver proxyConsumerResolver;
@@ -219,7 +221,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             return TopicType.NORMAL;
         }
         try {
-            return TopicType.valueOf(type);
+            TopicType parsed = TopicType.valueOf(type);
+            if (parsed == TopicType.MIXED && !topicProperties.isMixedTypeEnabled()) {
+                log.debug("MIXED topic type is disabled, falling back to NORMAL");
+                return TopicType.NORMAL;
+            }
+            return parsed;
         } catch (IllegalArgumentException ex) {
             log.debug("Unknown topic type {}, falling back to NORMAL", type);
             return TopicType.NORMAL;
