@@ -148,6 +148,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         String literalSearch = LikePatterns.escape(search);
+        List<String> typeFilter = resolveTopicTypeFilter(type);
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
                 .and(instanceId != null, scope -> {
                     scope.eq(RmqTopic::getInstanceId, normalizeMetadataScope(instanceId));
@@ -158,7 +159,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     }
                 })
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
-                .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
+                .in(!typeFilter.isEmpty(), RmqTopic::getTopicType, typeFilter)
                 .like(StringUtils.hasText(search), RmqTopic::getName, literalSearch)
                 .orderByAsc(RmqTopic::getName);
 
@@ -178,6 +179,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         String literalSearch = LikePatterns.escape(search);
+        List<String> typeFilter = resolveTopicTypeFilter(type);
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
                 .and(instanceId != null, scope -> {
                     scope.eq(RmqTopic::getInstanceId, normalizeMetadataScope(instanceId));
@@ -188,7 +190,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     }
                 })
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
-                .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
+                .in(!typeFilter.isEmpty(), RmqTopic::getTopicType, typeFilter)
                 .like(StringUtils.hasText(search), RmqTopic::getName, literalSearch)
                 .notIn(RmqTopic::getName, TopicValidator.getSystemTopicSet())
                 .notLikeRight(RmqTopic::getName, "rmq_sys_")
@@ -214,6 +216,20 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         vo.setGmtCreate(entity.getGmtCreate());
         vo.setGmtModified(entity.getGmtModified());
         return vo;
+    }
+
+    /**
+     * Rows keep the raw broker type, while {@link #parseTopicType(String)} collapses MIXED to NORMAL
+     * when the switch is off, so filtering by NORMAL must also match the stored MIXED rows.
+     */
+    List<String> resolveTopicTypeFilter(String type) {
+        if (!StringUtils.hasText(type)) {
+            return List.of();
+        }
+        if (!topicProperties.isMixedTypeEnabled() && TopicType.NORMAL.name().equalsIgnoreCase(type)) {
+            return List.of(TopicType.NORMAL.name(), TopicType.MIXED.name());
+        }
+        return List.of(type);
     }
 
     private TopicType parseTopicType(String type) {

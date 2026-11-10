@@ -167,6 +167,28 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void normalTypeFilterAlsoMatchesStoredMixedRowsWhileTheFeatureIsDisabled() {
+        RocketMQMetadataProvider provider = newProvider();
+
+        assertThat(provider.resolveTopicTypeFilter("NORMAL")).containsExactly("NORMAL", "MIXED");
+        assertThat(provider.resolveTopicTypeFilter("FIFO")).containsExactly("FIFO");
+        assertThat(provider.resolveTopicTypeFilter(null)).isEmpty();
+        assertThat(provider.resolveTopicTypeFilter(" ")).isEmpty();
+    }
+
+    @Test
+    void typeFilterStaysNarrowWhenTheFeatureIsEnabled() {
+        TopicProperties topicProperties = new TopicProperties();
+        topicProperties.setMixedTypeEnabled(true);
+        RocketMQMetadataProvider provider = new RocketMQMetadataProvider(
+                mock(MqAdminExtFactory.class), new RocketMQProperties(), topicMapper, groupMapper,
+                runtimeAdminClientResolver, topicProperties);
+
+        assertThat(provider.resolveTopicTypeFilter("NORMAL")).containsExactly("NORMAL");
+        assertThat(provider.resolveTopicTypeFilter("MIXED")).containsExactly("MIXED");
+    }
+
+    @Test
     void listConsumerGroupsReadsConsumeTypeColumn() {
         RmqGroup entity = new RmqGroup();
         entity.setName("group-broadcast");
