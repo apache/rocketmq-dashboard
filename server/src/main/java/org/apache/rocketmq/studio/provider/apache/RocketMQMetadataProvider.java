@@ -53,6 +53,7 @@ import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.topic.BrokerRouteVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
+import org.apache.rocketmq.studio.instance.topic.TopicProperties;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.persistence.entity.RmqGroup;
 import org.apache.rocketmq.studio.persistence.entity.RmqTopic;
@@ -116,6 +117,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     private final RmqTopicMapper topicMapper;
     private final RmqGroupMapper groupMapper;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+    private final TopicProperties topicProperties;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private ProxyConsumerResolver proxyConsumerResolver;
@@ -146,6 +148,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         String literalSearch = LikePatterns.escape(search);
+        List<String> typeFilter = resolveTopicTypeFilter(type);
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
                 .and(instanceId != null, scope -> {
                     scope.eq(RmqTopic::getInstanceId, normalizeMetadataScope(instanceId));
@@ -156,7 +159,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     }
                 })
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
-                .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
+                .in(!typeFilter.isEmpty(), RmqTopic::getTopicType, typeFilter)
                 .like(StringUtils.hasText(search), RmqTopic::getName, literalSearch)
                 .orderByAsc(RmqTopic::getName);
 
@@ -176,6 +179,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         String literalSearch = LikePatterns.escape(search);
+        List<String> typeFilter = resolveTopicTypeFilter(type);
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
                 .and(instanceId != null, scope -> {
                     scope.eq(RmqTopic::getInstanceId, normalizeMetadataScope(instanceId));
@@ -186,7 +190,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     }
                 })
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
-                .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
+                .in(!typeFilter.isEmpty(), RmqTopic::getTopicType, typeFilter)
                 .like(StringUtils.hasText(search), RmqTopic::getName, literalSearch)
                 .notIn(RmqTopic::getName, TopicValidator.getSystemTopicSet())
                 .notLikeRight(RmqTopic::getName, "rmq_sys_")
@@ -214,12 +218,31 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         return vo;
     }
 
+    /**
+     * Rows keep the raw broker type, while {@link #parseTopicType(String)} collapses MIXED to NORMAL
+     * when the switch is off, so filtering by NORMAL must also match the stored MIXED rows.
+     */
+    List<String> resolveTopicTypeFilter(String type) {
+        if (!StringUtils.hasText(type)) {
+            return List.of();
+        }
+        if (!topicProperties.isMixedTypeEnabled() && TopicType.NORMAL.name().equalsIgnoreCase(type)) {
+            return List.of(TopicType.NORMAL.name(), TopicType.MIXED.name());
+        }
+        return List.of(type);
+    }
+
     private TopicType parseTopicType(String type) {
         if (!StringUtils.hasText(type)) {
             return TopicType.NORMAL;
         }
         try {
-            return TopicType.valueOf(type);
+            TopicType parsed = TopicType.valueOf(type);
+            if (parsed == TopicType.MIXED && !topicProperties.isMixedTypeEnabled()) {
+                log.debug("MIXED topic type is disabled, falling back to NORMAL");
+                return TopicType.NORMAL;
+            }
+            return parsed;
         } catch (IllegalArgumentException ex) {
             log.debug("Unknown topic type {}, falling back to NORMAL", type);
             return TopicType.NORMAL;

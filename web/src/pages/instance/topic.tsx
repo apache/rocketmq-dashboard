@@ -69,6 +69,7 @@ import {
   deleteTopic,
   exportTopics,
   getTopicConsumerPage,
+  getTopicFeatures,
   getTopicRoutes,
   importTopics,
   listTopicsPage,
@@ -144,6 +145,14 @@ const TOPIC_TYPE_CARDS = [
     desc: '轻量级主题，资源开销更低，适用于大规模轻量消息场景。',
   },
 ];
+
+// MIXED is only selectable when the deployment opts in: a broker reports that type only with
+// enableMixedMessageType=true, and older clusters keep resolving it to NORMAL server-side.
+const MIXED_TYPE_CARD = {
+  value: 'MIXED',
+  label: '混合消息',
+  desc: '同一主题内可同时承载普通、顺序、延迟、事务等消息，需要 Broker 开启 enableMixedMessageType。',
+};
 
 // ─── Perm label ───────────────────────────────────────────────────
 const PERM_LABEL: Record<string, string> = { RW: '读写', RO: '只读', WO: '只写' };
@@ -318,6 +327,7 @@ const TopicPageContent = ({
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [searchText, setSearchText] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [mixedTypeEnabled, setMixedTypeEnabled] = useState(false);
   const [tablePage, setTablePage] = useState(1);
   const [tablePageSize, setTablePageSize] = useState(20);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
@@ -457,6 +467,32 @@ const TopicPageContent = ({
       window.clearTimeout(timer);
     };
   }, [selectedInstanceId, tablePage, tablePageSize, loadTopicPage]);
+
+  // MIXED is only offered when the deployment opts in: a broker reports that type only with
+  // enableMixedMessageType=true, and older clusters keep resolving it to NORMAL server-side.
+  useEffect(() => {
+    let cancelled = false;
+    void getTopicFeatures()
+      .then((features) => {
+        if (!cancelled) setMixedTypeEnabled(features.mixedTypeEnabled);
+      })
+      .catch(() => {
+        // Keep the default filter set when the feature probe is unavailable.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const typeOptions = useMemo(
+    () => (mixedTypeEnabled ? [...TYPE_OPTIONS, { label: '混合', value: 'MIXED' }] : TYPE_OPTIONS),
+    [mixedTypeEnabled],
+  );
+
+  const topicTypeCards = useMemo(
+    () => (mixedTypeEnabled ? [...TOPIC_TYPE_CARDS, MIXED_TYPE_CARD] : TOPIC_TYPE_CARDS),
+    [mixedTypeEnabled],
+  );
 
   // ─── Filtered data ─────────────────────────────────────────────
   const filteredTopics = useMemo(
@@ -1313,6 +1349,7 @@ const TopicPageContent = ({
             }}
           />
           <Select
+            data-testid="topic-type-filter"
             placeholder="类型筛选"
             value={typeFilter}
             onChange={(value) => {
@@ -1320,7 +1357,7 @@ const TopicPageContent = ({
               setTypeFilter(value);
               resetTablePage();
             }}
-            options={TYPE_OPTIONS}
+            options={typeOptions}
             style={{ width: 140 }}
           />
         </Space>
@@ -1577,13 +1614,13 @@ const TopicPageContent = ({
             label="类型"
             name="type"
             rules={[{ required: true }]}
-            extra={TOPIC_TYPE_CARDS.find((c) => c.value === createTopicType)?.desc}
+            extra={topicTypeCards.find((c) => c.value === createTopicType)?.desc}
           >
             <Segmented
               disabled={!!editingTopic}
-              options={TOPIC_TYPE_CARDS.filter((c) => !isCloudInstance || c.value !== 'LITE').map(
-                ({ value, label }) => ({ value, label }),
-              )}
+              options={topicTypeCards
+                .filter((c) => !isCloudInstance || c.value !== 'LITE')
+                .map(({ value, label }) => ({ value, label }))}
             />
           </Form.Item>
 

@@ -65,8 +65,21 @@ class TopicControllerTest extends WebMvcAuthTestSupport {
     @MockitoBean
     private org.apache.rocketmq.studio.instance.InstanceService instanceService;
 
+    @MockitoBean
+    private TopicProperties topicProperties;
+
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Test
+    void topicFeaturesShouldExposeTheMixedTypeSwitch() throws Exception {
+        when(topicProperties.isMixedTypeEnabled()).thenReturn(true);
+
+        mockMvc.perform(get("/api/topics/features"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.mixedTypeEnabled").value(true));
+    }
 
     @Test
     void listTopicsShouldReturnTopics() throws Exception {

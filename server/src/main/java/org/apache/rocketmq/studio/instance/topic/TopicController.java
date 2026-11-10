@@ -40,6 +40,12 @@ public class TopicController {
 
     private final MetadataService metadataService;
     private final org.apache.rocketmq.studio.instance.InstanceService instanceService;
+    private final TopicProperties topicProperties;
+
+    @GetMapping("/features")
+    public Result<TopicFeaturesVO> getFeatures() {
+        return Result.ok(new TopicFeaturesVO(topicProperties.isMixedTypeEnabled()));
+    }
 
     @GetMapping
     public Result<List<TopicVO>> listTopics(

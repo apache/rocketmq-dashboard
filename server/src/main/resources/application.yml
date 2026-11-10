@@ -121,6 +121,9 @@ studio:
       bearer-token: ${STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN:}
   rocketmq:
     namesrv-addr: ${STUDIO_ROCKETMQ_NAMESRV_ADDR:localhost:9876}
+  topic:
+    # Only surface the MIXED message type when the brokers run with enableMixedMessageType=true.
+    mixed-type-enabled: ${STUDIO_TOPIC_MIXED_TYPE_ENABLED:false}
   query-history:
     retention-days: 90
     cleanup-interval: PT24H
