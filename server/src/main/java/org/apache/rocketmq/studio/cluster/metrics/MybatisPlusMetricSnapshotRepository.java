@@ -32,6 +32,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -66,6 +67,12 @@ public class MybatisPlusMetricSnapshotRepository implements MetricSnapshotReposi
                         .eq(scope.clusterId() != null, "cluster_id", scope.clusterId())
                         .eq("availability", MetricAvailability.AVAILABLE.name())
                         .ge("collected_at", LocalDateTime.ofInstant(since, ZoneOffset.UTC))
+                        // collected_at is DATETIME with second granularity, so MySQL rounds the stored
+                        // sample up (10:00:00.700 becomes 10:00:01). An inclusive bound one second past
+                        // the evaluated sample keeps its own row visible no matter which way rounding
+                        // went, while the default 30s collection interval keeps out the next cycle.
+                        .le("collected_at", LocalDateTime.ofInstant(scope.collectedAt(), ZoneOffset.UTC)
+                                .truncatedTo(ChronoUnit.SECONDS).plusSeconds(1))
                         .orderByAsc("collected_at"))
                 .stream().map(this::toSample).toList();
     }
