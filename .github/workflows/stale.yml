@@ -30,17 +30,17 @@ jobs:
       - uses: actions/stale@v9
         with:
           operations-per-run: 200
-          days-before-stale: 7
+          days-before-stale: 180
           days-before-close: 0
           stale-issue-label: stale
           stale-pr-label: stale
           stale-issue-message: >
             This issue has been automatically closed because there has been no activity
-            for 7 days. If you believe this issue is still relevant, please reopen it
+            for 180 days. If you believe this issue is still relevant, please reopen it
             with updated information.
           stale-pr-message: >
             This pull request has been automatically closed because there has been no activity
-            for 7 days. If you would like to continue working on this, please reopen the PR
+            for 180 days. If you would like to continue working on this, please reopen the PR
             with updated changes.
           exempt-issue-labels: 'pinned,security'
           exempt-pr-labels: 'pinned,security'
