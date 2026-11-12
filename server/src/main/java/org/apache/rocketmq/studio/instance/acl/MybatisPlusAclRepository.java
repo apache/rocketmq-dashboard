@@ -247,6 +247,7 @@ public class MybatisPlusAclRepository implements AclRepository {
         if (!secretProvided && existing == null) {
             throw new BusinessException(400, "secretKey is required for a new plain access account");
         }
+        rejectUnrepresentablePlainRules(config.getAccessKey());
         RmqAclUser entity = new RmqAclUser();
         if (existing != null) {
             entity.setId(existing.getId());
@@ -320,6 +321,31 @@ public class MybatisPlusAclRepository implements AclRepository {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private void rejectUnrepresentablePlainRules(String principal) {
+        List<RmqAclRule> rules = ruleMapper.selectList(new QueryWrapper<RmqAclRule>()
+                .eq("principal", principal)
+                .last("FOR UPDATE"));
+        Set<String> defaults = new LinkedHashSet<>();
+        for (RmqAclRule rule : rules) {
+            boolean plainResource = ("Topic".equals(rule.getResourceType())
+                    || "Group".equals(rule.getResourceType()))
+                    && "LITERAL".equals(rule.getResourcePattern())
+                    && StringUtils.hasText(rule.getResource())
+                    && !rule.getResource().contains("=");
+            boolean plainDefault = "Cluster".equals(rule.getResourceType())
+                    && "*".equals(rule.getResource())
+                    && ("DEFAULT_TOPIC".equals(rule.getResourcePattern())
+                    || "DEFAULT_GROUP".equals(rule.getResourcePattern()));
+            if (!"2.0".equals(rule.getAclVersion()) || !"ALLOW".equals(rule.getDecision())
+                    || !"*".equals(rule.getScope()) || !StringUtils.hasText(rule.getActions())
+                    || !plainResource && !plainDefault
+                    || plainDefault && !defaults.add(rule.getResourcePattern())) {
+                throw new BusinessException(409,
+                        "Plain access configuration cannot replace existing ACL rules; manage them as ACL rules");
+            }
+        }
     }
 
     /**
