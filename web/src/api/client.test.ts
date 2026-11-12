@@ -19,6 +19,7 @@ import MockAdapter from 'axios-mock-adapter';
 import { message } from 'antd';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
+import { persistAuthSession } from '../stores/authStorage';
 
 vi.mock('antd', () => ({
   message: {
@@ -156,6 +157,24 @@ describe('API client response contract', () => {
     expect(localStorage.getItem('rocketmq-studio-user')).toBeNull();
     expect(localStorage.getItem('rocketmq-studio-user-admin')).toBeNull();
     expect(message.error).not.toHaveBeenCalled();
+  });
+
+  it('preserves a newer login when a stale protected request returns 401', async () => {
+    localStorage.setItem('rocketmq-studio-user', 'old-admin');
+    localStorage.setItem('rocketmq-studio-user-admin', 'true');
+    mock.onGet('/clusters').reply(401, { code: 401, message: 'Unauthorized', data: null });
+
+    const pending = client.get('/clusters');
+    const rejected = expect(pending).rejects.toMatchObject({ response: { status: 401 } });
+    // Let the request interceptor stamp the epoch of the old login before the
+    // superseding login happens.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    persistAuthSession('new-admin', 2, true);
+
+    await rejected;
+
+    expect(localStorage.getItem('rocketmq-studio-user')).toBe('new-admin');
+    expect(localStorage.getItem('rocketmq-studio-user-admin')).toBe('true');
   });
 
   it('preserves the original 401 error when the request URL is malformed', async () => {
