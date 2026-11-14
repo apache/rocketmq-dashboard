@@ -322,13 +322,14 @@ const AclPageContent = ({
 
   /* ─── Rule helpers ─── */
   const principalDirectory =
-    directoryState.instanceId === selectedInstanceId &&
-    directoryState.refreshKey === userRefreshKey
+    directoryState.instanceId === selectedInstanceId && directoryState.refreshKey === userRefreshKey
       ? directoryState.users
       : [];
   const principalUsers = [
     ...principalDirectory,
-    ...users.filter((user) => !principalDirectory.some((entry) => entry.username === user.username)),
+    ...users.filter(
+      (user) => !principalDirectory.some((entry) => entry.username === user.username),
+    ),
   ];
   const isAdmin = (principal: string) =>
     principalUsers.find((u) => u.username === principal)?.admin ?? false;
@@ -468,6 +469,8 @@ const AclPageContent = ({
   };
 
   const openEditUserModal = (user: NormalizedAclUser) => {
+    // Wait for the admin update before copying the user's privileges into the form.
+    if (adminUpdateInFlightRef.current.has(user.id)) return;
     setEditingUser(user);
     userForm.setFieldsValue({
       username: user.username,
@@ -992,6 +995,7 @@ const AclPageContent = ({
             size="small"
             icon={<EditOutlined />}
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
+            disabled={adminUpdatingIds.has(record.id)}
             onClick={() => openEditUserModal(record)}
           >
             {t('common.edit')}
