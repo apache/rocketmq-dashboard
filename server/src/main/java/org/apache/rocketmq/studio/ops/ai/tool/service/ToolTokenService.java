@@ -32,12 +32,15 @@ import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -46,17 +49,21 @@ import java.util.regex.Pattern;
 public class ToolTokenService {
 
     private static final Duration TOKEN_TTL = Duration.ofMinutes(10);
-    private static final String TOKEN_VERSION = "v1";
+    private static final String TOKEN_VERSION = "v2";
     private static final String HMAC_ALGORITHM = "HmacSHA256";
     private static final int SIGNATURE_BYTES = 32;
-    // Base64 of "v1." + at most 19 decimal digits + "." + 32 signature bytes.
-    private static final int MAX_TOKEN_LENGTH = 76;
+    private static final int TOKEN_ID_BYTES = 8;
+    private static final int TOKEN_ID_CHARS = TOKEN_ID_BYTES * 2;
+    // Base64 of "v2." + at most 19 decimal digits + "." + 16 hex token id + "." + 32 signature bytes.
+    private static final int MAX_TOKEN_LENGTH = 96;
     private static final Pattern TOKEN_PREFIX = Pattern.compile(
-            Pattern.quote(TOKEN_VERSION) + "\\.([1-9][0-9]{0,18})\\.");
+            Pattern.quote(TOKEN_VERSION) + "\\.([1-9][0-9]{0,18})\\.([0-9a-f]{" + TOKEN_ID_CHARS + "})\\.");
 
     private final ObjectMapper objectMapper;
     private final Clock clock;
     private final byte[] secret;
+    private final Random random;
+    private final ConsumedTokenStore consumedTokens;
 
     @Autowired
     public ToolTokenService(
@@ -66,9 +73,15 @@ public class ToolTokenService {
     }
 
     ToolTokenService(ObjectMapper objectMapper, Clock clock, byte[] secret) {
+        this(objectMapper, clock, secret, new SecureRandom());
+    }
+
+    ToolTokenService(ObjectMapper objectMapper, Clock clock, byte[] secret, Random random) {
         this.objectMapper = objectMapper;
         this.clock = clock;
         this.secret = secret.clone();
+        this.random = random;
+        this.consumedTokens = new ConsumedTokenStore();
     }
 
     private static byte[] resolveSecret(String configuredSecret) {
@@ -91,24 +104,46 @@ public class ToolTokenService {
         }
     }
 
+    /**
+     * Issues a confirmation token for a previewed mutation. Each call embeds a fresh random
+     * token id, so two previews of the same operation never share an identifier and consuming
+     * one never invalidates the other.
+     */
     public String issue(ToolExecutionContext context) {
         requireConfiguredSecret();
         long expiresAt = clock.instant().plus(TOKEN_TTL).getEpochSecond();
-        byte[] signature = sign(signingPayload(context, expiresAt));
-        return new ConfirmationToken(expiresAt, signature).format();
+        String tokenId = newTokenId();
+        byte[] signature = sign(signingPayload(context, expiresAt, tokenId));
+        return new ConfirmationToken(expiresAt, tokenId, signature).format();
     }
 
-    public void verify(ToolExecutionContext context) {
+    /**
+     * Validates the confirmation token and atomically consumes it before the caller may enter
+     * the non-idempotent mutation. Rejections stay distinguishable: an expired, tampered or
+     * mismatched token is {@code CONFIRMATION_TOKEN_INVALID}; a token that already admitted an
+     * execution is {@code CONFIRMATION_TOKEN_ALREADY_USED}. Consumption happens only after all
+     * other checks pass, so a rejected replay never consumes a different pending token.
+     */
+    public void verifyAndConsume(ToolExecutionContext context) {
         requireConfiguredSecret();
         String toolName = context.definition().name();
         ConfirmationToken token = ConfirmationToken.parse(context.confirmToken(), toolName);
         if (clock.instant().getEpochSecond() >= token.expiresAt()) {
             throw ToolError.CONFIRMATION_TOKEN_INVALID.exception(toolName);
         }
-        byte[] expected = sign(signingPayload(context, token.expiresAt()));
+        byte[] expected = sign(signingPayload(context, token.expiresAt(), token.tokenId()));
         if (!MessageDigest.isEqual(expected, token.signature())) {
             throw ToolError.CONFIRMATION_TOKEN_INVALID.exception(toolName);
         }
+        if (!consumedTokens.consume(token.tokenId(), token.expiresAt(), clock.instant().getEpochSecond())) {
+            throw ToolError.CONFIRMATION_TOKEN_ALREADY_USED.exception(toolName);
+        }
+    }
+
+    private String newTokenId() {
+        byte[] tokenId = new byte[TOKEN_ID_BYTES];
+        random.nextBytes(tokenId);
+        return HexFormat.of().formatHex(tokenId);
     }
 
     private void requireConfiguredSecret() {
@@ -117,11 +152,12 @@ public class ToolTokenService {
         }
     }
 
-    private byte[] signingPayload(ToolExecutionContext context, long expiresAt) {
+    private byte[] signingPayload(ToolExecutionContext context, long expiresAt, String tokenId) {
         try {
             SignaturePayload payload = new SignaturePayload(
                     TOKEN_VERSION,
                     expiresAt,
+                    tokenId,
                     context.definition().name(),
                     subjectBinding(context),
                     context.instanceId(),
@@ -172,7 +208,7 @@ public class ToolTokenService {
         }
     }
 
-    private record ConfirmationToken(long expiresAt, byte[] signature) {
+    private record ConfirmationToken(long expiresAt, String tokenId, byte[] signature) {
 
         private static ConfirmationToken parse(String token, String toolName) {
             if (token == null || token.isBlank()) {
@@ -192,7 +228,7 @@ public class ToolTokenService {
                 if (!matcher.matches()) {
                     throw ToolError.CONFIRMATION_TOKEN_INVALID.exception(toolName);
                 }
-                return new ConfirmationToken(Long.parseLong(matcher.group(1)),
+                return new ConfirmationToken(Long.parseLong(matcher.group(1)), matcher.group(2),
                         Arrays.copyOfRange(content, prefixLength, content.length));
             } catch (IllegalArgumentException exception) {
                 throw ToolError.CONFIRMATION_TOKEN_INVALID.exception(toolName);
@@ -200,7 +236,8 @@ public class ToolTokenService {
         }
 
         private String format() {
-            byte[] prefix = (TOKEN_VERSION + "." + expiresAt + ".").getBytes(StandardCharsets.UTF_8);
+            byte[] prefix = (TOKEN_VERSION + "." + expiresAt + "." + tokenId + ".")
+                    .getBytes(StandardCharsets.UTF_8);
             byte[] content = ByteBuffer.allocate(prefix.length + signature.length)
                     .put(prefix)
                     .put(signature)
@@ -212,6 +249,7 @@ public class ToolTokenService {
     private record SignaturePayload(
             String version,
             long expiresAt,
+            String tokenId,
             String tool,
             String subject,
             String instanceId,
