@@ -72,6 +72,16 @@ const renderHome = () =>
   );
 
 describe('HomePage LLM models', () => {
+  it('uses the translated English placeholder without an encryption claim', async () => {
+    localStorage.setItem('rocketmq-studio-language', 'en');
+    try {
+      renderHome();
+      expect(await screen.findByPlaceholderText('Ask RocketMQ Bot')).toBeInTheDocument();
+    } finally {
+      localStorage.removeItem('rocketmq-studio-language');
+    }
+  });
+
   it('shows the fixed home model list with qwen3.8-max selected', async () => {
     renderHome();
 
@@ -92,10 +102,7 @@ describe('HomePage LLM models', () => {
     renderHome();
     await screen.findByText('qwen3.8-max');
 
-    await user.type(
-      screen.getByPlaceholderText('向 RocketMQ Bot 提问，全程加密、安全、可信'),
-      '查看集群状态{enter}',
-    );
+    await user.type(screen.getByPlaceholderText('向 RocketMQ Bot 提问'), '查看集群状态{enter}');
 
     await waitFor(() => {
       expect(navigateMock).toHaveBeenCalledWith('/ai', {
@@ -149,10 +156,7 @@ describe('HomePage LLM models', () => {
     renderHome();
     await screen.findByText('qwen3.8-max');
 
-    await user.type(
-      screen.getByPlaceholderText('向 RocketMQ Bot 提问，全程加密、安全、可信'),
-      '查看集群状态{enter}',
-    );
+    await user.type(screen.getByPlaceholderText('向 RocketMQ Bot 提问'), '查看集群状态{enter}');
 
     await waitFor(() => {
       expect(navigateMock).toHaveBeenCalledWith('/ai', {
@@ -169,7 +173,7 @@ describe('HomePage LLM models', () => {
   it('does not submit while an input method composition is being confirmed', async () => {
     renderHome();
     await screen.findByText('qwen3.8-max');
-    const input = screen.getByPlaceholderText('向 RocketMQ Bot 提问，全程加密、安全、可信');
+    const input = screen.getByPlaceholderText('向 RocketMQ Bot 提问');
 
     fireEvent.change(input, { target: { value: '查看集群状态' } });
     fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
