@@ -14,7 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import hashlib
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -29,12 +31,27 @@ class DockerNodeTest(unittest.TestCase):
                        if line.startswith("RUN ") and "node-v20.19.2-linux-" in line)
         # Execute the Dockerfile's real shell logic without downloading packages or touching /opt.
         stubs = """
-curl() { printf '%s\\n' "$@" > "$TEST_DIR/download"; }
-tar() { cat >/dev/null; }
+curl() {
+    printf '%s\\n' "$@" > "$TEST_DIR/download"
+    while [ "$#" -gt 0 ]; do
+        if [ "$1" = "-o" ]; then
+            printf 'node archive fixture\\n' > "$2"
+            return
+        fi
+        shift
+    done
+    return 1
+}
+tar() { :; }
 ln() { printf '%s\\n' "$@" >> "$TEST_DIR/links"; }
 npm() { :; }
 """
         with tempfile.TemporaryDirectory() as directory:
+            # Exercise the real checksum tool against fixture bytes; the dedicated
+            # docker_downloads_test.py suite checks committed pins and rejection paths.
+            digest = hashlib.sha256(b"node archive fixture\n").hexdigest()
+            install = re.sub(r"NODE_SHA256=[a-f0-9]{64}", f"NODE_SHA256={digest}", install)
+            install = install.replace("/tmp/node.tar.gz", str(Path(directory, "node.tar.gz")))
             result = subprocess.run(["sh", "-eu", "-c", stubs + install],
                                     env={**os.environ, "TARGETARCH": architecture, "TEST_DIR": directory},
                                     capture_output=True, text=True)
