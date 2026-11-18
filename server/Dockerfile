@@ -162,7 +162,7 @@ COPY server/scripts/legal-determinations.json ./scripts/legal-determinations.jso
 COPY server/legal/licenses ./legal/licenses
 COPY server/LICENSE server/NOTICE ./
 
-RUN mvn package -DskipTests
+RUN mvn package -DskipTests -Dbinary.license.gate.phase=package
 
 # ------------------------------------------------------------------------------
 # Stage 4: runtime — default target (JAR built inside Docker)
