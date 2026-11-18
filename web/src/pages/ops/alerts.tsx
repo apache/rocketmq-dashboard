@@ -135,6 +135,7 @@ const aggregationLabelKeys: Record<string, string> = {
   SUM: 'alerts.aggregation.SUM',
 };
 const notificationTemplateVariables = ALERT_NOTIFICATION_TEMPLATE_VARIABLES;
+const MAX_NOTIFICATION_TEMPLATE_LENGTH = 4000;
 const testCriteriaFields = new Set([
   'instanceId',
   'metric',
@@ -150,6 +151,7 @@ const testCriteriaFields = new Set([
   'windowSeconds',
   'consecutiveSamples',
 ]);
+
 const availabilityMetrics = new Set([
   'nameserver.availability',
   'broker.availability',
@@ -987,6 +989,7 @@ const AlertsPageContent = ({ domain = 'CLUSTER', embedded = false }: AlertsPageP
       currentValue.slice(0, selectionStart) + placeholder + currentValue.slice(selectionEnd);
 
     form.setFieldValue('notificationTemplate', nextValue);
+    void form.validateFields(['notificationTemplate']).catch(() => undefined);
     input?.focus();
     input?.setSelectionRange(
       selectionStart + placeholder.length,
@@ -1566,15 +1569,35 @@ const AlertsPageContent = ({ domain = 'CLUSTER', embedded = false }: AlertsPageP
                             </Tag>
                           ))}
                         </Flex>
-                        <Form.Item name="notificationTemplate" noStyle>
-                          <TextArea
-                            ref={notificationTemplateRef}
-                            aria-label={t('alerts.notificationTemplate')}
-                            placeholder="[${level}] ${title} - ${description}\nLabels: ${labels}"
-                            rows={3}
-                            maxLength={4000}
-                            showCount
-                          />
+                        <Form.Item style={{ marginBottom: 0 }}>
+                          <Form.Item
+                            name="notificationTemplate"
+                            noStyle
+                            rules={[
+                              {
+                                // Match the textarea and Java @Size UTF-16 limit, including supplementary characters.
+                                validator: (_, value?: string) =>
+                                  (value?.length ?? 0) > MAX_NOTIFICATION_TEMPLATE_LENGTH
+                                    ? Promise.reject(
+                                        new Error(
+                                          t('alerts.notificationTemplateTooLong', {
+                                            max: MAX_NOTIFICATION_TEMPLATE_LENGTH,
+                                          }),
+                                        ),
+                                      )
+                                    : Promise.resolve(),
+                              },
+                            ]}
+                          >
+                            <TextArea
+                              ref={notificationTemplateRef}
+                              aria-label={t('alerts.notificationTemplate')}
+                              placeholder="[${level}] ${title} - ${description}\nLabels: ${labels}"
+                              rows={3}
+                              maxLength={MAX_NOTIFICATION_TEMPLATE_LENGTH}
+                              showCount
+                            />
+                          </Form.Item>
                         </Form.Item>
                         <Card
                           size="small"
