@@ -62,12 +62,19 @@ import {
   ArrowsClockwise,
   SlidersHorizontal,
 } from '@phosphor-icons/react';
-import { ImportOutlined, ExportOutlined, DeleteOutlined, SyncOutlined } from '@ant-design/icons';
+import {
+  ImportOutlined,
+  ExportOutlined,
+  DeleteOutlined,
+  DiffOutlined,
+  SyncOutlined,
+} from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 
 import PageHeader from '../../components/PageHeader';
+import ConsumerGroupConfigComparisonDrawer from '../../components/ConsumerGroupConfigComparisonDrawer';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import ResourceRuleHelp from '../../components/ResourceRuleHelp';
 import { useLang } from '../../i18n/LangContext';
@@ -272,6 +279,7 @@ export const diagnosticCacheKey = (instanceId: string | undefined, groupName: st
 type ConsumerPageContentProps = ReturnType<typeof useInstanceFilter>;
 
 const ConsumerPageContent = ({
+  instances,
   selectedInstanceId,
   selectedInstance,
   selectInstance,
@@ -352,6 +360,7 @@ const ConsumerPageContent = ({
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [comparisonOpen, setComparisonOpen] = useState(false);
 
   const groupRequestIdRef = useRef(0);
   const progressRequestIdRef = useRef<Record<string, number>>({});
@@ -1666,6 +1675,13 @@ const ConsumerPageContent = ({
             导出
           </Button>
           <Button
+            icon={<DiffOutlined />}
+            disabled={instances.length < 2}
+            onClick={() => setComparisonOpen(true)}
+          >
+            {t('consumerCompare.open')}
+          </Button>
+          <Button
             type="primary"
             icon={<Plus size={14} weight="bold" />}
             disabled={!hasSelectedInstance}
@@ -1741,6 +1757,15 @@ const ConsumerPageContent = ({
           }}
         />
       </Card>
+
+      {comparisonOpen && (
+        <ConsumerGroupConfigComparisonDrawer
+          open
+          instances={instances}
+          currentInstanceId={selectedInstanceId}
+          onClose={() => setComparisonOpen(false)}
+        />
+      )}
 
       {/* ═══════════════════════════════════════════
          Detail Modal
