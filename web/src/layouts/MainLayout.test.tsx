@@ -26,6 +26,8 @@ import useAuthStore from '../stores/authStore';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import MainLayout from './MainLayout';
 
+const viewportState = vi.hoisted(() => ({ md: true }));
+
 const instanceServiceMocks = vi.hoisted(() => ({
   getInstanceCapabilities: vi.fn(),
 }));
@@ -45,9 +47,8 @@ vi.mock('antd', async () => {
 
   return {
     Layout,
-    // The real Grid reads matchMedia, which jsdom lacks; a fixed desktop breakpoint keeps the
-    // permanent-sider layout under test. The drawer branch is covered in the browser instead.
-    Grid: { useBreakpoint: () => ({ md: true }) },
+    // Drive layout state explicitly; this mock does not test real matchMedia or drawer rendering.
+    Grid: { useBreakpoint: () => ({ md: viewportState.md }) },
     Drawer: ({ children, open }: { children?: React.ReactNode; open?: boolean }) =>
       open ? React.createElement(React.Fragment, null, children) : null,
     Menu: ({
@@ -104,6 +105,7 @@ vi.mock('antd', async () => {
 
 describe('MainLayout authentication navigation', () => {
   beforeEach(() => {
+    viewportState.md = true;
     localStorage.clear();
     vi.mocked(logout).mockReset().mockResolvedValue(undefined);
     useAuthStore.getState().login('admin', 7, true);
@@ -120,6 +122,37 @@ describe('MainLayout authentication navigation', () => {
         'DLQ_MANAGEMENT',
       ],
     });
+  });
+
+  it('keepsMobileNavigationClosedAfterDesktopRoundTripTest', () => {
+    viewportState.md = false;
+    const layout = () => (
+      <LangProvider>
+        <ThemeProvider>
+          <MemoryRouter>
+            <MainLayout />
+          </MemoryRouter>
+        </ThemeProvider>
+      </LangProvider>
+    );
+    const { rerender } = render(layout());
+    const openMenu = () =>
+      fireEvent.click(screen.getByRole('button', { name: translations['layout.openMenu'].zh }));
+
+    expect(screen.queryByTestId('layout-menu')).not.toBeInTheDocument();
+    openMenu();
+    expect(screen.getByTestId('layout-menu')).toBeInTheDocument();
+
+    viewportState.md = true;
+    rerender(layout());
+    expect(screen.getByTestId('layout-menu')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: translations['layout.openMenu'].zh })).toBeNull();
+
+    viewportState.md = false;
+    rerender(layout());
+    expect(screen.queryByTestId('layout-menu')).not.toBeInTheDocument();
+    openMenu();
+    expect(screen.getByTestId('layout-menu')).toBeInTheDocument();
   });
 
   it('replaces a protected route with the login page after logout', async () => {
