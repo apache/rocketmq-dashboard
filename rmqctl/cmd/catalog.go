@@ -207,7 +207,7 @@ func runTool(
 		return err
 	}
 
-	if err := confirmRisk(cmd, runtime, tool, arguments); err != nil {
+	if err := confirmRisk(cmd, runtime, tool, arguments, target.Server); err != nil {
 		return err
 	}
 
@@ -340,7 +340,7 @@ func deprecatedMessage(tool toolcatalog.Tool) string {
 // (tests) it is used directly; otherwise the default TTY-aware
 // implementation rejects non-interactive stdin to avoid silently executing
 // dangerous actions from scripts or pipes.
-func confirmRisk(cmd *cobra.Command, runtime commandRuntime, tool toolcatalog.Tool, arguments map[string]any) error {
+func confirmRisk(cmd *cobra.Command, runtime commandRuntime, tool toolcatalog.Tool, arguments map[string]any, server string) error {
 	dryRun, _ := arguments["dry_run"].(bool)
 	if tool.RiskLevel == "L1" || dryRun || runtime.options.yes {
 		return nil
@@ -349,7 +349,7 @@ func confirmRisk(cmd *cobra.Command, runtime commandRuntime, tool toolcatalog.To
 	if confirm == nil {
 		confirm = defaultConfirm
 	}
-	return confirm(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), tool.CommandPath(), tool.RiskLevel, runtime.targetServer())
+	return confirm(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), tool.CommandPath(), tool.RiskLevel, server)
 }
 
 // defaultConfirm is the production confirmation implementation. It only
