@@ -65,6 +65,6 @@ public class AclUpdateToolHandler extends MutationToolHandler<AclMutationInput, 
     public AclRuleVO execute(AclMutationInput input, ToolExecutionContext context) {
         String instanceId = context.instanceId();
         AclRuleVO existing = aclService.getRule(input.id(), instanceId);
-        return aclService.updateRule(input.toRule(existing.getId()), instanceId);
+        return AclService.utcWire(aclService.updateRule(input.toRule(existing.getId()), instanceId));
     }
 }
