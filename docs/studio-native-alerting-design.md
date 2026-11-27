@@ -60,7 +60,7 @@ ClusterMetricsCollector      BusinessMetricsCollector
                     AlertRuleEvaluator
                               |
                               v
-                     AlertEventService
+                       AlertService
                        |            |
                        v            v
                  Event history   NotificationOutbox
@@ -88,13 +88,11 @@ server/.../cluster/metrics/
     TencentMetricsCollector
 
 server/.../ops/alert/
-  AlertRuleService
+  AlertService
   AlertRuleEvaluator
   AlertStateMachine
-  AlertEventService
   AlertSilenceService
-  AlertNotificationService
-  NotificationOutboxWorker
+  NotificationOutboxService
   notification/
     WebhookNotificationSender
     DingTalkNotificationSender

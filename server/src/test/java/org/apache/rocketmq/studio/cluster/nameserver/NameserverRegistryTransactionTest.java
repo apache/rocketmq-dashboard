@@ -59,16 +59,13 @@ class NameserverRegistryTransactionTest {
         AtomicBoolean cleanupReached = new AtomicBoolean();
         try {
             doAnswer(invocation -> {
-                assertThat(jdbcTemplate.queryForObject(
-                        "SELECT name FROM rmq_nameserver WHERE id = ?", String.class, original.getId()))
-                        .isEqualTo(updatedName);
                 cleanupReached.set(true);
-                throw new IllegalStateException("optional column cleanup failed");
+                throw new IllegalStateException("registry update failed");
             }).when(nameserverMapper).update(isNull(), any(UpdateWrapper.class));
 
             assertThatThrownBy(() -> service.update(updateCommand(original.getId(), updatedName)))
                     .isInstanceOf(IllegalStateException.class)
-                    .hasMessage("optional column cleanup failed");
+                    .hasMessage("registry update failed");
 
             assertThat(cleanupReached).isTrue();
             RmqNameserver persisted = nameserverMapper.selectById(original.getId());

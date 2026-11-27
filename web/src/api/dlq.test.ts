@@ -174,6 +174,12 @@ describe('DLQ API', () => {
     });
 
     await expect(blob.text()).resolves.toBe('xlsx');
-    expect(meta).toEqual({ truncated: true, failedQueueCount: 2, limit: 5000 });
+    expect(meta).toEqual({
+      truncated: true,
+      failedQueueCount: 2,
+      limit: 5000,
+      exportedRows: 0,
+      selectedRows: 0,
+    });
   });
 });

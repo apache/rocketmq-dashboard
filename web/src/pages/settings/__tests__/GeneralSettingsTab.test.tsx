@@ -326,7 +326,7 @@ describe('GeneralSettingsTab', () => {
         expect.objectContaining({ dingtalkSigningSecret: 'SEC-abc' }),
       ),
     );
-    expect(await screen.findByRole('button', { name: '清除钉钉签名密钥' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /清除钉钉签名密钥/ })).toBeInTheDocument();
     expect(secretInput).toHaveValue('');
   });
 

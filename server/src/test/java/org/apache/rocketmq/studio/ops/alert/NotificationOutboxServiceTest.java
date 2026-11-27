@@ -280,7 +280,7 @@ class NotificationOutboxServiceTest {
         when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
                 .thenReturn(List.of(row));
         when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
-                any(LocalDateTime.class), anyString())).thenReturn(1);
+                any(LocalDateTime.class), anyString(), anyInt())).thenReturn(1);
         when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
                 .ruleId(4L).domain(AlertDomain.BUSINESS).instanceId("local").acknowledged(true).build()));
 

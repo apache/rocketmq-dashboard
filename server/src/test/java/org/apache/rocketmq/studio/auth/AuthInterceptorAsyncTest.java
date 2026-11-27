@@ -55,7 +55,7 @@ class AuthInterceptorAsyncTest {
         AuthProperties properties = new AuthProperties();
         properties.setLoginRequired(true);
         when(authService.getAuthenticatedUser("Bearer token"))
-                .thenReturn(Optional.of(new LoginVO.UserInfo(17L, "stream-admin", true)));
+                .thenReturn(Optional.of(new LoginVO.UserInfo(17L, "stream-admin", true, false)));
         AuthInterceptor interceptor = new AuthInterceptor(properties, authService,
                 mock(SettingsRepository.class), mock(ToolCatalog.class));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).addInterceptors(interceptor).build();
@@ -82,7 +82,7 @@ class AuthInterceptorAsyncTest {
         AuthProperties properties = new AuthProperties();
         properties.setLoginRequired(true);
         when(authService.getAuthenticatedUser("Bearer token"))
-                .thenReturn(Optional.of(new LoginVO.UserInfo(17L, "stream-admin", true)));
+                .thenReturn(Optional.of(new LoginVO.UserInfo(17L, "stream-admin", true, false)));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .addInterceptors(new AuthInterceptor(properties, authService,
                         mock(SettingsRepository.class), mock(ToolCatalog.class))).build();

@@ -703,6 +703,7 @@ class InstanceServiceTest {
                 .name("new-instance")
                 .endpoint("10.0.1.1:8080")
                 .type(InstanceType.PROXY_CLUSTER)
+                .nameserverId(1L)
                 .build();
         when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> {
             InstanceVO saved = invocation.getArgument(0);

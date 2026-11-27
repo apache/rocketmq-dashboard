@@ -165,7 +165,8 @@ export function useAgentRun(
    */
   const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null);
 
-  const generationRef = useRef(0);  const streamRequestIdRef = useRef(0);
+  const generationRef = useRef(0);
+  const streamRequestIdRef = useRef(0);
   const chatInFlightRef = useRef(false);
   const runEndedRef = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);

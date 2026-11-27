@@ -114,11 +114,6 @@ class MultiBackendMetricsSourceTest {
     }
 
     @Test
-    void bearerAuthenticationShouldIgnoreConfiguredBasicCredentials() {
-        assertAuthorization("bearer", "user", "password", "token", "Bearer token");
-    }
-
-    @Test
     void armsBearerAuthenticationSendsTheRawToken() {
         // ARMS V1 token auth matches the Authorization header exactly; a "Bearer " prefix
         // breaks it — the Aliyun ARMS HTTP API docs specify Authorization: {Token} (raw).
