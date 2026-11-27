@@ -1308,7 +1308,7 @@ class MetadataServiceTest {
         when(apacheProvider.listConsumerGroups("instance-a", "orders"))
                 .thenReturn(List.of(stale, unknownLag, lowLag, highLag));
 
-        String csv = metadataService.exportConsumerGroups("instance-a", " orders ", "Pop",
+        String csv = metadataService.exportConsumerGroups("instance-a", null, " orders ", "Pop",
                 List.of("orders-low", "orders-high", "orders-unknown"));
 
         assertThat(csv).contains("\"Name\",\"Namespace\",\"Cluster ID\"");
@@ -1331,7 +1331,7 @@ class MetadataServiceTest {
         when(apacheProvider.listConsumerGroups("instance-a", null))
                 .thenReturn(List.of(unavailable, confirmedOffline));
 
-        String csv = metadataService.exportConsumerGroups("instance-a", null, null, List.of());
+        String csv = metadataService.exportConsumerGroups("instance-a", null, null, null, List.of());
 
         // The -1 sentinel must not reach the export, while a confirmed zero still exports as 0.
         assertThat(csv).contains("\"orders-unavailable\",\"orders\",\"cluster-a\",\"Pop\",\"CLUSTERING\",\"unknown\"");
@@ -1343,9 +1343,24 @@ class MetadataServiceTest {
         ConsumerGroupVO group = consumerGroup("orders-cg", "=formula", 10, SubscriptionMode.Push);
         when(apacheProvider.listConsumerGroups("instance-a", null)).thenReturn(List.of(group));
 
-        String csv = metadataService.exportConsumerGroups("instance-a", null, null, List.of());
+        String csv = metadataService.exportConsumerGroups("instance-a", null, null, null, List.of());
 
         assertThat(csv).contains("\"'=formula\"");
+    }
+
+    @Test
+    void exportConsumerGroupsShouldApplyInstanceClusterFilter() {
+        ConsumerGroupVO clusterAGroup = consumerGroup("group-a", "orders", 0, SubscriptionMode.Push);
+        clusterAGroup.setClusterId("cluster-a");
+        ConsumerGroupVO clusterBGroup = consumerGroup("group-b", "orders", 0, SubscriptionMode.Push);
+        clusterBGroup.setClusterId("cluster-b");
+        when(apacheProvider.listConsumerGroups("instance-a", null))
+                .thenReturn(List.of(clusterAGroup, clusterBGroup));
+
+        String csv = metadataService.exportConsumerGroups("instance-a", "cluster-a", null, null, List.of());
+
+        assertThat(csv).contains("\"group-a\"").doesNotContain("\"group-b\"");
+        verify(apacheProvider).listConsumerGroups("instance-a", null);
     }
 
     @Test
