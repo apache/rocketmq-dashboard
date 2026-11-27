@@ -29,6 +29,11 @@ export const localizeDeliveryError = (raw: string | null | undefined, t: Transla
   if (!raw) return '';
   const trimmed = raw.trim();
   if (trimmed === 'No configured email recipients') return t('deliveries.errNoEmailRecipients');
+  // The outbox throws these two itself (NotificationOutboxService): a missing mail sender and a
+  // recipient list that parsed to nothing. They are the two failures an operator sees most when
+  // the email channel is misconfigured, so leaving them in English defeats the mapping above.
+  if (trimmed === 'No valid email recipients') return t('deliveries.errInvalidEmailRecipients');
+  if (trimmed === 'SMTP is not configured') return t('deliveries.errSmtpNotConfigured');
   const webhook = WEBHOOK_PATTERN.exec(trimmed);
   if (webhook) return t('deliveries.errNoWebhook', { channel: webhook[1] });
   const unsupported = UNSUPPORTED_PATTERN.exec(trimmed);
