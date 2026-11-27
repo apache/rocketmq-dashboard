@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.handler.alert;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.alert.AlertRuleListInput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.alert.AlertRuleListItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
@@ -63,6 +64,17 @@ class AlertRuleListToolHandlerTest {
                 new AlertRuleListInput("instance-b", null), context("instance-a"));
         assertThat(filtered.items()).extracting(AlertRuleListItem::name)
                 .containsExactly("instance-b-tps");
+    }
+
+    @Test
+    void listProjectionShouldPreserveInstanceBindingInSerializedOutputTest() throws Exception {
+        when(alertService.listRules()).thenReturn(List.of(
+                rule(2L, "instance-a-tps", "broker.tps.in", true, "instance-a")));
+
+        String output = new ObjectMapper().writeValueAsString(handler.execute(
+                new AlertRuleListInput(null, null), context("instance-a")));
+
+        assertThat(output).contains("\"instanceId\":\"instance-a\"");
     }
 
     private static AlertRuleVO rule(

@@ -32,7 +32,8 @@ public record AlertRuleListItem(
         String duration,
         List<String> channels,
         boolean enabled,
-        String description) {
+        String description,
+        String instanceId) {
 
     public AlertRuleListItem {
         channels = channels == null ? List.of() : channels;
@@ -49,6 +50,7 @@ public record AlertRuleListItem(
                 rule.getDuration(),
                 rule.getChannels(),
                 rule.isEnabled(),
-                rule.getDescription());
+                rule.getDescription(),
+                rule.getInstanceId());
     }
 }
