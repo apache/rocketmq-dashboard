@@ -46,4 +46,27 @@ class SystemTopicFilterTest {
         assertThat(SystemTopicFilter.isSystem("BenchmarkTestOrders", brokerNames)).isFalse();
         assertThat(SystemTopicFilter.isSystem("SCHEDULE_TOPIC_orders", brokerNames)).isFalse();
     }
+
+    @Test
+    void shouldRecognizeTheTopicsTheBrokerGeneratesForItsOwnClusterTest() {
+        Set<String> brokerNames = Set.of("broker-prod-a");
+        String clusterName = "DefaultCluster";
+
+        // Both are created by TopicConfigManager#registerSystemTopicConfig and registered as system
+        // topics there, but in the broker's own JVM, so the studio has to rule them out itself.
+        assertThat(SystemTopicFilter.isSystem("DefaultCluster", brokerNames, clusterName)).isTrue();
+        assertThat(SystemTopicFilter.isSystem("DefaultCluster_REPLY_TOPIC", brokerNames, clusterName)).isTrue();
+
+        // Only the owning cluster's names are matched: the reply suffix alone, or another
+        // cluster's name, still describes a user topic.
+        assertThat(SystemTopicFilter.isSystem("orders_REPLY_TOPIC", brokerNames, clusterName)).isFalse();
+        assertThat(SystemTopicFilter.isSystem("StagingCluster", brokerNames, clusterName)).isFalse();
+        assertThat(SystemTopicFilter.isSystem("StagingCluster_REPLY_TOPIC", brokerNames, clusterName)).isFalse();
+        assertThat(SystemTopicFilter.isSystem("orders", brokerNames, clusterName)).isFalse();
+
+        // The base rules keep working, and an unknown cluster adds no names.
+        assertThat(SystemTopicFilter.isSystem("RMQ_SYS_TRANS_HALF_TOPIC", brokerNames, null)).isTrue();
+        assertThat(SystemTopicFilter.isSystem("DefaultCluster", brokerNames, null)).isFalse();
+        assertThat(SystemTopicFilter.isSystem("DefaultCluster", brokerNames, "")).isFalse();
+    }
 }
