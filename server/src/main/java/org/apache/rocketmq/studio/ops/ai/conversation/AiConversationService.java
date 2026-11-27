@@ -489,11 +489,8 @@ public class AiConversationService implements ApplicationRunner {
             }
             List<Long> purgable = skipConversationsWithARunInFlight(ids);
             if (purgable.isEmpty()) {
-                // The whole page is mid-run, so nothing was deleted and the next query returns this
-                // same page: no cursor here, and the loop stays bounded by maxBatches. This is only
-                // reachable while a run is genuinely live — reapOrphanedRuns() has already turned
-                // every ownerless non-terminal run into FAILED/ORPHANED earlier in the same pass — so
-                // what is left finishes on its own and a later pass purges it.
+                // A run may have started after the candidate query excluded busy conversations.
+                // Recheck before deleting; the next query skips these now-busy rows in SQL.
                 continue;
             }
             int deleted = deleteCascade(purgable);
