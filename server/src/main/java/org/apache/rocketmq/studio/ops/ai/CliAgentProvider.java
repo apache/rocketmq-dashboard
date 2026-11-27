@@ -91,12 +91,14 @@ public abstract class CliAgentProvider implements AgentProvider {
         List<String> command = buildCommand(config, prompt, modelOverride);
         ProcessBuilder builder = new ProcessBuilder(command);
         processEnvironment.apply(builder, childEnv(config));
-        // Merge stderr into stdout and drain the stream on a background thread. Reading stdout
-        // then stderr sequentially on the caller thread deadlocks once the child fills a pipe
-        // buffer (64 KiB), and a timeout that runs only after both reads can never fire while the
-        // child stays alive. With the merged stream drained in the background, waitFor can enforce
-        // the timeout and a hung child is destroyed instead of leaking the caller thread.
-        builder.redirectErrorStream(true);
+        // Keep stdout and stderr separate and drain both on background threads. Reading them
+        // sequentially on the caller thread deadlocks once the child fills a pipe buffer (64 KiB),
+        // and a timeout that runs only after both reads can never fire while the child stays alive.
+        // With both pipes drained in the background, waitFor can enforce the timeout and a hung
+        // child is destroyed instead of leaking the caller thread. stdout is the completion result;
+        // stderr is failure diagnostics — merged streams let a CLI's SDK warnings leak into the
+        // answer, and an answers-only-on-stderr run would pass the empty-completion check.
+        builder.redirectErrorStream(false);
         // CLIs wait for piped stdin and emit a warning that leaks into the reply unless
         // stdin is explicitly /dev/null; fall back to closing the pipe where unavailable.
         boolean devNullAvailable = new java.io.File("/dev/null").exists();
@@ -117,6 +119,13 @@ public abstract class CliAgentProvider implements AgentProvider {
         CompletableFuture<String> outputFuture = CompletableFuture.supplyAsync(() -> {
             try {
                 return readOutput(process);
+            } catch (IOException exception) {
+                throw new CompletionException(exception);
+            }
+        });
+        CompletableFuture<String> stderrFuture = CompletableFuture.supplyAsync(() -> {
+            try {
+                return readStderr(process);
             } catch (IOException exception) {
                 throw new CompletionException(exception);
             }
@@ -149,6 +158,15 @@ public abstract class CliAgentProvider implements AgentProvider {
         } catch (TimeoutException exception) {
             output = "";
         }
+        String stderr;
+        try {
+            stderr = stderrFuture.get(10, TimeUnit.SECONDS);
+        } catch (ExecutionException | TimeoutException exception) {
+            stderr = "";
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            stderr = "";
+        }
         if (!finished) {
             process.destroyForcibly();
             throw new LlmGatewayException(504, "llm.provider.timeout",
@@ -156,9 +174,11 @@ public abstract class CliAgentProvider implements AgentProvider {
                     "Retry with a shorter prompt or check the gateway latency.");
         }
         if (process.exitValue() != 0) {
-            log.warn("{} CLI failed rc={}, output={}", binaryName(), process.exitValue(), abbreviate(output));
+            String diagnostics = StringUtils.hasText(stderr) ? stderr : output;
+            log.warn("{} CLI failed rc={}, output={}", binaryName(), process.exitValue(),
+                    abbreviate(diagnostics));
             throw new LlmGatewayException(502, "llm.provider.cli_error",
-                    binaryName() + " CLI failed: " + abbreviate(output),
+                    binaryName() + " CLI failed: " + abbreviate(diagnostics),
                     "Check the provider credentials, base URL and model name.");
         }
         String result = output.trim();
@@ -182,6 +202,23 @@ public abstract class CliAgentProvider implements AgentProvider {
                     throw new OutputLimitException(limitBytes);
                 }
                 output.write(buffer, 0, read);
+            }
+            return output.toString(StandardCharsets.UTF_8);
+        }
+    }
+
+    private String readStderr(Process process) throws IOException {
+        // Diagnostics only: keep at most limitBytes of them, but keep draining to the end so a
+        // chatty child never blocks on a full stderr pipe while the completion is still unread.
+        int limitBytes = outputLimitBytes();
+        try (InputStream input = process.getErrorStream();
+             ByteArrayOutputStream output = new ByteArrayOutputStream(Math.min(limitBytes, 8192))) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                if (output.size() < limitBytes) {
+                    output.write(buffer, 0, Math.min(read, limitBytes - output.size()));
+                }
             }
             return output.toString(StandardCharsets.UTF_8);
         }

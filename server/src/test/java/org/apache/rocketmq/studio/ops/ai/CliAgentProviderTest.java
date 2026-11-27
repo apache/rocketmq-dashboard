@@ -113,7 +113,7 @@ class CliAgentProviderTest {
     @Test
     void completeSurvivesLargeStderrOutput() {
         // Write well over the 64 KiB pipe buffer to stderr, then print the completion on stdout.
-        // Before the fix, sequential stdout/stderr reads deadlocked the caller forever.
+        // Before the concurrent drains, sequential stdout/stderr reads deadlocked the caller forever.
         String script = "for i in $(seq 1 10000); do "
                 + "echo 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' >&2; done; "
                 + "echo DONE";
@@ -121,10 +121,33 @@ class CliAgentProviderTest {
 
         String result = cli.complete(null, "prompt", null);
 
-        assertThat(result).contains("DONE");
-        // All stderr bytes were drained as well (merged into the single output stream),
-        // well past the 64 KiB pipe buffer that used to deadlock the sequential reads.
-        assertThat(result.length()).isGreaterThan(500_000);
+        // The 500 KiB of stderr were drained concurrently (no deadlock), and none of it leaked
+        // into the completion: the result is exactly what stdout carried.
+        assertThat(result).isEqualTo("DONE");
+    }
+
+    @Test
+    void completeRejectsACompletionWhoseStdoutStayedEmptyTest() {
+        // A CLI that only ever writes warnings to stderr did not produce a completion; accepting
+        // the warning text as the answer bypassed the empty-completion check entirely.
+        FakeCli cli = new FakeCli("printf 'SDK warning: nothing written to stdout' >&2");
+
+        assertThatThrownBy(() -> cli.complete(null, "prompt", null))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(502);
+                    assertThat(exception.getCode()).isEqualTo("llm.provider.empty_completion");
+                });
+    }
+
+    @Test
+    void completeReportsStderrDiagnosticsOnFailureTest() {
+        FakeCli cli = new FakeCli("printf 'quota exhausted' >&2; exit 3");
+
+        assertThatThrownBy(() -> cli.complete(null, "prompt", null))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo("llm.provider.cli_error");
+                    assertThat(exception.getMessage()).contains("quota exhausted");
+                });
     }
 
     @Test
