@@ -154,6 +154,17 @@ const selectTopic = async (user: ReturnType<typeof userEvent.setup>) => {
   await user.click(topicOptions[topicOptions.length - 1]!);
 };
 
+const openDirectConsumeTarget = async (user: ReturnType<typeof userEvent.setup>, msgId: string) => {
+  const row = await screen.findByRole('row', { name: new RegExp(msgId) });
+  await user.click(within(row).getByRole('button', { name: /详情/ }));
+  const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+  await user.click(within(dialog).getByRole('combobox', { name: '选择在线消费组' }));
+  await user.click(await screen.findByText('group-online（1）'));
+  await user.click(within(dialog).getByRole('combobox', { name: '选择在线客户端' }));
+  await user.click(await screen.findByText('client-1 · 10.0.0.9:40001'));
+  return within(dialog).getByRole('button', { name: /直接消费/ });
+};
+
 describe('MessagePage async request ownership', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -414,6 +425,117 @@ describe('MessagePage async request ownership', () => {
         consumerGroup: 'group-online',
         clientId: 'client-1',
       }),
+    );
+  });
+
+  describe('direct-consume request ownership', () => {
+    beforeEach(() => {
+      serviceMocks.consumeMessageDirectly.mockReset();
+      serviceMocks.queryMessages.mockResolvedValue([
+        createMessage('message-a'),
+        createMessage('message-b'),
+      ]);
+      consumerServiceMocks.listAllConsumerGroups.mockResolvedValue([
+        { name: 'group-online', onlineInstances: 1, instances: [{ clientId: 'client-1' }] },
+      ]);
+      consumerServiceMocks.getConsumerGroup.mockResolvedValue({
+        name: 'group-online',
+        instances: [{ clientId: 'client-1', address: '10.0.0.9:40001' }],
+      });
+      vi.spyOn(message, 'info').mockImplementation(vi.fn());
+      vi.spyOn(message, 'error').mockImplementation(vi.fn());
+    });
+
+    it('submitsOnceBeforeRenderingAndAllowsRetryAfterFailureTest', async () => {
+      const pending = createDeferred<never>();
+      serviceMocks.consumeMessageDirectly.mockReturnValueOnce(pending.promise).mockResolvedValue({
+        consumeResult: 'CR_SUCCESS',
+        remark: '',
+        spentTimeMillis: 12,
+      });
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      renderPage();
+      await selectTopic(user);
+      await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+      const consumeButton = await openDirectConsumeTarget(user, 'message-a');
+
+      act(() => {
+        consumeButton.click();
+        consumeButton.click();
+      });
+
+      expect(serviceMocks.consumeMessageDirectly).toHaveBeenCalledTimes(1);
+      expect(consumeButton).toHaveClass('ant-btn-loading');
+      await act(async () => pending.reject(new Error('consume failed')));
+      expect(message.error).toHaveBeenCalledWith('consume failed');
+      expect(consumeButton).not.toHaveClass('ant-btn-loading');
+      await user.click(consumeButton);
+      expect(serviceMocks.consumeMessageDirectly).toHaveBeenCalledTimes(2);
+      expect(message.info).toHaveBeenCalledWith(expect.stringContaining('CR_SUCCESS'));
+    });
+
+    it.each(['success', 'failure'])(
+      'ignoresClosedDialogCompletionWhileAnotherConsumeIsPending_%s_Test',
+      async (outcome) => {
+        const first = createDeferred<{ consumeResult: string; spentTimeMillis: number }>();
+        const second = createDeferred<{ consumeResult: string; spentTimeMillis: number }>();
+        serviceMocks.consumeMessageDirectly
+          .mockReturnValueOnce(first.promise)
+          .mockReturnValueOnce(second.promise);
+        const user = userEvent.setup({ pointerEventsCheck: 0 });
+        renderPage();
+        await selectTopic(user);
+        await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+        await user.click(await openDirectConsumeTarget(user, 'message-a'));
+        const dialog = screen.getByRole('dialog', { name: '消息详情' });
+        await user.click(within(dialog).getByRole('button', { name: /关\s*闭/ }));
+
+        const consumeButton = await openDirectConsumeTarget(user, 'message-b');
+        expect(consumeButton).not.toHaveClass('ant-btn-loading');
+        await user.click(consumeButton);
+        expect(serviceMocks.consumeMessageDirectly).toHaveBeenCalledTimes(2);
+        expect(serviceMocks.consumeMessageDirectly).toHaveBeenLastCalledWith(
+          expect.objectContaining({ msgId: 'message-b', topic: 'topic-message-b' }),
+        );
+        await act(async () => {
+          if (outcome === 'success')
+            first.resolve({ consumeResult: 'OLD_RESULT', spentTimeMillis: 1 });
+          else first.reject(new Error('old failure'));
+        });
+
+        expect(message.info).not.toHaveBeenCalled();
+        expect(message.error).not.toHaveBeenCalled();
+        expect(consumeButton).toHaveClass('ant-btn-loading');
+        await user.click(consumeButton);
+        expect(serviceMocks.consumeMessageDirectly).toHaveBeenCalledTimes(2);
+        await act(async () => second.resolve({ consumeResult: 'CR_SUCCESS', spentTimeMillis: 12 }));
+        expect(message.info).toHaveBeenCalledWith(expect.stringContaining('CR_SUCCESS'));
+        expect(consumeButton).not.toHaveClass('ant-btn-loading');
+      },
+    );
+
+    it.each(['success', 'failure'])(
+      'ignoresDirectConsumeCompletionAfterUnmount_%s_Test',
+      async (outcome) => {
+        const pending = createDeferred<{ consumeResult: string; spentTimeMillis: number }>();
+        serviceMocks.consumeMessageDirectly.mockReturnValueOnce(pending.promise);
+        const user = userEvent.setup({ pointerEventsCheck: 0 });
+        const view = renderPage();
+        await selectTopic(user);
+        await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+        await user.click(await openDirectConsumeTarget(user, 'message-a'));
+
+        expect(serviceMocks.consumeMessageDirectly).toHaveBeenCalledTimes(1);
+        view.unmount();
+        await act(async () => {
+          if (outcome === 'success')
+            pending.resolve({ consumeResult: 'OLD_RESULT', spentTimeMillis: 1 });
+          else pending.reject(new Error('old failure'));
+        });
+
+        expect(message.info).not.toHaveBeenCalled();
+        expect(message.error).not.toHaveBeenCalled();
+      },
     );
   });
 
