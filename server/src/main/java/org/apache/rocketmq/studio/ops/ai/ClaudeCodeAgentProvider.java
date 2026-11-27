@@ -277,6 +277,16 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
                     binaryName() + " CLI reported result subtype " + subtype,
                     "Check the provider credentials, base URL and model name.");
         }
+        // Nothing in this run claimed to be a completion: the process went away mid-turn
+        // without ever delivering its result frame. The event channel fails that same stream as
+        // llm.provider.no_result (AiRunExecutor), and the deltas that already reached the
+        // consumer cannot be taken back, so the text channel has to fail here instead of letting
+        // the enhancer keep a truncated rewrite of the user's message.
+        if (!parser.resultFrameSeen()) {
+            throw new LlmGatewayException(502, "llm.provider.no_result",
+                    binaryName() + " CLI stream ended without a result frame",
+                    "Retry the request; check the provider credentials, base URL and model name.");
+        }
         if (!emitted.get() && StringUtils.hasText(parser.fallbackText())) {
             tokenConsumer.accept(parser.fallbackText());
         }
