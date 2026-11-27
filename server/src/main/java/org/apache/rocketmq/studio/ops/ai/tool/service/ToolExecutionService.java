@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.ai.tool.service;
 
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
+import org.apache.rocketmq.studio.cluster.metrics.PrometheusException;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceResolver;
 import org.apache.rocketmq.studio.ops.ai.auth.McpAuthentication;
@@ -121,6 +122,13 @@ public class ToolExecutionService {
             return filterChain.execute(new ToolInvocation(context, handler));
         } catch (BusinessException exception) {
             throw ToolExecutionException.from(exception);
+        } catch (PrometheusException exception) {
+            // A metrics backend classifies a bad query with 4xx (and an outage with 502). Flattening
+            // that into UNEXPECTED_EXECUTION_FAILURE discarded the one actionable part of the answer
+            // and reported a client-input error as a service fault, so the caller - CLI or agent -
+            // could not correct the request.
+            throw ToolExecutionException.from(
+                    new BusinessException(exception.getStatusCode(), exception.getMessage()));
         } catch (RuntimeException exception) {
             ToolExecutionException internal = ToolError.UNEXPECTED_EXECUTION_FAILURE.exception();
             internal.initCause(exception);

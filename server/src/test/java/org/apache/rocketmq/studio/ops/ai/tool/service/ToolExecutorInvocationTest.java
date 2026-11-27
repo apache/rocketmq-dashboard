@@ -79,6 +79,22 @@ class ToolExecutorInvocationTest {
     }
 
     @Test
+    void keepsTheMetricsProviderStatusWhenAQueryIsRejectedTest() {
+        // The provider reports a validateable query with a 4xx; the tool boundary used to flatten it
+        // into UNEXPECTED_EXECUTION_FAILURE (500), which told the caller it was a service fault and
+        // threw away the reason.
+        when(chain.execute(any(ToolInvocation.class))).thenThrow(
+                new org.apache.rocketmq.studio.cluster.metrics.PrometheusException(
+                        400, "Metric query start must be positive"));
+
+        assertThatThrownBy(() -> executor.execute("rmq.topic.list", Map.of("instanceId", "instance-a")))
+                .isInstanceOf(ToolExecutionException.class)
+                .hasMessage("Metric query start must be positive")
+                .satisfies(error -> assertThat(((ToolExecutionException) error).getCode())
+                        .isEqualTo(400));
+    }
+
+    @Test
     void capturesConsoleUserBeforeEnteringChainTest() {
         AuthenticatedUserContext.setUsername("alice");
         when(chain.execute(any(ToolInvocation.class))).thenAnswer(invocation -> {
