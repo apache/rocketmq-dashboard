@@ -72,7 +72,9 @@ docker compose -f deploy/rocketmq/docker-compose.yml up -d
 ```
 
 Confirm it is healthy with `docker compose -f deploy/rocketmq/docker-compose.yml ps`. Studio reaches
-the cluster at `nameserver:9876` over the shared network (the backend default).
+the cluster over the shared network at the NameServer container's unique name,
+`rmq-nameserver:9876` (`deploy/docker-compose.yml` sets it; a bare `nameserver` service name can
+resolve to another stack's container on that network).
 
 **RocketMQ ports:** NameServer 9876, Broker 10911, Proxy Remoting 8080, Proxy gRPC 8081
 
