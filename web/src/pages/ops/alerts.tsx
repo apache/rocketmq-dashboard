@@ -265,6 +265,13 @@ const AlertsPageContent = ({ domain = 'CLUSTER', embedded = false }: AlertsPageP
   const metricRequestVersion = useRef(0);
   const testRequestVersion = useRef(0);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const importGenerationRef = useRef(0);
+  useEffect(
+    () => () => {
+      importGenerationRef.current += 1;
+    },
+    [],
+  );
   const notificationTemplateRef = useRef<TextAreaRef>(null);
   const supportsUnavailableCondition = supportsUnavailableOperator(selectedMetric);
   const selectedMetricIsRatio = selectedMetric != null && nativeRatioMetrics.has(selectedMetric);
@@ -512,20 +519,26 @@ const AlertsPageContent = ({ domain = 'CLUSTER', embedded = false }: AlertsPageP
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
+    const generation = importGenerationRef.current;
     setTransferringRules(true);
     try {
-      const transfer = JSON.parse(await file.text()) as AlertRuleTransfer;
+      const text = await file.text();
+      // A file read can finish after navigation has disposed this domain's page.
+      if (generation !== importGenerationRef.current) return;
+      const transfer = JSON.parse(text) as AlertRuleTransfer;
       if (transfer.version !== 1 || transfer.domain !== domain || !Array.isArray(transfer.rules)) {
         throw new Error('invalid transfer document');
       }
       const imported = await importAlertRulesTransfer(transfer, domain);
+      if (generation !== importGenerationRef.current) return;
       setPage(1);
       refreshRules();
       message.success(t('alerts.importSuccess', { count: imported.length }));
     } catch (error) {
+      if (generation !== importGenerationRef.current) return;
       message.error(describeApiError(error, t('alerts.importFailed')));
     } finally {
-      setTransferringRules(false);
+      if (generation === importGenerationRef.current) setTransferringRules(false);
     }
   };
 
