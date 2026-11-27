@@ -130,6 +130,9 @@ Standalone CLI commands support `--output table`, `json`, and `yaml`. Table cell
 show ASCII control characters as visible escapes (`\t`, `\n`, `\r`, or `\xNN`)
 so a context name, header, or returned value cannot split a row or send terminal
 control sequences. Stored values and JSON/YAML output keep the original content.
+Plain CLI error diagnostics and MCP stdio stderr keep the existing CR/LF/TAB
+flattening and display other ASCII controls as `\xNN`. This display escaping does
+not change the decoded values in JSON/YAML errors or MCP error frames.
 
 - **Conversations persist server-side** and are browsable from the history drawer. Reloading or
   reconnecting replays exactly what the live stream rendered, because both paths reduce to the same

@@ -52,8 +52,8 @@ func (a *App) writeCommandError(format string, err error) {
 		_ = output.Structured(a.Err, format, cliError)
 		return
 	}
-	fmt.Fprintf(a.Err, "error [%s]: %s\n", cliError.Code, cliError.Message)
-	fmt.Fprintln(a.Err, "hint:", cliError.Hint)
+	fmt.Fprintf(a.Err, "error [%s]: %s\n", safeTerminalDiagnostic(cliError.Code), safeTerminalDiagnostic(cliError.Message))
+	fmt.Fprintln(a.Err, "hint:", safeTerminalDiagnostic(cliError.Hint))
 }
 
 type errorMatcher func(err error) (*types.CLIError, bool)

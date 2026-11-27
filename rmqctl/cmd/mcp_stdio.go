@@ -278,7 +278,7 @@ func sendMessage(
 
 func writeStdioError(out io.Writer, errOut io.Writer, requestLine string, callErr error) {
 	requestID := extractRequestID([]byte(requestLine))
-	fmt.Fprintln(errOut, "mcp stdio proxy call failed:", safeStdioDiagnostic(callErr.Error()))
+	fmt.Fprintln(errOut, "mcp stdio proxy call failed:", safeStdioDiagnostic(safeTerminalDiagnostic(callErr.Error())))
 	if requestID == nil {
 		return
 	}
@@ -367,6 +367,20 @@ func safeDiagnosticText(text string) string {
 			return character
 		}
 	}, text)
+}
+
+// safeTerminalDiagnostic keeps the existing whitespace normalization and makes
+// other ASCII controls visible at terminal boundaries, leaving structured values alone.
+func safeTerminalDiagnostic(text string) string {
+	var diagnostic strings.Builder
+	for _, character := range safeDiagnosticText(text) {
+		if character < 0x20 || character == 0x7f {
+			fmt.Fprintf(&diagnostic, "\\x%02x", character)
+		} else {
+			diagnostic.WriteRune(character)
+		}
+	}
+	return diagnostic.String()
 }
 
 func extractRequestID(payload []byte) any {
