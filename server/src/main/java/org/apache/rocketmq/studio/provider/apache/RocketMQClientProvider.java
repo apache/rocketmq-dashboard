@@ -251,6 +251,7 @@ public class RocketMQClientProvider implements ClientProvider {
             MQAdminExt adminExt, String clusterId) {
         BrokerTopology topology = discoverBrokerTopology(adminExt, clusterId, "producer connections");
         Map<String, ClientConnectionVO> connections = new LinkedHashMap<>();
+        int attemptedBrokers = topology.brokerAddresses().size();
         int successfulBrokers = 0;
         for (String brokerAddress : topology.brokerAddresses()) {
             try {
@@ -261,8 +262,14 @@ public class RocketMQClientProvider implements ClientProvider {
                 log.warn("Failed to fetch producer connections from broker={}, skipping", brokerAddress, e);
             }
         }
-        if (!topology.brokerAddresses().isEmpty() && successfulBrokers == 0) {
+        if (attemptedBrokers > 0 && successfulBrokers == 0) {
             throw new BusinessException(502, "Failed to query producer connections from all brokers");
+        }
+        if (successfulBrokers < attemptedBrokers) {
+            // A broker whose producer table could not be read hides every producer that only
+            // connects to it, so the rows that survived are partial too - the page's banner hangs
+            // off this flag, and without it a missing producer looks like one that is not running.
+            connections.values().forEach(connection -> connection.setPartial(true));
         }
         return new ArrayList<>(connections.values());
     }
@@ -355,7 +362,8 @@ public class RocketMQClientProvider implements ClientProvider {
 
     private List<ClientConnectionVO> findConsumerConnections(MQAdminExt adminExt, String clusterId) {
         Map<String, ClientConnectionVO> result = new LinkedHashMap<>();
-        Map<ConsumerGroup, List<String>> groups = collectSubscriptionGroups(adminExt, clusterId);
+        SubscriptionGroupScan scan = collectSubscriptionGroups(adminExt, clusterId);
+        Map<ConsumerGroup, List<String>> groups = scan.groups();
         Map<String, List<String>> proxiesByBroker = new LinkedHashMap<>();
         int attemptedGroupQueries = 0;
         int successfulGroupQueries = 0;
@@ -401,7 +409,9 @@ public class RocketMQClientProvider implements ClientProvider {
         if (successfulGroupQueries < attemptedGroupQueries && result.isEmpty()) {
             throw new BusinessException(502, "Failed to query consumer connections from all groups");
         }
-        if (successfulGroupQueries < attemptedGroupQueries) {
+        if (!scan.complete() || successfulGroupQueries < attemptedGroupQueries) {
+            // A failed broker inventory drops whole groups (and their clients) from the list, so the
+            // rows that survived are as partial as the ones from a failed group query.
             result.values().forEach(connection -> connection.setPartial(true));
         }
         return new ArrayList<>(result.values());
@@ -440,7 +450,15 @@ public class RocketMQClientProvider implements ClientProvider {
     private record ConsumerGroup(String name, String cluster) {
     }
 
-    private Map<ConsumerGroup, List<String>> collectSubscriptionGroups(MQAdminExt adminExt, String clusterId) {
+    /**
+     * The groups visible on each broker, plus whether every broker answered. A broker whose
+     * subscription-group read fails hides all of its groups - and therefore every client that only
+     * connects to it - so the caller has to be able to say the scan was incomplete.
+     */
+    private record SubscriptionGroupScan(Map<ConsumerGroup, List<String>> groups, boolean complete) {
+    }
+
+    private SubscriptionGroupScan collectSubscriptionGroups(MQAdminExt adminExt, String clusterId) {
         Map<ConsumerGroup, List<String>> groups = new LinkedHashMap<>();
         BrokerTopology topology = discoverBrokerTopology(adminExt, clusterId, "consumer connections");
         int attemptedBrokerQueries = 0;
@@ -463,7 +481,7 @@ public class RocketMQClientProvider implements ClientProvider {
         if (attemptedBrokerQueries > 0 && successfulBrokerQueries == 0) {
             throw new BusinessException(502, "Failed to query subscription groups from all brokers");
         }
-        return groups;
+        return new SubscriptionGroupScan(groups, successfulBrokerQueries == attemptedBrokerQueries);
     }
 
     private ClientConnectionVO toConnectionVO(Connection connection, ClientType type, String groupOrTopic,
