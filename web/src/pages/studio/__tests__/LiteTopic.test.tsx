@@ -427,6 +427,28 @@ describe('LiteTopic Page', () => {
     expect(screen.queryByText('96%')).not.toBeInTheDocument();
   });
 
+  it('reports a failed session read instead of presenting the session as empty', async () => {
+    apiMocks.queryLiteTopicSession.mockRejectedValueOnce(new Error('offline'));
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('order-*');
+    await user.click(await screen.findByText('查看会话'));
+    const drawer = await screen.findByRole('dialog');
+
+    // The detail never arrived, so the drawer body must not fall back to "no data" for a session
+    // that is listed.
+    await waitFor(() => expect(apiMocks.queryLiteTopicSession).toHaveBeenCalledTimes(1));
+    expect(within(drawer).queryByText('暂无数据')).not.toBeInTheDocument();
+
+    await user.click(within(drawer).getByRole('button', { name: /重\s*试/ }));
+
+    await waitFor(() => expect(apiMocks.queryLiteTopicSession).toHaveBeenCalledTimes(2));
+    // The retry mock resolves the default session, so the drawer renders its detail instead of
+    // staying on the failure state.
+    expect(await within(drawer).findByText('session-1')).toBeInTheDocument();
+  });
+
   it('reports a consumed count that only covers part of the session', async () => {
     // The consumed-offset scan reads at most MAX_SESSION_LITE_TOPIC_SCAN lite topics, so a session
     // with more of them only gets a lower bound. The drawer must not present it as a measured total
