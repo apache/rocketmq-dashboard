@@ -38,6 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
@@ -141,6 +142,55 @@ class ProxyConsumerResolverTest {
 
         assertThat(result.available()).isTrue();
         assertThat(result.connection()).isNull();
+    }
+
+    @Test
+    void resolveConsumerConnectionStatusShouldUnionClientsFromEveryProxyTest() throws Exception {
+        ConsumerConnection syncer = new ConsumerConnection();
+        Connection proxyA = new Connection();
+        proxyA.setClientAddr("10.0.4.66:10911");
+        Connection proxyB = new Connection();
+        proxyB.setClientAddr("10.0.3.110:10911");
+        syncer.setConnectionSet(new HashSet<>(List.of(proxyA, proxyB)));
+        when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic")).thenReturn(syncer);
+        NettyRemotingClient client = mock(NettyRemotingClient.class);
+        resolver.setRemotingClientForTest(client);
+        when(client.invokeSync(eq("10.0.4.66:8080"), any(RemotingCommand.class), anyLong()))
+                .thenReturn(proxyResponse(proxyConnection("client-a", "topic-a")));
+        when(client.invokeSync(eq("10.0.3.110:8080"), any(RemotingCommand.class), anyLong()))
+                .thenReturn(proxyResponse(proxyConnection("client-b", "topic-b")));
+
+        ProxyConsumerResolver.ConsumerConnectionResolution resolution =
+                resolver.resolveConsumerConnectionStatus("instance-a", "cg-orders");
+
+        // Each proxy knows only its own channels: reporting the first answer as the whole group
+        // under-reports the inventory the group list, the detail view and the AI verdict read.
+        assertThat(resolution.connection().getConnectionSet())
+                .extracting(Connection::getClientId)
+                .containsExactlyInAnyOrder("client-a", "client-b");
+        assertThat(resolution.connection().getSubscriptionTable().keySet())
+                .containsExactlyInAnyOrder("topic-a", "topic-b");
+    }
+
+    private static ConsumerConnection proxyConnection(String clientId, String topic) {
+        ConsumerConnection connection = new ConsumerConnection();
+        Connection channel = new Connection();
+        channel.setClientId(clientId);
+        channel.setClientAddr("192.0.2.10:1234");
+        connection.setConnectionSet(new HashSet<>(List.of(channel)));
+        java.util.concurrent.ConcurrentHashMap<String, org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData> table =
+                new java.util.concurrent.ConcurrentHashMap<>();
+        table.put(topic, new org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData(topic, "*"));
+        connection.setSubscriptionTable(table);
+        connection.setConsumeType(org.apache.rocketmq.remoting.protocol.heartbeat.ConsumeType.CONSUME_ACTIVELY);
+        connection.setMessageModel(org.apache.rocketmq.remoting.protocol.heartbeat.MessageModel.CLUSTERING);
+        return connection;
+    }
+
+    private static RemotingCommand proxyResponse(ConsumerConnection connection) {
+        RemotingCommand response = RemotingCommand.createResponseCommand(ResponseCode.SUCCESS, "ok");
+        response.setBody(connection.encode());
+        return response;
     }
 
     @Test
