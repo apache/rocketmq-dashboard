@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.cluster.config.ClusterConfigPreviewVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
@@ -42,11 +43,13 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
@@ -157,6 +160,25 @@ class ClusterControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data[0].status").value("healthy"))
                 .andExpect(jsonPath("$.data[1].id").value("cluster-2"))
                 .andExpect(jsonPath("$.data[1].name").value("staging-cluster"));
+    }
+
+    @Test
+    void listClustersShouldNotSerializeFieldsOutsideTheContractTest() throws Exception {
+        when(clusterService.listClusters(isNull())).thenReturn(Collections.singletonList(
+                buildCluster("cluster-1", "production-cluster", ClusterStatus.healthy)));
+
+        MvcResult result = mockMvc.perform(get("/api/clusters"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value("cluster-1"))
+                .andReturn();
+
+        JsonNode cluster = objectMapper
+                .readTree(result.getResponse().getContentAsString())
+                .path("data").path(0);
+        // ClusterInfo in docs/api-spec.md has neither field, and nothing fills them:
+        // a cluster is discovered from the NameServer, not read from a registry row.
+        assertFalse(cluster.has("gmtCreate"), "gmtCreate is not part of the ClusterInfo contract");
+        assertFalse(cluster.has("gmtModified"), "gmtModified is not part of the ClusterInfo contract");
     }
 
     @Test
