@@ -49,6 +49,7 @@ func TestWindowsBuildScriptPinsHostTargetBeforeCompiling(t *testing.T) {
 		{"fail-closed guard", `(?m)^\s*throw "Could not determine the native Go build target"$`},
 		{"GOOS binding", `(?m)^\$env:GOOS = \$nativeTarget\.GOHOSTOS$`},
 		{"GOARCH binding", `(?m)^\$env:GOARCH = \$nativeTarget\.GOHOSTARCH$`},
+		{"output directory creation", `(?m)^\s*New-Item -ItemType Directory -Force -Path \$outputDirectory`},
 	} {
 		at := regexp.MustCompile(pin.pattern).FindStringIndex(script)
 		if at == nil {
