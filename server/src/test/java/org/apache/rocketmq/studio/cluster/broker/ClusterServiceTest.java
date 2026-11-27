@@ -111,8 +111,6 @@ class ClusterServiceTest {
                         .fileReservedTime(72)
                         .brokerPermission(6)
                         .build())
-                .topicCount(10)
-                .groupCount(5)
                 .build();
         sampleCluster.setId("cluster-1");
     }

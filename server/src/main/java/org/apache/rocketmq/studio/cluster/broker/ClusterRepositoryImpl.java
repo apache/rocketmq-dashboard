@@ -99,8 +99,6 @@ public class ClusterRepositoryImpl implements ClusterRepository {
                         .map(this::copyNameServer)
                         .toList()))
                 .config(copyConfig(cluster.getConfig()))
-                .topicCount(cluster.getTopicCount())
-                .groupCount(cluster.getGroupCount())
                 .tpsHistory(cluster.getTpsHistory() == null ? null : new ArrayList<>(cluster.getTpsHistory()))
                 .build();
         copy.setId(cluster.getId());
@@ -235,8 +233,6 @@ public class ClusterRepositoryImpl implements ClusterRepository {
                                 .build()
                 ))
                 .config(config)
-                .topicCount(128)
-                .groupCount(45)
                 .tpsHistory(List.of(1200, 1350, 1100, 1450, 1280, 1500, 1380, 1420, 1300, 1550))
                 .build();
         cluster1.setId("cluster-001");
@@ -288,8 +284,6 @@ public class ClusterRepositoryImpl implements ClusterRepository {
                         .flushDiskType(FlushDiskType.SYNC_FLUSH)
                         .brokerPermission(6)
                         .build())
-                .topicCount(32)
-                .groupCount(12)
                 .tpsHistory(List.of(320, 280, 350, 310, 290, 340, 300, 330, 310, 350))
                 .build();
         cluster2.setId("cluster-002");

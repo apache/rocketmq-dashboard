@@ -63,8 +63,6 @@ const cluster: ClusterInfo = {
     brokerPermission: 6,
     deleteWhen: '04',
   },
-  topicCount: 10,
-  groupCount: 4,
   tpsHistory: [1, 2],
 };
 
