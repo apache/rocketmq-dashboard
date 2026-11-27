@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.ops.ai.tool.filter;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.common.MutationOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolInvocation;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
@@ -35,6 +36,9 @@ public class ToolAuditFilter implements ToolExecutionFilter {
         return Type.AUDIT;
     }
 
+    /** Detail marker for a preview, so the row cannot be read as an applied change. */
+    private static final String DRY_RUN_DETAIL = "dry_run=true (preview only, nothing applied)";
+
     @Override
     public Object filter(ToolInvocation invocation, Chain chain) {
         ToolExecutionContext context = invocation.context();
@@ -45,7 +49,12 @@ public class ToolAuditFilter implements ToolExecutionFilter {
             this.record(context, "FAILED", exception.getMessage());
             throw exception;
         }
-        this.record(context, "SUCCESS", null);
+        // A dry run stops at the mutation filter's plan, so it performs none of the change the row's
+        // operation name implies; without the marker an auditor cannot tell "who deleted topic X"
+        // from "who previewed deleting it".
+        boolean planned = output instanceof MutationOutput<?> mutation
+                && mutation.status() == MutationOutput.Status.PLANNED;
+        this.record(context, "SUCCESS", planned ? DRY_RUN_DETAIL : null);
         return output;
     }
 
