@@ -53,6 +53,28 @@ class AlertRuleRequestDTOTest {
         assertThat(validator.validate(request)).isEmpty();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"1s1m", "1m1m", "1ms1s", "1h2d", "1y1y", "", "1.5m"})
+    void reminderIntervalShouldRejectUnorderedOrRepeatedUnitsTest(String reminderInterval) {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("High Lag");
+        request.setReminderInterval(reminderInterval);
+
+        assertThat(validator.validate(request))
+                .extracting(violation -> violation.getPropertyPath().toString())
+                .containsExactly("reminderInterval");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"1y2w3d4h5m6s7ms", "1h30m", "2w3d", "500ms", "0s", "1m1ms", "30m"})
+    void reminderIntervalShouldAcceptDescendingUnitsTest(String reminderInterval) {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("High Lag");
+        request.setReminderInterval(reminderInterval);
+
+        assertThat(validator.validate(request)).isEmpty();
+    }
+
     @Test
     void channelsShouldRejectNullBlankAndUnsupportedElementsTest() {
         AlertRuleRequestDTO request = new AlertRuleRequestDTO();

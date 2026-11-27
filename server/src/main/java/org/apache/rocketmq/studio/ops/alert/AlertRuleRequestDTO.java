@@ -60,7 +60,10 @@ public class AlertRuleRequestDTO {
     private String topic;
     @Min(value = 1, message = "consecutiveSamples must be at least 1")
     private Integer consecutiveSamples;
-    @Pattern(regexp = "(?:[0-9]+(?:ms|s|m|h|d|w|y))+", message = "reminderInterval is invalid")
+    // The reminder interval is the second duration of the same rule and is parsed by
+    // AlertRuleDuration like duration is, so it uses the same syntax: a repeated or reordered
+    // unit is rejected here exactly as it is on the duration field next to it.
+    @Pattern(regexp = PROMETHEUS_DURATION_REGEXP, message = "reminderInterval is invalid")
     private String reminderInterval;
     @Size(max = 4000, message = "notificationTemplate must not exceed 4000 characters")
     private String notificationTemplate;
