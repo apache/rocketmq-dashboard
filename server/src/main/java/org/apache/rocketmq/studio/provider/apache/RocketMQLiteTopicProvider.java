@@ -195,9 +195,10 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
                         return;
                     }
                     // A parent topic can be sharded across brokers; the group binding is reported
-                    // by whichever broker owns the lite topic, so union across masters.
+                    // by whichever broker owns the lite topic, so union across masters and remember
+                    // which master reported each group for the per-broker backlog lookups.
                     parents.computeIfAbsent(parent, key -> new ParentTopicAccumulator(key, master))
-                            .groups.addAll(groups);
+                            .recordGroups(master, groups);
                 });
             }
         }
@@ -215,13 +216,21 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
         summary.setMaxTTL(ttlMillis);
 
         int topicCount = 0;
-        try {
-            GetParentTopicInfoResponseBody parentInfo = admin.getParentTopicInfo(parent.brokerAddr, parent.parentTopic);
-            if (parentInfo != null) {
-                topicCount = Math.max(parentInfo.getLiteTopicCount(), 0);
+        Set<String> countMasters = parent.reportingMasters.isEmpty()
+                ? Set.of(parent.firstBrokerAddr)
+                : parent.reportingMasters;
+        for (String master : countMasters) {
+            try {
+                GetParentTopicInfoResponseBody parentInfo = admin.getParentTopicInfo(master, parent.parentTopic);
+                if (parentInfo != null) {
+                    // A sharded parent exists on every master that reported it, so the total
+                    // lite topic count is the sum across those brokers.
+                    topicCount += Math.max(parentInfo.getLiteTopicCount(), 0);
+                }
+            } catch (Exception failure) {
+                log.debug("Failed to read parent topic info for {} on {}: {}",
+                        parent.parentTopic, master, failure.getMessage());
             }
-        } catch (Exception failure) {
-            log.debug("Failed to read parent topic info for {}: {}", parent.parentTopic, failure.getMessage());
         }
 
         long totalBacklog = 0;
@@ -230,7 +239,9 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
         int consumerCount = 0;
         int sessionBudget = MAX_LITE_SESSION_SCAN;
         for (String group : parent.groups) {
-            totalBacklog += groupLag(admin, parent.brokerAddr, group);
+            for (String brokerAddr : parent.groupBrokers.getOrDefault(group, Set.of(parent.firstBrokerAddr))) {
+                totalBacklog += groupLag(admin, brokerAddr, group);
+            }
             for (Connection connection : consumerConnections(admin, group)) {
                 if (sessionBudget-- <= 0) {
                     log.warn("LiteTopic session scan for {} truncated at {} sessions",
@@ -714,19 +725,28 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
     /** One parent topic observed across broker masters, with its TTL and bound consumer groups. */
     private static final class ParentTopicAccumulator {
         private final String parentTopic;
-        private String brokerAddr;
+        private final String firstBrokerAddr;
+        private final Set<String> reportingMasters = new LinkedHashSet<>();
         private final Set<String> groups = new LinkedHashSet<>();
+        private final Map<String, Set<String>> groupBrokers = new LinkedHashMap<>();
         private int ttlMinutes = -1;
 
         private ParentTopicAccumulator(String parentTopic, String brokerAddr) {
             this.parentTopic = parentTopic;
-            this.brokerAddr = brokerAddr;
+            this.firstBrokerAddr = brokerAddr;
         }
 
         private void merge(String brokerAddr, Integer ttlMinutes) {
-            this.brokerAddr = brokerAddr;
+            reportingMasters.add(brokerAddr);
             if (ttlMinutes != null && ttlMinutes > this.ttlMinutes) {
                 this.ttlMinutes = ttlMinutes;
+            }
+        }
+
+        private void recordGroups(String brokerAddr, Set<String> reported) {
+            groups.addAll(reported);
+            for (String group : reported) {
+                groupBrokers.computeIfAbsent(group, key -> new LinkedHashSet<>()).add(brokerAddr);
             }
         }
     }
