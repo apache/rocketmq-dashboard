@@ -80,14 +80,22 @@ describe('Producer API', () => {
         200,
         {
           code: 200,
-          data: ['pg-order', 'pg-payment'],
+          data: {
+            groups: ['pg-order', 'pg-payment'],
+            complete: false,
+            failedBrokers: ['broker-b:10911'],
+          },
         },
       ];
     });
 
     await expect(
       fetchProducerGroups('instance-1', { topic: 'order-events', query: 'pg', limit: 20 }),
-    ).resolves.toEqual(['pg-order', 'pg-payment']);
+    ).resolves.toEqual({
+      groups: ['pg-order', 'pg-payment'],
+      complete: false,
+      failedBrokers: ['broker-b:10911'],
+    });
   });
 
   it('queries producer connections by topic and group', async () => {
