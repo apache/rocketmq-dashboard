@@ -58,8 +58,7 @@ public class MessageRedeliveryDlqToolHandler
     @Override
     public ToolPlan preview(MessageRedeliveryDlqInput input, ToolExecutionContext context) {
         String groupName = input.groupName();
-        String targetTopic = input.targetTopic() == null || input.targetTopic().isBlank()
-                ? "ORIGINAL_TOPIC" : input.targetTopic();
+        String targetTopic = displayTargetTopic(input.targetTopic());
         Long startTime = input.time() != null ? input.time().startTime() : null;
         Long endTime = input.time() != null ? input.time().endTime() : null;
         return PLAN_DESCRIPTION.builder(groupName, context.instanceId())
@@ -93,4 +92,9 @@ public class MessageRedeliveryDlqToolHandler
 
     private record RedeliveryEffect(String operation, String targetTopic) {
     }
+
+    private static String displayTargetTopic(String targetTopic) {
+        return targetTopic == null || targetTopic.isBlank() ? "ORIGINAL_TOPIC" : targetTopic.trim();
+    }
+
 }
