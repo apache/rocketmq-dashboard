@@ -36,6 +36,7 @@ import org.apache.rocketmq.studio.common.util.SubscriptionConsistency;
 import org.apache.rocketmq.studio.common.util.SubscriptionFilterModes;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
+import org.apache.rocketmq.studio.provider.apache.ConsumerLagResolver;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
@@ -186,8 +187,16 @@ final class AliyunConverters {
         }
         vo.setGmtCreate(parseDateTime(data.getCreateTime()));
         vo.setGmtModified(parseDateTime(data.getUpdateTime()));
+        // ListConsumerGroups carries neither the online client count nor the backlog, so the VO
+        // defaults (0 clients / 0 backlog) would render as measurements. Report them unavailable,
+        // the sentinel the Apache provider and the console already use.
+        vo.setOnlineInstances(UNKNOWN_ONLINE_INSTANCES);
+        vo.setTotalLag(ConsumerLagResolver.UNKNOWN);
         return vo;
     }
+
+    /** The online client count is unavailable; the console renders a negative count as "unknown". */
+    static final int UNKNOWN_ONLINE_INSTANCES = -1;
 
     static ConsumeType toConsumeType(String messageModel) {
         if ("Broadcasting".equalsIgnoreCase(messageModel)) {
