@@ -31,8 +31,11 @@ public final class DlqExportHeaders {
     public static final String TRUNCATED = "X-DLQ-Export-Truncated";
     public static final String FAILED_QUEUES = "X-DLQ-Export-FailedQueues";
     public static final String LIMIT = "X-DLQ-Export-Limit";
+    /** Rows written to the sheet, and how many msgIds the caller had selected. */
+    public static final String EXPORTED_ROWS = "X-DLQ-Export-Rows";
+    public static final String SELECTED_ROWS = "X-DLQ-Export-SelectedRows";
 
-    public static final List<String> ALL = List.of(TRUNCATED, FAILED_QUEUES, LIMIT);
+    public static final List<String> ALL = List.of(TRUNCATED, FAILED_QUEUES, LIMIT, EXPORTED_ROWS, SELECTED_ROWS);
 
     private DlqExportHeaders() {
     }
