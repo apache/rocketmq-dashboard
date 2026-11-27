@@ -397,7 +397,10 @@ const TopicConfigComparisonModal = ({
                 columns={columns}
                 dataSource={visibleRows}
                 tableLayout="fixed"
-                scroll={{ x: tableScrollX(columns) }}
+                // The expand icon column is rendered by antd and is not part of `columns`, so the
+                // table's budget has to reserve it explicitly (48px) or a narrow body squeezes the
+                // Topic column below the 240px floor it declares instead of scrolling.
+                scroll={{ x: tableScrollX(columns, { expandable: true }) }}
                 pagination={{ pageSize: 20, showSizeChanger: false }}
                 locale={{
                   emptyText: (
