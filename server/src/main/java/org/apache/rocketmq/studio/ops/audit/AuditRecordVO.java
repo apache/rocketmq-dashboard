@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.ops.audit;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import org.apache.rocketmq.studio.common.domain.BaseEntity;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -30,6 +31,10 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
+// The feed's contract (docs/api-spec.md AuditRecord) is exactly the ten fields below. The base class
+// carries the bookkeeping columns, and the audit query never selects them, so without this they reach
+// the wire as an always-null gmtCreate / gmtModified pair that neither the spec nor the console reads.
+@JsonIgnoreProperties({"gmtCreate", "gmtModified"})
 public class AuditRecordVO extends BaseEntity {
     private LocalDateTime timestamp;
     private String operator;
