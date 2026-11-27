@@ -15,7 +15,9 @@
  * limitations under the License.
  */
 
-import { afterEach, describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { useState } from 'react';
+import userEvent from '@testing-library/user-event';
 import { render, screen, fireEvent } from '@testing-library/react';
 import InstanceSelect from '../InstanceSelect';
 import { LangProvider } from '../../i18n/LangContext';
@@ -50,5 +52,69 @@ describe('InstanceSelect', () => {
   it('keeps an explicit placeholder when one is provided', () => {
     renderWithLang(<InstanceSelect onChange={() => {}} options={[]} placeholder="My instance" />);
     expect(screen.getByText('My instance')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['zh', '选择实例'],
+    ['en', 'Select Instance'],
+  ] as const)('namesTheSearchableInstanceSelectorIn%sTest', (lang, label) => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+    renderWithLang(
+      <InstanceSelect
+        value="cluster-a"
+        onChange={() => {}}
+        options={[{ value: 'cluster-a', label: 'Cluster A' }]}
+      />,
+    );
+    expect(screen.getByRole('combobox', { name: label })).toBeEnabled();
+  });
+
+  it.each([
+    ['zh', '选择实例'],
+    ['en', 'Select Instance'],
+  ] as const)('keepsNameDuringSearchSelectionAndClearTest (%s)', async (lang, label) => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+    const onChange = vi.fn();
+    const Probe = () => {
+      const [value, setValue] = useState('cluster-a');
+      return (
+        <InstanceSelect
+          value={value}
+          onChange={(next) => {
+            onChange(next);
+            setValue(next);
+          }}
+          options={[
+            { value: 'cluster-a', label: 'Cluster A' },
+            { value: 'cluster-b', label: 'Cluster B' },
+          ]}
+        />
+      );
+    };
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const { container } = renderWithLang(<Probe />);
+    const select = screen.getByRole('combobox', { name: label });
+    await user.type(select, 'cluster b');
+    expect(select).toHaveAccessibleName(label);
+    fireEvent.keyDown(select, { key: 'ArrowDown', keyCode: 40 });
+    fireEvent.keyDown(select, { key: 'Enter', keyCode: 13 });
+    expect(onChange).toHaveBeenLastCalledWith('cluster-b');
+    expect(select).toHaveAccessibleName(label);
+    await user.click(container.querySelector('.ant-select-clear')!);
+    // Clearing intentionally falls back to the first instance rather than an empty route.
+    expect(onChange).toHaveBeenLastCalledWith('cluster-a');
+    expect(select).toHaveAccessibleName(label);
+  });
+
+  it('preservesTheExplicitInstancePromptAsAccessibleNameTest', () => {
+    renderWithLang(
+      <InstanceSelect onChange={() => {}} options={[]} placeholder="Source instance" />,
+    );
+    expect(screen.getByRole('combobox', { name: 'Source instance' })).toBeInTheDocument();
+  });
+
+  it('retainsTheInstanceSelectorNameWhenTheInstanceListFailsTest', () => {
+    renderWithLang(<InstanceSelect onChange={() => {}} options={[]} failed />);
+    expect(screen.getByRole('combobox', { name: '选择实例' })).toBeInTheDocument();
   });
 });

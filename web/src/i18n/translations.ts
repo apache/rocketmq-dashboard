@@ -887,6 +887,14 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Select a topic and click "Load Queues" to browse messages by queue',
   },
   'queueBrowser.offsetRange': { zh: 'Offset 范围', en: 'Offset Range' },
+  'queueBrowser.queueOffsetLabel': {
+    zh: '{broker} 队列 {queue} 的 Offset',
+    en: 'Offset for {broker} queue {queue}',
+  },
+  'queueBrowser.removeQueueEntry': {
+    zh: '移除 {queue} 的消息记录',
+    en: 'Remove message entry for {queue}',
+  },
   'queueBrowser.queueSummary': {
     zh: '共 {queues} 个队列，总消息量 {messages} 条',
     en: '{queues} queues, {messages} messages in total',

@@ -54,6 +54,7 @@ export function InstanceSelect({
     <Select
       showSearch
       allowClear
+      aria-label={placeholder ?? t('common.selectInstance')}
       placeholder={placeholder ?? t('common.selectInstance')}
       value={value ?? undefined}
       onChange={(next, option) => {

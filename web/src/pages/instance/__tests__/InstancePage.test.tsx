@@ -413,6 +413,58 @@ describe('InstancePage', () => {
     expect(await screen.findByText('云凭据列表加载失败')).toBeInTheDocument();
     expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledTimes(1);
   });
+  it.each([
+    ['zh', '搜索实例 ID 或地址', '按架构筛选'],
+    ['en', 'Search instance ID or endpoint', 'Filter by architecture'],
+  ] as const)(
+    'namesAndOperatesInstanceFiltersByKeyboardTest: %s',
+    async (lang, searchName, typeName) => {
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      renderPage();
+      await screen.findByText('production-proxy');
+
+      // Render the real AntD controls: placeholder text and a selected option do not
+      // provide an accessible name for the search input or the filter combobox.
+      const searchInput = screen.getByRole('textbox');
+      const typeFilter = screen.getByRole('combobox', { name: typeName });
+      expect.soft(searchInput).toHaveAccessibleName(searchName);
+      expect.soft(typeFilter).toHaveAccessibleName(typeName);
+
+      await user.click(searchInput);
+      await user.type(searchInput, 'production');
+      await waitFor(() =>
+        expect(instanceService.listInstances).toHaveBeenLastCalledWith({
+          search: 'production',
+          withCounts: true,
+        }),
+      );
+      expect(searchInput).toHaveAccessibleName(searchName);
+      await user.tab();
+      expect(typeFilter).toHaveFocus();
+      // rc-select uses the browser keyCode as well as the key string.
+      fireEvent.keyDown(typeFilter, { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 });
+      fireEvent.keyDown(typeFilter, { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 });
+      fireEvent.keyDown(typeFilter, { key: 'Enter', code: 'Enter', keyCode: 13 });
+      await waitFor(() =>
+        expect(instanceService.listInstances).toHaveBeenLastCalledWith({
+          search: 'production',
+          type: 'CLOUD',
+          withCounts: true,
+        }),
+      );
+      expect(typeFilter).toHaveAccessibleName(typeName);
+      await user.clear(searchInput);
+      await waitFor(() =>
+        expect(instanceService.listInstances).toHaveBeenLastCalledWith({
+          type: 'CLOUD',
+          withCounts: true,
+        }),
+      );
+      expect(searchInput).toHaveAccessibleName(searchName);
+      expect(typeFilter).toHaveAccessibleName(typeName);
+    },
+  );
 
   // 创建规则从「资源模型」页的判定流程图搬到了创建表单上的问号弹窗（用户约定 2026-10-26）。
   it('offersTheNamingRuleFromTheCreateInstanceFormTest', async () => {
