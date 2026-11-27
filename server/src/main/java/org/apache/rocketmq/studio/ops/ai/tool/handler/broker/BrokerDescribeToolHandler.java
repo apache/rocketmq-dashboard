@@ -55,7 +55,7 @@ public class BrokerDescribeToolHandler
     @Override
     public BrokerDescribeOutput execute(BrokerDescribeInput input, ToolExecutionContext context) {
         PlatformClusterResolver.ManagedCluster cluster = clusterResolver.require(input.clusterName());
-        String brokerName = input.brokerName();
+        String brokerName = input.brokerName() == null ? null : input.brokerName().trim();
         if (!cluster.brokerNames().contains(brokerName)) {
             throw new BusinessException(404,
                     "Broker not found in cluster " + cluster.clusterName() + ": " + brokerName);
