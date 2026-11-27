@@ -60,6 +60,38 @@ func TestMCPConfigResolvesSelectedPathBeforeClientLaunch(t *testing.T) {
 	}
 }
 
+func TestMCPConfigCarriesTheEnvironmentSelectedPath(t *testing.T) {
+	t.Chdir(t.TempDir())
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+	app.Store.Getenv = func(key string) string {
+		if key == "RMQCTL_CONFIG" {
+			return filepath.Join("env", "selected.yaml")
+		}
+		return ""
+	}
+	if code := app.Execute([]string{"mcp", "config"}); code != 0 {
+		t.Fatalf("exit = %d: %s", code, stderr)
+	}
+	var snippet struct {
+		Servers map[string]struct {
+			Args []string `json:"args"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &snippet); err != nil {
+		t.Fatal(err)
+	}
+	args := snippet.Servers["rocketmq-studio"].Args
+	expected, err := filepath.Abs(filepath.Join("env", "selected.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A client that launches without the shell's environment must still open the file this run used.
+	if want := []string{"mcp", "stdio", "--config", expected}; !reflect.DeepEqual(args, want) {
+		t.Fatalf("args = %q; want the selected config %q", args, want)
+	}
+}
+
 func TestMCPConfigLeavesUnspecifiedPathUnbound(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	app := NewApp(stdout, stderr)
