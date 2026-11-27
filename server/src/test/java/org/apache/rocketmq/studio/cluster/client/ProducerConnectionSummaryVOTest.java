@@ -88,6 +88,23 @@ class ProducerConnectionSummaryVOTest {
         assertThat(summary.getWarnings()).containsExactly(ProducerConnectionSummaryVO.INCOMPLETE_SCAN);
     }
 
+    @Test
+    void fromShouldNotFlagOneClientAsDuplicateAcrossItsGroups() {
+        // A Java producer registers its own group plus the shared inner producer group, and the
+        // producer scan keeps one row per group, so the same client id shows up twice at the same
+        // address. That is one client, not a collision: the console's own client diagnostics raise
+        // CLIENT_ID_COLLISION only when one id is seen at more than one address.
+        ProducerConnectionSummaryVO summary = ProducerConnectionSummaryVO.from(List.of(
+                connection("producer-a", "10.0.0.1:38888", "Java", "5.1.0"),
+                connection("producer-a", "10.0.0.1:38888", "Java", "5.1.0")));
+
+        assertThat(summary.getTotalConnections()).isEqualTo(2);
+        assertThat(summary.getUniqueClientCount()).isEqualTo(1);
+        assertThat(summary.getDuplicateClientIds()).isEmpty();
+        assertThat(summary.getWarnings()).isEmpty();
+        assertThat(summary.getReadiness()).isEqualTo(ProducerConnectionSummaryVO.READY);
+    }
+
     private ProducerConnectionVO connection(String clientId, String address, String language, String version) {
         return ProducerConnectionVO.builder()
                 .clientId(clientId)
