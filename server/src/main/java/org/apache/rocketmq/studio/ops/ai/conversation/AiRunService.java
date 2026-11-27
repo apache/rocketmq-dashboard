@@ -192,6 +192,10 @@ public class AiRunService {
                     "No model is configured for the " + engine + " engine",
                     "Pick a model in the AI settings.");
         }
+        // The run row snapshots this id into a VARCHAR(128) column, and the configured model can
+        // outlive the check that bounds the request override: fail with a 400 here instead of
+        // letting the insert answer 500.
+        LlmConfigService.requireStorableModel(model);
 
         // Choose the candidate turn BEFORE checking for an active run. If another request is admitted
         // after this read, it claims this same turn and the unique key below rejects one of us. Reading
