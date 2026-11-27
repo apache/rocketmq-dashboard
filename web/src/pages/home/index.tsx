@@ -17,7 +17,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ConfigProvider, theme, App } from 'antd';
+import { Alert, Button, ConfigProvider, theme, App } from 'antd';
 import {
   Stethoscope,
   ChatCircleDots,
@@ -89,6 +89,8 @@ const HomePage = () => {
   const [promoteOn, setPromoteOn] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [llmConfig, setLlmConfig] = useState<LlmConfig | null>(null);
+  const [llmConfigLoadFailed, setLlmConfigLoadFailed] = useState(false);
+  const [llmConfigReloadNonce, setLlmConfigReloadNonce] = useState(0);
   const [indicatorStyle, setIndicatorStyle] = useState({ width: 83, left: 6 });
   const modeBarRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -115,9 +117,18 @@ const HomePage = () => {
         );
         return;
       }
-      const config = await getLlmConfig().catch(() => null);
+      let config: LlmConfig | null = null;
+      let loadFailed = false;
+      try {
+        config = await getLlmConfig();
+      } catch {
+        // Storing the failure as "no config" left the composer silent: it disables sending
+        // whenever the config is not ready, but only explains itself when a config is present.
+        loadFailed = true;
+      }
       if (cancelled) return;
       setLlmConfig(config);
+      setLlmConfigLoadFailed(loadFailed);
 
       const configuredModel = config?.model?.trim() ?? '';
       const values = Array.from(
@@ -143,7 +154,7 @@ const HomePage = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [llmConfigReloadNonce]);
 
   /* ─── Mode switch handler ─── */
   const handleModeSwitch = useCallback((key: string, btn: HTMLButtonElement) => {
@@ -407,6 +418,23 @@ const HomePage = () => {
                   })}
                 </div>
               </div>
+
+              {llmConfigLoadFailed && (
+                <Alert
+                  type="error"
+                  showIcon
+                  message={t('llm.loadFailed')}
+                  action={
+                    <Button
+                      size="small"
+                      onClick={() => setLlmConfigReloadNonce((nonce) => nonce + 1)}
+                    >
+                      {t('common.retry')}
+                    </Button>
+                  }
+                  style={{ marginBottom: 12 }}
+                />
+              )}
 
               {/* Main Input Box — the SAME Composer component as the AI page, so the input
                   panel has one source of truth; home-specific bits are props. */}
