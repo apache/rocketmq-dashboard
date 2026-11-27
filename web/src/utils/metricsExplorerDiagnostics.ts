@@ -286,6 +286,12 @@ export const summarizeMetricData = (data: MetricData): MetricResultSummary => {
   };
 };
 
+const metricTimestampIso = (timestamp: number): string => {
+  const date = new Date(timestamp * 1000);
+  // Keep the raw sample when a finite epoch exceeds Date's representable range.
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+};
+
 export const buildMetricCsvRows = (
   data: MetricData,
   metric: MetricMapping,
@@ -313,7 +319,7 @@ export const buildMetricCsvRows = (
       labels,
       sampleType: sample.kind,
       timestamp: sample.timestamp,
-      timestampIso: new Date(sample.timestamp * 1000).toISOString(),
+      timestampIso: metricTimestampIso(sample.timestamp),
       value: sample.value,
       histogramCount: sample.histogramCount,
       histogramSum: sample.histogramSum,

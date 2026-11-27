@@ -116,6 +116,11 @@ remaining CSV; blank rows and newlines inside quoted cells do not count as
 additional records. This record limit does not impose a file-byte or cell-size
 limit: the browser still reads the selected file before parsing it.
 
+Metrics Explorer CSV exports retain the raw epoch and value of each accepted scalar
+or histogram sample. If a finite timestamp is outside JavaScript Date's representable
+range, its `Timestamp ISO` cell is empty; the raw sample and other rows remain in the
+export.
+
 ## AI Assistant
 
 Studio **hosts** a general-purpose agent CLI — Claude Code or Qoder, plus a plain OpenAI-compatible
