@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.model;
 
 import lombok.Data;
+import lombok.ToString;
 import java.io.Serializable;
 import java.util.Map;
 
@@ -58,11 +59,13 @@ public class MetricsDataSourceConfig implements Serializable {
     /**
      * Password for basic authentication (encrypted in storage).
      */
+    @ToString.Exclude
     private String password;
 
     /**
      * Bearer token for bearer authentication.
      */
+    @ToString.Exclude
     private String bearerToken;
 
     /**
