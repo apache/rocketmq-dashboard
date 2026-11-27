@@ -79,6 +79,14 @@ org.apache.rocketmq.studio
 ### settings / audit
 通用设置（`rmq_settings`）、外部数据源配置与连通性测试、写操作审计。
 
+### 集成 HTTP 响应大小限制
+
+数据源连接测试与钉钉 / SMS Webhook 客户端的响应体上限为 **5 MiB（5,242,880 字节）**，
+与常规 Prometheus 查询的响应预算一致。该限制在字符串转换和 HTTP 错误处理前生效，
+同时覆盖成功及错误状态；缺少或低报 `Content-Length` 也不会绕过实际读取字节数检查。
+恰好达到上限的响应仍会被正常解析，超限的数据源测试返回失败，通知投递沿用现有重试及耗尽策略。
+连接 / 读取超时、URL 校验和禁止重定向策略保持不变。
+
 ## 分层与命名约定
 
 - **Controller → Service → Repository**：Controller 只做入参校验与 `Result` 包装；
