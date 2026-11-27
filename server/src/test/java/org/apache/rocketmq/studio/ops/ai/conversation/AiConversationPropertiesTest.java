@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.ops.ai.conversation;
 
+import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
@@ -41,6 +42,19 @@ class AiConversationPropertiesTest {
     void rmqctlShouldRemainEnabledByDefaultTest() {
         runner.run(context -> assertThat(context.getBean(AiConversationProperties.class).isRmqctlEnabled())
                 .isTrue());
+    }
+
+    @Test
+    void rmqctlTimeoutShouldHonourTheDocumentedEnvironmentOverrideTest() {
+        runner.withPropertyValues("STUDIO_AI_RMQCTL_TIMEOUT=PT5M")
+                .run(context -> assertThat(context.getBean(AiConversationProperties.class).getRmqctlTimeout())
+                        .isEqualTo(Duration.ofMinutes(5)));
+    }
+
+    @Test
+    void rmqctlTimeoutShouldDefaultToTheConfiguredMinuteTest() {
+        runner.run(context -> assertThat(context.getBean(AiConversationProperties.class).getRmqctlTimeout())
+                .isEqualTo(Duration.ofSeconds(60)));
     }
 
     @Configuration(proxyBeanMethods = false)
