@@ -27,13 +27,13 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.cors.CorsUtils;
-import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.web.servlet.AsyncHandlerInterceptor;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
 
-public class AuthInterceptor implements HandlerInterceptor {
+public class AuthInterceptor implements AsyncHandlerInterceptor {
 
     /**
      * The paths a session with an outstanding password change may still call: rotating the password
@@ -237,6 +237,14 @@ public class AuthInterceptor implements HandlerInterceptor {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.getWriter().write("{\"code\":" + status.value()
                 + ",\"message\":\"" + message + "\",\"data\":null}");
+    }
+
+    @Override
+    public void afterConcurrentHandlingStarted(HttpServletRequest request, HttpServletResponse response,
+                                              Object handler) {
+        // MVC skips afterCompletion on the original thread when a handler starts async work.
+        // Redispatch authenticates again in preHandle; the servlet pool must not retain this identity.
+        AuthenticatedUserContext.clear();
     }
 
     @Override
