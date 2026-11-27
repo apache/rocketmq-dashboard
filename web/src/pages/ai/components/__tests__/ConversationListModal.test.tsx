@@ -195,6 +195,62 @@ describe('ConversationListModal', () => {
     await waitFor(() => expect(updateConversation).toHaveBeenCalledWith(7, { archived: false }));
   });
 
+  it('refreshesTheCurrentScopeWhenAnEarlierArchiveCompletesTest', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    let archived = false;
+    let finishArchive!: (value: Awaited<ReturnType<typeof updateConversation>>) => void;
+    const pendingArchive = new Promise<Awaited<ReturnType<typeof updateConversation>>>(
+      (resolve) => {
+        finishArchive = resolve;
+      },
+    );
+    updateMock.mockReturnValue(pendingArchive);
+    listMock.mockImplementation(async (query) => {
+      const items = query?.archived
+        ? [conversation(9, '此前归档会话'), ...(archived ? [conversation(7, '正在归档会话')] : [])]
+        : [
+            conversation(8, '仍在活动列表'),
+            ...(!archived ? [conversation(7, '正在归档会话')] : []),
+          ];
+      return page(items, items.length, 1);
+    });
+    renderModal();
+    await screen.findByText('正在归档会话');
+    await user.click(screen.getByTestId('ai-conversation-row-archive-7'));
+    await waitFor(() => expect(updateConversation).toHaveBeenCalledWith(7, { archived: true }));
+
+    // The scope remains usable while the real archive request is pending.
+    await user.click(screen.getByText('已归档'));
+    await screen.findByText('此前归档会话');
+    expect(screen.queryByText('仍在活动列表')).not.toBeInTheDocument();
+    const callsBeforeCompletion = listMock.mock.calls.length;
+    await act(async () => {
+      archived = true;
+      finishArchive({
+        id: 7,
+        title: '正在归档会话',
+        owner: 'test-operator',
+        engine: 'claude-code',
+        model: 'claude-sonnet-4-5',
+        mode: 'chat',
+        instanceId: 'open-source-local',
+        runtimeSessionId: null,
+        lastSeq: 2,
+        archived: true,
+        createdAt: '2026-09-20T02:11:00',
+        updatedAt: '2026-09-20T02:12:31',
+      });
+    });
+    await waitFor(() => expect(listMock.mock.calls.length).toBeGreaterThan(callsBeforeCompletion));
+    expect(await screen.findByText('此前归档会话')).toBeInTheDocument();
+    expect(screen.queryByText('仍在活动列表')).not.toBeInTheDocument();
+    expect(listMock).toHaveBeenLastCalledWith(expect.objectContaining({ archived: true, page: 1 }));
+    expect(screen.getByTestId('ai-conversation-row-archive-7')).toHaveAttribute(
+      'aria-label',
+      '取消归档 正在归档会话',
+    );
+  });
+
   it('doesNotQueryWhileClosedTest', async () => {
     renderModal({ open: false });
 
