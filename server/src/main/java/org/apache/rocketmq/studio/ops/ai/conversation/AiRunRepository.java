@@ -48,6 +48,9 @@ public interface AiRunRepository {
 
     List<RmqAiRun> findByConversationId(Long conversationId);
 
+    /** Only the runs referenced by an event page, scoped to its conversation, ordered by turn/id. */
+    List<RmqAiRun> findByConversationIdAndIds(Long conversationId, Collection<Long> runIds);
+
     /**
      * The newest run of each given conversation, keyed by conversation id; conversations that never
      * ran are simply absent.

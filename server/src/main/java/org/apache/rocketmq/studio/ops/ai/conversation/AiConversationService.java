@@ -320,11 +320,7 @@ public class AiConversationService implements ApplicationRunner {
                 runsReferencedBy(conversation.getId(), items));
     }
 
-    /**
-     * The run rows the page references, in first-appearance order. A conversation accumulates at
-     * most one run per turn, so filtering the conversation's full run list is cheaper than a
-     * per-page {@code WHERE id IN (...)} and keeps the repository port minimal.
-     */
+    /** The run rows referenced by this page, without loading the conversation's entire history. */
     private List<RmqAiRun> runsReferencedBy(Long conversationId, List<TimelineItem> items) {
         if (items.isEmpty()) {
             return List.of();
@@ -333,13 +329,7 @@ public class AiConversationService implements ApplicationRunner {
         for (TimelineItem item : items) {
             referenced.add(item.runId());
         }
-        List<RmqAiRun> runs = new ArrayList<>();
-        for (RmqAiRun run : runRepository.findByConversationId(conversationId)) {
-            if (referenced.contains(run.getId())) {
-                runs.add(run);
-            }
-        }
-        return runs;
+        return runRepository.findByConversationIdAndIds(conversationId, referenced);
     }
 
     /**
