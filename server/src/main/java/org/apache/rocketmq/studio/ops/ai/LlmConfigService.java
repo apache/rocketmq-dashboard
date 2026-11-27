@@ -253,15 +253,20 @@ public class LlmConfigService {
         String apiKey = defaultString(envToken(), defaultString(settings.getApiKey(), ""));
         String apiBase = normalizeApiBase(defaultString(settings.getBaseUrl(), defaultApiBase(provider)));
         String model = defaultString(settings.getModel(), defaultModel(provider));
+        String engine = normalizeEngine(settings.getLlmEngine());
+        // CLI engines authenticate through their own subprocess environment (mirroring isReady),
+        // so a locally authenticated CLI stays usable without a stored API key; only the HTTP
+        // engine requires one for every non-ollama provider.
+        boolean httpEngine = LlmConfigVO.ENGINE_HTTP.equalsIgnoreCase(engine);
         return LlmConfigVO.builder()
                 .provider(provider)
-                .engine(normalizeEngine(settings.getLlmEngine()))
+                .engine(engine)
                 .apiKey(apiKey)
                 .apiBase(apiBase)
                 .model(model)
                 .maxTokens(settings.getMaxTokens() != null ? settings.getMaxTokens() : DEFAULT_MAX_TOKENS)
                 .temperature(settings.getTemperature() != null ? settings.getTemperature() : DEFAULT_TEMPERATURE)
-                .enabled(!requiresApiKey(provider) || !!StringUtils.hasText(apiKey))
+                .enabled(!httpEngine || !requiresApiKey(provider) || StringUtils.hasText(apiKey))
                 .deploymentName(defaultString(settings.getDeploymentName(), ""))
                 .apiVersion(defaultString(settings.getApiVersion(), "2024-02-15-preview"))
                 .awsRegion(defaultString(settings.getAwsRegion(), "us-east-1"))
