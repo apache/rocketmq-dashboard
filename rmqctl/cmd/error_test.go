@@ -18,12 +18,18 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
+	"net/http"
 	"net/url"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/types"
+	"gopkg.in/yaml.v3"
 )
 
 func TestNormalizeCLIError(t *testing.T) {
@@ -58,6 +64,34 @@ func TestNormalizeCLIError(t *testing.T) {
 			want: types.CodeTimeout,
 		},
 		{
+			name: "socket deadline reports timeout",
+			err: &url.Error{
+				Op: "Post", URL: "https://studio.example/api",
+				Err: &net.OpError{Op: "read", Net: "tcp", Err: os.ErrDeadlineExceeded},
+			},
+			want: types.CodeTimeout,
+		},
+		{
+			name: "DNS deadline reports timeout",
+			err:  &net.DNSError{Err: "i/o timeout", Name: "studio.example", IsTimeout: true},
+			want: types.CodeTimeout,
+		},
+		{
+			name: "wrapped network timeout reports timeout",
+			err:  fmt.Errorf("request failed: %w", &net.OpError{Op: "read", Net: "tcp", Err: os.ErrDeadlineExceeded}),
+			want: types.CodeTimeout,
+		},
+		{
+			name: "temporary DNS failure is not a timeout",
+			err:  &net.DNSError{Err: "temporary DNS failure", Name: "studio.example", IsTemporary: true},
+			want: types.CodeUnavailable,
+		},
+		{
+			name: "explicit CLI classification is preserved",
+			err:  types.NewCLIError(types.CodeUnavailable, "timeout in remote service", "Check remote service"),
+			want: types.CodeUnavailable,
+		},
+		{
 			name: "connection refused reports unavailable",
 			err: &url.Error{
 				Op:  "Get",
@@ -83,6 +117,48 @@ func TestNormalizeCLIError(t *testing.T) {
 				if got.Hint == "" || got.Hint == "Check --server, network connectivity, and Studio Server status." {
 					t.Fatalf("canceled hint must point at the interrupt, got %q", got.Hint)
 				}
+			}
+		})
+	}
+}
+
+// timeoutTransport fails locally, without contacting the configured server.
+type timeoutTransport struct{}
+
+func (timeoutTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, &net.OpError{Op: "read", Net: "tcp", Err: os.ErrDeadlineExceeded}
+}
+
+func TestNetworkTimeoutCommandOutputTest(t *testing.T) {
+	for _, format := range []string{"table", "json", "yaml"} {
+		t.Run(format, func(t *testing.T) {
+			client := &http.Client{Transport: timeoutTransport{}}
+			stdout, stderr, exitCode := executeTestApp(t, client, "https://studio.example",
+				"--output", format, "topic", "list")
+			if exitCode == 0 || stdout != "" {
+				t.Fatalf("timeout must fail with no success output: exit=%d, stdout=%q", exitCode, stdout)
+			}
+			if !strings.Contains(stderr, "i/o timeout") {
+				t.Fatalf("underlying timeout was lost: %q", stderr)
+			}
+			if format == "table" {
+				if !strings.Contains(stderr, "error [TIMEOUT]:") {
+					t.Fatalf("wrong error classification: %q", stderr)
+				}
+				return
+			}
+			var cliError types.CLIError
+			var err error
+			if format == "json" {
+				err = json.Unmarshal([]byte(stderr), &cliError)
+			} else {
+				err = yaml.Unmarshal([]byte(stderr), &cliError)
+			}
+			if err != nil {
+				t.Fatalf("invalid %s error output: %v", format, err)
+			}
+			if cliError.Code != types.CodeTimeout || cliError.Hint == "" {
+				t.Fatalf("wrong structured timeout diagnostic: %#v", cliError)
 			}
 		})
 	}
