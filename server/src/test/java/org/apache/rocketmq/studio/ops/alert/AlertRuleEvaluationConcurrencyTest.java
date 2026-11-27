@@ -103,13 +103,14 @@ class AlertRuleEvaluationConcurrencyTest {
     /**
      * Observes the management write actually waiting on the evaluation's row lock, instead of
      * inferring it from "still unfinished after a fixed delay" - a slow runner would pass such an
-     * assertion without ever reaching the statement. MySQL reports the wait in
-     * information_schema.innodb_trx, the dev/H2 profile in INFORMATION_SCHEMA.SESSIONS, so the
-     * check stays deterministic on both datasources and is skipped on neither.
+     * assertion without ever reaching the statement. MySQL reports live waits in
+     * performance_schema.data_lock_waits; polling innodb_trx faster than its 100 ms idle cache
+     * refresh interval can keep returning an old snapshot. The dev/H2 profile uses
+     * INFORMATION_SCHEMA.SESSIONS, so neither datasource skips the check.
      */
     private boolean awaitManagementLockWait(long timeoutMillis) throws InterruptedException {
         String waitingSessions = "MySQL".equals(databaseProduct())
-                ? "SELECT COUNT(*) FROM information_schema.innodb_trx WHERE trx_state = 'LOCK WAIT'"
+                ? "SELECT COUNT(*) FROM performance_schema.data_lock_waits"
                 : "SELECT COUNT(*) FROM INFORMATION_SCHEMA.SESSIONS WHERE SESSION_STATE = 'BLOCKED'";
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
         while (System.nanoTime() < deadline) {
