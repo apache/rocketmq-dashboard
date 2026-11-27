@@ -49,7 +49,7 @@ public class TopicListToolHandler
     public ListOutput<TopicListItem> execute(
             TopicListInput input, ToolExecutionContext context) {
         List<TopicVO> topics = metadataService.listTopics(
-                context.instanceId(), null, input.type(), input.topicName());
+                context.instanceId(), input.clusterId(), input.type(), input.topicName());
         return new ListOutput<>(topics.stream()
                 .map(TopicListItem::from)
                 .toList());
