@@ -487,6 +487,51 @@ describe('ConversationListModal', () => {
     );
   });
 
+  it.each(['archive', 'search', 'page'] as const)(
+    'keepsTheCurrentQueryWhenAnEarlierPageDeletionFinishesTest (%s)',
+    async (change) => {
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      listMock.mockImplementation(async (query) => {
+        const id = (query?.page ?? 1) + (query?.archived ? 100 : 0) + (query?.search ? 200 : 0);
+        return page([conversation(id, `conversation-${id}`)], 45, query?.page ?? 1);
+      });
+      let finish!: () => void;
+      deleteMock.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      renderModal();
+      await screen.findByText('conversation-1');
+      await user.click(document.querySelector<HTMLElement>('li[title="3"]')!);
+      await screen.findByText('conversation-3');
+      await user.click(screen.getByTestId('ai-conversation-page-delete'));
+      await confirmDelete(user);
+      await waitFor(() => expect(deleteMock).toHaveBeenCalledWith(3));
+      if (change === 'archive') await user.click(screen.getByText('已归档'));
+      else if (change === 'page')
+        await user.click(document.querySelector<HTMLElement>('li[title="1"]')!);
+      else {
+        const search = screen.getByPlaceholderText('搜索会话标题');
+        await user.type(search, 'needle{Enter}');
+      }
+      const visibleId = change === 'archive' ? 101 : change === 'search' ? 201 : 1;
+      await screen.findByText(`conversation-${visibleId}`);
+      await act(async () => {
+        finish();
+      });
+      await screen.findByText('已删除 1 条会话');
+      expect(screen.getByText(`conversation-${visibleId}`)).toBeInTheDocument();
+      expect(listMock).toHaveBeenLastCalledWith({
+        page: 1,
+        size: 15,
+        archived: change === 'archive',
+        search: change === 'search' ? 'needle' : undefined,
+      });
+    },
+  );
+
   it('deletesEveryConversationOnThePageTest', async () => {
     const user = userEvent.setup();
     listMock
@@ -598,12 +643,15 @@ describe('ConversationListModal', () => {
 
   it('stepsBackAPageWhenTheDeleteEmptiesItTest', async () => {
     const user = userEvent.setup();
+    let deleted = false;
     listMock.mockImplementation(async (params) =>
       params?.page === 2
-        ? page([conversation(21, '会话二十一')], 21, 2)
-        : page([conversation(1, '会话一')], 21, 1),
+        ? page(deleted ? [] : [conversation(21, '会话二十一')], deleted ? 15 : 16, 2)
+        : page([conversation(1, '会话一')], deleted ? 15 : 16, 1),
     );
-    deleteMock.mockResolvedValue(undefined);
+    deleteMock.mockImplementation(async () => {
+      deleted = true;
+    });
     renderModal();
     await screen.findByText('会话一');
 
