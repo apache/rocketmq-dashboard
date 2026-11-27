@@ -107,6 +107,20 @@ describe('compareTopicInventories', () => {
     expect(compareTopicInventories([source], [target]).rows[0].status).toBe('MATCH');
   });
 
+  it('does not report a provider-absent value as the JS null token', () => {
+    // The Apache provider serializes `namespace: null`, a Tencent one can answer "" for the same
+    // topic; both mean "no namespace" and must neither drift nor print the token null.
+    const source = topic('orders', { namespace: null as unknown as string });
+    const target = topic('orders', { namespace: '' });
+
+    const match = compareTopicInventories([source], [target]);
+    expect(match.rows[0].status).toBe('MATCH');
+
+    const drift = compareTopicInventories([source], [topic('orders', { namespace: 'test_ns' })]);
+    expect(formatTopicDifferences(drift.rows[0].differences)).toBe('namespace:  -> test_ns');
+    expect(formatTopicDifferences(drift.rows[0].differences)).not.toContain('null');
+  });
+
   it('reports source-only and target-only topics', () => {
     const result = compareTopicInventories(
       [topic('source-only'), topic('shared')],

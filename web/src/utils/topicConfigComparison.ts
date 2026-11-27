@@ -58,7 +58,14 @@ export const TOPIC_CONFIG_FIELDS: TopicConfigField[] = [
 
 const valueOf = (topic: Topic, field: TopicConfigField): string | number => {
   const value = topic[field];
-  return typeof value === 'string' ? value.trim() : value;
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+  // The providers disagree on how they spell "absent": the Apache provider serializes
+  // `namespace: null` and a Tencent one can return `""` for the same thing. Left raw, the null
+  // leaks into the difference text and the exported CSV as the token `null`, and null vs "" was
+  // reported as a configuration drift.
+  return value ?? '';
 };
 
 const differencesBetween = (source: Topic, target: Topic): TopicFieldDifference[] =>
