@@ -31,6 +31,7 @@ const topicServiceMocks = vi.hoisted(() => ({
   deleteTopic: vi.fn(),
   exportTopics: vi.fn(),
   getTopicConsumers: vi.fn(),
+  getTopicFeatures: vi.fn(),
   getTopicConsumerPage: vi.fn(),
   getTopicRoutes: vi.fn(),
   importTopics: vi.fn(),
@@ -157,6 +158,7 @@ const getSendDialog = async () => {
 describe('TopicPage', () => {
   beforeEach(() => {
     mockTopicsList(buildTopics(25));
+    topicServiceMocks.getTopicFeatures.mockResolvedValue({ mixedTypeEnabled: false });
     topicServiceMocks.listAllTopics.mockResolvedValue(buildTopics(25));
     topicServiceMocks.exportTopics.mockResolvedValue('"Name"\n"topic-01"');
     topicServiceMocks.batchDeleteTopics.mockResolvedValue({ deleted: [], failed: [] });
@@ -221,6 +223,19 @@ describe('TopicPage', () => {
     Modal.destroyAll();
     cleanup();
     vi.clearAllMocks();
+  });
+
+  it('offers the Mixed type filter only when the feature probe enables it', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    topicServiceMocks.getTopicFeatures.mockResolvedValue({ mixedTypeEnabled: true });
+
+    renderWithProviders();
+
+    await waitFor(() => expect(topicServiceMocks.getTopicFeatures).toHaveBeenCalled());
+    const typeFilter = screen.getByTestId('topic-type-filter');
+    await user.click(within(typeFilter).getByRole('combobox'));
+
+    expect(await screen.findByTitle('混合')).toBeInTheDocument();
   });
 
   it('shows the selected Proxy deployment type explicitly', async () => {
@@ -289,6 +304,8 @@ describe('TopicPage', () => {
 
     await user.click(screen.getByRole('button', { name: /创建 Topic/ }));
     const dialog = await screen.findByRole('dialog', { name: /创建 Topic/ });
+    // The MIXED card is opt-in: without the backend switch the dialog keeps its five types.
+    expect(within(dialog).queryByRole('radio', { name: '混合消息' })).not.toBeInTheDocument();
     // 用户约定 2026-10-16：读写队列提示合并为单条、跟随输入值，并说明读写一般需一致。
     expect(
       within(dialog).getByText(
@@ -450,6 +467,26 @@ describe('TopicPage', () => {
     await waitFor(() => expect(topicServiceMocks.createTopic).toHaveBeenCalledTimes(1));
     expect(topicServiceMocks.createTopic).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'chat', type: 'LITE', liteTtlMinutes: 1440 }),
+    );
+  });
+
+  it('offers the Mixed type in the create dialog only when the feature probe enables it', async () => {
+    topicServiceMocks.getTopicFeatures.mockResolvedValue({ mixedTypeEnabled: true });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders('/instance/instance-proxy-1/topic');
+    await screen.findByText('topic-01');
+
+    await user.click(await screen.findByRole('button', { name: /创建 Topic/ }));
+    const dialog = await screen.findByRole('dialog', { name: /创建 Topic/ });
+    await waitFor(() => expect(topicServiceMocks.getTopicFeatures).toHaveBeenCalled());
+
+    await user.type(within(dialog).getByLabelText('Topic 名称'), 'mixed-demo');
+    await user.click(within(dialog).getByRole('radio', { name: '混合消息' }));
+    await user.click(within(dialog).getByRole('button', { name: /创\s*建/ }));
+
+    await waitFor(() => expect(topicServiceMocks.createTopic).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.createTopic).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'mixed-demo', type: 'MIXED' }),
     );
   });
 

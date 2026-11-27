@@ -225,6 +225,15 @@ export interface ImportConsumerGroupsResult {
 }
 
 // ─── Topic API ──────────────────────────────────────────────────
+export interface TopicFeatures {
+  mixedTypeEnabled: boolean;
+}
+
+export async function getTopicFeatures() {
+  const res = await client.get<{ data: TopicFeatures }>('/topics/features');
+  return res.data.data;
+}
+
 export async function listTopics(params?: TopicQuery) {
   const res = await client.get<{ data: Topic[] }>('/topics', { params });
   return res.data.data;

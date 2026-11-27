@@ -2679,6 +2679,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'theme.topicDelay': { zh: '延迟', en: 'Delay' },
   'theme.topicTransaction': { zh: '事务', en: 'Transaction' },
   'theme.topicLite': { zh: 'LiteTopic', en: 'LiteTopic' },
+  'theme.topicMixed': { zh: '混合', en: 'Mixed' },
   'theme.protocolRemoting': { zh: 'Remoting', en: 'Remoting' },
   'theme.protocolGrpc': { zh: 'gRPC', en: 'gRPC' },
 

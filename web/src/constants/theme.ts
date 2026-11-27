@@ -58,6 +58,7 @@ export const TOPIC_TYPE_MAP: Record<string, { labelKey: string; color: TagProps[
   DELAY: { labelKey: 'theme.topicDelay', color: 'orange' },
   TRANSACTION: { labelKey: 'theme.topicTransaction', color: 'purple' },
   LITE: { labelKey: 'theme.topicLite', color: 'magenta' },
+  MIXED: { labelKey: 'theme.topicMixed', color: 'cyan' },
 };
 
 /**
