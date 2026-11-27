@@ -43,7 +43,9 @@ export const LangProvider = ({ children }: { children: ReactNode }) => {
     let text = translations[key]?.[lang] ?? key;
     if (params) {
       Object.entries(params).forEach(([k, v]) => {
-        text = text.replace(`{${k}}`, String(v));
+        // Use a replacer function so the value is inserted literally;
+        // string replacements would interpret $&, $`, $' and $$ specially.
+        text = text.replace(`{${k}}`, () => String(v));
       });
     }
     return text;
