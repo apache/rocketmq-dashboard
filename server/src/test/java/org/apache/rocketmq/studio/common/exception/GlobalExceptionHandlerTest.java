@@ -93,6 +93,15 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void methodNotAllowedKeepsTheAllowHeader() throws Exception {
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .post("/test/business/400"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .header().string(org.springframework.http.HttpHeaders.ALLOW, "GET"));
+    }
+
+    @Test
     void unacceptableResponseMediaTypeReturns406WithEnvelopeInsteadOf500() throws Exception {
         mockMvc.perform(get("/test/not-acceptable"))
                 .andExpect(status().isNotAcceptable())
