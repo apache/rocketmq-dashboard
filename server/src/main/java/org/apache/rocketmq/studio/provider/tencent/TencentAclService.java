@@ -37,6 +37,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Maps Tencent Cloud TDMQ RocketMQ 5.x role management (DescribeRoleList / CreateRole /
@@ -114,8 +115,13 @@ public class TencentAclService {
                         && !Boolean.TRUE.equals(role.getPermWrite())) {
                     continue;
                 }
-                if (requestedPrincipal != null
-                        && !requestedPrincipal.equals(role.getRoleName())) {
+                // The console's principal box is a search field (the acl.searchPrincipal label),
+                // and the sibling filters in this feature match substrings: the resource filter
+                // uses containsIgnoreCase and the Apache path filters the principal with SQL LIKE.
+                // An exact comparison made every partial principal return an empty page.
+                if (StringUtils.hasText(requestedPrincipal)
+                        && !role.getRoleName().toLowerCase(Locale.ROOT)
+                                .contains(requestedPrincipal.toLowerCase(Locale.ROOT))) {
                     continue;
                 }
                 rules.add(toRule(role));
