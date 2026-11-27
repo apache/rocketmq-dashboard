@@ -21,6 +21,7 @@ import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.TextBounds;
 import org.springframework.stereotype.Service;
 
 import java.time.DateTimeException;
@@ -58,8 +59,15 @@ public class AlertSilenceService {
         if (!request.getEndsAt().toInstant().isAfter(request.getStartsAt().toInstant())) {
             throw new BusinessException(400, "Silence end time must be after start time");
         }
-        if (request.getReason() != null && request.getReason().length() > 512) {
+        if (request.getReason() != null && TextBounds.codePointCount(request.getReason()) > 512) {
             throw new BusinessException(400, "Silence reason must not exceed 512 characters");
+        }
+        // The same bound the reason already had, for the column next to it: instance_id is
+        // VARCHAR(128), and an over-long value reached the database, whose rejection the API
+        // reported as a generic 500 - while the operator believed the window was created.
+        if (request.getInstanceId() != null
+                && TextBounds.codePointCount(request.getInstanceId()) > 128) {
+            throw new BusinessException(400, "Silence instanceId must not exceed 128 characters");
         }
         RecurrenceConfiguration recurrence = validateRecurrence(request);
         AlertSilenceVO silence = AlertSilenceVO.builder().domain(request.getDomain())
