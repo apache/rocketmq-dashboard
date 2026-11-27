@@ -324,6 +324,62 @@ class MybatisPlusAclRepositoryTest {
     }
 
     @Test
+    void plainAccessUpdateMustNotOverwriteDenyRulesTest() {
+        RmqAclUser existing = userEntity(1L, "svc-a", CredentialUtils.encodeBase64("secret"));
+        RmqAclRule deny = plainRuleEntity("svc-a", "orders", "Topic", "PUB");
+        deny.setDecision("DENY");
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(existing));
+        when(ruleMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(deny));
+
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("svc-a")
+                .topicPerms(List.of("orders=PUB"))
+                .build();
+
+        assertThatThrownBy(() -> repository.createAndUpdatePlainAccessConfig(config))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
+        verify(userMapper, never()).updateById(any(RmqAclUser.class));
+        verify(ruleMapper, never()).delete(any(QueryWrapper.class));
+        verify(ruleMapper, never()).insert(any(RmqAclRule.class));
+    }
+
+    @Test
+    void plainAccessUpdateMustRejectUnrepresentableRuleShapesTest() {
+        RmqAclUser existing = userEntity(1L, "svc-a", CredentialUtils.encodeBase64("secret"));
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(existing));
+        List<RmqAclRule> invalid = new java.util.ArrayList<>();
+        RmqAclRule prefix = plainRuleEntity("svc-a", "orders", "Topic", "PUB");
+        prefix.setResourcePattern("PREFIX");
+        invalid.add(prefix);
+        RmqAclRule scoped = plainRuleEntity("svc-a", "orders", "Topic", "PUB");
+        scoped.setScope("cluster-a");
+        invalid.add(scoped);
+        RmqAclRule olderVersion = plainRuleEntity("svc-a", "orders", "Topic", "PUB");
+        olderVersion.setAclVersion("1.0");
+        invalid.add(olderVersion);
+        RmqAclRule missingActions = plainRuleEntity("svc-a", "orders", "Topic", "PUB");
+        missingActions.setActions(null);
+        invalid.add(missingActions);
+        RmqAclRule unsupportedType = plainRuleEntity("svc-a", "orders", "Topic", "PUB");
+        unsupportedType.setResourceType("Unknown");
+        invalid.add(unsupportedType);
+        RmqAclRule separator = plainRuleEntity("svc-a", "orders=other", "Topic", "PUB");
+        invalid.add(separator);
+
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder().accessKey("svc-a").build();
+        for (RmqAclRule rule : invalid) {
+            when(ruleMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(rule));
+            assertThatThrownBy(() -> repository.createAndUpdatePlainAccessConfig(config))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
+        }
+        verify(userMapper, never()).updateById(any(RmqAclUser.class));
+        verify(ruleMapper, never()).delete(any(QueryWrapper.class));
+        verify(ruleMapper, never()).insert(any(RmqAclRule.class));
+    }
+
+    @Test
     void upsertShouldAssignUniqueRuleIdPerPermission() {
         when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
         when(userMapper.insert(any(RmqAclUser.class))).thenReturn(1);
@@ -414,8 +470,8 @@ class MybatisPlusAclRepositoryTest {
                 .hasMessage("Plain access account already exists for accessKey: svc-x")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
 
-        // The conflict aborts before any permission rules are touched.
-        verifyNoInteractions(ruleMapper);
+        verify(ruleMapper, never()).delete(any(QueryWrapper.class));
+        verify(ruleMapper, never()).insert(any(RmqAclRule.class));
     }
 
     @Test
@@ -434,7 +490,8 @@ class MybatisPlusAclRepositoryTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("ACL user already exists: K")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
-        org.mockito.Mockito.verifyNoInteractions(ruleMapper);
+        verify(ruleMapper, never()).delete(any(QueryWrapper.class));
+        verify(ruleMapper, never()).insert(any(RmqAclRule.class));
     }
 
     @Test
