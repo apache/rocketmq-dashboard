@@ -18,6 +18,16 @@
 export type Lang = 'zh' | 'en';
 
 const translations: Record<string, Record<Lang, string>> = {
+  'consumer.stackCaptureFailed': { zh: '线程栈采集失败', en: 'Stack capture failed' },
+  'consumer.stackCaptureRetry': {
+    zh: '请检查客户端连接后重试。',
+    en: 'Check the client connection and retry.',
+  },
+  'consumer.stackEmpty': { zh: '客户端未返回线程栈', en: 'The client returned no thread stack' },
+  'consumer.stackEmptyHint': {
+    zh: '该客户端可能不支持线程栈采集，或本次响应不包含线程栈。',
+    en: 'The client may not support stack capture, or this response contains no thread stack.',
+  },
   // ─── Navigation ───
   'nav.home': { zh: '首页', en: 'Home' },
   'nav.dashboard': { zh: '监控面板', en: 'Dashboard' },
