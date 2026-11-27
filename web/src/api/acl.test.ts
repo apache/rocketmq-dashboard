@@ -26,6 +26,7 @@ import {
   deleteAclUser,
   examineBrokerClusterAclConfig,
   getAclUserCredentials,
+  listAclUsers,
   listAclRules,
   updateAclRule,
   updateAclUser,
@@ -94,6 +95,17 @@ describe('ACL API contract', () => {
 
     await expect(createAclRule({ principal: rule.principal })).resolves.toEqual(rule);
     await expect(createAclUser({ username: user.username })).resolves.toEqual(user);
+  });
+
+  it('passes the ACL user directory keyword filter to the REST endpoint', async () => {
+    mock.onGet('/acl/users').reply((config) => {
+      expect(config.params).toEqual({ instanceId: 'instance-a', keyword: 'billing' });
+      return [200, { code: 200, data: [] }];
+    });
+
+    await expect(listAclUsers({ instanceId: 'instance-a', keyword: 'billing' })).resolves.toEqual(
+      [],
+    );
   });
 
   it('uses backend update and delete endpoints for rules and users', async () => {
