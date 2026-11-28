@@ -76,6 +76,18 @@ public class ApacheRocketMqProxyMetricsCollector implements ClusterMetricsCollec
                     samples.add(collectProxy(instance, cluster, proxy, collectedAt));
                 }
             }
+            if (samples.isEmpty()) {
+                // Discovery answered without error but yielded no probeable proxy: no cluster was
+                // returned, or every cluster left its proxy list undiscovered. That is an
+                // enumeration gap, not a measurement of "all proxies healthy" - an empty sample
+                // list still reports a successful scope with zero samples, and
+                // NativeAlertProcessor then reconciles (and falsely resolves) every active proxy
+                // incident for the instance. Emit the same whole-scope failure marker the
+                // discovery-failure branch uses, so reconciliation is skipped until a pass that
+                // actually probes a proxy.
+                log.warn("Proxy discovery for instance {} returned no probeable proxy", instance.getName());
+                return List.of(unavailable(instance, null, Map.of(), collectedAt));
+            }
             return samples;
         } catch (RuntimeException error) {
             log.warn("Failed to discover proxies for instance {}: {}", instance.getName(), error.getMessage());
