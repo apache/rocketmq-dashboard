@@ -82,6 +82,12 @@ public class CloudCredentialService {
         if (credential == null) {
             throw new BusinessException(400, "Cloud credential request is required");
         }
+        // Cloud keys are pasted by hand: a trailing space or newline survives validation and then
+        // breaks every cloud signature check, and an accessKey padded with whitespace would also
+        // slip past the vendor+accessKey uniqueness check. Trim before validating and storing.
+        credential.setName(StringUtils.trimWhitespace(credential.getName()));
+        credential.setAccessKey(StringUtils.trimWhitespace(credential.getAccessKey()));
+        credential.setSecretKey(StringUtils.trimWhitespace(credential.getSecretKey()));
         if (!StringUtils.hasText(credential.getName())) {
             throw new BusinessException(400, "Cloud credential name is required");
         }
@@ -122,8 +128,20 @@ public class CloudCredentialService {
         if (request.getName() != null && request.getName().isBlank()) {
             throw new BusinessException(400, "Cloud credential name cannot be blank");
         }
-        String secretKey = StringUtils.hasText(request.getSecretKey()) ? request.getSecretKey() : null;
-        if (!credentialRepository.updateFields(request.getId(), request.getName(), secretKey, request.getRemark())) {
+        // Same paste hygiene as create: a rotated secret pasted with a trailing newline would be
+        // stored verbatim and break the next cloud signature check.
+        String name = StringUtils.trimWhitespace(request.getName());
+        String secretKey = StringUtils.trimWhitespace(
+                StringUtils.hasText(request.getSecretKey()) ? request.getSecretKey() : null);
+        String remark = StringUtils.trimWhitespace(request.getRemark());
+        if (name == null && secretKey == null && remark == null) {
+            // Nothing would change, but the write path would still bump gmt_modified, evict every
+            // cached cloud client for this credential and record an audit row: a no-op must not
+            // be reported as a successful update.
+            throw new BusinessException(400,
+                    "Cloud credential update requires at least one of name, secretKey or remark");
+        }
+        if (!credentialRepository.updateFields(request.getId(), name, secretKey, remark)) {
             throw new BusinessException(404, "Cloud credential not found: " + request.getId());
         }
         CloudCredentialVO updated = credentialRepository.findById(request.getId())
@@ -205,3 +223,4 @@ public class CloudCredentialService {
     }
 
 }
+

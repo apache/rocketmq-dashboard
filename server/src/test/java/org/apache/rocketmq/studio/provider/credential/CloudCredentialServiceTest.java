@@ -21,6 +21,7 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.mockito.ArgumentCaptor;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.provider.alibaba.AliyunClientFactory;
 import org.apache.rocketmq.studio.provider.tencent.TencentClientFactory;
@@ -421,4 +422,80 @@ class CloudCredentialServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("narrow the filters");
     }
+
+    @Test
+    void createShouldTrimPastedCredentialFieldsTest() {
+        CloudCredentialVO request = new CloudCredentialVO();
+        request.setName("  prod-cred  ");
+        request.setVendor(InstanceVendor.ALIYUN);
+        request.setAccessKey(" LTAI5tTrimKey0000000001\n");
+        request.setSecretKey(" secret-value ");
+        when(credentialRepository.findByVendorAndAccessKey(InstanceVendor.ALIYUN, "LTAI5tTrimKey0000000001"))
+                .thenReturn(Optional.empty());
+        when(credentialRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.create(request);
+
+        ArgumentCaptor<CloudCredentialVO> captor = ArgumentCaptor.forClass(CloudCredentialVO.class);
+        verify(credentialRepository).save(captor.capture());
+        CloudCredentialVO saved = captor.getValue();
+        assertThat(saved.getName()).isEqualTo("prod-cred");
+        assertThat(saved.getAccessKey()).isEqualTo("LTAI5tTrimKey0000000001");
+        assertThat(saved.getSecretKey()).isEqualTo("secret-value");
+    }
+
+    @Test
+    void createShouldTreatWhitespacePaddedAccessKeyAsExistingTest() {
+        CloudCredentialVO request = new CloudCredentialVO();
+        request.setName("dup-padded");
+        request.setVendor(InstanceVendor.ALIYUN);
+        request.setAccessKey("  LTAI5tDupKey000000000001  ");
+        request.setSecretKey("sk");
+        when(credentialRepository.findByVendorAndAccessKey(InstanceVendor.ALIYUN, "LTAI5tDupKey000000000001"))
+                .thenReturn(Optional.of(new CloudCredentialVO()));
+
+        // The padded accessKey must resolve to the stored one, otherwise the vendor+accessKey
+        // uniqueness check can be bypassed by surrounding whitespace alone.
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("already exists");
+        verify(credentialRepository, never()).save(any());
+    }
+
+    @Test
+    void updateShouldRejectAnEmptyPartialUpdateTest() {
+        CloudCredentialVO stored = new CloudCredentialVO();
+        stored.setId(7L);
+        stored.setName("cred-7");
+        stored.setVendor(InstanceVendor.ALIYUN);
+        when(credentialRepository.findById(7L)).thenReturn(Optional.of(stored));
+        UpdateCloudCredentialDTO request = new UpdateCloudCredentialDTO();
+        request.setId(7L);
+
+        // Nothing would change, but the old path still bumped gmt_modified, evicted the cached
+        // cloud clients and recorded an audit row: a no-op is not a successful update.
+        assertThatThrownBy(() -> service.update(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        verify(credentialRepository, never()).updateFields(any(), any(), any(), any());
+    }
+
+    @Test
+    void updateShouldTrimTheRotatedSecretTest() {
+        CloudCredentialVO stored = new CloudCredentialVO();
+        stored.setId(9L);
+        stored.setName("cred-9");
+        stored.setVendor(InstanceVendor.TENCENT);
+        when(credentialRepository.findById(9L)).thenReturn(Optional.of(stored));
+        when(credentialRepository.updateFields(9L, null, "rotated-secret", null)).thenReturn(true);
+        UpdateCloudCredentialDTO request = new UpdateCloudCredentialDTO();
+        request.setId(9L);
+        request.setSecretKey(" rotated-secret \n");
+
+        service.update(request);
+
+        verify(credentialRepository).updateFields(9L, null, "rotated-secret", null);
+    }
+
 }
+
