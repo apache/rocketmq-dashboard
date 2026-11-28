@@ -79,6 +79,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
 import java.util.TimeZone;
@@ -1531,4 +1533,114 @@ class TencentInstanceProviderTest {
         request.setClientId("client-a");
         return request;
     }
+
+    @Test
+    void getTopicConsumersShouldFetchPastLegacyTenThousandCapTest() throws Exception {
+        Deque<DescribeTopicResponse> pages = new ArrayDeque<>();
+        for (int page = 0; page < 100; page++) {
+            DescribeTopicResponse response = new DescribeTopicResponse();
+            response.setSubscriptionCount(10_005L);
+            response.setSubscriptionData(IntStream.range(page * 100, (page + 1) * 100)
+                    .mapToObj(index -> subscription("GID_" + index))
+                    .toArray(SubscriptionData[]::new));
+            pages.add(response);
+        }
+        DescribeTopicResponse tail = new DescribeTopicResponse();
+        tail.setSubscriptionCount(10_005L);
+        tail.setSubscriptionData(IntStream.range(10_000, 10_005)
+                .mapToObj(index -> subscription("GID_" + index))
+                .toArray(SubscriptionData[]::new));
+        pages.add(tail);
+        when(client.DescribeTopic(any())).thenAnswer(invocation -> pages.poll());
+
+        List<TopicConsumerVO> consumers = provider.getTopicConsumers(STUDIO_INSTANCE_ID, "orders");
+
+        // A silent stop at the legacy 100-page cap would report 10 000 consumers as the complete
+        // list while Tencent says 10 005 exist.
+        assertThat(consumers).hasSize(10_005);
+        assertThat(consumers.get(10_004).getGroup()).isEqualTo("GID_10004");
+        verify(client, times(101)).DescribeTopic(any());
+    }
+
+    @Test
+    void getTopicConsumersShouldReportUnknownLagWhenSubscriptionLagMissingTest() throws Exception {
+        DescribeTopicResponse response = new DescribeTopicResponse();
+        response.setSubscriptionData(new SubscriptionData[]{subscription("GID_no_lag")});
+        when(client.DescribeTopic(any())).thenReturn(response);
+
+        // DescribeTopic omitted the lag: the row must render unknown, not a measured zero backlog.
+        assertThat(provider.getTopicConsumers(STUDIO_INSTANCE_ID, "orders")).singleElement()
+                .satisfies(consumer -> assertThat(consumer.getDiffTotal())
+                        .isEqualTo(ConsumerLagResolver.UNKNOWN));
+    }
+
+    @Test
+    void getGroupProgressShouldReportUnknownLagWhenSubscriptionLagMissingTest() throws Exception {
+        SubscriptionData missing = new SubscriptionData();
+        missing.setTopic("orders");
+        SubscriptionData reported = new SubscriptionData();
+        reported.setTopic("payments");
+        reported.setConsumerLag(7L);
+        DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+        response.setData(new SubscriptionData[]{missing, reported});
+        when(client.DescribeTopicListByGroup(any())).thenReturn(response);
+
+        List<QueueProgressVO> progress = provider.getGroupProgress(STUDIO_INSTANCE_ID, "GID_test");
+
+        assertThat(progress).hasSize(2);
+        assertThat(progress.get(0).getDiffTotal()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+        assertThat(progress.get(1).getDiffTotal()).isEqualTo(7L);
+    }
+
+    @Test
+    void getMessageTraceShouldRejectEmptyTencentResponseTest() throws Exception {
+        when(client.DescribeMessageTrace(any())).thenReturn(null);
+
+        // An empty trace response is a vendor anomaly, not "the message has no trace": a trace
+        // view that renders zero nodes as a success hides the failure entirely.
+        assertThatThrownBy(() -> provider.getMessageTrace(STUDIO_INSTANCE_ID, "MSG-1", "orders"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void queryMessagesByMsgIdShouldRejectUnparseablePropertiesTest() throws Exception {
+        DescribeMessageResponse detail = new DescribeMessageResponse();
+        detail.setMessageId("MSG-1");
+        detail.setShowTopicName("orders");
+        detail.setProperties("{\"UNIQ_KEY\":\"MSG-1\"");
+        when(client.DescribeMessage(any())).thenReturn(detail);
+
+        // The detail view cannot tell "no properties" from an unreadable payload, so a corrupt
+        // payload must fail explicitly instead of rendering a message without its properties.
+        assertThatThrownBy(() -> provider.queryMessages(STUDIO_INSTANCE_ID, "orders", "MSG-1", null, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void queryMessagesByMsgIdShouldRejectNonObjectPropertiesTest() throws Exception {
+        DescribeMessageResponse detail = new DescribeMessageResponse();
+        detail.setMessageId("MSG-1");
+        detail.setShowTopicName("orders");
+        detail.setProperties("[\"UNIQ_KEY\"]");
+        when(client.DescribeMessage(any())).thenReturn(detail);
+
+        assertThatThrownBy(() -> provider.queryMessages(STUDIO_INSTANCE_ID, "orders", "MSG-1", null, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void queryMessagesByMsgIdShouldRejectEmptyTencentDetailResponseTest() throws Exception {
+        when(client.DescribeMessage(any())).thenReturn(null);
+
+        // A null DescribeMessage body is a vendor anomaly, not a legitimate "no such message":
+        // unknown ids surface as ResourceNotFound (404) from the SDK instead.
+        assertThatThrownBy(() -> provider.queryMessages(STUDIO_INSTANCE_ID, "orders", "MSG-1", null, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
 }
+

@@ -415,8 +415,11 @@ public class TencentInstanceProvider implements InstanceProvider {
         requireTopicName(topicName);
         List<TopicConsumerVO> consumers = new ArrayList<>();
         long fetchedSubscriptions = 0L;
-        for (int page = 0; page < MAX_PAGES; page++) {
-            long offset = (long) page * CONSUMER_PAGE_SIZE;
+        // No page cap: a silent stop at MAX_PAGES would publish a partial consumer list as the
+        // complete one. Termination mirrors listTopicSubscriptionsByGroup - the completeness
+        // guard, the reported subscription count, or a short page - so everything past the
+        // legacy ten-thousand cap is still fetched, or an explicit 502 is thrown.
+        for (long offset = 0L; ; offset += CONSUMER_PAGE_SIZE) {
             DescribeTopicRequest request = new DescribeTopicRequest();
             request.setInstanceId(context.cloudInstanceId());
             request.setTopic(topicName);
@@ -610,7 +613,7 @@ public class TencentInstanceProvider implements InstanceProvider {
                     // would render as a real measurement next to the real lag.
                     .brokerOffset(QueueProgressVO.UNKNOWN_OFFSET)
                     .consumerOffset(QueueProgressVO.UNKNOWN_OFFSET)
-                    .diffTotal(subscription.getConsumerLag() == null ? 0L : subscription.getConsumerLag())
+                    .diffTotal(toReportedLag(subscription.getConsumerLag()))
                     .build());
         }
         return rows;
@@ -688,10 +691,14 @@ public class TencentInstanceProvider implements InstanceProvider {
         // Querying by message ID returns the full detail (body, properties and tracks) via
         // DescribeMessage, mirroring the msgId path of the base provider.
         if (StringUtils.hasText(msgId)) {
-            MessageRecordVO record = toRecordVO(describeMessage(context, topic, msgId));
-            return MessageQueryResult.complete(record == null
-                    ? Collections.emptyList()
-                    : Collections.singletonList(record));
+            DescribeMessageResponse detail = describeMessage(context, topic, msgId);
+            if (detail == null) {
+                throw new BusinessException(502,
+                        "Tencent Cloud message detail returned an empty response");
+            }
+            // A null body is a vendor anomaly, not a legitimate "no such message": unknown
+            // message ids surface as a ResourceNotFound error (404) from the SDK instead.
+            return MessageQueryResult.complete(Collections.singletonList(toRecordVO(detail)));
         }
 
         long end = endTime != null ? endTime : System.currentTimeMillis();
@@ -805,10 +812,13 @@ public class TencentInstanceProvider implements InstanceProvider {
         request.setMsgId(msgId);
         DescribeMessageTraceResponse response = clientFactory.call(context.credentialId(), context.regionId(),
                 client -> client.DescribeMessageTrace(request));
+        if (response == null) {
+            throw new BusinessException(502, "Tencent Cloud message trace returned an empty response");
+        }
 
         List<TraceNodeVO> nodes = new ArrayList<>();
         List<ConsumerStatusVO> consumerStatus = new ArrayList<>();
-        MessageTraceItem[] items = response == null ? null : response.getData();
+        MessageTraceItem[] items = response.getData();
         if (items != null) {
             for (MessageTraceItem item : items) {
                 buildTraceStage(item, nodes, consumerStatus);
@@ -952,22 +962,25 @@ public class TencentInstanceProvider implements InstanceProvider {
         if (!StringUtils.hasText(raw)) {
             return Collections.emptyMap();
         }
+        JsonNode root;
         try {
-            JsonNode root = OBJECT_MAPPER.readTree(raw);
-            if (root == null || !root.isObject()) {
-                return Collections.emptyMap();
-            }
-            Map<String, String> properties = new LinkedHashMap<>();
-            root.fields().forEachRemaining(entry -> {
-                JsonNode value = entry.getValue();
-                if (value != null && value.isValueNode() && !value.isNull()) {
-                    properties.put(entry.getKey(), value.asText());
-                }
-            });
-            return properties;
+            root = OBJECT_MAPPER.readTree(raw);
         } catch (Exception e) {
-            return Collections.emptyMap();
+            // The message detail cannot distinguish "no properties" from an unreadable payload,
+            // so a corrupt payload must fail explicitly instead of rendering as an empty map.
+            throw new BusinessException(502, "Tencent Cloud message properties are not valid JSON");
         }
+        if (root == null || !root.isObject()) {
+            throw new BusinessException(502, "Tencent Cloud message properties are not a JSON object");
+        }
+        Map<String, String> properties = new LinkedHashMap<>();
+        root.fields().forEachRemaining(entry -> {
+            JsonNode value = entry.getValue();
+            if (value != null && value.isValueNode() && !value.isNull()) {
+                properties.put(entry.getKey(), value.asText());
+            }
+        });
+        return properties;
     }
 
     private static boolean isLastPage(int returned, long total, long fetchedRows) {
@@ -1094,7 +1107,7 @@ public class TencentInstanceProvider implements InstanceProvider {
                 // subscription model the contract carries is MessageModel.
                 .consumeType(toConsumeType(messageModel, subscription.getConsumeType()))
                 .messageModel(messageModel)
-                .diffTotal(subscription.getConsumerLag() == null ? 0L : subscription.getConsumerLag())
+                .diffTotal(toReportedLag(subscription.getConsumerLag()))
                 .build();
     }
 
@@ -1191,6 +1204,14 @@ public class TencentInstanceProvider implements InstanceProvider {
 
     /** The online client count is unavailable; the console renders a negative count as "unknown". */
     private static final int UNKNOWN_ONLINE_INSTANCES = -1;
+
+    /**
+     * A subscription whose lag the API did not report is unknown, not a measured zero backlog:
+     * the frontend renders the negative sentinel (ConsumerLagResolver.UNKNOWN) as unavailable.
+     */
+    private static long toReportedLag(Long consumerLag) {
+        return consumerLag == null || consumerLag < 0L ? ConsumerLagResolver.UNKNOWN : consumerLag;
+    }
 
     private static int toInt(Long value) {
         if (value == null || value <= 0L) {
@@ -1325,3 +1346,4 @@ public class TencentInstanceProvider implements InstanceProvider {
     private record Context(String cloudInstanceId, String regionId, Long credentialId) {
     }
 }
+
