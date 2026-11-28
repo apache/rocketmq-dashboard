@@ -705,4 +705,54 @@ class RocketMQLiteTopicProviderTest {
         config.setLiteTopicExpiration(ttlMinutes);
         return config;
     }
+
+    @Test
+    void listLiteTopicsShouldSurfaceBacklogReadFailureTest() throws Exception {
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
+        when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(brokerLiteInfo(PARENT, 30, 2, GROUP));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1)).thenThrow(new IllegalStateException("rpc down"));
+
+        // The brokers read here reported the group binding, so a failed read must not be
+        // reported as a measured zero backlog in the totalBacklog column.
+        assertThatThrownBy(() -> provider.listLiteTopics(null, null))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        error -> assertThat(error.getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void liteReadsShouldPreferTheLowestBrokerIdWhenTheMasterAddressIsMissingTest() throws Exception {
+        HashMap<Long, String> addrs = new LinkedHashMap<>();
+        addrs.put(3L, "127.0.0.3:10911");
+        addrs.put(1L, "127.0.0.1:10911");
+        ClusterInfo info = new ClusterInfo();
+        info.setBrokerAddrTable(Map.of("broker-x", new BrokerData("DefaultCluster", "broker-x", addrs)));
+        when(admin.examineBrokerClusterInfo()).thenReturn(info);
+        when(admin.getBrokerLiteInfo("127.0.0.1:10911")).thenReturn(brokerLiteInfo(1, 10, 0));
+
+        assertThat(provider.isSupported()).isTrue();
+        verify(admin, never()).getBrokerLiteInfo("127.0.0.3:10911");
+    }
+
+    @Test
+    void quotaShouldNotMixMasterSetsWhenABrokerConfigIsUnreadableTest() throws Exception {
+        String unreadableConfig = "127.0.0.1:10912";
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A, unreadableConfig));
+        when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(brokerLiteInfo(1, 40, 3));
+        when(admin.getBrokerLiteInfo(unreadableConfig)).thenReturn(brokerLiteInfo(1, 40, 7));
+        when(admin.getBrokerConfig(BROKER_A)).thenAnswer(call -> {
+            Properties config = new Properties();
+            config.setProperty("maxLiteSubscriptionCount", "100000");
+            return config;
+        });
+        when(admin.getBrokerConfig(unreadableConfig)).thenThrow(new IllegalStateException("locked"));
+
+        LiteTopicQuota quota = provider.getQuota(null);
+
+        // The master with an unreadable config contributes neither its current sessions nor its
+        // cap, so the ratio never mixes master sets.
+        assertThat(quota.getCurrentSessionCount()).isEqualTo(3);
+        assertThat(quota.getMaxSessionCount()).isEqualTo(100_000);
+    }
+
 }
+
