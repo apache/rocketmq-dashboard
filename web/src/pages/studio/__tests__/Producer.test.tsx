@@ -172,6 +172,75 @@ describe('ProducerPage', () => {
     expect(await screen.findByRole('option', { name: 'payment-events' })).toBeInTheDocument();
   });
 
+  it('reports a failed instance discovery with a retry that recovers the selector', async () => {
+    vi.mocked(listInstances).mockRejectedValueOnce(new Error('instance discovery failed'));
+    const user = userEvent.setup();
+    renderWithProviders(<ProducerPage />);
+
+    expect(await screen.findByText('实例列表加载失败，请稍后重试')).toBeInTheDocument();
+    expect(fetchTopicList).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: '重试' }));
+
+    await waitFor(() => expect(listInstances).toHaveBeenCalledTimes(2));
+    await user.click(screen.getAllByRole('combobox')[0]);
+    expect(await screen.findByRole('option', { name: 'instance-1' })).toBeInTheDocument();
+    expect(screen.queryByText('实例列表加载失败，请稍后重试')).not.toBeInTheDocument();
+  });
+
+  it('keeps the loaded topic options when the topic refresh fails', async () => {
+    const user = userEvent.setup();
+    render(
+      <App>
+        <LangProvider>
+          <LanguageSwitch />
+          <ProducerPage />
+        </LangProvider>
+      </App>,
+    );
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    // A language change re-runs the topic effect (it feeds a localized error
+    // message); make every refresh from here on fail.
+    vi.mocked(fetchTopicList).mockRejectedValue(new Error('topic list failed'));
+    await user.click(screen.getByRole('button', { name: 'switch-language' }));
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('Failed to fetch topic list')).toBeInTheDocument();
+
+    // The failed refresh must not repaint the selector as an empty success.
+    await user.click(screen.getAllByRole('combobox')[1]);
+    expect(await screen.findByRole('option', { name: 'order-events' })).toBeInTheDocument();
+    expect(await screen.findByRole('option', { name: 'payment-events' })).toBeInTheDocument();
+  });
+
+  it('keeps the loaded producer group options when the selector lookup fails', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [, topicSelect, groupInput] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await user.click(groupInput);
+    await waitFor(() => expect(fetchProducerGroups).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole('option', { name: 'pg-order' })).toBeInTheDocument();
+
+    // Every lookup from here on fails; the search keeps firing per keystroke.
+    vi.mocked(fetchProducerGroups).mockRejectedValue(new Error('group lookup failed'));
+    await user.type(groupInput, 'pay');
+    await waitFor(() =>
+      expect(fetchProducerGroups.mock.calls.length).toBeGreaterThan(1),
+    );
+    expect((await screen.findAllByText('获取生产者组列表失败')).length).toBeGreaterThan(0);
+
+    // The failed lookup must not repaint the selector as an empty success: the
+    // query 'pay' still filters the retained options down to pg-payment.
+    expect(screen.getByRole('option', { name: 'pg-payment' })).toBeInTheDocument();
+  });
+
   it('discovers producer groups from selector interactions after topic selection', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ProducerPage />);

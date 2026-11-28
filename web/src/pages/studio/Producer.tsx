@@ -28,6 +28,7 @@ import {
   Statistic,
   Table,
   Tag,
+  Typography,
 } from 'antd';
 import { DownloadSimple, MagnifyingGlass } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
@@ -83,6 +84,8 @@ const ProducerPage = () => {
   const [failedBrokers, setFailedBrokers] = useState<string[]>([]);
   const [failedProducerGroups, setFailedProducerGroups] = useState<string[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
+  const [instancesLoadFailed, setInstancesLoadFailed] = useState(false);
+  const [instancesReloadNonce, setInstancesReloadNonce] = useState(0);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const { t } = useLang();
@@ -105,6 +108,7 @@ const ProducerPage = () => {
         if (cancelled) return;
         const apacheInstances = nextInstances.filter(supportsApacheRuntime);
         setInstances(apacheInstances);
+        setInstancesLoadFailed(false);
         setSelectedInstanceId((current) =>
           apacheInstances.some((instance) => instance.name === current)
             ? current
@@ -112,15 +116,19 @@ const ProducerPage = () => {
         );
       })
       .catch(() => {
+        // A failed discovery says nothing about the deployments that exist: silently
+        // emptying the selector would present the page as an environment without
+        // instances, with no way back. Report the failure with a retry instead,
+        // the way the broker-cluster page treats the same load (#6348).
         if (!cancelled) {
-          setInstances([]);
+          setInstancesLoadFailed(true);
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [instancesReloadNonce]);
 
   // Invalidates any in-flight connection query and drops its visible results,
   // shared by every scope change (instance / topic / producer group) so a slow
@@ -168,8 +176,11 @@ const ProducerPage = () => {
         }
       })
       .catch(() => {
+        // A failed refresh says nothing about the topics that exist. Keep the
+        // options the operator is looking at (a fresh failure is reported by the
+        // toast; an instance switch clears the list explicitly) instead of
+        // replacing them with an empty success-shaped selector.
         if (!cancelled) {
-          setTopicList([]);
           message.error(fetchTopicFailedMessage);
         }
       });
@@ -203,7 +214,10 @@ const ProducerPage = () => {
       }
     } catch {
       if (requestId === producerGroupRequestIdRef.current) {
-        setProducerGroups([]);
+        // A failed lookup is not an empty selector: keep the previously loaded
+        // options visible (the operator can retry by editing the query) instead
+        // of silently presenting the failure as "no producer groups".
+        message.error(t('producer.fetchProducerGroupsFailed'));
       }
     }
   };
@@ -342,6 +356,7 @@ const ProducerPage = () => {
               value={selectedInstanceId}
               onChange={handleInstanceChange}
               placeholder="Select instance"
+              status={instancesLoadFailed ? 'error' : undefined}
               style={{ width: 220 }}
               options={instances.map((instance) => ({
                 value: instance.name,
@@ -398,6 +413,20 @@ const ProducerPage = () => {
             </Button>
           </Form.Item>
         </Form>
+
+        {instancesLoadFailed && (
+          <Flex align="center" gap={8} style={{ marginBottom: 16 }}>
+            <Typography.Text type="danger">{t('instance.listLoadFailed')}</Typography.Text>
+            <Button
+              type="link"
+              size="small"
+              style={{ padding: 0, height: 'auto' }}
+              onClick={() => setInstancesReloadNonce((nonce) => nonce + 1)}
+            >
+              {t('common.retry')}
+            </Button>
+          </Flex>
+        )}
 
         <Flex justify="flex-end" style={{ marginBottom: 16 }}>
           <Button
