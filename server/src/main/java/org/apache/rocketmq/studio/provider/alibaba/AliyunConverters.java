@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.provider.alibaba;
 
+import com.aliyun.sdk.service.rocketmq20220801.models.DataLiteTopicLagMapValue;
 import com.aliyun.sdk.service.rocketmq20220801.models.DataTopicLagMapValue;
 import com.aliyun.sdk.service.rocketmq20220801.models.GetConsumerGroupLagResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.GetInstanceResponseBody;
@@ -106,7 +107,11 @@ final class AliyunConverters {
         List<CloudInstanceDetailVO.CloudEndpoint> endpoints = new ArrayList<>();
         if (data.getNetworkInfo() != null && data.getNetworkInfo().getEndpoints() != null) {
             for (GetInstanceResponseBody.Endpoints endpoint : data.getNetworkInfo().getEndpoints()) {
-                if (endpoint == null) {
+                // An entry without a URL cannot be used to connect; keeping it renders a broken
+                // row as if the instance offered a usable endpoint, so skip it like the Tencent
+                // catalog skips endpoints without an OPEN status and a URL.
+                if (endpoint == null || endpoint.getEndpointUrl() == null
+                        || endpoint.getEndpointUrl().isBlank()) {
                     continue;
                 }
                 endpoints.add(new CloudInstanceDetailVO.CloudEndpoint(
@@ -220,8 +225,6 @@ final class AliyunConverters {
         Map<String, DataTopicLagMapValue> topicLagMap = data.getTopicLagMap();
         if (topicLagMap != null) {
             for (Map.Entry<String, DataTopicLagMapValue> entry : topicLagMap.entrySet()) {
-                long ready = entry.getValue() == null || entry.getValue().getReadyCount() == null
-                        ? 0L : entry.getValue().getReadyCount();
                 // The Aliyun API reports the lag per topic, so the row carries no queue offsets;
                 // report the unknown sentinel instead of a zero that reads like a measurement.
                 rows.add(QueueProgressVO.builder()
@@ -230,7 +233,25 @@ final class AliyunConverters {
                         .queueId(0)
                         .brokerOffset(QueueProgressVO.UNKNOWN_OFFSET)
                         .consumerOffset(QueueProgressVO.UNKNOWN_OFFSET)
-                        .diffTotal(ready)
+                        .diffTotal(toReportedLag(entry.getValue() == null
+                                ? null : entry.getValue().getReadyCount()))
+                        .build());
+            }
+        }
+        // GetConsumerGroupLag reports lite topics in a separate map. Dropping it silently showed
+        // a group that only consumes lite topics as having no backlog at all - and suppressed the
+        // aggregate fallback row the same way.
+        Map<String, DataLiteTopicLagMapValue> liteTopicLagMap = data.getLiteTopicLagMap();
+        if (liteTopicLagMap != null) {
+            for (Map.Entry<String, DataLiteTopicLagMapValue> entry : liteTopicLagMap.entrySet()) {
+                rows.add(QueueProgressVO.builder()
+                        .topic(entry.getKey())
+                        .broker("topic:" + entry.getKey())
+                        .queueId(0)
+                        .brokerOffset(QueueProgressVO.UNKNOWN_OFFSET)
+                        .consumerOffset(QueueProgressVO.UNKNOWN_OFFSET)
+                        .diffTotal(toReportedLag(entry.getValue() == null
+                                ? null : entry.getValue().getReadyCount()))
                         .build());
             }
         }
@@ -248,6 +269,15 @@ final class AliyunConverters {
                     .build());
         }
         return rows;
+    }
+
+    /**
+     * A topic whose ready count the API did not report is unknown, not a measured zero backlog:
+     * the frontend renders the negative sentinel (ConsumerLagResolver.UNKNOWN) as unavailable,
+     * the same convention toConsumerGroupVO applies to the group's total lag.
+     */
+    private static long toReportedLag(Long readyCount) {
+        return readyCount == null || readyCount < 0L ? ConsumerLagResolver.UNKNOWN : readyCount;
     }
 
     static SubscriptionEntryVO toSubscriptionEntry(ListConsumerGroupSubscriptionsResponseBody.Data data) {
@@ -494,3 +524,4 @@ final class AliyunConverters {
         return value.intValue();
     }
 }
+

@@ -426,4 +426,39 @@ class AliyunCatalogServiceTest {
                 .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(502);
     }
 
+
+    @Test
+    void getCloudInstanceShouldSkipEndpointsWithoutUrlTest() {
+        GetInstanceResponse response = GetInstanceResponse.create().toBuilder()
+                .statusCode(200)
+                .body(GetInstanceResponseBody.builder().success(true)
+                        .data(GetInstanceResponseBody.Data.builder()
+                                .instanceId("rmq-cn-001")
+                                .networkInfo(GetInstanceResponseBody.NetworkInfo.builder()
+                                        .endpoints(Arrays.asList(
+                                                GetInstanceResponseBody.Endpoints.builder()
+                                                        .endpointType("TCP_INTERNET")
+                                                        .build(),
+                                                GetInstanceResponseBody.Endpoints.builder()
+                                                        .endpointType("TCP_VPC")
+                                                        .endpointUrl("rmq-cn-001-vpc.rmq.aliyuncs.com:8080")
+                                                        .build(),
+                                                null))
+                                        .build())
+                                .build())
+                        .build())
+                .build();
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenReturn(response);
+
+        CloudInstanceDetailVO detail = service.getCloudInstance(CREDENTIAL_ID, REGION, "rmq-cn-001");
+
+        // An endpoint row without a URL cannot be used to connect; rendering it as an entry
+        // hides that the usable endpoint list is shorter than it looks.
+        assertThat(detail.getEndpoints()).hasSize(1);
+        assertThat(detail.getEndpoints().get(0).getEndpointType()).isEqualTo("TCP_VPC");
+        assertThat(detail.getEndpoints().get(0).getEndpointUrl())
+                .isEqualTo("rmq-cn-001-vpc.rmq.aliyuncs.com:8080");
+    }
+
 }
+
