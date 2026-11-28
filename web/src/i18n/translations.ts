@@ -3946,6 +3946,10 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Input producer group, or leave empty for all active groups',
   },
   'producer.fetchTopicFailed': { zh: '获取 Topic 列表失败', en: 'Failed to fetch topic list' },
+  'producer.fetchProducerGroupsFailed': {
+    zh: '获取生产者组列表失败',
+    en: 'Failed to fetch producer group list',
+  },
   'producer.fetchConnectionFailed': {
     zh: '获取生产者连接失败',
     en: 'Failed to fetch producer connections',
