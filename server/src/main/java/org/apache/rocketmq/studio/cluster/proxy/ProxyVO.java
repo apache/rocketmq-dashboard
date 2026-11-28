@@ -29,14 +29,7 @@ import lombok.NoArgsConstructor;
 public class ProxyVO {
     private String addr;
     private ClusterStatus status;
-    /**
-     * A live client connection count is only known to a metrics collector. Heartbeat-syncer
-     * discovery proves the proxy node exists but says nothing about its connections, so it
-     * leaves this null; the console (Proxy.tsx renderNumberMetric / compareNullable) already
-     * treats null as "unavailable" instead of rendering a fabricated zero.
-     */
-    private Integer connections;
+    private int connections;
     private int grpcPort;
     private int remotingPort;
 }
-
