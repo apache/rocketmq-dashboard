@@ -522,11 +522,17 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
                 }
                 currentTopics += Math.max(info.getCurrentLmqNum(), 0);
                 maxTopics += Math.max(info.getMaxLmqNum(), 0);
-                currentSessions += Math.max(info.getLiteSubscriptionCount(), 0);
                 Properties brokerConfig = brokerConfig(admin, master);
-                if (brokerConfig != null) {
-                    maxSessions += parsePositiveLong(brokerConfig.getProperty("maxLiteSubscriptionCount"));
+                if (brokerConfig == null) {
+                    // The session cap lives in the broker config. Adding this master's current
+                    // sessions without its cap would build the ratio out of two different master
+                    // sets - the exact mix the info==null skip above already avoids.
+                    log.warn("Skipping {} session counts in the LiteTopic quota: broker config is unreadable",
+                            master);
+                    continue;
                 }
+                currentSessions += Math.max(info.getLiteSubscriptionCount(), 0);
+                maxSessions += parsePositiveLong(brokerConfig.getProperty("maxLiteSubscriptionCount"));
             }
 
             LiteTopicQuota quota = new LiteTopicQuota();
@@ -583,8 +589,15 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
                 continue;
             }
             String master = brokerData.getBrokerAddrs().get(MixAll.MASTER_ID);
-            if (master == null) {
-                master = brokerData.getBrokerAddrs().values().iterator().next();
+            if (master == null || master.isBlank()) {
+                // Same master-preference fallback the cluster views apply: the lowest surviving
+                // broker id, so the lite reads hit a deterministic address instead of whichever
+                // entry the address map happens to iterate first.
+                master = brokerData.getBrokerAddrs().entrySet().stream()
+                        .filter(entry -> StringUtils.hasText(entry.getValue()))
+                        .min(Map.Entry.comparingByKey())
+                        .map(Map.Entry::getValue)
+                        .orElse(null);
             }
             if (master != null) {
                 masters.add(master);
@@ -661,12 +674,17 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
         try {
             GetLiteGroupInfoResponseBody body = admin.getLiteGroupInfo(brokerAddr, group, null, 1);
             if (body == null) {
+                // The broker reported this group binding but holds no backlog row: empty backlog.
                 return 0;
             }
             return Math.max(body.getTotalLagCount(), 0);
         } catch (Exception failure) {
-            log.debug("Failed to read lite backlog for group {} on {}: {}", group, brokerAddr, failure.getMessage());
-            return 0;
+            restoreInterrupt(failure);
+            // The brokers read here are the ones that reported the group binding, so a failed
+            // read is not an empty backlog: fabricating 0 renders "fully consumed" in the
+            // totalBacklog column, the same lie sessionGroupLag refuses to tell for sessions.
+            throw new BusinessException(502, "Failed to read LiteTopic backlog for group " + group
+                    + " on " + brokerAddr + ": " + failure.getMessage());
         }
     }
 
@@ -755,3 +773,4 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
     private record LocatedClient(String master, GetLiteClientInfoResponseBody body) {
     }
 }
+
