@@ -136,7 +136,9 @@ public class RealClusterProvider implements ClusterProvider {
                         .map(brokerAddrTable::get)
                         .filter(Objects::nonNull)
                         .toList()))
-                .filter(cluster -> !cluster.getBrokers().isEmpty())
+                // A registered cluster whose BrokerData rows the NameServer did not return stays
+                // listed with an empty broker set: dropping the row silently reported "no such
+                // cluster" to the platform views, which cannot tell that apart from a real one.
                 .toList();
     }
 
@@ -192,3 +194,4 @@ public class RealClusterProvider implements ClusterProvider {
                 .build();
     }
 }
+

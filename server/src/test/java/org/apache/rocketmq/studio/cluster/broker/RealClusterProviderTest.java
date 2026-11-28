@@ -226,4 +226,26 @@ class RealClusterProviderTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Cluster not found");
     }
+
+    @Test
+    void registeredClusterWithMissingBrokerDataShouldStayListedTest() throws Exception {
+        ClusterInfo info = new ClusterInfo();
+        HashMap<String, Set<String>> clusterAddrTable = new HashMap<>();
+        clusterAddrTable.put("GhostCluster", Set.of("ghost-broker"));
+        info.setClusterAddrTable(clusterAddrTable);
+        stubClusterInfo("10.0.0.1:9876", info);
+
+        List<ClusterVO> clusters = provider.describeClusters("10.0.0.1:9876");
+
+        // Dropping the row because its BrokerData is absent reported "no such cluster" to the
+        // platform views; the cluster must stay listed with an empty broker set, matching
+        // RocketMQClusterProvider's view of the same topology.
+        assertThat(clusters).singleElement()
+                .satisfies(cluster -> {
+                    assertThat(cluster.getName()).isEqualTo("GhostCluster");
+                    assertThat(cluster.getBrokers()).isEmpty();
+                });
+    }
+
 }
+

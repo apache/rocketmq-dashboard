@@ -448,7 +448,9 @@ public class RocketMQClusterProvider implements ClusterProvider {
                 proxies.add(ProxyVO.builder()
                         .addr(ip + ":" + PROXY_REMOTING_PORT)
                         .status(ClusterStatus.healthy)
-                        .connections(0)
+                        // The heartbeat syncer reveals the proxy node but nothing about its client
+                        // connection count; leaving it unset renders as unknown instead of a
+                        // fabricated zero next to the healthy status.
                         .grpcPort(PROXY_GRPC_PORT)
                         .remotingPort(PROXY_REMOTING_PORT)
                         .build());
@@ -492,3 +494,4 @@ public class RocketMQClusterProvider implements ClusterProvider {
         return nameServers;
     }
 }
+
