@@ -98,4 +98,44 @@ class ApacheRocketMqProxyMetricsCollectorTest {
             assertThat(sample.labels()).isEmpty();
         });
     }
+
+    @Test
+    void recordsWholeScopeFailureSampleWhenDiscoveryYieldsNoClustersTest() {
+        ClusterService clusterService = mock(ClusterService.class);
+        InstanceVO instance = InstanceVO.builder().name("local").endpoint("localhost:9876").build();
+        when(clusterService.listClusters("local")).thenReturn(List.of());
+
+        List<MetricSample> samples = new ApacheRocketMqProxyMetricsCollector(clusterService,
+                mock(ProxyHealthProbe.class)).collect(instance);
+
+        // An empty discovery result is not a measurement of "all proxies healthy": passing it
+        // downstream would let NativeAlertProcessor reconcile (and falsely resolve) every active
+        // proxy incident. The collector must report the same whole-scope failure its catch branch
+        // uses when discovery itself fails.
+        assertThat(samples).singleElement().satisfies(sample -> {
+            assertThat(sample.metricKey()).isEqualTo("proxy.availability");
+            assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+            assertThat(sample.value()).isNull();
+            assertThat(sample.labels()).isEmpty();
+        });
+    }
+
+    @Test
+    void recordsWholeScopeFailureSampleWhenClustersDeclareNoProxiesTest() {
+        ClusterService clusterService = mock(ClusterService.class);
+        InstanceVO instance = InstanceVO.builder().name("local").endpoint("localhost:9876").build();
+        when(clusterService.listClusters("local")).thenReturn(List.of(
+                ClusterVO.builder().id("cluster-a").proxies(null).build(),
+                ClusterVO.builder().id("cluster-b").proxies(List.of()).build()));
+
+        List<MetricSample> samples = new ApacheRocketMqProxyMetricsCollector(clusterService,
+                mock(ProxyHealthProbe.class)).collect(instance);
+
+        assertThat(samples).singleElement().satisfies(sample -> {
+            assertThat(sample.metricKey()).isEqualTo("proxy.availability");
+            assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+            assertThat(sample.value()).isNull();
+            assertThat(sample.labels()).isEmpty();
+        });
+    }
 }
