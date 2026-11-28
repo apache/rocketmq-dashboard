@@ -19,6 +19,7 @@ package studio
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -114,6 +115,122 @@ func TestRequestPreservesLargeIntegersInPassthroughPayload(t *testing.T) {
 	}
 	if !strings.Contains(string(encoded), "9007199254740993") {
 		t.Fatalf("payload lost integer precision: %s", encoded)
+	}
+}
+
+// A non-2xx response body is server-controlled diagnostics. The CLI error path
+// must read it with the same bounded read the MCP transport applies
+// (statusErrorBodyLimit): a misbehaving endpoint answering with a huge HTML or
+// plain-text blob must surface as the generic HTTP status message, not be
+// buffered whole and echoed into the CLI's error output.
+func TestRequestBoundsOversizedErrorBody(t *testing.T) {
+	tests := []struct {
+		name      string
+		body      string
+		contentTy string
+	}{
+		{
+			name:      "oversized plain text body",
+			body:      strings.Repeat("x", statusErrorBodyLimit+1),
+			contentTy: "text/plain",
+		},
+		{
+			name:      "oversized json body",
+			body:      `{"message":"` + strings.Repeat("y", statusErrorBodyLimit) + `"}`,
+			contentTy: "application/json",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", tt.contentTy)
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = io.WriteString(w, tt.body)
+			}))
+			defer server.Close()
+
+			client := NewClient(http.DefaultClient)
+			target := Target{
+				Server:     server.URL,
+				InstanceID: "instance-1",
+				Credential: Credential{AccessKey: "ak", SecretKey: "sk"},
+				Timeout:    DefaultTimeout,
+			}
+
+			var payload any
+			err := client.request(context.Background(), target, http.MethodGet, "/api/brokers", nil, &payload)
+			apiError, ok := err.(*APIError)
+			if !ok {
+				t.Fatalf("request error = %T (%v), want *APIError", err, err)
+			}
+			if apiError.StatusCode != http.StatusInternalServerError {
+				t.Fatalf("status = %d, want 500", apiError.StatusCode)
+			}
+			want := fmt.Sprintf("studio server returned HTTP %d", http.StatusInternalServerError)
+			if apiError.Message != want {
+				t.Fatalf("message = %q (len %d), want generic bounded message %q", apiError.Message, len(apiError.Message), want)
+			}
+		})
+	}
+}
+
+// A body that fits the diagnostic budget keeps its structured or plain-text
+// content so the operator still learns the cause; the boundary value itself
+// must stay readable.
+func TestRequestKeepsBoundedErrorBody(t *testing.T) {
+	tests := []struct {
+		name        string
+		body        string
+		wantMessage string
+		wantCode    string
+	}{
+		{
+			name:        "structured body",
+			body:        `{"code":"TOO_MANY_REQUESTS","message":"slow down","hint":"wait"}`,
+			wantMessage: "slow down",
+			wantCode:    "TOO_MANY_REQUESTS",
+		},
+		{
+			name:        "plain text body",
+			body:        "broker is restarting",
+			wantMessage: "broker is restarting",
+		},
+		{
+			name:        "exactly the limit",
+			body:        strings.Repeat("a", statusErrorBodyLimit),
+			wantMessage: strings.Repeat("a", statusErrorBodyLimit),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/plain")
+				w.WriteHeader(http.StatusBadGateway)
+				_, _ = io.WriteString(w, tt.body)
+			}))
+			defer server.Close()
+
+			client := NewClient(http.DefaultClient)
+			target := Target{
+				Server:     server.URL,
+				InstanceID: "instance-1",
+				Credential: Credential{AccessKey: "ak", SecretKey: "sk"},
+				Timeout:    DefaultTimeout,
+			}
+
+			var payload any
+			err := client.request(context.Background(), target, http.MethodGet, "/api/brokers", nil, &payload)
+			apiError, ok := err.(*APIError)
+			if !ok {
+				t.Fatalf("request error = %T (%v), want *APIError", err, err)
+			}
+			if apiError.Message != tt.wantMessage {
+				t.Fatalf("message = %q, want %q", apiError.Message, tt.wantMessage)
+			}
+			if tt.wantCode != "" && apiError.Code != tt.wantCode {
+				t.Fatalf("code = %q, want %q", apiError.Code, tt.wantCode)
+			}
+		})
 	}
 }
 

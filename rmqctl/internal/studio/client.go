@@ -26,6 +26,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/types"
 )
@@ -141,12 +142,25 @@ func (c Client) request(ctx context.Context, target Target, method string, path 
 		return err
 	}
 	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		// The error body is server-controlled diagnostics. Read it with the
+		// same bounded read the MCP transport applies (statusErrorBodyLimit):
+		// a misbehaving endpoint answering with a huge HTML or plain-text blob
+		// must surface as the generic HTTP status message, not be buffered
+		// whole and echoed into the CLI's error output.
+		payload, readErr := io.ReadAll(io.LimitReader(response.Body, statusErrorBodyLimit+1))
+		if readErr != nil || len(payload) > statusErrorBodyLimit {
+			return &APIError{
+				StatusCode: response.StatusCode,
+				Message:    fmt.Sprintf("studio server returned HTTP %d", response.StatusCode),
+				Hint:       "The upstream error body could not be read within the diagnostic budget.",
+			}
+		}
+		return responseError(response.StatusCode, payload)
+	}
 	data, err := io.ReadAll(response.Body)
 	if err != nil {
 		return err
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return responseError(response.StatusCode, data)
 	}
 	envelope := types.ResultEnvelope{}
 	if err := json.Unmarshal(data, &envelope); err != nil {
@@ -169,6 +183,10 @@ func (c Client) request(ctx context.Context, target Target, method string, path 
 	return nil
 }
 
+// responseError builds the APIError from a body that was already read within
+// the diagnostic budget. Message and Hint stay server-controlled text: bound
+// them anyway, so a structured envelope whose fields carry an oversized blob
+// cannot smuggle the unbounded read back into the CLI's error output.
 func responseError(statusCode int, data []byte) error {
 	message := strings.TrimSpace(string(data))
 	if message == "" {
@@ -176,7 +194,7 @@ func responseError(statusCode int, data []byte) error {
 	}
 	apiError := &APIError{
 		StatusCode: statusCode,
-		Message:    message,
+		Message:    boundedDiagnostic(message),
 	}
 	var structured struct {
 		Code    string `json:"code"`
@@ -184,11 +202,11 @@ func responseError(statusCode int, data []byte) error {
 		Hint    string `json:"hint"`
 	}
 	if err := json.Unmarshal(data, &structured); err == nil {
-		apiError.Code = structured.Code
+		apiError.Code = boundedDiagnostic(strings.TrimSpace(structured.Code))
 		if structured.Message != "" {
-			apiError.Message = structured.Message
+			apiError.Message = boundedDiagnostic(structured.Message)
 		}
-		apiError.Hint = structured.Hint
+		apiError.Hint = boundedDiagnostic(structured.Hint)
 		return apiError
 	}
 	var envelope types.ResultEnvelope
@@ -196,9 +214,25 @@ func responseError(statusCode int, data []byte) error {
 		return apiError
 	}
 	if envelope.Message != "" {
-		apiError.Message = envelope.Message
+		apiError.Message = boundedDiagnostic(envelope.Message)
 	}
 	return apiError
+}
+
+// boundedDiagnostic caps one diagnostic field, cutting on a UTF-8 boundary so
+// multi-byte runes are not split. The bound matches the raw-body read: any
+// single field already fits within statusErrorBodyLimit, this only stops one
+// oversized structured field from growing the display.
+func boundedDiagnostic(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) <= statusErrorBodyLimit {
+		return value
+	}
+	end := statusErrorBodyLimit
+	for end > 0 && !utf8.RuneStart(value[end]) {
+		end--
+	}
+	return value[:end]
 }
 
 func hasJSONData(data json.RawMessage) bool {
