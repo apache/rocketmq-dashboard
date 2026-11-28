@@ -97,6 +97,13 @@ public class CloudCredentialService {
         if (!StringUtils.hasText(credential.getAccessKey()) || !StringUtils.hasText(credential.getSecretKey())) {
             throw new BusinessException(400, "Cloud credential accessKey and secretKey are required");
         }
+        requireStorageLength("Cloud credential name", credential.getName(), 128);
+        requireStorageLength("Cloud credential accessKey", credential.getAccessKey(), 255);
+        // rmq_cloud_credential.secret_key is VARCHAR(512) and stores the base64 encoding, so the
+        // plain secret can carry at most 384 characters; a longer value would otherwise surface as
+        // a raw data-integrity 500 instead of a validation error.
+        requireStorageLength("Cloud credential secretKey", credential.getSecretKey(), 384);
+        requireStorageLength("Cloud credential remark", credential.getRemark(), 255);
         credentialRepository.findByVendorAndAccessKey(credential.getVendor(), credential.getAccessKey())
                 .ifPresent(existing -> {
                     throw new BusinessException(400,
@@ -134,6 +141,9 @@ public class CloudCredentialService {
         String secretKey = StringUtils.trimWhitespace(
                 StringUtils.hasText(request.getSecretKey()) ? request.getSecretKey() : null);
         String remark = StringUtils.trimWhitespace(request.getRemark());
+        requireStorageLength("Cloud credential name", name, 128);
+        requireStorageLength("Cloud credential secretKey", secretKey, 384);
+        requireStorageLength("Cloud credential remark", remark, 255);
         if (name == null && secretKey == null && remark == null) {
             // Nothing would change, but the write path would still bump gmt_modified, evict every
             // cached cloud client for this credential and record an audit row: a no-op must not
@@ -185,6 +195,12 @@ public class CloudCredentialService {
         recordAudit("REVEAL_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", String.valueOf(credential.getId()), null,
                 credentialAuditDetail(credential));
         return credential;
+    }
+
+    private static void requireStorageLength(String label, String value, int maxLength) {
+        if (value != null && value.length() > maxLength) {
+            throw new BusinessException(400, label + " exceeds its maximum of " + maxLength + " characters");
+        }
     }
 
     private CloudCredentialVO maskAccessKey(CloudCredentialVO credential) {

@@ -497,5 +497,40 @@ class CloudCredentialServiceTest {
         verify(credentialRepository).updateFields(9L, null, "rotated-secret", null);
     }
 
+
+    @Test
+    void createShouldRejectAnOverLongSecretKeyTest() {
+        CloudCredentialVO request = new CloudCredentialVO();
+        request.setName("too-long");
+        request.setVendor(InstanceVendor.TENCENT);
+        request.setAccessKey("LTAI5tLongKey00000000001");
+        request.setSecretKey("x".repeat(385));
+
+        // rmq_cloud_credential.secret_key is VARCHAR(512) of base64: the raw secret caps at 384
+        // characters, and an over-long paste must answer with a validation error, not a raw
+        // data-integrity failure from the insert.
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        verify(credentialRepository, never()).save(any());
+    }
+
+    @Test
+    void updateShouldRejectAnOverLongNameTest() {
+        CloudCredentialVO stored = new CloudCredentialVO();
+        stored.setId(11L);
+        stored.setName("cred-11");
+        stored.setVendor(InstanceVendor.ALIYUN);
+        when(credentialRepository.findById(11L)).thenReturn(Optional.of(stored));
+        UpdateCloudCredentialDTO request = new UpdateCloudCredentialDTO();
+        request.setId(11L);
+        request.setName("n".repeat(129));
+
+        assertThatThrownBy(() -> service.update(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        verify(credentialRepository, never()).updateFields(any(), any(), any(), any());
+    }
+
 }
 
