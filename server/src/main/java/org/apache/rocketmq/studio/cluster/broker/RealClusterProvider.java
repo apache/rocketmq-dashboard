@@ -136,7 +136,9 @@ public class RealClusterProvider implements ClusterProvider {
                         .map(brokerAddrTable::get)
                         .filter(Objects::nonNull)
                         .toList()))
-                .filter(cluster -> !cluster.getBrokers().isEmpty())
+                // A registered cluster whose BrokerData rows the NameServer did not return stays
+                // listed with an empty broker set: dropping the row silently reported "no such
+                // cluster" to the platform views, which cannot tell that apart from a real one.
                 .toList();
     }
 
@@ -178,10 +180,15 @@ public class RealClusterProvider implements ClusterProvider {
         String addr = null;
         if (data.getBrokerAddrs() != null) {
             addr = data.getBrokerAddrs().get(MixAll.MASTER_ID);
-            if (addr == null) {
-                addr = data.getBrokerAddrs().values().stream()
-                        .filter(Objects::nonNull)
-                        .findFirst()
+            if (addr == null || addr.isBlank()) {
+                // Same master-preference fallback RocketMQClusterProvider.buildBrokerList applies:
+                // the lowest surviving broker id, so both views report the same address for the
+                // same broker instead of whichever entry the address map happens to iterate
+                // first (a HashMap walk made the reported address order-dependent).
+                addr = data.getBrokerAddrs().entrySet().stream()
+                        .filter(entry -> entry.getValue() != null && !entry.getValue().isBlank())
+                        .min(Map.Entry.comparingByKey())
+                        .map(Map.Entry::getValue)
                         .orElse(null);
             }
         }
@@ -192,3 +199,4 @@ public class RealClusterProvider implements ClusterProvider {
                 .build();
     }
 }
+

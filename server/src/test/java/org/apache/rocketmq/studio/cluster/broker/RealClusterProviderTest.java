@@ -30,6 +30,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 
@@ -226,4 +227,48 @@ class RealClusterProviderTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Cluster not found");
     }
+
+    @Test
+    void registeredClusterWithMissingBrokerDataShouldStayListedTest() throws Exception {
+        ClusterInfo info = new ClusterInfo();
+        HashMap<String, Set<String>> clusterAddrTable = new HashMap<>();
+        clusterAddrTable.put("GhostCluster", Set.of("ghost-broker"));
+        info.setClusterAddrTable(clusterAddrTable);
+        stubClusterInfo("10.0.0.1:9876", info);
+
+        List<ClusterVO> clusters = provider.describeClusters("10.0.0.1:9876");
+
+        // Dropping the row because its BrokerData is absent reported "no such cluster" to the
+        // platform views; the cluster must stay listed with an empty broker set, matching
+        // RocketMQClusterProvider's view of the same topology.
+        assertThat(clusters).singleElement()
+                .satisfies(cluster -> {
+                    assertThat(cluster.getName()).isEqualTo("GhostCluster");
+                    assertThat(cluster.getBrokers()).isEmpty();
+                });
+    }
+
+
+    @Test
+    void brokerAddressShouldPreferTheLowestBrokerIdWhenMasterIsMissingTest() throws Exception {
+        ClusterInfo info = sampleClusterInfo();
+        HashMap<Long, String> addrs = new LinkedHashMap<>();
+        addrs.put(3L, "10.0.0.23:10911");
+        addrs.put(1L, "10.0.0.21:10911");
+        info.getBrokerAddrTable().put("broker-c",
+                new BrokerData("AnalyticsCluster", "broker-c", addrs));
+        info.getClusterAddrTable().put("AnalyticsCluster", Set.of("broker-c"));
+        stubClusterInfo("10.0.0.1:9876", info);
+
+        List<ClusterVO> clusters = provider.describeClusters("10.0.0.1:9876");
+
+        // With the master address missing, the reported address must be the lowest surviving
+        // broker id, deterministically, matching RocketMQClusterProvider's fallback.
+        assertThat(clusters.stream()
+                .flatMap(cluster -> cluster.getBrokers().stream())
+                .filter(b -> "broker-c".equals(b.getName()))
+                .findFirst().orElseThrow().getAddr()).isEqualTo("10.0.0.21:10911");
+    }
+
 }
+
